@@ -21,11 +21,8 @@ jobs:
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@master
 
-      - name: Brew cleanup
-        run: brew test-bot --only-cleanup-before
-
-      - name: Brew setup
-        run: brew test-bot --only-setup
+      - name: Add requirements
+        run: bash src/requirements.sh
 
       - name: Add taps
         run: bash src/taps.sh
@@ -98,4 +95,6 @@ jobs:
           default=$(brew info php 2>&1 | head -1 | grep -Eo '[0-9]\.[0-9]')
           [ "$formula" = "php@$default$debug$ts" ] && formula="php$debug$ts"
           cat ~/Library/LaunchAgents/homebrew.mxcl."$formula".plist
+      
+      - uses: mxschmitt/action-tmate@v3   
     
