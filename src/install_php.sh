@@ -1,8 +1,5 @@
 #!/bin/bash
 
-brew tap shivammathur/php
-brew tap shivammathur/extensions
-
 SUFFIX=''
 [ "$DEBUG" = 'true' ] && SUFFIX='-debug'
 [ "$TS" = 'true' ] && SUFFIX="$SUFFIX-zts"

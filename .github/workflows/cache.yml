@@ -18,6 +18,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Remove brew
+        run: sudo rm -rf "$(brew --prefix)"/*
+
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@master
 
@@ -26,6 +29,9 @@ jobs:
 
       - name: Brew setup
         run: brew test-bot --only-setup
+
+      - name: Add taps
+        run: bash src/taps.sh
 
       - name: Git init
         run: bash src/configure_git.sh
@@ -36,8 +42,6 @@ jobs:
           PHP_VERSION: ${{ matrix.php }}
           DEBUG: ${{ matrix.debug }}
           TS: ${{ matrix.ts }}
-
-      #- uses: mxschmitt/action-tmate@v3   
 
       - name: Package
         run: bash src/package.sh
