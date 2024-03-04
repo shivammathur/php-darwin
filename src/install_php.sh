@@ -10,6 +10,8 @@ brew unlink "$PHP_FORMULA" 2>/dev/null || true
 brew install shivammathur/php/"$PHP_FORMULA"
 brew link --overwrite --force "$PHP_FORMULA"
 
+brew install httpd
+
 php_config=$(which php-config)
 ext_dir="$(grep 'extension_dir=' "$php_config" | cut -d "'" -f 2)"
 ext_opts=()
