@@ -18,9 +18,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Remove brew
-        run: sudo rm -rf "$(brew --prefix)"/*
-
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@master
 
