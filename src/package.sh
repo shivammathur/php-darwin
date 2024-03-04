@@ -11,7 +11,9 @@ sudo git commit -q -m "installed php"
 
 mkdir /tmp/php
 for file in $(git log -p -n 1 --name-only | tail -n +5 | xargs -L1 echo); do
-  sudo rsync -Rl "$file" /tmp/php || true
+  if [ -e "$file" ]; then
+    sudo rsync -Rl "$file" /tmp/php || true
+  fi  
 done
 
 brew install zstd 2>/dev/null || true
