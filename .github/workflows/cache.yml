@@ -1,0 +1,100 @@
+name: Cache PHP
+on:
+  - push
+  - workflow_dispatch
+jobs:
+  cache:
+    strategy:
+      matrix:
+        runner: [macos-12, macos-13, macos-14]
+        #php: ['5.6', '7.0', '7.1', '7.2', '7.3', '7.4', '8.0', '8.1', '8.2', '8.3', '8.4']
+        php: [8.2]
+        #debug: ['true', 'false']
+        debug: ['false']
+        #ts: ['zts', 'nts']
+        ts: ['nts']
+    runs-on: ${{matrix.runner}}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@master
+
+      - name: Brew cleanup
+        run: brew test-bot --only-cleanup-before
+
+      - name: Brew setup
+        run: brew test-bot --only-setup
+
+      - name: Git init
+        run: bash src/configure_git.sh
+
+      - name: Install PHP
+        run: bash src/install_php.sh
+        env:
+          PHP_VERSION: ${{ matrix.php }}
+          DEBUG: ${{ matrix.debug }}
+          TS: ${{ matrix.ts }}
+
+      #- uses: mxschmitt/action-tmate@v3   
+
+      - name: Package
+        run: bash src/package.sh
+        env:
+          PHP_VERSION: ${{ matrix.php }}
+          DEBUG: ${{ matrix.debug }}
+          TS: ${{ matrix.ts }}    
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.runner }}-${{ matrix.php }}-${{ matrix.debug }}-${{ matrix.ts }}
+          path: builds
+
+  tests:
+    needs: cache
+    strategy:
+      matrix:
+        runner: [macos-12, macos-13, macos-14]
+        #php: ['5.6', '7.0', '7.1', '7.2', '7.3', '7.4', '8.0', '8.1', '8.2', '8.3', '8.4']
+        php: [8.2]
+        #debug: ['true', 'false']
+        debug: ['false']
+        #ts: ['zts', 'nts']
+        ts: ['nts']
+    runs-on: ${{matrix.runner}}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.runner }}-${{ matrix.php }}-${{ matrix.debug }}-${{ matrix.ts }}
+          path: /tmp
+
+      - name: Patch script
+        run: sed -i '' -e '/releases/d' -e '1s/$/\n\nset -x/' src/install.sh
+
+      - name: Install PHP
+        run: bash src/install.sh ${{ matrix.php }} ${{ matrix.debug }} ${{ matrix.ts }}
+
+      - name: Test PHP
+        run: |
+          php -r "if(strpos(phpversion(), '${{ matrix.php }}') === false) {throw new Exception('Wrong PHP version Installed');}"
+          php -v && php -m
+
+      - name: Test PHP service
+        run: |
+          debug=
+          ts=
+          [[ "${{ matrix.debug }}" = "true" ]] && debug='-debug'
+          [[ "${{ matrix.ts }}" = "ts" ]] && ts='-zts'
+          formula="php@${{ matrix.php }}$debug$ts"
+          brew services start "$formula"
+          brew services list
+          default=$(brew info php 2>&1 | head -1 | grep -Eo '[0-9]\.[0-9]')
+          [ "$formula" = "php@$default$debug$ts" ] && formula="php$debug$ts"
+          cat ~/Library/LaunchAgents/homebrew.mxcl."$formula".plist
+    
