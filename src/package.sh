@@ -20,7 +20,7 @@ brew install zstd 2>/dev/null || true
 
 (
   cd /tmp/php || exit 1
-  tar cf - ./* | zstd -22 -T0 --ultra --long=30 --force > ../php@"$PHP_VERSION$SUFFIX".tar.zst
+  tar cf - ./* | zstd -22 -T0 --ultra --force > ../php@"$PHP_VERSION$SUFFIX".tar.zst
 )
 
 cd "$GITHUB_WORKSPACE" || exit 1

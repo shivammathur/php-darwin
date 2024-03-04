@@ -9,4 +9,4 @@ sudo rm -rf "$BREW_PREFIX"/.git "$BREW_PREFIX"/.gitignore
 
 sudo git -C "$BREW_PREFIX" init
 sudo git -C "$BREW_PREFIX" add .
-sudo git -C "$BREW_PREFIX" commit -m "init"
+sudo git -C "$BREW_PREFIX" commit -q -m "init"
