@@ -20,7 +20,7 @@ install() {
   tar_file=php@"$version$SUFFIX".tar.zst
   get /tmp/"$tar_file" "https://github.com/shivammathur/php-darwin/releases/latest/download/$tar_file"
   zstd -dq --force /tmp/"$tar_file"
-  if command -v gtar 2>/dev/null;
+  if command -v gtar 2>/dev/null; then
     sudo gtar --overwrite -xf /tmp/php@"$version$SUFFIX".tar -C "$BREW_PREFIX"
   else
     sudo rm -rf "$BREW_PREFIX"/share/gettext/its

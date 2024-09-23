@@ -96,5 +96,6 @@ jobs:
           [ "$formula" = "php@$default$debug$ts" ] && formula="php$debug$ts"
           cat ~/Library/LaunchAgents/homebrew.mxcl."$formula".plist
       
-      - uses: mxschmitt/action-tmate@v3   
+      - uses: mxschmitt/action-tmate@v3
+        if: ${{ failure() }}
     

@@ -17,7 +17,6 @@ for file in $(git log -p -n 1 --name-only | tail -n +5 | xargs -L1 echo); do
 done
 
 brew install zstd 2>/dev/null || true
-
 (
   cd /tmp/php || exit 1
   tar cf - ./* | zstd -22 -T0 --ultra --force > ../php@"$PHP_VERSION$SUFFIX".tar.zst
