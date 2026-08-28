@@ -1,0 +1,166 @@
+name: Test PHP cache
+run-name: Test PHP ${{ inputs.php-version }} cache from run ${{ inputs.run-id }} on ${{ inputs.runner }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      php-version:
+        description: PHP minor version
+        required: true
+        type: string
+      run-id:
+        description: Workflow run containing architecture artifacts
+        required: true
+        type: string
+      runner:
+        description: Free macOS runner label
+        options:
+          - macos-14
+          - macos-15
+          - macos-15-intel
+          - macos-26
+          - macos-26-intel
+          - macos-latest
+        required: true
+        type: choice
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  HOMEBREW_DEVELOPER: '1'
+
+jobs:
+  target:
+    name: Resolve compatibility-test target
+    runs-on: ubuntu-latest
+    outputs:
+      arch: ${{ steps.target.outputs.arch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Resolve runner architecture
+        id: target
+        env:
+          RUNNER: ${{ inputs.runner }}
+        run: bash scripts/get-test-target.sh
+
+  test:
+    name: Test PHP ${{ inputs.php-version }} packages on ${{ inputs.runner }}
+    needs: target
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 90
+    env:
+      ARCH: ${{ needs.target.outputs.arch }}
+      PHP_VERSION: ${{ inputs.php-version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Remove unused Homebrew taps
+        run: bash scripts/cleanup-taps.sh
+
+      - name: Download architecture caches
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          github-token: ${{ github.token }}
+          name: php-${{ inputs.php-version }}-${{ needs.target.outputs.arch }}
+          path: ${{ runner.temp }}/php-darwin
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.run-id }}
+
+      - name: Prepare release/NTS Homebrew formula source
+        env: &release-nts
+          BUILD: release
+          TS: nts
+        run: bash scripts/test-install.sh prepare
+
+      - name: Install release/NTS Homebrew cache
+        env: *release-nts
+        run: bash scripts/test-install.sh install
+
+      - name: Validate release/NTS PHP runtime and build flags
+        env: *release-nts
+        run: bash scripts/test-install.sh runtime
+
+      - name: Validate release/NTS Homebrew state and operations
+        env: *release-nts
+        run: bash scripts/test-install.sh homebrew
+
+      - name: Reset runner after release/NTS validation
+        if: ${{ always() }}
+        env: *release-nts
+        run: bash scripts/test-install.sh reset
+
+      - name: Prepare release/ZTS Homebrew formula source
+        env: &release-zts
+          BUILD: release
+          TS: zts
+        run: bash scripts/test-install.sh prepare
+
+      - name: Install release/ZTS Homebrew cache
+        env: *release-zts
+        run: bash scripts/test-install.sh install
+
+      - name: Validate release/ZTS PHP runtime and build flags
+        env: *release-zts
+        run: bash scripts/test-install.sh runtime
+
+      - name: Validate release/ZTS Homebrew state and operations
+        env: *release-zts
+        run: bash scripts/test-install.sh homebrew
+
+      - name: Reset runner after release/ZTS validation
+        if: ${{ always() }}
+        env: *release-zts
+        run: bash scripts/test-install.sh reset
+
+      - name: Prepare debug/NTS Homebrew formula source
+        env: &debug-nts
+          BUILD: debug
+          TS: nts
+        run: bash scripts/test-install.sh prepare
+
+      - name: Install debug/NTS Homebrew cache
+        env: *debug-nts
+        run: bash scripts/test-install.sh install
+
+      - name: Validate debug/NTS PHP runtime and build flags
+        env: *debug-nts
+        run: bash scripts/test-install.sh runtime
+
+      - name: Validate debug/NTS Homebrew state and operations
+        env: *debug-nts
+        run: bash scripts/test-install.sh homebrew
+
+      - name: Reset runner after debug/NTS validation
+        if: ${{ always() }}
+        env: *debug-nts
+        run: bash scripts/test-install.sh reset
+
+      - name: Prepare debug/ZTS Homebrew formula source
+        env: &debug-zts
+          BUILD: debug
+          TS: zts
+        run: bash scripts/test-install.sh prepare
+
+      - name: Install debug/ZTS Homebrew cache
+        env: *debug-zts
+        run: bash scripts/test-install.sh install
+
+      - name: Validate debug/ZTS PHP runtime and build flags
+        env: *debug-zts
+        run: bash scripts/test-install.sh runtime
+
+      - name: Validate debug/ZTS Homebrew state and operations
+        env: *debug-zts
+        run: bash scripts/test-install.sh homebrew
+
+      - name: Reset runner after debug/ZTS validation
+        if: ${{ always() }}
+        env: *debug-zts
+        run: bash scripts/test-install.sh reset

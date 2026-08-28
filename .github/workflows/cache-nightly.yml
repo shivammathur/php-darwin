@@ -1,0 +1,87 @@
+name: Cache nightly PHP
+run-name: Cache nightly PHP ${{ inputs.php-version || 'configured version' }}
+
+on:
+  schedule:
+    - cron: '20 4 * * *'
+  workflow_dispatch:
+    inputs:
+      php-version:
+        description: PHP minor version
+        required: false
+        type: string
+      builds:
+        description: Space-separated build types
+        default: debug release
+        required: false
+        type: string
+      ts:
+        description: Space-separated thread-safety modes
+        default: nts zts
+        required: false
+        type: string
+      architectures:
+        description: Space-separated CPU architectures
+        default: arm64 x86_64
+        required: false
+        type: string
+      publish:
+        description: Publish validated caches to the PHP release
+        default: true
+        required: false
+        type: boolean
+      force:
+        description: Rebuild even when the php-src commit is unchanged
+        default: false
+        required: false
+        type: boolean
+
+concurrency:
+  group: cache-nightly-${{ inputs.php-version || 'configured' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  freshness:
+    name: Check nightly php-src commit
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.freshness.outputs.build }}
+      php-src-commit: ${{ steps.freshness.outputs.php-src-commit }}
+      php-version: ${{ steps.freshness.outputs.php-version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out homebrew-php once
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: shivammathur/homebrew-php
+          path: homebrew-php
+          persist-credentials: false
+
+      - name: Compare the nightly php-src commit with the published manifest
+        id: freshness
+        env:
+          FORCE: ${{ inputs.force || false }}
+          HOMEBREW_PHP_PATH: ${{ github.workspace }}/homebrew-php
+          PHP_VERSION: ${{ inputs.php-version }}
+        run: bash scripts/update-nightly.sh
+
+  cache:
+    needs: freshness
+    if: ${{ needs.freshness.outputs.build == 'true' }}
+    permissions:
+      # Required by the called publish job to replace GitHub Release assets.
+      contents: write
+    uses: ./.github/workflows/build.yml
+    with:
+      channel: nightly
+      php-version: ${{ needs.freshness.outputs.php-version }}
+      builds: ${{ inputs.builds || 'debug release' }}
+      ts: ${{ inputs.ts || 'nts zts' }}
+      architectures: ${{ inputs.architectures || 'arm64 x86_64' }}
+      publish: ${{ github.event_name == 'schedule' || inputs.publish }}
