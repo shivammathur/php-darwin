@@ -1,0 +1,14 @@
+{
+  "compression_level": 22,
+  "compression_long": 27,
+  "current_version": "8.5",
+  "max_archive_bytes": 26000000,
+  "max_fetch_seconds": 3,
+  "max_install_seconds": 7,
+  "max_setup_seconds": 10,
+  "release_repository": "shivammathur/php-darwin",
+  "tap": "shivammathur/php",
+  "tap_branch": "main",
+  "tap_repository": "https://github.com/shivammathur/homebrew-php",
+  "tap_snapshot": "var/php-darwin/homebrew-php"
+}

@@ -1,0 +1,301 @@
+#!/usr/bin/env bash
+
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=scripts/lib.sh
+. "$script_dir/lib.sh"
+
+bash -n "$script_dir"/*.sh "$script_dir"/../templates/*.sh || php_darwin_die 'shell syntax validation failed'
+
+for json_file in "$script_dir"/../conf/*.json "$script_dir"/../templates/*.json; do
+  jq -e . "$json_file" >/dev/null || php_darwin_die "invalid JSON: $json_file"
+done
+
+current_version=$(php_darwin_package_config current_version)
+php_darwin_validate_channel "$current_version" stable
+php_darwin_validate_channel 5.6 stable
+php_darwin_validate_channel 8.5 stable
+php_darwin_validate_channel 8.6 nightly
+[ "$(php_darwin_formula "$current_version" debug zts "$current_version")" = php-debug-zts ] || \
+  php_darwin_die 'preloaded current-version formula resolution failed'
+
+version_count=0
+nightly_count=0
+seen_versions=
+while read -r channel version extra; do
+  [ -n "$channel" ] || continue
+  case "$channel" in \#*) continue ;; esac
+  [ -z "$extra" ] || php_darwin_die "invalid version configuration for PHP $version"
+  case " $seen_versions " in *" $version "*) php_darwin_die "duplicate PHP version: $version" ;; esac
+  seen_versions="$seen_versions $version"
+  php_darwin_validate_channel "$version" "$channel"
+  version_count=$((version_count + 1))
+  [ "$channel" != nightly ] || nightly_count=$((nightly_count + 1))
+  seen_variants=
+  while read -r build ts variant_extra; do
+    [ -n "$build" ] || continue
+    case "$build" in \#*) continue ;; esac
+    [ -z "$variant_extra" ] || php_darwin_die "invalid variant configuration: $build $ts $variant_extra"
+    php_darwin_validate_build "$build"
+    php_darwin_validate_ts "$ts"
+    case " $seen_variants " in *" $build/$ts "*) php_darwin_die "duplicate variant: $build/$ts" ;; esac
+    seen_variants="$seen_variants $build/$ts"
+    php_darwin_formula "$version" "$build" "$ts" >/dev/null
+    php_darwin_requested_formula "$version" "$build" "$ts" >/dev/null
+    php_darwin_asset "$version" "$build" "$ts" arm64 >/dev/null
+    php_darwin_asset "$version" "$build" "$ts" x86_64 >/dev/null
+  done < "$script_dir/../conf/variants"
+done < "$script_dir/../conf/versions"
+[ "$version_count" -eq 13 ] || php_darwin_die "expected 13 configured PHP versions, found $version_count"
+[ "$nightly_count" -eq 1 ] || php_darwin_die "expected one nightly PHP version, found $nightly_count"
+configured_versions=$(awk '!/^#/ && NF == 2 { printf "%s%s", separator, $1 ":" $2; separator=" " }' \
+  "$script_dir/../conf/versions") || php_darwin_die 'could not read configured PHP versions'
+[ "$configured_versions" = \
+  'stable:5.6 stable:7.0 stable:7.1 stable:7.2 stable:7.3 stable:7.4 stable:8.0 stable:8.1 stable:8.2 stable:8.3 stable:8.4 stable:8.5 nightly:8.6' ] || \
+  php_darwin_die 'the PHP release-channel configuration is incomplete or out of order'
+[ "$(printf '%s\n' "$seen_variants" | awk '{ print NF }')" -eq 4 ] || \
+  php_darwin_die 'expected four build variants'
+for required_variant in release/nts release/zts debug/nts debug/zts; do
+  case " $seen_variants " in *" $required_variant "*) ;; *) php_darwin_die "missing build variant: $required_variant" ;; esac
+done
+
+jq -e '
+  (keys | sort) == ["arm64", "x86_64"] and
+  .arm64.brew_prefix == "/opt/homebrew" and .x86_64.brew_prefix == "/usr/local" and
+  .arm64.minimum_macos == 15 and .x86_64.minimum_macos == 15 and
+  (.arm64.test_runners | index("macos-15") and index("macos-26")) and
+  (.x86_64.test_runners | index("macos-15-intel") and index("macos-26-intel"))
+' "$script_dir/../conf/platforms.json" >/dev/null || php_darwin_die 'invalid platform configuration'
+
+archive_roots=
+while IFS= read -r root extra; do
+  [ -n "$root" ] || continue
+  case "$root" in \#*) continue ;; esac
+  [ -z "$extra" ] || php_darwin_die "invalid archive root: $root $extra"
+  case "$root" in Cellar|Frameworks|bin|etc|include|lib|opt|sbin|share|var) ;; *)
+    php_darwin_die "unsafe archive root: $root"
+    ;;
+  esac
+  case " $archive_roots " in *" $root "*) php_darwin_die "duplicate archive root: $root" ;; esac
+  archive_roots="$archive_roots $root"
+done < "$script_dir/../conf/archive-paths"
+[ "$(printf '%s\n' "$archive_roots" | awk '{print NF}')" -eq 10 ] || php_darwin_die 'expected ten archive roots'
+[ "$archive_roots" = ' Cellar Frameworks bin etc include lib opt sbin share var' ] || \
+  php_darwin_die 'archive roots are incomplete or out of order'
+snapshot_roots=$(awk '!/^#/ && NF { printf "%s%s", separator, $1; separator=" " }' \
+  "$script_dir/../conf/snapshot-paths") || php_darwin_die 'could not read snapshot roots'
+[ "$snapshot_roots" = 'etc var' ] || php_darwin_die 'snapshot roots must be etc and var'
+
+jq -e '
+  keys == ["compression_level", "compression_long", "current_version",
+           "max_archive_bytes", "max_fetch_seconds", "max_install_seconds", "max_setup_seconds",
+           "release_repository", "tap", "tap_branch", "tap_repository", "tap_snapshot"] and
+  (.compression_level | type == "number" and . >= 1 and . <= 22 and . == floor) and
+  .compression_level == 22 and .compression_long == 27 and
+  .current_version == "8.5" and .release_repository == "shivammathur/php-darwin" and
+  .max_archive_bytes == 26000000 and
+  .max_fetch_seconds == 3 and .max_install_seconds == 7 and .max_setup_seconds == 10 and
+  .tap == "shivammathur/php" and .tap_branch == "main" and
+  .tap_repository == "https://github.com/shivammathur/homebrew-php" and
+  .tap_snapshot == "var/php-darwin/homebrew-php"
+' "$script_dir/../conf/package.json" >/dev/null || php_darwin_die 'invalid package configuration'
+jq -e '
+  keys == ["architecture", "archive", "brew_prefix", "build", "created_at", "formula",
+           "formula_sha256", "homebrew_php_commit", "links", "macos_version", "minimum_macos", "packages",
+           "pear_path", "pecl_extension", "php_semver", "php_version", "platform_key", "requested_formula",
+           "runner_image", "schema", "source_hash", "state_paths", "tap_snapshot", "thread_safety"] and .schema == 1 and
+  .links == [] and .packages == [] and .state_paths == [] and
+  .pear_path == "" and .pecl_extension == "" and .source_hash == "" and .tap_snapshot == ""
+' "$script_dir/../templates/cache-metadata.json" >/dev/null || php_darwin_die 'invalid cache metadata template'
+jq -e '
+  keys == ["assets", "homebrew_php_commit", "php_semver", "php_version", "schema", "source_hash"] and
+  .schema == 1 and .assets == [] and .homebrew_php_commit == "" and .php_semver == "" and
+  .php_version == "" and .source_hash == ""
+' "$script_dir/../templates/release-manifest.json" >/dev/null || php_darwin_die 'invalid release manifest template'
+
+[ "$(php_darwin_pear_path 8.5 php)" = 'share/pear' ] || php_darwin_die 'current PEAR path is invalid'
+[ "$(php_darwin_pear_path 8.4 'php@8.4')" = 'share/pear@8.4' ] || \
+  php_darwin_die 'versioned PEAR path is invalid'
+[ "$(php_darwin_config_id 8.5 debug zts)" = '8.5-debug-zts' ] || \
+  php_darwin_die 'variant configuration id is invalid'
+[ "$(php_darwin_metadata_path 'php_8.5-nts-release+darwin_arm64.tar.zst')" = \
+  'var/php-darwin/php_8.5-nts-release+darwin_arm64.json' ] || php_darwin_die 'embedded metadata path is invalid'
+current_postinstall_paths=$(php_darwin_postinstall_paths 8.5 php | tr '\n' ' ')
+[ "$current_postinstall_paths" = 'etc/php/8.5/pear.conf ' ] || \
+  php_darwin_die 'current post-install paths are invalid'
+versioned_postinstall_paths=$(php_darwin_postinstall_paths 8.4 'php@8.4' | tr '\n' ' ')
+[ "$versioned_postinstall_paths" = \
+  'etc/php/8.4/pear.conf etc/php/8.4/conf.d/ext-intl.ini etc/php/8.4/conf.d/ext-opcache.ini ' ] || \
+  php_darwin_die 'versioned post-install paths are invalid'
+variant_postinstall_paths=$(php_darwin_postinstall_paths 8.4 'php@8.4-debug-zts' debug zts | tr '\n' ' ')
+[ "$variant_postinstall_paths" = \
+  'etc/php/8.4-debug-zts/pear.conf etc/php/8.4-debug-zts/conf.d/ext-intl.ini etc/php/8.4-debug-zts/conf.d/ext-opcache.ini ' ] || \
+  php_darwin_die 'variant post-install paths are invalid'
+
+command -v zstd >/dev/null 2>&1 || php_darwin_die 'zstd is required for extraction validation'
+fixture_dir=$(mktemp -d "${RUNNER_TEMP:-/tmp}/php-darwin-validation.XXXXXX")
+trap 'rm -rf "$fixture_dir"' EXIT
+fixture_source="$fixture_dir/source"
+fixture_prefix="$fixture_dir/prefix"
+fixture_archive="$fixture_dir/cache.tar.zst"
+fixture_paths="$fixture_dir/archive-paths.txt"
+fixture_excludes="$fixture_dir/excludes.txt"
+fixture_kegs="$fixture_dir/kegs.txt"
+fixture_managed_paths="$fixture_dir/managed-paths.txt"
+fixture_package_kegs="$fixture_dir/package-kegs.txt"
+fixture_metadata="$fixture_dir/metadata.json"
+fixture_contents="$fixture_dir/archive-contents.txt"
+fixture_links="$fixture_dir/links.tsv"
+fixture_links_log="$fixture_dir/links.log"
+fixture_outside="$fixture_dir/outside"
+fixture_symlink_prefix="$fixture_dir/symlink-prefix"
+fixture_symlink_log="$fixture_dir/symlink-rack.log"
+fixture_unsafe_managed_paths="$fixture_dir/unsafe-managed-paths.txt"
+fixture_unsafe_root_log="$fixture_dir/unsafe-root.log"
+phase_failure_log="$fixture_dir/phase-failure.log"
+phase_failure_timing="$fixture_dir/phase-failure-timing.log"
+baseline_formulae="$fixture_dir/baseline-formulae.txt"
+installed_formulae="$fixture_dir/installed-formulae.txt"
+selected_formulae="$fixture_dir/selected-formulae.txt"
+cleanup_formulae="$fixture_dir/cleanup-formulae.txt"
+php_dependencies="$fixture_dir/php-dependencies.txt"
+unrelated_formulae="$fixture_dir/unrelated-formulae.txt"
+bash "$script_dir/validate-install.sh" || php_darwin_die 'standalone installer validation failed'
+if PHP_DARWIN_TIMING_LOG="$phase_failure_timing" bash -c '
+  . "$1"
+  php_darwin_set_phase archive.extract
+  php_darwin_die "fixture extraction error"
+' _ "$script_dir/lib.sh" > /dev/null 2> "$phase_failure_log"; then
+  php_darwin_die 'phase failure fixture unexpectedly succeeded'
+fi
+grep -Fxq 'failure.phase=archive.extract' "$phase_failure_timing" || \
+  php_darwin_die 'installer did not record its failed phase'
+grep -Fq 'php-darwin: archive.extract failed: fixture extraction error' "$phase_failure_log" || \
+  php_darwin_die 'installer did not explain its phase failure'
+
+printf '%s\n' 'hello 1.0' 'php 8.5.9' 'updated-dependency 1.0' 'zstd 1.5.7' > "$baseline_formulae"
+printf '%s\n' 'dependency-new 1.0' 'hello 1.0' 'php-debug 8.5.10' \
+  'updated-dependency 2.0' 'zstd 1.5.7' > "$installed_formulae"
+bash "$script_dir/select-packages.sh" "$baseline_formulae" "$installed_formulae" php-debug "$selected_formulae" || \
+  php_darwin_die 'runner-delta package selection failed'
+[ "$(tr '\n' ' ' < "$selected_formulae")" = 'dependency-new php-debug ' ] || \
+  php_darwin_die 'runner-delta package selection included a preinstalled dependency'
+
+printf '%s\n' 'icu4c@78' 'openssl@3' 'zstd' > "$php_dependencies"
+printf '%s\n' 'cmake 4.1.1' 'icu4c@77 77.1' 'icu4c@78 78.1' 'openssl@3 3.5.2' \
+  'php@8.4 8.4.13' 'zstd 1.5.7' > "$cleanup_formulae"
+bash "$script_dir/select-cleanup-formulae.sh" "$cleanup_formulae" "$php_dependencies" \
+  "$unrelated_formulae" || php_darwin_die 'Homebrew cleanup selection failed'
+[ "$(tr '\n' ' ' < "$unrelated_formulae")" = 'cmake icu4c@77 php@8.4 ' ] || \
+  php_darwin_die 'Homebrew cleanup selection did not preserve the exact PHP dependencies'
+
+mkdir -p "$fixture_source/Cellar/php/1/bin" "$fixture_source/Cellar/dependency/1/bin" \
+  "$fixture_source/etc" "$fixture_source/opt" \
+  "$fixture_source/share/pear" "$fixture_source/var/homebrew/linked" "$fixture_source/var/php-darwin" \
+  "$fixture_source/etc/existing-link" "$fixture_prefix/Cellar/dependency/1/bin" \
+  "$fixture_prefix/Cellar/hello/1/bin" "$fixture_prefix/etc" \
+  "$fixture_prefix/Frameworks" "$fixture_prefix/bin" "$fixture_prefix/include" "$fixture_prefix/lib" \
+  "$fixture_prefix/opt" "$fixture_prefix/sbin" "$fixture_prefix/share/pear" "$fixture_prefix/var" \
+  "$fixture_outside" "$fixture_symlink_prefix/Cellar" || \
+  php_darwin_die 'could not create extraction fixtures'
+printf '#!/usr/bin/env bash\nprintf fixture-php\\n\n' > "$fixture_source/Cellar/php/1/bin/php"
+chmod 0755 "$fixture_source/Cellar/php/1/bin/php"
+printf 'archive-dependency\n' > "$fixture_source/Cellar/dependency/1/bin/dependency"
+printf 'existing-dependency\n' > "$fixture_prefix/Cellar/dependency/1/bin/dependency"
+printf 'archive-value\n' > "$fixture_source/etc/existing[1].conf"
+printf 'must-not-escape\n' > "$fixture_source/etc/existing-link/new.conf"
+ln -s ../Cellar/php/1 "$fixture_source/opt/php"
+ln -s ../../../Cellar/php/1 "$fixture_source/var/homebrew/linked/php"
+printf '{"fixture":true}\n' > \
+  "$fixture_source/var/php-darwin/php_8.5-nts-release+darwin_arm64.json"
+printf 'cached-pear\n' > "$fixture_source/share/pear/new.php"
+printf 'existing-pear\n' > "$fixture_prefix/share/pear/existing.php"
+printf 'user-value\n' > "$fixture_prefix/etc/existing[1].conf"
+chmod 0444 "$fixture_prefix/etc/existing[1].conf"
+ln -s "$fixture_outside" "$fixture_prefix/etc/existing-link"
+printf '#!/usr/bin/env bash\nprintf hello\\n\n' > "$fixture_prefix/Cellar/hello/1/bin/hello"
+chmod 0755 "$fixture_prefix/Cellar/hello/1/bin/hello"
+printf '%s\n' var/php-darwin/php_8.5-nts-release+darwin_arm64.json \
+  Cellar/dependency/1/bin/dependency Cellar/php/1/bin/php \
+  'etc/existing[1].conf' etc/existing-link/new.conf opt/php share/pear/new.php \
+  var/homebrew/linked/php > "$fixture_paths"
+awk '$0 !~ /^Cellar\//' "$fixture_paths" > "$fixture_managed_paths" || \
+  php_darwin_die 'could not create managed path fixtures'
+printf '%s\n' Cellar/dependency/1 Cellar/php/1 > "$fixture_package_kegs" || \
+  php_darwin_die 'could not create package keg fixtures'
+tar --no-recursion -cf - -C "$fixture_source" -T "$fixture_paths" | zstd -3 -q -o "$fixture_archive"
+fixture_status=("${PIPESTATUS[@]}")
+[ "${fixture_status[0]}" -eq 0 ] && [ "${fixture_status[1]}" -eq 0 ] || \
+  php_darwin_die 'could not create the extraction fixture archive'
+bash "$script_dir/existing-paths.sh" "$fixture_prefix" "$fixture_excludes" \
+  "$script_dir/../conf/archive-paths" "$fixture_kegs" "$fixture_managed_paths" \
+  "$fixture_package_kegs" || \
+  php_darwin_die 'could not create fixture exclusions'
+grep -Fxq 'Cellar/dependency/1' "$fixture_excludes" || \
+  php_darwin_die 'existing package keg was not excluded as one subtree'
+grep -Fxq 'Cellar/dependency/1' "$fixture_kegs" || php_darwin_die 'existing package keg inventory is incomplete'
+! grep -Fq 'Cellar/hello/1' "$fixture_excludes" || php_darwin_die 'unrelated keg was unnecessarily scanned'
+bash "$script_dir/extract.sh" "$fixture_archive" "$fixture_prefix" "$fixture_excludes" || \
+  php_darwin_die 'direct compressed extraction fixture failed'
+bash "$script_dir/list-archive.sh" "$fixture_archive" "$fixture_contents" || \
+  php_darwin_die 'direct compressed archive listing fixture failed'
+bash "$script_dir/read-metadata.sh" "$fixture_archive" \
+  var/php-darwin/php_8.5-nts-release+darwin_arm64.json "$fixture_metadata" || \
+  php_darwin_die 'embedded metadata read fixture failed'
+[ "$(cat "$fixture_metadata")" = '{"fixture":true}' ] || \
+  php_darwin_die 'embedded metadata read fixture returned the wrong content'
+[ "$(cat "$fixture_prefix/etc/existing[1].conf")" = user-value ] || \
+  php_darwin_die 'direct extraction replaced an existing file'
+fixture_mode=$(stat -f '%Lp' "$fixture_prefix/etc/existing[1].conf" 2>/dev/null || true)
+case "$fixture_mode" in 444) ;; *) fixture_mode=$(stat -c '%a' "$fixture_prefix/etc/existing[1].conf") || \
+  php_darwin_die 'could not inspect fixture permissions' ;; esac
+[ "$fixture_mode" = 444 ] || \
+  php_darwin_die 'direct extraction changed existing permissions'
+[ -x "$fixture_prefix/Cellar/php/1/bin/php" ] || php_darwin_die 'direct extraction lost executable permissions'
+[ "$(readlink "$fixture_prefix/opt/php")" = ../Cellar/php/1 ] || php_darwin_die 'direct extraction lost the PHP opt link'
+[ "$(readlink "$fixture_prefix/var/homebrew/linked/php")" = ../../../Cellar/php/1 ] || \
+  php_darwin_die 'direct extraction omitted the Homebrew linked-keg marker'
+printf '%s\t%s\n' opt/php ../Cellar/php/1 \
+  var/homebrew/linked/php ../../../Cellar/php/1 > "$fixture_links" || \
+  php_darwin_die 'could not create the Homebrew link fixture'
+bash "$script_dir/verify-links.sh" "$fixture_prefix" "$fixture_links" || \
+  php_darwin_die 'bulk Homebrew link verification failed'
+ln -sfn ../Cellar/php/invalid "$fixture_prefix/opt/php" || \
+  php_darwin_die 'could not change the Homebrew link fixture'
+if bash "$script_dir/verify-links.sh" "$fixture_prefix" "$fixture_links" 2> "$fixture_links_log"; then
+  php_darwin_die 'bulk Homebrew link verification accepted a wrong target'
+fi
+grep -Fq 'Cached Homebrew links do not match the archive manifest' "$fixture_links_log" || \
+  php_darwin_die 'bulk Homebrew link verification did not explain the mismatch'
+ln -sfn ../Cellar/php/1 "$fixture_prefix/opt/php" || \
+  php_darwin_die 'could not restore the Homebrew link fixture'
+[ -x "$fixture_prefix/Cellar/hello/1/bin/hello" ] || php_darwin_die 'direct extraction removed an existing formula'
+[ "$(cat "$fixture_prefix/Cellar/dependency/1/bin/dependency")" = existing-dependency ] || \
+  php_darwin_die 'direct extraction replaced an existing package keg'
+[ "$(cat "$fixture_prefix/share/pear/existing.php")" = existing-pear ] || \
+  php_darwin_die 'direct extraction changed existing PEAR state'
+[ "$(cat "$fixture_prefix/share/pear/new.php")" = cached-pear ] || \
+  php_darwin_die 'direct extraction omitted cached PEAR state'
+[ ! -e "$fixture_outside/new.conf" ] || php_darwin_die 'direct extraction followed an existing symlink outside Homebrew'
+ln -s "$fixture_outside" "$fixture_symlink_prefix/Cellar/dependency" || \
+  php_darwin_die 'could not create the symlinked formula rack fixture'
+if bash "$script_dir/existing-paths.sh" "$fixture_symlink_prefix" "$fixture_excludes" \
+  "$script_dir/../conf/archive-paths" "$fixture_kegs" "$fixture_managed_paths" \
+  "$fixture_package_kegs" 2> "$fixture_symlink_log"; then
+  php_darwin_die 'existing-path scan accepted a symlinked formula rack'
+fi
+grep -Fxq 'Homebrew formula rack is a symlink: Cellar/dependency' "$fixture_symlink_log" || \
+  php_darwin_die 'symlinked formula rack failure was not explained'
+printf '%s\n' 'C*/escape' > "$fixture_unsafe_managed_paths" || \
+  php_darwin_die 'could not create the unsafe managed-root fixture'
+if bash "$script_dir/existing-paths.sh" "$fixture_prefix" "$fixture_excludes" \
+  "$script_dir/../conf/archive-paths" "$fixture_kegs" "$fixture_unsafe_managed_paths" \
+  "$fixture_package_kegs" 2> "$fixture_unsafe_root_log"; then
+  php_darwin_die 'existing-path scan accepted a managed-root pattern'
+fi
+grep -Fxq 'Unsafe managed archive root: C*' "$fixture_unsafe_root_log" || \
+  php_darwin_die 'unsafe managed-root failure was not explained'
+
+bash "$script_dir/test-publish.sh" || php_darwin_die 'publish validation failed'
+bash "$script_dir/test-tap.sh" || php_darwin_die 'Homebrew tap snapshot validation failed'
+
+printf 'Configuration validation passed\n'
