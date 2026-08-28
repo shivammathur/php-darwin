@@ -1,0 +1,13 @@
+scripts/install-package.sh
+scripts/lib.sh
+scripts/read-metadata.sh
+scripts/source-hash.sh
+scripts/validate-tap.sh
+scripts/verify-links.sh
+scripts/existing-paths.sh
+scripts/extract.sh
+conf/archive-paths
+conf/package.json
+conf/platforms.json
+conf/postinstall-paths
+conf/versions
