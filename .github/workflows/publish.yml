@@ -1,0 +1,46 @@
+name: Publish PHP cache
+run-name: Publish PHP ${{ inputs.php-version }} cache from run ${{ inputs.run-id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      php-version:
+        description: PHP minor version
+        required: true
+        type: string
+      run-id:
+        description: Workflow run containing validated architecture artifacts
+        required: true
+        type: string
+
+concurrency:
+  group: php-darwin-release-publish
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    name: Publish PHP ${{ inputs.php-version }} release assets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download validated architecture caches
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          github-token: ${{ github.token }}
+          pattern: php-${{ inputs.php-version }}-*
+          path: builds
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.run-id }}
+
+      - name: Replace versioned release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PHP_VERSION: ${{ inputs.php-version }}
+        run: bash scripts/publish.sh builds

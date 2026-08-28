@@ -1,0 +1,52 @@
+name: Cache stable PHP
+run-name: Cache stable PHP ${{ inputs.php-version }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      php-version:
+        description: PHP minor version
+        default: '8.5'
+        required: true
+        type: string
+      builds:
+        description: Space-separated build types
+        default: debug release
+        required: false
+        type: string
+      ts:
+        description: Space-separated thread-safety modes
+        default: nts zts
+        required: false
+        type: string
+      architectures:
+        description: Space-separated CPU architectures
+        default: arm64 x86_64
+        required: false
+        type: string
+      publish:
+        description: Publish validated caches to the PHP release
+        default: true
+        required: false
+        type: boolean
+
+concurrency:
+  group: cache-stable-${{ inputs.php-version }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  cache:
+    permissions:
+      # Required by the called publish job to replace GitHub Release assets.
+      contents: write
+    uses: ./.github/workflows/build.yml
+    with:
+      channel: stable
+      php-version: ${{ inputs.php-version }}
+      builds: ${{ inputs.builds }}
+      ts: ${{ inputs.ts }}
+      architectures: ${{ inputs.architectures }}
+      publish: ${{ inputs.publish }}
