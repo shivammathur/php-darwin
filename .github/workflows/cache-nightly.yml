@@ -1,0 +1,54 @@
+name: Cache nightly PHP
+run-name: Cache nightly PHP ${{ inputs.php-version || '8.6' }}
+
+on:
+  schedule:
+    - cron: '20 4 * * *'
+  workflow_dispatch:
+    inputs:
+      php-version:
+        description: PHP minor version
+        default: '8.6'
+        required: true
+        type: string
+      builds:
+        description: Space-separated build types
+        default: debug release
+        required: false
+        type: string
+      ts:
+        description: Space-separated thread-safety modes
+        default: nts zts
+        required: false
+        type: string
+      architectures:
+        description: Space-separated CPU architectures
+        default: arm64 x86_64
+        required: false
+        type: string
+      publish:
+        description: Publish validated caches to the PHP release
+        default: true
+        required: false
+        type: boolean
+
+concurrency:
+  group: cache-nightly-${{ inputs.php-version || '8.6' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  cache:
+    permissions:
+      # Required by the called publish job to replace GitHub Release assets.
+      contents: write
+    uses: ./.github/workflows/build.yml
+    with:
+      channel: nightly
+      php-version: ${{ inputs.php-version || '8.6' }}
+      builds: ${{ inputs.builds || 'debug release' }}
+      ts: ${{ inputs.ts || 'nts zts' }}
+      architectures: ${{ inputs.architectures || 'arm64 x86_64' }}
+      publish: ${{ github.event_name == 'schedule' || inputs.publish }}

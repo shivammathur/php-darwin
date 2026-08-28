@@ -1,0 +1,47 @@
+name: Update stable PHP caches
+
+on:
+  schedule:
+    - cron: '40 */4 * * *'
+  repository_dispatch:
+    types: [homebrew-php-release]
+  workflow_dispatch:
+    inputs:
+      php-version:
+        description: Optional stable PHP minor; empty checks every stable version
+        required: false
+        type: string
+
+concurrency:
+  group: update-stable-caches
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    name: Compare stable formula sources
+    permissions:
+      # Required to dispatch cache-stable.yml when a release is stale.
+      actions: write
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out homebrew-php once
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: shivammathur/homebrew-php
+          path: homebrew-php
+          persist-credentials: false
+
+      - name: Compare formula sources with published release manifests
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HOMEBREW_PHP_PATH: ${{ github.workspace }}/homebrew-php
+          ONLY_VERSION: ${{ github.event.client_payload['php-version'] || inputs.php-version }}
+        run: bash scripts/update.sh
