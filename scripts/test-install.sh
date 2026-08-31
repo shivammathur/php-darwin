@@ -28,6 +28,8 @@ php_fpm="$brew_prefix/opt/$formula/sbin/php-fpm"
 pear_fixture="$brew_prefix/$(php_darwin_pear_path "$version" "$formula")/php-darwin-user-package.php"
 tap_trust_before="${RUNNER_TEMP:?}/php-darwin-tap-trust-before.txt"
 validation_trust_added="${RUNNER_TEMP:?}/php-darwin-validation-trust-added"
+formula_trust_before="${RUNNER_TEMP:?}/php-darwin-formula-trust-before.txt"
+validation_formula_trust_added="${RUNNER_TEMP:?}/php-darwin-validation-formula-trust-added"
 
 export HOMEBREW_NO_AUTO_UPDATE=1
 export HOMEBREW_NO_AUTOREMOVE=1
@@ -44,6 +46,12 @@ prepare_homebrew() {
     printf 'true\n' > "$tap_trust_before"
   else
     printf 'false\n' > "$tap_trust_before"
+  fi
+  if brew trust --json=v1 | jq -e --arg formula "$tap/$formula" \
+    '.formulae | index($formula) != null' >/dev/null; then
+    printf 'true\n' > "$formula_trust_before"
+  else
+    printf 'false\n' > "$formula_trust_before"
   fi
   brew untap --force "$tap" >/dev/null 2>&1 || true
   while IFS= read -r installed_php; do
@@ -116,6 +124,10 @@ validate_runtime() {
 }
 
 cleanup_homebrew_validation() {
+  if [ -f "$validation_formula_trust_added" ]; then
+    brew untrust --formula "$tap/$formula" >/dev/null 2>&1 || true
+    rm -f "$validation_formula_trust_added"
+  fi
   if [ -f "$validation_trust_added" ]; then
     brew untrust --tap "$tap" >/dev/null 2>&1 || true
     rm -f "$validation_trust_added"
@@ -136,8 +148,15 @@ reset_homebrew() {
   cleanup_homebrew_validation
   brew services stop "$formula" >/dev/null 2>&1 || true
   if brew list --versions "$formula" >/dev/null 2>&1; then
+    if ! brew trust --json=v1 | jq -e --arg formula "$tap/$formula" \
+      '.formulae | index($formula) != null' >/dev/null; then
+      brew trust --formula "$tap/$formula" >/dev/null || \
+        php_darwin_die "could not trust $formula for validation reset"
+      : > "$validation_formula_trust_added"
+    fi
     brew uninstall --force --ignore-dependencies "$formula" || \
       php_darwin_die "could not reset $formula after validation"
+    cleanup_homebrew_validation
   fi
   rm -rf "${brew_prefix:?}/$(php_darwin_pear_path "$version" "$formula")" || \
     php_darwin_die 'could not reset formula-managed PEAR state'
@@ -188,6 +207,12 @@ validate_homebrew() {
   fi
   [ "$tap_trust_after" = "$(cat "$tap_trust_before")" ] || \
     php_darwin_die 'cache installation changed the Homebrew tap trust state'
+  brew trust --json=v1 | jq -e --arg formula "$tap/$formula" \
+    '.formulae | index($formula) != null' >/dev/null || \
+    php_darwin_die 'cache installation did not trust the installed Homebrew formula'
+  if [ "$(cat "$formula_trust_before")" = false ]; then
+    : > "$validation_formula_trust_added"
+  fi
   if [ "$tap_trust_after" = false ]; then
     brew trust --tap "$tap" >/dev/null || php_darwin_die "could not temporarily trust $tap for validation"
     : > "$validation_trust_added"
