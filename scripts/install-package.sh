@@ -438,6 +438,7 @@ else
   IFS=$'\t' read -r expected_hash manifest_homebrew_commit manifest_php_src_commit \
     manifest_php_semver manifest_source_hash <<< "$manifest_values" || \
     php_darwin_die 'could not parse the release source commits'
+  [ "$manifest_php_src_commit" != - ] || manifest_php_src_commit=
   release_url=${PHP_DARWIN_RELEASE_URL:-https://github.com/$release_repository/releases/download/php-$version/$asset?cache=$expected_hash}
   curl --retry 3 --retry-all-errors -fsSL "$release_url" -o "$archive" || \
     php_darwin_die "could not download $release_url"

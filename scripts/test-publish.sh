@@ -105,6 +105,39 @@ jq -e --arg source_hash "$source_hash" --argjson count "$(php_darwin_expected_as
   ([.assets[].name] | unique | length == $count) and
   ([.assets[].architecture] | unique | sort) == ["arm64","x86_64"]
 ' "$gh_manifest" >/dev/null || php_darwin_die 'publisher created an invalid release manifest'
+manifest_asset=$(jq -er '.assets[0].name' "$gh_manifest") || \
+  php_darwin_die 'could not select a published manifest asset'
+manifest_values=$(php_darwin_validate_release_manifest "$gh_manifest" "$version" stable "$manifest_asset") || \
+  php_darwin_die 'published stable manifest did not pass shared validation'
+IFS=$'\t' read -r manifest_hash manifest_commit manifest_php_src_commit manifest_semver manifest_source_hash \
+  <<< "$manifest_values" || php_darwin_die 'could not parse the published stable manifest'
+[ "$manifest_hash" = "$(php_darwin_manifest_asset_sha256 "$gh_manifest" "$manifest_asset")" ] && \
+  [ "$manifest_commit" = "$source_commit" ] && [ "$manifest_php_src_commit" = - ] && \
+  [ "$manifest_semver" = "$semver" ] && \
+  [ "$manifest_source_hash" = "$source_hash" ] || \
+  php_darwin_die 'stable manifest fields were not preserved across parsing'
+
+legacy_manifest="$work_dir/legacy-stable-manifest.json"
+jq '.php_src_commit=null' "$gh_manifest" > "$legacy_manifest" || \
+  php_darwin_die 'could not create a legacy stable manifest fixture'
+legacy_manifest_values=$(php_darwin_validate_release_manifest \
+  "$legacy_manifest" "$version" stable "$manifest_asset") || \
+  php_darwin_die 'legacy stable manifest did not pass compatibility validation'
+[ "$legacy_manifest_values" = "$manifest_values" ] || \
+  php_darwin_die 'legacy stable manifest fields were not normalized'
+
+legacy_metadata="$work_dir/legacy-stable-metadata.json"
+jq '.php_src_commit=null' "$metadata" > "$legacy_metadata" || \
+  php_darwin_die 'could not create a legacy stable metadata fixture'
+legacy_metadata_values=$(jq -er \
+  '[.build,.thread_safety,.architecture,.brew_prefix,(.minimum_macos|tostring),.platform_key] | @tsv' \
+  "$legacy_metadata") || php_darwin_die 'could not read legacy stable metadata fields'
+IFS=$'\t' read -r legacy_build legacy_ts legacy_arch legacy_prefix legacy_minimum legacy_platform \
+  <<< "$legacy_metadata_values" || php_darwin_die 'could not parse legacy stable metadata fields'
+php_darwin_validate_cache_metadata "$legacy_metadata" "$version" "$legacy_build" "$legacy_ts" \
+  "$legacy_arch" "$legacy_prefix" 26 "$source_commit" '' "$(php_darwin_package_config current_version)" \
+  "$(php_darwin_package_config tap_snapshot)" "$legacy_minimum" "$legacy_platform" >/dev/null || \
+  php_darwin_die 'legacy stable cache metadata did not pass compatibility validation'
 grep -Fq '"php_version": "7.0"' "$gh_installer" || \
   php_darwin_die 'published installer did not embed the matching release manifest'
 
