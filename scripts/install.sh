@@ -392,16 +392,18 @@ php_darwin_validate_release_manifest() {
   local manifest=$1
   local version=$2
   local channel=${3:-$(php_darwin_version_channel "$version")}
+  local asset=${4:-}
   local expected_count
+  local manifest_result
   local platforms
 
   case "$channel" in stable|nightly) ;; *) return 1 ;; esac
   [ "$(php_darwin_version_channel "$version")" = "$channel" ] || return 1
   expected_count=$(php_darwin_expected_asset_count)
   platforms=$(php_darwin_read_config platforms.json) || return 1
-  jq -e --arg channel "$channel" --arg version "$version" --argjson count "$expected_count" \
-    --argjson platforms "$platforms" '
-    .schema == 1 and .php_version == $version and
+  manifest_result=$(jq -er --arg channel "$channel" --arg version "$version" \
+    --arg asset "$asset" --argjson count "$expected_count" --argjson platforms "$platforms" '
+    select(.schema == 1 and .php_version == $version and
     (.homebrew_php_commit | type == "string" and test("^[0-9a-f]{40}$")) and
     (.source_hash | type == "string" and test("^[0-9a-f]{64}$")) and
     (.php_semver | type == "string" and startswith($version + ".") and
@@ -423,8 +425,21 @@ php_darwin_validate_release_manifest() {
       (.bytes | type == "number" and floor == . and . > 0) and
       (.minimum_macos | type == "number" and floor == . and . > 0 and
         . == $platforms[$architecture].minimum_macos) and
-      (.sha256 | type == "string" and test("^[0-9a-f]{64}$")))
-  ' "$manifest" >/dev/null
+      (.sha256 | type == "string" and test("^[0-9a-f]{64}$")))) |
+    if $asset == "" then
+      "valid"
+    else
+      [.assets[] | select(.name == $asset)] as $matching |
+      select($matching | length == 1) |
+      [$matching[0].sha256, .homebrew_php_commit, .php_src_commit, .php_semver, .source_hash] |
+      @tsv
+    end
+  ' "$manifest") || return 1
+  if [ -n "$asset" ]; then
+    printf '%s\n' "$manifest_result"
+  else
+    [ "$manifest_result" = valid ]
+  fi
 }
 
 php_darwin_manifest_asset_sha256() {
@@ -447,6 +462,10 @@ php_darwin_validate_cache_metadata() {
   local macos_major=$7
   local expected_commit=${8:-}
   local expected_php_src_commit=${9:-}
+  local configured_current_version=${10:-}
+  local configured_tap_snapshot=${11:-}
+  local configured_minimum_macos=${12:-}
+  local configured_platform_key=${13:-}
   local asset
   local channel
   local formula
@@ -458,14 +477,23 @@ php_darwin_validate_cache_metadata() {
 
   channel=$(php_darwin_version_channel "$version")
   asset=$(php_darwin_asset "$version" "$build" "$ts" "$arch")
-  formula=$(php_darwin_formula "$version" "$build" "$ts")
+  formula=$(php_darwin_formula "$version" "$build" "$ts" "$configured_current_version")
   requested_formula=$(php_darwin_requested_formula "$version" "$build" "$ts")
   pear_path=$(php_darwin_pear_path "$version" "$formula")
-  tap_snapshot=$(php_darwin_package_config tap_snapshot)
-  minimum_macos=$(jq -er --arg arch "$arch" '.[$arch].minimum_macos' \
-    < <(php_darwin_read_config platforms.json)) || return 1
-  platform_key=$(jq -er --arg arch "$arch" '.[$arch].platform_key' \
-    < <(php_darwin_read_config platforms.json)) || return 1
+  if [ -n "$configured_tap_snapshot" ]; then
+    tap_snapshot=$configured_tap_snapshot
+  else
+    tap_snapshot=$(php_darwin_package_config tap_snapshot)
+  fi
+  if [ -n "$configured_minimum_macos" ] && [ -n "$configured_platform_key" ]; then
+    minimum_macos=$configured_minimum_macos
+    platform_key=$configured_platform_key
+  else
+    minimum_macos=$(jq -er --arg arch "$arch" '.[$arch].minimum_macos' \
+      < <(php_darwin_read_config platforms.json)) || return 1
+    platform_key=$(jq -er --arg arch "$arch" '.[$arch].platform_key' \
+      < <(php_darwin_read_config platforms.json)) || return 1
+  fi
 
   jq -er --arg version "$version" --arg channel "$channel" --arg build "$build" --arg ts "$ts" \
     --arg arch "$arch" --arg brew_prefix "$brew_prefix" --arg asset "$asset" --arg formula "$formula" \
@@ -517,7 +545,7 @@ php_darwin_validate_cache_metadata() {
         (.[3] | type == "string" and test("^[^\\r\\n\\t/]+$") and . != "." and . != "..")))) |
     [.homebrew_php_commit, .source_hash,
      (.packages[] | select(.name == $formula) | .opt_target | ltrimstr("../")),
-     .pecl_extension] | @tsv
+     .pecl_extension, .php_semver] | @tsv
   ' "$metadata_file"
 }
 
@@ -939,8 +967,10 @@ awk '
     path=$0
     if (path == "" || path ~ /^\// || path ~ /(^|\/)\.\.($|\/)/ ||
         path ~ /(^|\/)\.($|\/)/ || path ~ /\/\// || path ~ /\/$/) exit 3
-    for (excluded_path in excluded) {
-      if (path == excluded_path || index(path, excluded_path "/") == 1) next
+    candidate=path
+    while (1) {
+      if (candidate in excluded) next
+      if (!sub("/[^/]+$", "", candidate)) break
     }
     print path
   }
@@ -977,19 +1007,32 @@ for required_command in brew curl jq tar zstd; do
   command -v "$required_command" >/dev/null 2>&1 || php_darwin_die "$required_command is required"
 done
 
-[ -n "$version" ] || version=$(php_darwin_current_version)
+install_config=$(jq -ers --arg arch "$arch" '
+  .[0] as $package | .[1][$arch] as $platform |
+  select(($package.current_version | type == "string") and
+    ($package.release_repository | type == "string") and
+    ($package.tap | type == "string") and
+    ($package.tap_repository | type == "string") and
+    ($package.tap_branch | type == "string") and
+    ($package.tap_snapshot | type == "string") and
+    ($platform.brew_prefix | type == "string") and
+    ($platform.minimum_macos | type == "number") and
+    ($platform.platform_key | type == "string")) |
+  [$package.current_version, $package.release_repository, $package.tap,
+   $package.tap_repository, $package.tap_branch, $package.tap_snapshot,
+   $platform.brew_prefix, ($platform.minimum_macos | tostring), $platform.platform_key] | @tsv
+' < <(php_darwin_read_config package.json; php_darwin_read_config platforms.json)) || \
+  php_darwin_die 'could not read the package and platform configuration'
+IFS=$'\t' read -r current_version package_release_repository tap tap_repository tap_branch \
+  tap_snapshot expected_prefix minimum_macos platform_key <<< "$install_config" || \
+  php_darwin_die 'could not parse the package and platform configuration'
+[ -n "$version" ] || version=$current_version
 php_darwin_validate_version "$version"
 channel=$(php_darwin_version_channel "$version")
 php_darwin_validate_build "$build"
 php_darwin_validate_ts "$ts"
-package_release_repository=$(php_darwin_package_config release_repository)
-tap=$(php_darwin_package_config tap)
-tap_repository=$(php_darwin_package_config tap_repository)
-tap_branch=$(php_darwin_package_config tap_branch)
-tap_snapshot=$(php_darwin_package_config tap_snapshot)
-expected_prefix=$(php_darwin_expected_prefix "$arch")
 requested_formula=$(php_darwin_requested_formula "$version" "$build" "$ts")
-formula=$(php_darwin_formula "$version" "$build" "$ts")
+formula=$(php_darwin_formula "$version" "$build" "$ts" "$current_version")
 config_id=$(php_darwin_config_id "$version" "$build" "$ts")
 asset=$(php_darwin_asset "$version" "$build" "$ts" "$arch")
 pear_path=$(php_darwin_pear_path "$version" "$formula")
@@ -1049,10 +1092,16 @@ php_darwin_read_config archive-paths > "$archive_roots_file" || \
   php_darwin_die 'could not stage the archive root configuration'
 tap_log="$tmp_dir/homebrew-tap.log"
 tap_pid=
-unlink_log="$tmp_dir/homebrew-unlink.log"
-unlink_pid=
+homebrew_prepare_log="$tmp_dir/homebrew-prepare.log"
+homebrew_prepare_pid=
+tap_path_file="$tmp_dir/homebrew-tap-path.txt"
+tap_trust_file="$tmp_dir/homebrew-tap-trust.txt"
+trusted_taps="$tmp_dir/trusted-taps.json"
 missing_log="$tmp_dir/homebrew-missing.log"
 missing_pid=
+archive_hash_file="$tmp_dir/archive.sha256"
+archive_hash_log="$tmp_dir/archive-hash.log"
+archive_hash_pid=
 linked_php_formulae=()
 linked_dependency_formulae=()
 postinstall_paths_file="$tmp_dir/postinstall-paths.txt"
@@ -1092,18 +1141,6 @@ php_darwin_wait_for_dependencies() {
   fi
   missing_pid=
   missing=$(cat "$missing_log") || php_darwin_die 'could not read Homebrew dependency diagnostics'
-  case "$missing" in
-    *"Refusing to load formula"*"from untrusted tap $tap"*)
-      php_darwin_wait_for_tap
-      if brew missing "$formula" > "$missing_log" 2>&1; then
-        missing_status=0
-      else
-        missing_status=$?
-      fi
-      missing=$(cat "$missing_log") || \
-        php_darwin_die 'could not read retried Homebrew dependency diagnostics'
-      ;;
-  esac
   [ "$missing_status" -eq 0 ] || [ -n "$missing" ] || \
     php_darwin_die 'Homebrew dependency validation failed without diagnostics'
   if [ -n "$missing" ]; then
@@ -1127,20 +1164,50 @@ php_darwin_wait_for_tap() {
   fi
 }
 
-php_darwin_wait_for_unlink() {
-  local unlink_status
+php_darwin_wait_for_homebrew_prepare() {
+  local prepare_status
 
-  [ -n "$unlink_pid" ] || return 0
-  if wait "$unlink_pid"; then
-    unlink_status=0
+  [ -n "$homebrew_prepare_pid" ] || return 0
+  if wait "$homebrew_prepare_pid"; then
+    prepare_status=0
   else
-    unlink_status=$?
+    prepare_status=$?
   fi
-  unlink_pid=
-  if [ "$unlink_status" -ne 0 ]; then
-    cat "$unlink_log" >&2
-    php_darwin_die 'could not unlink the previously active Homebrew PHP formulae'
+  homebrew_prepare_pid=
+  if [ "$prepare_status" -ne 0 ]; then
+    cat "$homebrew_prepare_log" >&2
+    php_darwin_die 'could not prepare Homebrew for cache installation'
   fi
+  tap_path=$(cat "$tap_path_file") || php_darwin_die "could not read the $tap repository path"
+  tap_was_trusted=$(cat "$tap_trust_file") || \
+    php_darwin_die "could not read the $tap trust state"
+  case "$tap_was_trusted" in true|false) ;; *) php_darwin_die "invalid $tap trust state" ;; esac
+}
+
+php_darwin_start_archive_hash() {
+  local archive_to_hash=$1
+
+  (
+    php_darwin_sha256 "$archive_to_hash" > "$archive_hash_file"
+  ) > "$archive_hash_log" 2>&1 &
+  archive_hash_pid=$!
+}
+
+php_darwin_wait_for_archive_hash() {
+  local hash_status
+
+  [ -n "$archive_hash_pid" ] || return 0
+  if wait "$archive_hash_pid"; then
+    hash_status=0
+  else
+    hash_status=$?
+  fi
+  archive_hash_pid=
+  if [ "$hash_status" -ne 0 ]; then
+    cat "$archive_hash_log" >&2
+    php_darwin_die "could not hash $asset"
+  fi
+  actual_hash=$(cat "$archive_hash_file") || php_darwin_die "could not read the $asset hash"
 }
 
 php_darwin_restore_tap_trust() {
@@ -1155,7 +1222,7 @@ php_darwin_install_cleanup() {
   rollback_log="$tmp_dir/rollback.log"
   trap - EXIT
   : > "$rollback_log"
-  for background_pid in "$tap_pid" "$unlink_pid" "$missing_pid"; do
+  for background_pid in "$tap_pid" "$homebrew_prepare_pid" "$missing_pid" "$archive_hash_pid"; do
     [ -n "$background_pid" ] || continue
     kill "$background_pid" >/dev/null 2>&1 || true
     wait "$background_pid" >/dev/null 2>&1 || true
@@ -1295,25 +1362,26 @@ php_darwin_install_cleanup() {
 }
 trap php_darwin_install_cleanup EXIT
 
-trusted_taps="$tmp_dir/trusted-taps.json"
-brew trust --json=v1 > "$trusted_taps" || php_darwin_die 'could not inspect trusted Homebrew taps'
-if jq -e --arg tap "$tap" '.taps | index($tap) != null' "$trusted_taps" >/dev/null; then
-  tap_was_trusted=true
-fi
-
-# Unlinking the runner's active PHP and reading the cache are independent.
-# Start the Homebrew operation before the archive fetch so it is normally
-# complete by the time the collision inventory needs the prefix to be stable.
+# Homebrew preparation and reading the cache are independent. Keep Homebrew
+# operations serial within one worker while overlapping them with the archive
+# download, checksum, and metadata validation.
 for linked_php_path in "$brew_prefix/var/homebrew/linked"/php*; do
   [ -L "$linked_php_path" ] || continue
   linked_php_formula=${linked_php_path##*/}
   [[ "$linked_php_formula" =~ ^php(@[0-9]+\.[0-9]+)?(-debug)?(-zts)?$ ]] || continue
   linked_php_formulae+=("$linked_php_formula")
 done
-if [ "${#linked_php_formulae[@]}" -gt 0 ]; then
-  brew unlink "${linked_php_formulae[@]}" > "$unlink_log" 2>&1 &
-  unlink_pid=$!
-fi
+(
+  brew trust --json=v1 > "$trusted_taps" || exit 1
+  jq -r --arg tap "$tap" '
+    if (.taps | type) == "array" then (.taps | index($tap) != null) else error("invalid taps") end
+  ' "$trusted_taps" > "$tap_trust_file" || exit 1
+  brew --repository "$tap" > "$tap_path_file" || exit 1
+  if [ "${#linked_php_formulae[@]}" -gt 0 ]; then
+    brew unlink "${linked_php_formulae[@]}" || exit 1
+  fi
+) > "$homebrew_prepare_log" 2>&1 &
+homebrew_prepare_pid=$!
 
 archive="$tmp_dir/$asset"
 external_metadata=
@@ -1334,59 +1402,90 @@ if [ -n "$local_archive" ]; then
   [ -f "$external_metadata" ] || php_darwin_die "metadata not found: $external_metadata"
   expected_hash=$(php_darwin_checksum_from_file "$checksum" "$asset") || \
     php_darwin_die "checksum file does not contain $asset"
-  actual_hash=$(php_darwin_sha256 "$archive") || php_darwin_die "could not hash $asset"
-  [ "$actual_hash" = "$expected_hash" ] || php_darwin_die "checksum mismatch for $asset"
+  php_darwin_start_archive_hash "$archive"
   cp "$external_metadata" "$metadata_copy" || php_darwin_die 'could not copy external cache metadata'
+  php_darwin_wait_for_archive_hash
+  [ "$actual_hash" = "$expected_hash" ] || php_darwin_die "checksum mismatch for $asset"
 else
   release_repository=${PHP_DARWIN_RELEASE_REPOSITORY:-$package_release_repository}
   [[ "$release_repository" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || \
     php_darwin_die "invalid release repository: $release_repository"
   release_manifest="$tmp_dir/php-$version-manifest.json"
-  if ! php_darwin_read_config release-manifest.json > "$release_manifest" 2>/dev/null || \
-    ! php_darwin_validate_release_manifest "$release_manifest" "$version" "$channel"; then
+  manifest_values=
+  if php_darwin_read_config release-manifest.json > "$release_manifest" 2>/dev/null; then
+    manifest_values=$(php_darwin_validate_release_manifest \
+      "$release_manifest" "$version" "$channel" "$asset") || manifest_values=
+  fi
+  if [ -z "$manifest_values" ]; then
     manifest_url=${PHP_DARWIN_MANIFEST_URL:-https://github.com/$release_repository/releases/download/php-$version/php-$version-manifest.json?cache=$(date +%s)}
     curl --retry 3 --retry-all-errors -fsSL "$manifest_url" -o "$release_manifest" || \
       php_darwin_die "could not download $manifest_url"
-    php_darwin_validate_release_manifest "$release_manifest" "$version" "$channel" || \
+    manifest_values=$(php_darwin_validate_release_manifest \
+      "$release_manifest" "$version" "$channel" "$asset") || \
       php_darwin_die 'release manifest did not match the requested PHP version'
   fi
-  expected_hash=$(php_darwin_manifest_asset_sha256 "$release_manifest" "$asset") || \
-    php_darwin_die "release manifest does not contain $asset"
-  manifest_values=$(jq -er '[.homebrew_php_commit,.php_src_commit,.php_semver,.source_hash] | @tsv' \
-    "$release_manifest") || \
-    php_darwin_die 'could not read the release source commits'
-  IFS=$'\t' read -r manifest_homebrew_commit manifest_php_src_commit manifest_php_semver \
-    manifest_source_hash <<< "$manifest_values" || \
+  IFS=$'\t' read -r expected_hash manifest_homebrew_commit manifest_php_src_commit \
+    manifest_php_semver manifest_source_hash <<< "$manifest_values" || \
     php_darwin_die 'could not parse the release source commits'
   release_url=${PHP_DARWIN_RELEASE_URL:-https://github.com/$release_repository/releases/download/php-$version/$asset?cache=$expected_hash}
   curl --retry 3 --retry-all-errors -fsSL "$release_url" -o "$archive" || \
     php_darwin_die "could not download $release_url"
-  actual_hash=$(php_darwin_sha256 "$archive") || php_darwin_die "could not hash $asset"
-  [ "$actual_hash" = "$expected_hash" ] || php_darwin_die "checksum mismatch for $asset"
+  php_darwin_start_archive_hash "$archive"
   php_darwin_read_metadata "$archive" "$internal_metadata_path" "$metadata_copy" || \
     php_darwin_die 'could not read metadata from the release archive'
+  php_darwin_wait_for_archive_hash
+  [ "$actual_hash" = "$expected_hash" ] || php_darwin_die "checksum mismatch for $asset"
 fi
 
 php_darwin_set_phase cache.metadata
 expected_metadata_commit=${HOMEBREW_PHP_COMMIT:-$manifest_homebrew_commit}
 metadata_values=$(php_darwin_validate_cache_metadata "$metadata_copy" "$version" "$build" "$ts" "$arch" \
-  "$brew_prefix" "$macos_major" "$expected_metadata_commit" "$manifest_php_src_commit") || \
+  "$brew_prefix" "$macos_major" "$expected_metadata_commit" "$manifest_php_src_commit" \
+  "$current_version" "$tap_snapshot" "$minimum_macos" "$platform_key") || \
   php_darwin_die 'cache metadata did not match the runner or request'
 IFS=$'\t' read -r metadata_homebrew_commit cached_source_hash target_keg_relative pecl_extension \
-  <<< "$metadata_values" || \
+  metadata_php_semver <<< "$metadata_values" || \
   php_darwin_die 'could not parse the validated cache metadata'
 if [ -n "$manifest_source_hash" ]; then
   [ "$cached_source_hash" = "$manifest_source_hash" ] || \
     php_darwin_die 'cache metadata source hash does not match the release manifest'
-  metadata_php_semver=$(jq -er '.php_semver' "$metadata_copy") || \
-    php_darwin_die 'could not read the cached PHP semantic version'
   [ "$metadata_php_semver" = "$manifest_php_semver" ] || \
     php_darwin_die 'cache PHP version does not match the release manifest'
 fi
 
+existing_kegs="$tmp_dir/existing-kegs.txt"
+changed_formulae_file="$tmp_dir/changed-formulae.txt"
+linkable_formulae_file="$tmp_dir/linkable-formulae.txt"
+packages_file="$tmp_dir/packages.tsv"
+package_kegs_file="$tmp_dir/package-kegs.txt"
+links_file="$tmp_dir/links.tsv"
+managed_paths_file="$tmp_dir/managed-paths.txt"
+exclude_file="$tmp_dir/existing-paths.txt"
+metadata_records_file="$tmp_dir/metadata-records.tsv"
 state_paths_inventory="$tmp_dir/state-paths-inventory.txt"
-jq -r '.state_paths[]' "$metadata_copy" > "$state_paths_inventory" || \
-  php_darwin_die 'could not read Homebrew state paths'
+: > "$packages_file" || php_darwin_die 'could not create the Homebrew package receipt list'
+: > "$package_kegs_file" || php_darwin_die 'could not create the Homebrew keg path list'
+: > "$managed_paths_file" || php_darwin_die 'could not create the managed archive path list'
+: > "$links_file" || php_darwin_die 'could not create the Homebrew link list'
+: > "$state_paths_inventory" || php_darwin_die 'could not create the Homebrew state path list'
+jq -r '[
+    (.packages[] | ["package", .name, .opt_target, (.keg_only | tostring)]),
+    (.packages[] | ["keg", (.opt_target | ltrimstr("../"))]),
+    (.links[] | ["managed", .path]),
+    (.state_paths[] | ["state", .]),
+    (.packages[] | ["managed", ("opt/" + .name)]),
+    (.links[] | ["link", .path, .target])
+  ][] | @tsv' "$metadata_copy" > "$metadata_records_file" || \
+  php_darwin_die 'could not read embedded Homebrew installation records'
+awk -F '\t' -v packages="$packages_file" -v kegs="$package_kegs_file" \
+  -v managed="$managed_paths_file" -v links="$links_file" -v states="$state_paths_inventory" '
+  $1 == "package" && NF == 4 { print $2 "\t" $3 "\t" $4 > packages; next }
+  $1 == "keg" && NF == 2 { print $2 > kegs; next }
+  $1 == "managed" && NF == 2 { print $2 > managed; next }
+  $1 == "state" && NF == 2 { print $2 > states; print $2 > managed; next }
+  $1 == "link" && NF == 3 { print $2 "\t" $3 > links; next }
+  { exit 1 }
+' "$metadata_records_file" || php_darwin_die 'could not split embedded Homebrew installation records'
 while IFS= read -r state_path; do
   if [ ! -e "$brew_prefix/$state_path" ] && [ ! -L "$brew_prefix/$state_path" ]; then
     printf '%s\n' "$state_path" >> "$new_state_paths_file" || \
@@ -1395,7 +1494,7 @@ while IFS= read -r state_path; do
 done < "$state_paths_inventory"
 
 php_darwin_set_phase homebrew.tap
-tap_path=$(brew --repository "$tap") || php_darwin_die "could not resolve the $tap repository"
+php_darwin_wait_for_homebrew_prepare
 case "$tap_path" in
   "$brew_prefix/Library/Taps/"*|"$brew_prefix/Homebrew/Library/Taps/"*) ;;
   *) php_darwin_die "unexpected Homebrew tap path: $tap_path" ;;
@@ -1426,7 +1525,6 @@ if [ -e "$tap_snapshot_path" ] || [ -L "$tap_snapshot_path" ]; then
   tap_snapshot_backed_up=true
 fi
 if [ -d "$brew_prefix/$target_keg_relative" ]; then
-  php_darwin_wait_for_unlink
   mv "$brew_prefix/$target_keg_relative" "$target_keg_backup" || \
     php_darwin_die "could not back up the existing cached $formula keg"
   target_keg_backed_up=true
@@ -1435,8 +1533,7 @@ php_darwin_postinstall_paths "$version" "$formula" "$build" "$ts" > "$postinstal
   php_darwin_die 'could not resolve formula-managed post-install paths'
 : > "$postinstall_paths_file" || php_darwin_die 'could not create the post-install path list'
 while IFS= read -r postinstall_path; do
-  if jq -e --arg path "$postinstall_path" '.state_paths | index($path) != null' \
-    "$metadata_copy" >/dev/null; then
+  if grep -Fxq "$postinstall_path" "$state_paths_inventory"; then
     printf '%s\n' "$postinstall_path" >> "$postinstall_paths_file" || \
       php_darwin_die "could not record $postinstall_path"
   else
@@ -1461,36 +1558,6 @@ if [ -e "$brew_prefix/$pear_path" ] || [ -L "$brew_prefix/$pear_path" ]; then
   pear_backed_up=true
 fi
 rm -f "$brew_prefix/$internal_metadata_path" || php_darwin_die 'could not remove stale archive metadata'
-existing_kegs="$tmp_dir/existing-kegs.txt"
-changed_formulae_file="$tmp_dir/changed-formulae.txt"
-linkable_formulae_file="$tmp_dir/linkable-formulae.txt"
-packages_file="$tmp_dir/packages.tsv"
-package_kegs_file="$tmp_dir/package-kegs.txt"
-links_file="$tmp_dir/links.tsv"
-managed_paths_file="$tmp_dir/managed-paths.txt"
-exclude_file="$tmp_dir/existing-paths.txt"
-metadata_records_file="$tmp_dir/metadata-records.tsv"
-: > "$packages_file" || php_darwin_die 'could not create the Homebrew package receipt list'
-: > "$package_kegs_file" || php_darwin_die 'could not create the Homebrew keg path list'
-: > "$managed_paths_file" || php_darwin_die 'could not create the managed archive path list'
-: > "$links_file" || php_darwin_die 'could not create the Homebrew link list'
-jq -r '[
-    (.packages[] | ["package", .name, .opt_target, (.keg_only | tostring)]),
-    (.packages[] | ["keg", (.opt_target | ltrimstr("../"))]),
-    (.links[] | ["managed", .path]),
-    (.state_paths[] | ["managed", .]),
-    (.packages[] | ["managed", ("opt/" + .name)]),
-    (.links[] | ["link", .path, .target])
-  ][] | @tsv' "$metadata_copy" > "$metadata_records_file" || \
-  php_darwin_die 'could not read embedded Homebrew installation records'
-awk -F '\t' -v packages="$packages_file" -v kegs="$package_kegs_file" \
-  -v managed="$managed_paths_file" -v links="$links_file" '
-  $1 == "package" && NF == 4 { print $2 "\t" $3 "\t" $4 > packages; next }
-  $1 == "keg" && NF == 2 { print $2 > kegs; next }
-  $1 == "managed" && NF == 2 { print $2 > managed; next }
-  $1 == "link" && NF == 3 { print $2 "\t" $3 > links; next }
-  { exit 1 }
-' "$metadata_records_file" || php_darwin_die 'could not split embedded Homebrew installation records'
 printf '%s\n' "$internal_metadata_path" >> "$managed_paths_file" || \
   php_darwin_die 'could not add the embedded metadata path'
 printf '%s\n' "$pear_path" >> "$managed_paths_file" || \
@@ -1501,7 +1568,6 @@ cat "$postinstall_paths_file" >> "$managed_paths_file" || \
   php_darwin_die 'could not add formula-managed post-install paths'
 LC_ALL=C sort -u "$managed_paths_file" -o "$managed_paths_file" || \
   php_darwin_die 'could not sort managed archive paths'
-php_darwin_wait_for_unlink
 php_darwin_existing_paths "$brew_prefix" "$exclude_file" \
   "$archive_roots_file" \
   "$existing_kegs" "$managed_paths_file" "$package_kegs_file" || \
@@ -1579,8 +1645,7 @@ tap_pid=$!
 php_darwin_set_phase homebrew.receipts
 metadata="$brew_prefix/$internal_metadata_path"
 [ -f "$metadata" ] || php_darwin_die 'cache did not contain embedded installation metadata'
-jq -en --slurpfile extracted "$metadata" --slurpfile expected "$metadata_copy" \
-  '$extracted[0] == $expected[0]' >/dev/null || \
+cmp -s "$metadata" "$metadata_copy" || \
   php_darwin_die 'extracted installation metadata changed during archive extraction'
 rm -f "$metadata" || php_darwin_die 'could not remove embedded installation metadata'
 while IFS=$'\t' read -r package_name opt_target keg_only; do
@@ -1607,6 +1672,7 @@ while IFS=$'\t' read -r package_name opt_target keg_only; do
     fi
   fi
 done < "$packages_file"
+php_darwin_wait_for_tap
 brew missing "$formula" > "$missing_log" 2>&1 &
 missing_pid=$!
 
@@ -1666,17 +1732,14 @@ fi
 php_darwin_verify_links "$brew_prefix" "$links_file" || \
   php_darwin_die 'cached Homebrew links did not match the archive metadata'
 
+php_darwin_set_phase homebrew.dependencies
+php_darwin_wait_for_dependencies
+
 php_darwin_set_phase runtime.verify
 php_bin="$brew_prefix/opt/$formula/bin/php"
 [ -x "$php_bin" ] || php_darwin_die "PHP binary missing after cache extraction: $php_bin"
 installed_semver=$($php_bin -r 'echo PHP_VERSION;') || php_darwin_die 'cached PHP could not report its version'
 [ "${installed_semver%.*}" = "$version" ] || php_darwin_die "cache installed PHP $installed_semver for requested $version"
-
-php_darwin_set_phase homebrew.dependencies
-php_darwin_wait_for_dependencies
-php_darwin_set_phase homebrew.tap
-php_darwin_wait_for_tap
-php_darwin_restore_tap_trust || php_darwin_die "could not restore the trust state for $tap"
 
 if [ "$tap_path_backed_up" = true ]; then
   php_darwin_remove_tap_backup "$brew_prefix" "$tap_path_backup" || \
@@ -1691,6 +1754,8 @@ if [ "$tap_snapshot_backed_up" = true ]; then
     php_darwin_die 'could not restore the previous Homebrew tap snapshot'
   tap_snapshot_backed_up=false
 fi
+php_darwin_set_phase homebrew.tap
+php_darwin_restore_tap_trust || php_darwin_die "could not restore the trust state for $tap"
 
 php_darwin_set_phase complete
 printf 'Installed PHP %s (%s, %s, %s) from %s\n' \

@@ -35,8 +35,10 @@ awk '
     path=$0
     if (path == "" || path ~ /^\// || path ~ /(^|\/)\.\.($|\/)/ ||
         path ~ /(^|\/)\.($|\/)/ || path ~ /\/\// || path ~ /\/$/) exit 3
-    for (excluded_path in excluded) {
-      if (path == excluded_path || index(path, excluded_path "/") == 1) next
+    candidate=path
+    while (1) {
+      if (candidate in excluded) next
+      if (!sub("/[^/]+$", "", candidate)) break
     }
     print path
   }

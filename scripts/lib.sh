@@ -391,16 +391,18 @@ php_darwin_validate_release_manifest() {
   local manifest=$1
   local version=$2
   local channel=${3:-$(php_darwin_version_channel "$version")}
+  local asset=${4:-}
   local expected_count
+  local manifest_result
   local platforms
 
   case "$channel" in stable|nightly) ;; *) return 1 ;; esac
   [ "$(php_darwin_version_channel "$version")" = "$channel" ] || return 1
   expected_count=$(php_darwin_expected_asset_count)
   platforms=$(php_darwin_read_config platforms.json) || return 1
-  jq -e --arg channel "$channel" --arg version "$version" --argjson count "$expected_count" \
-    --argjson platforms "$platforms" '
-    .schema == 1 and .php_version == $version and
+  manifest_result=$(jq -er --arg channel "$channel" --arg version "$version" \
+    --arg asset "$asset" --argjson count "$expected_count" --argjson platforms "$platforms" '
+    select(.schema == 1 and .php_version == $version and
     (.homebrew_php_commit | type == "string" and test("^[0-9a-f]{40}$")) and
     (.source_hash | type == "string" and test("^[0-9a-f]{64}$")) and
     (.php_semver | type == "string" and startswith($version + ".") and
@@ -422,8 +424,21 @@ php_darwin_validate_release_manifest() {
       (.bytes | type == "number" and floor == . and . > 0) and
       (.minimum_macos | type == "number" and floor == . and . > 0 and
         . == $platforms[$architecture].minimum_macos) and
-      (.sha256 | type == "string" and test("^[0-9a-f]{64}$")))
-  ' "$manifest" >/dev/null
+      (.sha256 | type == "string" and test("^[0-9a-f]{64}$")))) |
+    if $asset == "" then
+      "valid"
+    else
+      [.assets[] | select(.name == $asset)] as $matching |
+      select($matching | length == 1) |
+      [$matching[0].sha256, .homebrew_php_commit, .php_src_commit, .php_semver, .source_hash] |
+      @tsv
+    end
+  ' "$manifest") || return 1
+  if [ -n "$asset" ]; then
+    printf '%s\n' "$manifest_result"
+  else
+    [ "$manifest_result" = valid ]
+  fi
 }
 
 php_darwin_manifest_asset_sha256() {
@@ -446,6 +461,10 @@ php_darwin_validate_cache_metadata() {
   local macos_major=$7
   local expected_commit=${8:-}
   local expected_php_src_commit=${9:-}
+  local configured_current_version=${10:-}
+  local configured_tap_snapshot=${11:-}
+  local configured_minimum_macos=${12:-}
+  local configured_platform_key=${13:-}
   local asset
   local channel
   local formula
@@ -457,14 +476,23 @@ php_darwin_validate_cache_metadata() {
 
   channel=$(php_darwin_version_channel "$version")
   asset=$(php_darwin_asset "$version" "$build" "$ts" "$arch")
-  formula=$(php_darwin_formula "$version" "$build" "$ts")
+  formula=$(php_darwin_formula "$version" "$build" "$ts" "$configured_current_version")
   requested_formula=$(php_darwin_requested_formula "$version" "$build" "$ts")
   pear_path=$(php_darwin_pear_path "$version" "$formula")
-  tap_snapshot=$(php_darwin_package_config tap_snapshot)
-  minimum_macos=$(jq -er --arg arch "$arch" '.[$arch].minimum_macos' \
-    < <(php_darwin_read_config platforms.json)) || return 1
-  platform_key=$(jq -er --arg arch "$arch" '.[$arch].platform_key' \
-    < <(php_darwin_read_config platforms.json)) || return 1
+  if [ -n "$configured_tap_snapshot" ]; then
+    tap_snapshot=$configured_tap_snapshot
+  else
+    tap_snapshot=$(php_darwin_package_config tap_snapshot)
+  fi
+  if [ -n "$configured_minimum_macos" ] && [ -n "$configured_platform_key" ]; then
+    minimum_macos=$configured_minimum_macos
+    platform_key=$configured_platform_key
+  else
+    minimum_macos=$(jq -er --arg arch "$arch" '.[$arch].minimum_macos' \
+      < <(php_darwin_read_config platforms.json)) || return 1
+    platform_key=$(jq -er --arg arch "$arch" '.[$arch].platform_key' \
+      < <(php_darwin_read_config platforms.json)) || return 1
+  fi
 
   jq -er --arg version "$version" --arg channel "$channel" --arg build "$build" --arg ts "$ts" \
     --arg arch "$arch" --arg brew_prefix "$brew_prefix" --arg asset "$asset" --arg formula "$formula" \
@@ -516,6 +544,6 @@ php_darwin_validate_cache_metadata() {
         (.[3] | type == "string" and test("^[^\\r\\n\\t/]+$") and . != "." and . != "..")))) |
     [.homebrew_php_commit, .source_hash,
      (.packages[] | select(.name == $formula) | .opt_target | ltrimstr("../")),
-     .pecl_extension] | @tsv
+     .pecl_extension, .php_semver] | @tsv
   ' "$metadata_file"
 }
