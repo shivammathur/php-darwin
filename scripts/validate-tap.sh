@@ -36,10 +36,6 @@ if [ -n "$expected_branch" ]; then
     printf 'Homebrew tap remote branch does not match its snapshot commit\n' >&2
     exit 1
   }
-  [ -z "$(git -C "$tap_path" status --porcelain --untracked-files=all)" ] || {
-    printf 'Homebrew tap snapshot has changed or untracked files\n' >&2
-    exit 1
-  }
 fi
 if [ -n "$expected_hash" ]; then
   actual_hash=$(HOMEBREW_PHP_PATH="$tap_path" bash "$script_dir/source-hash.sh" "$version") || exit 1
@@ -47,5 +43,11 @@ if [ -n "$expected_hash" ]; then
     printf 'Homebrew tap formula hash mismatch\n' >&2
     exit 1
   }
-  printf '%s\n' "$actual_hash"
 fi
+if [ -n "$expected_branch" ] || [ -n "$expected_hash" ]; then
+  [ -z "$(git -C "$tap_path" status --porcelain --untracked-files=all)" ] || {
+    printf 'Homebrew tap snapshot has changed or untracked files\n' >&2
+    exit 1
+  }
+fi
+[ -z "$expected_hash" ] || printf '%s\n' "$actual_hash"

@@ -685,9 +685,6 @@ fi
   if [ "$tap_installed" = true ]; then
     bash "$script_dir/validate-tap.sh" "$tap_path" "$version" '' "$tap_repository" \
       "$metadata_homebrew_commit" "$tap_branch" >/dev/null || tap_status=$?
-  elif [ "$tap_was_trusted" = false ]; then
-    bash "$script_dir/validate-tap.sh" "$tap_path" "$version" '' "$tap_repository" \
-      "$metadata_homebrew_commit" "$tap_branch" >/dev/null || tap_status=$?
   elif [ -n "$cached_source_hash" ]; then
     bash "$script_dir/validate-tap.sh" "$tap_path" "$version" "$cached_source_hash" \
       "$tap_repository" >/dev/null || tap_status=$?

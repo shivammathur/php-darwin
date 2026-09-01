@@ -53,6 +53,12 @@ git -C "$cached_tap" checkout -q -- Formula/php.rb || \
   php_darwin_die 'could not restore the changed tap fixture'
 printf 'class InjectedFormula\n' > "$cached_tap/Formula/injected.rb" || \
   php_darwin_die 'could not add the untracked tap fixture'
+if bash "$script_dir/validate-tap.sh" "$cached_tap" 8.5 "$source_hash" \
+  "$repository" > /dev/null 2> "$snapshot_validation_log"; then
+  php_darwin_die 'formula-hash validation accepted an untracked tap file'
+fi
+grep -Fxq 'Homebrew tap snapshot has changed or untracked files' "$snapshot_validation_log" || \
+  php_darwin_die 'formula-hash validation did not explain the untracked tap file'
 if bash "$script_dir/validate-tap.sh" "$cached_tap" 8.5 '' \
   "$repository" "$source_commit" "$branch" > /dev/null 2> "$snapshot_validation_log"; then
   php_darwin_die 'cached tap validation accepted an untracked formula'
