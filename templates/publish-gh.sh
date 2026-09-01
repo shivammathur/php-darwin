@@ -6,7 +6,7 @@ case "${1:-}/${2:-}" in
     [ "${GH_RELEASE_EXISTS:-false}" = true ] && exit 0
     exit 1
     ;;
-  release/create) exit 0 ;;
+  release/create|release/delete-asset) exit 0 ;;
   release/download)
     destination=
     previous=

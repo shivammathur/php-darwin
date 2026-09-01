@@ -3,6 +3,7 @@ scripts/lib.sh
 scripts/read-metadata.sh
 scripts/source-hash.sh
 scripts/validate-tap.sh
+scripts/tap-action.sh
 scripts/verify-links.sh
 scripts/existing-paths.sh
 scripts/extract.sh

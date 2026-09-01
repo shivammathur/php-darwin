@@ -47,6 +47,7 @@ source_hashes="$work_dir/source-hashes.txt"
 semvers="$work_dir/semvers.txt"
 php_src_commits="$work_dir/php-src-commits.txt"
 assets_jsonl="$work_dir/assets.jsonl"
+retained_assets="$work_dir/retained-assets.txt"
 staging="$work_dir/release"
 
 [ -z "$expected_version" ] || php_darwin_validate_version "$expected_version"
@@ -128,10 +129,12 @@ while IFS= read -r metadata; do
   [ "$actual_hash" = "$expected_hash" ] || php_darwin_die "checksum mismatch before publish: $expected_archive"
   archive_bytes=$(wc -c < "$archive" | tr -d '[:space:]')
   [[ "$archive_bytes" =~ ^[0-9]+$ ]] || php_darwin_die "invalid archive size for $expected_archive"
-  cp "$archive" "$staging/$expected_archive" || php_darwin_die "could not stage $expected_archive"
-  cp "$checksum" "$staging/$expected_archive.sha256" || \
+  download_asset=$(php_darwin_download_asset "$expected_archive" "$actual_hash") || \
+    php_darwin_die "could not create the immutable release name for $expected_archive"
+  cp "$archive" "$staging/$download_asset" || php_darwin_die "could not stage $expected_archive"
+  printf '%s  %s\n' "$actual_hash" "$download_asset" > "$staging/$download_asset.sha256" || \
     php_darwin_die "could not stage the checksum for $expected_archive"
-  data_upload_files+=("$staging/$expected_archive" "$staging/$expected_archive.sha256")
+  data_upload_files+=("$staging/$download_asset" "$staging/$download_asset.sha256")
 
   printf '%s/%s/%s\n' "$metadata_build" "$metadata_ts" "$metadata_arch" >> "$matrix_keys"
   jq -r '[.formula,.formula_sha256] | @tsv' "$metadata" >> "$formulae" || \
@@ -141,10 +144,11 @@ while IFS= read -r metadata; do
   [ "$metadata_php_src_commit" != - ] || metadata_php_src_commit=
   printf '%s\n' "$metadata_php_src_commit" >> "$php_src_commits" || \
     php_darwin_die "could not read the PHP source commit from $metadata"
-  jq -cn --arg architecture "$metadata_arch" --arg build "$metadata_build" --arg name "$expected_archive" \
+  jq -cn --arg architecture "$metadata_arch" --arg build "$metadata_build" --arg download "$download_asset" \
+    --arg name "$expected_archive" \
     --arg sha256 "$actual_hash" --arg thread_safety "$metadata_ts" --argjson bytes "$archive_bytes" \
     --argjson minimum_macos "$expected_minimum" \
-    '{architecture:$architecture,build:$build,bytes:$bytes,minimum_macos:$minimum_macos,name:$name,
+    '{architecture:$architecture,build:$build,bytes:$bytes,download:$download,minimum_macos:$minimum_macos,name:$name,
       sha256:$sha256,thread_safety:$thread_safety}' >> "$assets_jsonl" || \
     php_darwin_die "could not create the release record for $expected_archive"
 done < "$metadata_list"
@@ -208,13 +212,46 @@ else
     --notes "ARM64 Homebrew PHP $version caches for macOS runners." --latest=false || \
     php_darwin_die "could not create release $tag"
 fi
+upload_files=()
+for upload_file in "${data_upload_files[@]}"; do
+  upload_name=${upload_file##*/}
+  if [ "$release_exists" = true ] && [ -f "$previous_assets/$upload_name" ]; then
+    cmp -s "$upload_file" "$previous_assets/$upload_name" || \
+      php_darwin_die "immutable release asset changed: $upload_name"
+  else
+    upload_files+=("$upload_file")
+  fi
+done
 publish_mutation_started=true
-gh release upload "$tag" "${data_upload_files[@]}" --clobber --repo "$release_repository" || \
-  php_darwin_die "could not upload release archives to $tag"
+if [ "${#upload_files[@]}" -gt 0 ]; then
+  gh release upload "$tag" "${upload_files[@]}" --repo "$release_repository" || \
+    php_darwin_die "could not upload release archives to $tag"
+fi
 gh release upload "$tag" "$installer" --clobber --repo "$release_repository" || \
   php_darwin_die "could not upload the release installer to $tag"
 # The manifest is the release commit point. Upload it only after every archive,
 # checksum, and the matching embedded-manifest installer is available.
 gh release upload "$tag" "$manifest" --clobber --repo "$release_repository" || \
   php_darwin_die "could not commit release assets for $tag"
+
+# Keep the generation referenced by a potentially cached previous installer,
+# but remove older content-addressed generations after the new manifest commits.
+jq -r '.assets[] | .download, (.download + ".sha256")' "$manifest" > "$retained_assets" || \
+  php_darwin_die 'could not record the current immutable release assets'
+if [ "$release_exists" = true ] && [ -f "$previous_assets/$tag-manifest.json" ] && \
+  php_darwin_validate_release_manifest "$previous_assets/$tag-manifest.json" "$version" "$channel"; then
+  jq -r '.assets[] | (.download // .name) as $download | $download, ($download + ".sha256")' \
+    "$previous_assets/$tag-manifest.json" >> "$retained_assets" || \
+    php_darwin_die 'could not record the previous immutable release assets'
+  LC_ALL=C sort -u "$retained_assets" -o "$retained_assets" || \
+    php_darwin_die 'could not sort the retained immutable release assets'
+  for previous_asset in "$previous_assets"/*; do
+    [ -f "$previous_asset" ] || continue
+    previous_name=${previous_asset##*/}
+    [[ "$previous_name" =~ ^php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_arm64\.[0-9a-f]{64}\.tar\.zst(\.sha256)?$ ]] || continue
+    grep -Fxq "$previous_name" "$retained_assets" && continue
+    gh release delete-asset "$tag" "$previous_name" --yes --repo "$release_repository" >/dev/null 2>&1 || \
+      printf 'Could not remove stale release asset %s from %s\n' "$previous_name" "$tag" >&2
+  done
+fi
 printf 'Published PHP %s release assets with source hash %s\n' "$version" "$source_hash"

@@ -95,11 +95,12 @@ PHP_VERSION="$version" PATH="$fake_bin:$PATH" bash "$script_dir/publish.sh" "$bu
   php_darwin_die 'publisher did not view, create, and upload the release in three phases'
 grep -Eq '^release view php-7\.0 ' "$gh_log" || php_darwin_die 'publisher did not inspect the minor release'
 grep -Eq '^release create php-7\.0 ' "$gh_log" || php_darwin_die 'publisher did not create the minor release'
-grep -Eq '^release upload php-7\.0 .*--clobber' "$gh_log" || \
-  php_darwin_die 'publisher did not replace the deterministic release assets'
+grep -Eq '^release upload php-7\.0 .*\.[0-9a-f]{64}\.tar\.zst(\.sha256)?( .*\.[0-9a-f]{64}\.tar\.zst(\.sha256)?)* --repo shivammathur/php-darwin$' \
+  "$gh_log" || php_darwin_die 'publisher did not upload immutable release assets'
 grep -Eq '^release upload php-7\.0 .*release/install\.sh .*--clobber' "$gh_log" || \
   php_darwin_die 'publisher did not upload the standalone installer'
-grep -Eq '^release upload php-7\.0 .*\.sha256 .*--clobber' "$gh_log" || \
+grep -Eq '^release upload php-7\.0 .*\.[0-9a-f]{64}\.tar\.zst\.sha256 .*--repo shivammathur/php-darwin$' \
+  "$gh_log" || \
   php_darwin_die 'publisher did not upload archive checksum sidecars'
 tail -n 1 "$gh_log" | grep -Eq '^release upload php-7\.0 .*/php-7\.0-manifest\.json --clobber --repo shivammathur/php-darwin$' || \
   php_darwin_die 'publisher did not upload the release manifest as the commit point'
@@ -109,6 +110,8 @@ jq -e --arg source_hash "$source_hash" --argjson count "$(php_darwin_expected_as
   .homebrew_php_commit == "0123456789abcdef0123456789abcdef01234567" and
   .source_hash == $source_hash and (.assets | length == $count) and
   ([.assets[].name] | unique | length == $count) and
+  all(.assets[]; . as $item |
+    .download == ($item.name | sub("\\.tar\\.zst$"; "." + $item.sha256 + ".tar.zst"))) and
   ([.assets[].architecture] | unique) == ["arm64"]
 ' "$gh_manifest" >/dev/null || php_darwin_die 'publisher created an invalid release manifest'
 manifest_asset=$(jq -er '.assets[0].name' "$gh_manifest") || \
@@ -116,11 +119,13 @@ manifest_asset=$(jq -er '.assets[0].name' "$gh_manifest") || \
 manifest_values=$(php_darwin_validate_release_manifest "$gh_manifest" "$version" stable "$manifest_asset") || \
   php_darwin_die 'published stable manifest did not pass shared validation'
 IFS=$'\t' read -r manifest_hash manifest_commit manifest_php_src_commit manifest_semver manifest_source_hash \
+  manifest_download_asset \
   <<< "$manifest_values" || php_darwin_die 'could not parse the published stable manifest'
 [ "$manifest_hash" = "$(php_darwin_manifest_asset_sha256 "$gh_manifest" "$manifest_asset")" ] && \
   [ "$manifest_commit" = "$source_commit" ] && [ "$manifest_php_src_commit" = - ] && \
   [ "$manifest_semver" = "$semver" ] && \
-  [ "$manifest_source_hash" = "$source_hash" ] || \
+  [ "$manifest_source_hash" = "$source_hash" ] && \
+  [ "$manifest_download_asset" = "$(php_darwin_download_asset "$manifest_asset" "$manifest_hash")" ] || \
   php_darwin_die 'stable manifest fields were not preserved across parsing'
 
 legacy_manifest="$work_dir/legacy-stable-manifest.json"
@@ -131,6 +136,14 @@ legacy_manifest_values=$(php_darwin_validate_release_manifest \
   php_darwin_die 'legacy stable manifest did not pass compatibility validation'
 [ "$legacy_manifest_values" = "$manifest_values" ] || \
   php_darwin_die 'legacy stable manifest fields were not normalized'
+legacy_asset_manifest="$work_dir/legacy-asset-manifest.json"
+jq 'del(.assets[].download)' "$gh_manifest" > "$legacy_asset_manifest" || \
+  php_darwin_die 'could not create a legacy release-asset fixture'
+legacy_asset_values=$(php_darwin_validate_release_manifest \
+  "$legacy_asset_manifest" "$version" stable "$manifest_asset") || \
+  php_darwin_die 'legacy release asset names did not pass compatibility validation'
+[ "${legacy_asset_values##*$'\t'}" = "$manifest_asset" ] || \
+  php_darwin_die 'legacy release asset name was not preserved'
 missing_commit_manifest="$work_dir/missing-commit-stable-manifest.json"
 jq 'del(.php_src_commit)' "$gh_manifest" > "$missing_commit_manifest" || \
   php_darwin_die 'could not create a missing-commit stable manifest fixture'
@@ -171,6 +184,56 @@ if php_darwin_validate_cache_metadata "$missing_commit_metadata" "$version" "$le
 fi
 grep -Fq '"php_version": "7.0"' "$gh_installer" || \
   php_darwin_die 'published installer did not embed the matching release manifest'
+installer_download=$(jq -er '.assets[0].download' "$gh_manifest") || \
+  php_darwin_die 'could not select an immutable installer asset'
+grep -Fq "\"download\": \"$installer_download\"" "$gh_installer" || \
+  php_darwin_die 'published installer did not embed the immutable release asset'
+
+# A subsequent publish keeps the generation referenced by the previous
+# installer, uploads a new immutable generation, and removes only older ones.
+previous_generation="$work_dir/previous-generation"
+mkdir -p "$previous_generation" || php_darwin_die 'could not create immutable release fixtures'
+cp "$gh_manifest" "$previous_generation/php-$version-manifest.json" || \
+  php_darwin_die 'could not preserve the previous release manifest fixture'
+while IFS= read -r previous_download; do
+  printf 'previous immutable archive\n' > "$previous_generation/$previous_download" || exit 1
+  printf 'previous immutable checksum\n' > "$previous_generation/$previous_download.sha256" || exit 1
+done < <(jq -r '.assets[].download' "$gh_manifest")
+stale_hash=$(printf 'f%.0s' {1..64})
+stale_asset="php_7.0-nts-release+darwin_arm64.$stale_hash.tar.zst"
+printf 'stale immutable archive\n' > "$previous_generation/$stale_asset" || exit 1
+printf 'stale immutable checksum\n' > "$previous_generation/$stale_asset.sha256" || exit 1
+while IFS= read -r archive_fixture; do
+  printf 'next generation\n' >> "$archive_fixture" || exit 1
+  archive_fixture_hash=$(php_darwin_sha256 "$archive_fixture") || exit 1
+  printf '%s  %s\n' "$archive_fixture_hash" "${archive_fixture##*/}" > "$archive_fixture.sha256" || exit 1
+done < <(find "$builds_dir" -type f -name '*.tar.zst' -print)
+: > "$gh_log" || php_darwin_die 'could not reset the immutable publish log'
+GH_RELEASE_EXISTS=true GH_PREVIOUS_ASSETS="$previous_generation" PHP_VERSION="$version" \
+  PATH="$fake_bin:$PATH" bash "$script_dir/publish.sh" "$builds_dir" >/dev/null || \
+  php_darwin_die 'immutable release replacement fixture failed'
+grep -Fxq "release delete-asset php-7.0 $stale_asset --yes --repo shivammathur/php-darwin" "$gh_log" || \
+  php_darwin_die 'publisher did not remove a stale immutable archive'
+grep -Fxq "release delete-asset php-7.0 $stale_asset.sha256 --yes --repo shivammathur/php-darwin" "$gh_log" || \
+  php_darwin_die 'publisher did not remove a stale immutable checksum'
+while IFS= read -r previous_download; do
+  ! grep -Fq "release delete-asset php-7.0 $previous_download " "$gh_log" || \
+    php_darwin_die 'publisher removed the previous installer generation'
+done < <(jq -r '.assets[].download' "$previous_generation/php-$version-manifest.json")
+
+# A malformed prior manifest cannot authorize deletion of any immutable asset.
+invalid_previous_generation="$work_dir/invalid-previous-generation"
+cp -R "$previous_generation" "$invalid_previous_generation" || \
+  php_darwin_die 'could not create an invalid previous release fixture'
+jq 'del(.homebrew_php_commit)' "$previous_generation/php-$version-manifest.json" \
+  > "$invalid_previous_generation/php-$version-manifest.json" || \
+  php_darwin_die 'could not invalidate the previous release manifest fixture'
+: > "$gh_log" || php_darwin_die 'could not reset the invalid-manifest publish log'
+GH_RELEASE_EXISTS=true GH_PREVIOUS_ASSETS="$invalid_previous_generation" PHP_VERSION="$version" \
+  PATH="$fake_bin:$PATH" bash "$script_dir/publish.sh" "$builds_dir" >/dev/null || \
+  php_darwin_die 'publish with an invalid previous manifest fixture failed'
+! grep -Fq 'release delete-asset ' "$gh_log" || \
+  php_darwin_die 'publisher deleted immutable assets using an invalid previous manifest'
 
 if PHP_VERSION=7.1 HOMEBREW_PHP_COMMIT="$source_commit" PATH="$fake_bin:$PATH" \
   bash "$script_dir/publish.sh" "$builds_dir" >/dev/null 2>&1; then

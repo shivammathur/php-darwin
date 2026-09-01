@@ -37,8 +37,10 @@ git -C "$destination" checkout -q -B "$branch" FETCH_HEAD || exit 1
 git -C "$destination" update-ref "refs/remotes/origin/$branch" "$source_commit" || exit 1
 git -C "$destination" config "branch.$branch.remote" origin || exit 1
 git -C "$destination" config "branch.$branch.merge" "refs/heads/$branch" || exit 1
+git -C "$destination" config php-darwin.snapshot-commit "$source_commit" || exit 1
 
 [ "$(git -C "$destination" rev-parse HEAD)" = "$source_commit" ] || exit 1
 [ "$(git -C "$destination" symbolic-ref --short HEAD)" = "$branch" ] || exit 1
 [ "$(git -C "$destination" rev-parse --is-shallow-repository)" = true ] || exit 1
-[ -z "$(git -C "$destination" status --porcelain)" ] || exit 1
+snapshot_status=$(git -C "$destination" status --porcelain) || exit 1
+[ -z "$snapshot_status" ] || exit 1

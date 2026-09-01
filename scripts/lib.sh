@@ -384,6 +384,15 @@ php_darwin_asset() {
   printf 'php_%s-%s-%s+darwin_%s.tar.zst\n' "$version" "$ts" "$build" "$arch"
 }
 
+php_darwin_download_asset() {
+  local asset=$1
+  local sha256=$2
+
+  [[ "$asset" =~ ^php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_arm64\.tar\.zst$ ]] || return 1
+  [[ "$sha256" =~ ^[0-9a-f]{64}$ ]] || return 1
+  printf '%s.%s.tar.zst\n' "${asset%.tar.zst}" "$sha256"
+}
+
 php_darwin_sha256() {
   local hash_output
 
@@ -441,8 +450,9 @@ php_darwin_validate_release_manifest() {
      end) and
     (.assets | type == "array" and length == $count) and
     ([.assets[].name] | unique | length) == (.assets | length) and
+    ([.assets[] | (.download // .name)] | unique | length) == (.assets | length) and
     all(.assets[];
-      .architecture as $architecture |
+      . as $item | .architecture as $architecture |
       ($architecture == "arm64") and
       (.build == "debug" or .build == "release") and
       (.thread_safety == "nts" or .thread_safety == "zts") and
@@ -451,7 +461,11 @@ php_darwin_validate_release_manifest() {
       (.bytes | type == "number" and floor == . and . > 0) and
       (.minimum_macos | type == "number" and floor == . and . > 0 and
         . == $platforms[$architecture].minimum_macos) and
-      (.sha256 | type == "string" and test("^[0-9a-f]{64}$")))) |
+      (.sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
+      ((.download // .name) as $download |
+        ($download | type == "string") and
+        ($download == $item.name or
+          $download == ($item.name | sub("\\.tar\\.zst$"; "." + $item.sha256 + ".tar.zst")))))) |
     if $asset == "" then
       "valid"
     else
@@ -459,8 +473,8 @@ php_darwin_validate_release_manifest() {
       select($matching | length == 1) |
       [$matching[0].sha256, .homebrew_php_commit,
        (if (.php_src_commit // "") == "" then "-" else .php_src_commit end),
-       .php_semver, .source_hash] |
-      @tsv
+       .php_semver, .source_hash, ($matching[0].download // $matching[0].name)] |
+       @tsv
     end
   ' "$manifest") || return 1
   if [ -n "$asset" ]; then

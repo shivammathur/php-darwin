@@ -8,6 +8,7 @@ expected_hash=${3:-}
 repository=${4:?}
 expected_commit=${5:-}
 expected_branch=${6:-}
+require_clean=${7:-false}
 
 [ -d "$tap_path/.git" ] || {
   printf 'Homebrew tap is not a Git repository: %s\n' "$tap_path" >&2
@@ -44,8 +45,12 @@ if [ -n "$expected_hash" ]; then
     exit 1
   }
 fi
-if [ -n "$expected_branch" ] || [ -n "$expected_hash" ]; then
-  [ -z "$(git -C "$tap_path" status --porcelain --untracked-files=all)" ] || {
+if [ -n "$expected_branch" ] || [ -n "$expected_hash" ] || [ "$require_clean" = true ]; then
+  tap_status=$(git -C "$tap_path" status --porcelain --untracked-files=all) || {
+    printf 'Could not inspect Homebrew tap status\n' >&2
+    exit 1
+  }
+  [ -z "$tap_status" ] || {
     printf 'Homebrew tap snapshot has changed or untracked files\n' >&2
     exit 1
   }

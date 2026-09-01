@@ -385,6 +385,15 @@ php_darwin_asset() {
   printf 'php_%s-%s-%s+darwin_%s.tar.zst\n' "$version" "$ts" "$build" "$arch"
 }
 
+php_darwin_download_asset() {
+  local asset=$1
+  local sha256=$2
+
+  [[ "$asset" =~ ^php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_arm64\.tar\.zst$ ]] || return 1
+  [[ "$sha256" =~ ^[0-9a-f]{64}$ ]] || return 1
+  printf '%s.%s.tar.zst\n' "${asset%.tar.zst}" "$sha256"
+}
+
 php_darwin_sha256() {
   local hash_output
 
@@ -442,8 +451,9 @@ php_darwin_validate_release_manifest() {
      end) and
     (.assets | type == "array" and length == $count) and
     ([.assets[].name] | unique | length) == (.assets | length) and
+    ([.assets[] | (.download // .name)] | unique | length) == (.assets | length) and
     all(.assets[];
-      .architecture as $architecture |
+      . as $item | .architecture as $architecture |
       ($architecture == "arm64") and
       (.build == "debug" or .build == "release") and
       (.thread_safety == "nts" or .thread_safety == "zts") and
@@ -452,7 +462,11 @@ php_darwin_validate_release_manifest() {
       (.bytes | type == "number" and floor == . and . > 0) and
       (.minimum_macos | type == "number" and floor == . and . > 0 and
         . == $platforms[$architecture].minimum_macos) and
-      (.sha256 | type == "string" and test("^[0-9a-f]{64}$")))) |
+      (.sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
+      ((.download // .name) as $download |
+        ($download | type == "string") and
+        ($download == $item.name or
+          $download == ($item.name | sub("\\.tar\\.zst$"; "." + $item.sha256 + ".tar.zst")))))) |
     if $asset == "" then
       "valid"
     else
@@ -460,8 +474,8 @@ php_darwin_validate_release_manifest() {
       select($matching | length == 1) |
       [$matching[0].sha256, .homebrew_php_commit,
        (if (.php_src_commit // "") == "" then "-" else .php_src_commit end),
-       .php_semver, .source_hash] |
-      @tsv
+       .php_semver, .source_hash, ($matching[0].download // $matching[0].name)] |
+       @tsv
     end
   ' "$manifest") || return 1
   if [ -n "$asset" ]; then
@@ -734,6 +748,7 @@ expected_hash=${3:-}
 repository=${4:?}
 expected_commit=${5:-}
 expected_branch=${6:-}
+require_clean=${7:-false}
 
 [ -d "$tap_path/.git" ] || {
   printf 'Homebrew tap is not a Git repository: %s\n' "$tap_path" >&2
@@ -770,13 +785,61 @@ if [ -n "$expected_hash" ]; then
     exit 1
   }
 fi
-if [ -n "$expected_branch" ] || [ -n "$expected_hash" ]; then
-  [ -z "$(git -C "$tap_path" status --porcelain --untracked-files=all)" ] || {
+if [ -n "$expected_branch" ] || [ -n "$expected_hash" ] || [ "$require_clean" = true ]; then
+  tap_status=$(git -C "$tap_path" status --porcelain --untracked-files=all) || {
+    printf 'Could not inspect Homebrew tap status\n' >&2
+    exit 1
+  }
+  [ -z "$tap_status" ] || {
     printf 'Homebrew tap snapshot has changed or untracked files\n' >&2
     exit 1
   }
 fi
 [ -z "$expected_hash" ] || printf '%s\n' "$actual_hash"
+)
+
+# Source: scripts/tap-action.sh
+php_darwin_tap_action() (
+
+
+tap_path=${1:?}
+cached_tap_path=${2:?}
+version=${3:?}
+expected_hash=${4:?}
+repository=${5:?}
+cached_commit=${6:?}
+expected_branch=${7:?}
+
+php_darwin_validate_tap "$tap_path" "$version" '' "$repository" '' '' true \
+  >/dev/null || exit 1
+actual_hash=$(HOMEBREW_PHP_PATH="$tap_path" php_darwin_source_hash "$version" 2>/dev/null) || \
+  actual_hash=
+if [ "$actual_hash" = "$expected_hash" ]; then
+  printf 'keep\n'
+  exit 0
+fi
+
+existing_commit=$(git -C "$tap_path" rev-parse HEAD) || exit 1
+snapshot_commit=$(git -C "$tap_path" config --get php-darwin.snapshot-commit 2>/dev/null) || \
+  snapshot_commit=
+if [ "$snapshot_commit" != "$existing_commit" ]; then
+  [ -z "$snapshot_commit" ] && \
+    [ "$(git -C "$tap_path" rev-parse --is-shallow-repository)" = true ] && \
+    [ "$(git -C "$tap_path" symbolic-ref --short HEAD)" = "$expected_branch" ] && \
+    [ "$(git -C "$tap_path" rev-parse "refs/remotes/origin/$expected_branch")" = "$existing_commit" ] || {
+    printf 'Homebrew tap formula hash mismatch on an unmarked checkout\n' >&2
+    exit 1
+  }
+fi
+[ "$(git -C "$cached_tap_path" rev-parse HEAD)" = "$cached_commit" ] || exit 1
+existing_time=$(git -C "$tap_path" show -s --format=%ct "$existing_commit") || exit 1
+cached_time=$(git -C "$cached_tap_path" show -s --format=%ct "$cached_commit") || exit 1
+[[ "$existing_time" =~ ^[0-9]+$ ]] && [[ "$cached_time" =~ ^[0-9]+$ ]] || exit 1
+[ "$cached_time" -gt "$existing_time" ] || {
+  printf 'Homebrew tap formula hash mismatch and the cached snapshot is not newer\n' >&2
+  exit 1
+}
+printf 'replace\n'
 )
 
 # Source: scripts/verify-links.sh
@@ -1119,6 +1182,7 @@ php_darwin_read_config archive-paths > "$archive_roots_file" || \
   php_darwin_die 'could not stage the archive root configuration'
 tap_log="$tmp_dir/homebrew-tap.log"
 tap_pid=
+tap_action_file="$tmp_dir/homebrew-tap-action.txt"
 homebrew_prepare_log="$tmp_dir/homebrew-prepare.log"
 homebrew_prepare_pid=
 homebrew_prepare_phase_file="$tmp_dir/homebrew-prepare-phase.txt"
@@ -1154,6 +1218,8 @@ tap_path_backed_up=false
 tap_snapshot_backup="$tmp_dir/homebrew-tap-snapshot-backup"
 tap_snapshot_backed_up=false
 tap_snapshot_extracted=false
+tap_replaced=false
+dependencies_started_with_pending_tap=false
 tap_snapshot_path="$brew_prefix/$tap_snapshot"
 : > "$previous_opt_links" || php_darwin_die 'could not create the Homebrew opt-link backup'
 : > "$postinstall_restored_file" || php_darwin_die 'could not create the restored-state list'
@@ -1179,6 +1245,7 @@ php_darwin_wait_for_dependencies() {
 }
 
 php_darwin_wait_for_tap() {
+  local tap_action
   local tap_status
 
   [ -n "$tap_pid" ] || return 0
@@ -1193,6 +1260,29 @@ php_darwin_wait_for_tap() {
     cat "$tap_log" >&2
     php_darwin_die "could not validate $tap"
   fi
+  tap_action=$(cat "$tap_action_file") || php_darwin_die "could not read the $tap tap action"
+  case "$tap_action" in
+    keep)
+      find "$tap_snapshot_path" -mindepth 1 -delete || \
+        php_darwin_die 'could not remove the unused Homebrew tap snapshot'
+      rmdir "$tap_snapshot_path" || php_darwin_die 'could not remove the empty Homebrew tap snapshot'
+      tap_snapshot_extracted=false
+      ;;
+    replace)
+      tap_path_backed_up=true
+      if ! mv "$tap_path" "$tap_path_backup" 2>/dev/null; then
+        command -v sudo >/dev/null 2>&1 || \
+          php_darwin_die "could not back up the older $tap snapshot"
+        sudo -n mv "$tap_path" "$tap_path_backup" || \
+          php_darwin_die "could not back up the older $tap snapshot"
+      fi
+      tap_installed=true
+      mv "$tap_snapshot_path" "$tap_path" || php_darwin_die "could not advance the $tap snapshot"
+      tap_snapshot_extracted=false
+      tap_replaced=true
+      ;;
+    *) php_darwin_die "invalid $tap tap action: $tap_action" ;;
+  esac
 }
 
 php_darwin_wait_for_homebrew_prepare() {
@@ -1280,7 +1370,9 @@ php_darwin_install_cleanup() {
   if [ "$cleanup_status" -ne 0 ]; then
     php_darwin_restore_formula_trust >> "$rollback_log" 2>&1 || rollback_status=failed
     if [ "$tap_installed" = true ]; then
-      if [ -d "$tap_path" ] && [ ! -L "$tap_path" ]; then
+      if [ ! -e "$tap_path" ] && [ ! -L "$tap_path" ]; then
+        :
+      elif [ -d "$tap_path" ] && [ ! -L "$tap_path" ]; then
         find "$tap_path" -mindepth 1 -delete >> "$rollback_log" 2>&1 && \
           rmdir "$tap_path" >> "$rollback_log" 2>&1 || rollback_status=failed
       else
@@ -1288,7 +1380,10 @@ php_darwin_install_cleanup() {
       fi
     fi
     if [ "$tap_path_backed_up" = true ]; then
-      if php_darwin_restore_tap_path "$tap_path" "$tap_path_backup" >> "$rollback_log" 2>&1; then
+      if [ ! -e "$tap_path_backup" ] && [ ! -L "$tap_path_backup" ] && \
+        { [ -e "$tap_path" ] || [ -L "$tap_path" ]; }; then
+        tap_path_backed_up=false
+      elif php_darwin_restore_tap_path "$tap_path" "$tap_path_backup" >> "$rollback_log" 2>&1; then
         tap_path_backed_up=false
       else
         rollback_status=failed
@@ -1455,6 +1550,7 @@ manifest_homebrew_commit=
 manifest_php_src_commit=
 manifest_php_semver=
 manifest_source_hash=
+manifest_download_asset=
 
 php_darwin_set_phase fetch
 metadata_copy="$tmp_dir/cache-metadata.json"
@@ -1490,10 +1586,10 @@ else
       php_darwin_die 'release manifest did not match the requested PHP version'
   fi
   IFS=$'\t' read -r expected_hash manifest_homebrew_commit manifest_php_src_commit \
-    manifest_php_semver manifest_source_hash <<< "$manifest_values" || \
+    manifest_php_semver manifest_source_hash manifest_download_asset <<< "$manifest_values" || \
     php_darwin_die 'could not parse the release source commits'
   [ "$manifest_php_src_commit" != - ] || manifest_php_src_commit=
-  release_url=${PHP_DARWIN_RELEASE_URL:-https://github.com/$release_repository/releases/download/php-$version/$asset?cache=$expected_hash}
+  release_url=${PHP_DARWIN_RELEASE_URL:-https://github.com/$release_repository/releases/download/php-$version/$manifest_download_asset}
   curl --retry 3 --retry-all-errors -fsSL "$release_url" -o "$archive" || \
     php_darwin_die "could not download $release_url"
   php_darwin_start_archive_hash "$archive"
@@ -1675,16 +1771,16 @@ php_darwin_extract "$archive" "$brew_prefix" "$exclude_file" || \
 php_darwin_set_phase homebrew.tap
 [ -d "$tap_snapshot_path/.git" ] && [ ! -L "$tap_snapshot_path" ] || \
   php_darwin_die 'cache did not contain a valid Homebrew tap snapshot'
+php_darwin_validate_tap "$tap_snapshot_path" "$version" '' \
+  "$tap_repository" "$metadata_homebrew_commit" "$tap_branch" >/dev/null || \
+  php_darwin_die 'cached Homebrew tap snapshot validation failed'
 if [ -e "$tap_path" ]; then
   [ -d "$tap_path/.git" ] && [ ! -L "$tap_path" ] || \
     php_darwin_die "installed Homebrew tap is not a Git repository: $tap_path"
-  php_darwin_validate_tap "$tap_snapshot_path" "$version" '' \
-    "$tap_repository" "$metadata_homebrew_commit" "$tap_branch" >/dev/null || \
-    php_darwin_die 'cached Homebrew tap snapshot validation failed'
-  find "$tap_snapshot_path" -mindepth 1 -delete || \
-    php_darwin_die 'could not remove the extracted Homebrew tap snapshot'
-  rmdir "$tap_snapshot_path" || php_darwin_die 'could not remove the empty Homebrew tap snapshot'
-  tap_snapshot_extracted=false
+  php_darwin_tap_action "$tap_path" "$tap_snapshot_path" "$version" \
+    "$cached_source_hash" "$tap_repository" "$metadata_homebrew_commit" "$tap_branch" \
+    > "$tap_action_file" 2> "$tap_log" &
+  tap_pid=$!
 else
   tap_parent=${tap_path%/*}
   [ ! -L "$tap_parent" ] || php_darwin_die "Homebrew tap owner path is a symlink: $tap_parent"
@@ -1693,21 +1789,6 @@ else
   tap_snapshot_extracted=false
   tap_installed=true
 fi
-(
-  tap_status=0
-  if [ "$tap_installed" = true ]; then
-    php_darwin_validate_tap "$tap_path" "$version" '' "$tap_repository" \
-      "$metadata_homebrew_commit" "$tap_branch" >/dev/null || tap_status=$?
-  elif [ -n "$cached_source_hash" ]; then
-    php_darwin_validate_tap "$tap_path" "$version" "$cached_source_hash" \
-      "$tap_repository" >/dev/null || tap_status=$?
-  else
-    php_darwin_validate_tap "$tap_path" "$version" '' "$tap_repository" \
-      "$metadata_homebrew_commit" >/dev/null || tap_status=$?
-  fi
-  exit "$tap_status"
-) > "$tap_log" 2>&1 &
-tap_pid=$!
 
 php_darwin_set_phase homebrew.receipts
 metadata="$brew_prefix/$internal_metadata_path"
@@ -1739,18 +1820,20 @@ while IFS=$'\t' read -r package_name opt_target keg_only; do
     fi
   fi
 done < "$packages_file"
-if [ "$tap_was_trusted" = false ]; then
+if [ -n "$tap_pid" ] && [ ! -f "$tap_path/Formula/$formula.rb" ]; then
   php_darwin_wait_for_tap
-  if [ "$formula_was_trusted" = false ]; then
-    php_darwin_set_phase homebrew.trust
-    : > "$formula_trust_pending" || php_darwin_die "could not record trust for $tap/$formula"
-    printf 'Trusting installed Homebrew formula %s\n' "$tap/$formula"
-    brew trust --formula "$tap/$formula" || php_darwin_die "could not trust $tap/$formula"
-    mv "$formula_trust_pending" "$formula_trust_marker" || \
-      php_darwin_die "could not commit trust for $tap/$formula"
-  fi
+fi
+if [ "$tap_was_trusted" = false ] && [ "$formula_was_trusted" = false ]; then
+  php_darwin_wait_for_tap
+  php_darwin_set_phase homebrew.trust
+  : > "$formula_trust_pending" || php_darwin_die "could not record trust for $tap/$formula"
+  printf 'Trusting installed Homebrew formula %s\n' "$tap/$formula"
+  brew trust --formula "$tap/$formula" || php_darwin_die "could not trust $tap/$formula"
+  mv "$formula_trust_pending" "$formula_trust_marker" || \
+    php_darwin_die "could not commit trust for $tap/$formula"
 fi
 php_darwin_set_phase homebrew.dependencies
+[ -z "$tap_pid" ] || dependencies_started_with_pending_tap=true
 brew missing "$formula" > "$missing_log" 2>&1 &
 missing_pid=$!
 
@@ -1815,6 +1898,12 @@ php_darwin_wait_for_dependencies
 
 php_darwin_set_phase homebrew.tap
 php_darwin_wait_for_tap
+if [ "$tap_replaced" = true ] && [ "$dependencies_started_with_pending_tap" = true ]; then
+  php_darwin_set_phase homebrew.dependencies
+  brew missing "$formula" > "$missing_log" 2>&1 &
+  missing_pid=$!
+  php_darwin_wait_for_dependencies
+fi
 
 php_darwin_set_phase runtime.verify
 php_bin="$brew_prefix/opt/$formula/bin/php"
@@ -1822,18 +1911,21 @@ php_bin="$brew_prefix/opt/$formula/bin/php"
 installed_semver=$($php_bin -r 'echo PHP_VERSION;') || php_darwin_die 'cached PHP could not report its version'
 [ "${installed_semver%.*}" = "$version" ] || php_darwin_die "cache installed PHP $installed_semver for requested $version"
 
-if [ "$tap_path_backed_up" = true ]; then
-  php_darwin_remove_tap_backup "$brew_prefix" "$tap_path_backup" || \
-    php_darwin_die 'could not remove the replaced Homebrew tap backup'
-  tap_path_backed_up=false
-fi
-
 if [ "$tap_snapshot_backed_up" = true ]; then
   [ ! -e "$tap_snapshot_path" ] && [ ! -L "$tap_snapshot_path" ] || \
     php_darwin_die 'could not restore the previous Homebrew tap snapshot over an existing path'
   mv "$tap_snapshot_backup" "$tap_snapshot_path" || \
     php_darwin_die 'could not restore the previous Homebrew tap snapshot'
   tap_snapshot_backed_up=false
+fi
+if [ "$tap_path_backed_up" = true ]; then
+  # The new tap is committed at this point. A best-effort cleanup failure must
+  # not trigger rollback from a backup that may already be partially removed.
+  tap_path_backed_up=false
+  tap_installed=false
+  php_darwin_remove_tap_backup "$brew_prefix" "$tap_path_backup" || \
+    printf 'php-darwin: could not remove the retired Homebrew tap backup: %s\n' \
+      "$tap_path_backup" >&2
 fi
 php_darwin_set_phase complete
 printf 'Installed PHP %s (%s, %s, %s) from %s\n' \

@@ -108,6 +108,7 @@ while IFS= read -r relative; do
       /^\. "\$script_dir\/lib\.sh"$/ { next }
       {
         gsub(/bash "\$script_dir\/source-hash\.sh"/, "php_darwin_source_hash")
+        gsub(/bash "\$script_dir\/validate-tap\.sh"/, "php_darwin_validate_tap")
         print
       }
     ' "$root/$relative"
@@ -127,6 +128,7 @@ done < "$seen_inputs"
       gsub(/bash "\$script_dir\/existing-paths\.sh"/, "php_darwin_existing_paths")
       gsub(/bash "\$script_dir\/extract\.sh"/, "php_darwin_extract")
       gsub(/bash "\$script_dir\/validate-tap\.sh"/, "php_darwin_validate_tap")
+      gsub(/bash "\$script_dir\/tap-action\.sh"/, "php_darwin_tap_action")
       gsub(/bash "\$script_dir\/verify-links\.sh"/, "php_darwin_verify_links")
       print
     }
