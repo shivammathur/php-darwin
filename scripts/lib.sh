@@ -193,7 +193,6 @@ php_darwin_validate_ts() {
 php_darwin_normalize_arch() {
   case "${1:-$(uname -m)}" in
     arm64|aarch64) printf 'arm64\n' ;;
-    x86_64|amd64) printf 'x86_64\n' ;;
     *) php_darwin_die "unsupported architecture: ${1:-<empty>}" ;;
   esac
 }
@@ -309,7 +308,7 @@ php_darwin_config_id() {
 php_darwin_metadata_path() {
   local asset=$1
 
-  [[ "$asset" =~ ^php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_(arm64|x86_64)\.tar\.zst$ ]] || \
+  [[ "$asset" =~ ^php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_arm64\.tar\.zst$ ]] || \
     php_darwin_die "invalid cache archive name: $asset"
   printf 'var/php-darwin/%s.json\n' "${asset%.tar.zst}"
 }
@@ -416,7 +415,7 @@ php_darwin_validate_release_manifest() {
     ([.assets[].name] | unique | length) == (.assets | length) and
     all(.assets[];
       .architecture as $architecture |
-      ($architecture == "arm64" or $architecture == "x86_64") and
+      ($architecture == "arm64") and
       (.build == "debug" or .build == "release") and
       (.thread_safety == "nts" or .thread_safety == "zts") and
       .name == ("php_" + $version + "-" + .thread_safety + "-" + .build +

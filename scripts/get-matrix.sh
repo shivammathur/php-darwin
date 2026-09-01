@@ -8,7 +8,7 @@ php_version=${PHP_VERSION:?}
 channel=${CHANNEL:?}
 builds=${BUILDS:-debug release}
 thread_safety=${TS:-nts zts}
-architectures=${ARCHITECTURES:-arm64 x86_64}
+architectures=${ARCHITECTURES:-arm64}
 publish=${PUBLISH:-false}
 
 php_darwin_validate_channel "$php_version" "$channel"
@@ -39,7 +39,7 @@ for requested_arch in "${arch_values[@]}"; do
 done
 case "$publish" in
   true)
-    [ "${#build_values[@]}" -eq 2 ] && [ "${#ts_values[@]}" -eq 2 ] && [ "${#arch_values[@]}" -eq 2 ] || \
+    [ "${#build_values[@]}" -eq 2 ] && [ "${#ts_values[@]}" -eq 2 ] && [ "${#arch_values[@]}" -eq 1 ] || \
       php_darwin_die 'publishing requires the complete build, thread-safety, and architecture matrix'
     ;;
   false) ;;

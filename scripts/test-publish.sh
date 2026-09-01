@@ -43,7 +43,7 @@ while read -r build ts extra; do
   requested=$(php_darwin_requested_formula "$version" "$build" "$ts")
   formula_hash=$(awk -F '\t' -v formula="$formula" '$1 == formula { print $2; found=1; exit } END { exit !found }' \
     "$formulae") || php_darwin_die "could not read fixture hash for $formula"
-  for arch in arm64 x86_64; do
+  while IFS= read -r arch; do
     asset=$(php_darwin_asset "$version" "$build" "$ts" "$arch")
     artifact_dir="$builds_dir/$build-$ts-$arch"
     archive="$artifact_dir/$asset"
@@ -76,7 +76,7 @@ while read -r build ts extra; do
       .thread_safety=$thread_safety
     ' "$script_dir/../templates/cache-metadata.json" > "$metadata" || \
       php_darwin_die 'could not write metadata fixture'
-  done
+  done < <(jq -r 'keys[]' "$script_dir/../conf/platforms.json")
 done < "$script_dir/../conf/variants"
 
 export GH_LOG=$gh_log
@@ -103,7 +103,7 @@ jq -e --arg source_hash "$source_hash" --argjson count "$(php_darwin_expected_as
   .homebrew_php_commit == "0123456789abcdef0123456789abcdef01234567" and
   .source_hash == $source_hash and (.assets | length == $count) and
   ([.assets[].name] | unique | length == $count) and
-  ([.assets[].architecture] | unique | sort) == ["arm64","x86_64"]
+  ([.assets[].architecture] | unique) == ["arm64"]
 ' "$gh_manifest" >/dev/null || php_darwin_die 'publisher created an invalid release manifest'
 manifest_asset=$(jq -er '.assets[0].name' "$gh_manifest") || \
   php_darwin_die 'could not select a published manifest asset'

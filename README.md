@@ -11,14 +11,13 @@
 - Stable: PHP 5.6 through PHP 8.5
 - Nightly: PHP 8.6
 - Variants: NTS and ZTS, debug and release
-- Architectures: ARM64 and x86_64
+- Architecture: ARM64
 
 ## Labels and tags
 
 | Architecture | Build label | Test labels | Platform tag |
 |---|---|---|---|
 | ARM64 | `macos-14` | `macos-14`, `macos-15`, `macos-26`, `macos-latest` | `arm64_sonoma` |
-| x86_64 | `macos-15-intel` | `macos-15-intel`, `macos-26-intel` | `sequoia` |
 
 Each PHP minor uses a release tag such as `php-8.5`. Assets use the format
 `php_8.5-nts-release+darwin_arm64.tar.zst` and are replaced when a new patch release is available.

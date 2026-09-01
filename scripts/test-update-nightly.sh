@@ -40,7 +40,7 @@ write_manifest() {
     [ -n "$build" ] || continue
     case "$build" in \#*) continue ;; esac
     [ -z "$extra" ] || php_darwin_die "invalid configured variant: $build $ts $extra"
-    for arch in arm64 x86_64; do
+    while IFS= read -r arch; do
       jq -cn --arg architecture "$arch" --arg build "$build" \
         --arg name "$(php_darwin_asset 8.6 "$build" "$ts" "$arch")" \
         --arg thread_safety "$ts" --arg sha256 "$(printf '%064d' 0)" \
@@ -49,7 +49,7 @@ write_manifest() {
         '{architecture:$architecture,build:$build,bytes:1,minimum_macos:$minimum_macos,
           name:$name,sha256:$sha256,thread_safety:$thread_safety}' >> "$assets_jsonl" || \
         php_darwin_die 'could not write a nightly asset fixture'
-    done
+    done < <(jq -r 'keys[]' "$script_dir/../conf/platforms.json")
   done < "$script_dir/../conf/variants"
   jq -s --arg commit "$commit" --arg homebrew_commit 0123456789abcdef0123456789abcdef01234567 \
     --arg source_hash "$(printf '%064d' 1)" '

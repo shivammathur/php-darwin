@@ -195,7 +195,7 @@ if gh release view "$tag" --repo "$release_repository" >/dev/null 2>&1; then
     php_darwin_die "could not back up existing release assets from $tag"
 else
   gh release create "$tag" --repo "$release_repository" --title "PHP $version" \
-    --notes "Architecture-specific Homebrew PHP $version caches for macOS runners." --latest=false || \
+    --notes "ARM64 Homebrew PHP $version caches for macOS runners." --latest=false || \
     php_darwin_die "could not create release $tag"
 fi
 publish_mutation_started=true

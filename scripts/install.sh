@@ -194,7 +194,6 @@ php_darwin_validate_ts() {
 php_darwin_normalize_arch() {
   case "${1:-$(uname -m)}" in
     arm64|aarch64) printf 'arm64\n' ;;
-    x86_64|amd64) printf 'x86_64\n' ;;
     *) php_darwin_die "unsupported architecture: ${1:-<empty>}" ;;
   esac
 }
@@ -310,7 +309,7 @@ php_darwin_config_id() {
 php_darwin_metadata_path() {
   local asset=$1
 
-  [[ "$asset" =~ ^php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_(arm64|x86_64)\.tar\.zst$ ]] || \
+  [[ "$asset" =~ ^php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_arm64\.tar\.zst$ ]] || \
     php_darwin_die "invalid cache archive name: $asset"
   printf 'var/php-darwin/%s.json\n' "${asset%.tar.zst}"
 }
@@ -417,7 +416,7 @@ php_darwin_validate_release_manifest() {
     ([.assets[].name] | unique | length) == (.assets | length) and
     all(.assets[];
       .architecture as $architecture |
-      ($architecture == "arm64" or $architecture == "x86_64") and
+      ($architecture == "arm64") and
       (.build == "debug" or .build == "release") and
       (.thread_safety == "nts" or .thread_safety == "zts") and
       .name == ("php_" + $version + "-" + .thread_safety + "-" + .build +
@@ -589,13 +588,6 @@ PHP_DARWIN_CONFIG_PACKAGE_JSON
     "minimum_macos": 14,
     "platform_key": "arm64_sonoma",
     "test_runners": ["macos-14", "macos-15", "macos-26", "macos-latest"]
-  },
-  "x86_64": {
-    "build_runner": "macos-15-intel",
-    "brew_prefix": "/usr/local",
-    "minimum_macos": 15,
-    "platform_key": "sequoia",
-    "test_runners": ["macos-15-intel", "macos-26-intel"]
   }
 }
 PHP_DARWIN_CONFIG_PLATFORMS_JSON
@@ -656,7 +648,7 @@ output=${3:?}
   printf 'Archive not found: %s\n' "$archive" >&2
   exit 1
 }
-[[ "$member" =~ ^var/php-darwin/php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_(arm64|x86_64)\.json$ ]] || {
+[[ "$member" =~ ^var/php-darwin/php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_arm64\.json$ ]] || {
   printf 'Unsafe metadata member: %s\n' "$member" >&2
   exit 1
 }

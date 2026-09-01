@@ -54,5 +54,5 @@ for version in "${version_values[@]}"; do
   fi
   gh workflow run cache-stable.yml --repo "${GITHUB_REPOSITORY:-shivammathur/php-darwin}" \
     --ref "${GITHUB_REF_NAME:-main}" -f php-version="$version" -f builds='debug release' \
-    -f ts='nts zts' -f architectures='arm64 x86_64' -f publish=true || exit 1
+    -f ts='nts zts' -f publish=true || exit 1
 done

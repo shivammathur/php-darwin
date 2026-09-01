@@ -17,9 +17,7 @@ on:
         options:
           - macos-14
           - macos-15
-          - macos-15-intel
           - macos-26
-          - macos-26-intel
           - macos-latest
         required: true
         type: choice

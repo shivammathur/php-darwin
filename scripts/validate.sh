@@ -42,7 +42,6 @@ while read -r channel version extra; do
     php_darwin_formula "$version" "$build" "$ts" >/dev/null
     php_darwin_requested_formula "$version" "$build" "$ts" >/dev/null
     php_darwin_asset "$version" "$build" "$ts" arm64 >/dev/null
-    php_darwin_asset "$version" "$build" "$ts" x86_64 >/dev/null
   done < "$script_dir/../conf/variants"
 done < "$script_dir/../conf/versions"
 [ "$version_count" -eq 13 ] || php_darwin_die "expected 13 configured PHP versions, found $version_count"
@@ -59,15 +58,17 @@ for required_variant in release/nts release/zts debug/nts debug/zts; do
 done
 
 jq -e '
-  (keys | sort) == ["arm64", "x86_64"] and
-  .arm64.brew_prefix == "/opt/homebrew" and .x86_64.brew_prefix == "/usr/local" and
+  keys == ["arm64"] and
+  .arm64.brew_prefix == "/opt/homebrew" and
   .arm64.build_runner == "macos-14" and .arm64.minimum_macos == 14 and
   .arm64.platform_key == "arm64_sonoma" and
-  .arm64.test_runners == ["macos-14", "macos-15", "macos-26", "macos-latest"] and
-  .x86_64.build_runner == "macos-15-intel" and .x86_64.minimum_macos == 15 and
-  .x86_64.platform_key == "sequoia" and
-  .x86_64.test_runners == ["macos-15-intel", "macos-26-intel"]
+  .arm64.test_runners == ["macos-14", "macos-15", "macos-26", "macos-latest"]
 ' "$script_dir/../conf/platforms.json" >/dev/null || php_darwin_die 'invalid platform configuration'
+[ "$(php_darwin_expected_asset_count)" -eq 4 ] || php_darwin_die 'expected four ARM64 release assets'
+if (php_darwin_normalize_arch x86_64) >/dev/null 2>&1 || \
+  (php_darwin_normalize_arch amd64) >/dev/null 2>&1; then
+  php_darwin_die 'Intel architecture aliases are still supported'
+fi
 
 archive_roots=
 while IFS= read -r root extra; do
