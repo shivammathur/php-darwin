@@ -25,6 +25,14 @@ fi
 if grep -Fq 'GITHUB_PATH' "$installer"; then
   php_darwin_die 'standalone installer must use Homebrew links instead of changing GITHUB_PATH'
 fi
+if ! awk '
+  $0 == "# Source: scripts/install-package.sh" { install=1; next }
+  install && index($0, "checksum mismatch for $asset") { verified=NR }
+  install && index($0, "could not read metadata from the verified release archive") { parsed=NR }
+  END { exit !(verified > 0 && parsed > verified) }
+' "$installer"; then
+  php_darwin_die 'standalone installer parses a release archive before checksum verification'
+fi
 
 input_count=0
 while IFS= read -r relative extra; do

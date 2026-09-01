@@ -79,6 +79,12 @@ while read -r build ts extra; do
   done < <(jq -r 'keys[]' "$script_dir/../conf/platforms.json")
 done < "$script_dir/../conf/variants"
 
+# One schema-1 stable cache may still use the legacy explicit null. Publishing
+# must normalize it without accepting a missing field.
+jq '.php_src_commit=null' "$metadata" > "$metadata.legacy" || \
+  php_darwin_die 'could not create a legacy publisher input fixture'
+mv "$metadata.legacy" "$metadata" || php_darwin_die 'could not install the legacy publisher input fixture'
+
 export GH_LOG=$gh_log
 export GH_MANIFEST=$gh_manifest
 export GH_INSTALLER=$gh_installer
@@ -125,19 +131,44 @@ legacy_manifest_values=$(php_darwin_validate_release_manifest \
   php_darwin_die 'legacy stable manifest did not pass compatibility validation'
 [ "$legacy_manifest_values" = "$manifest_values" ] || \
   php_darwin_die 'legacy stable manifest fields were not normalized'
+missing_commit_manifest="$work_dir/missing-commit-stable-manifest.json"
+jq 'del(.php_src_commit)' "$gh_manifest" > "$missing_commit_manifest" || \
+  php_darwin_die 'could not create a missing-commit stable manifest fixture'
+if php_darwin_validate_release_manifest \
+  "$missing_commit_manifest" "$version" stable "$manifest_asset" >/dev/null 2>&1; then
+  php_darwin_die 'stable manifest validation accepted a missing PHP source commit field'
+fi
 
 legacy_metadata="$work_dir/legacy-stable-metadata.json"
 jq '.php_src_commit=null' "$metadata" > "$legacy_metadata" || \
   php_darwin_die 'could not create a legacy stable metadata fixture'
-legacy_metadata_values=$(jq -er \
-  '[.build,.thread_safety,.architecture,.brew_prefix,(.minimum_macos|tostring),.platform_key] | @tsv' \
-  "$legacy_metadata") || php_darwin_die 'could not read legacy stable metadata fields'
-IFS=$'\t' read -r legacy_build legacy_ts legacy_arch legacy_prefix legacy_minimum legacy_platform \
-  <<< "$legacy_metadata_values" || php_darwin_die 'could not parse legacy stable metadata fields'
+legacy_build=$(jq -er '.build' "$legacy_metadata") || php_darwin_die 'could not read the legacy build'
+legacy_ts=$(jq -er '.thread_safety' "$legacy_metadata") || php_darwin_die 'could not read legacy thread safety'
+legacy_arch=$(jq -er '.architecture' "$legacy_metadata") || php_darwin_die 'could not read the legacy architecture'
+legacy_prefix=$(jq -er --arg arch "$legacy_arch" '.[$arch].brew_prefix' \
+  "$script_dir/../conf/platforms.json") || php_darwin_die 'could not read the configured legacy prefix'
+legacy_minimum=$(jq -er --arg arch "$legacy_arch" '.[$arch].minimum_macos' \
+  "$script_dir/../conf/platforms.json") || php_darwin_die 'could not read the configured minimum macOS'
+legacy_platform=$(jq -er --arg arch "$legacy_arch" '.[$arch].platform_key' \
+  "$script_dir/../conf/platforms.json") || php_darwin_die 'could not read the configured legacy platform'
 php_darwin_validate_cache_metadata "$legacy_metadata" "$version" "$legacy_build" "$legacy_ts" \
   "$legacy_arch" "$legacy_prefix" 26 "$source_commit" '' "$(php_darwin_package_config current_version)" \
   "$(php_darwin_package_config tap_snapshot)" "$legacy_minimum" "$legacy_platform" >/dev/null || \
   php_darwin_die 'legacy stable cache metadata did not pass compatibility validation'
+if php_darwin_validate_cache_metadata "$legacy_metadata" "$version" "$legacy_build" "$legacy_ts" \
+  "$legacy_arch" "$legacy_prefix" 26 "$source_commit" '' "$(php_darwin_package_config current_version)" \
+  "$(php_darwin_package_config tap_snapshot)" "$((legacy_minimum + 1))" "$legacy_platform" \
+  >/dev/null 2>&1; then
+  php_darwin_die 'legacy stable cache metadata ignored the configured minimum macOS'
+fi
+missing_commit_metadata="$work_dir/missing-commit-stable-metadata.json"
+jq 'del(.php_src_commit)' "$legacy_metadata" > "$missing_commit_metadata" || \
+  php_darwin_die 'could not create a missing-commit stable metadata fixture'
+if php_darwin_validate_cache_metadata "$missing_commit_metadata" "$version" "$legacy_build" "$legacy_ts" \
+  "$legacy_arch" "$legacy_prefix" 26 "$source_commit" '' "$(php_darwin_package_config current_version)" \
+  "$(php_darwin_package_config tap_snapshot)" "$legacy_minimum" "$legacy_platform" >/dev/null 2>&1; then
+  php_darwin_die 'stable cache metadata validation accepted a missing PHP source commit field'
+fi
 grep -Fq '"php_version": "7.0"' "$gh_installer" || \
   php_darwin_die 'published installer did not embed the matching release manifest'
 

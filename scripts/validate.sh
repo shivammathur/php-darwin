@@ -189,6 +189,23 @@ if bash -c '
 fi
 grep -Fq 'php-darwin: archive.extract failed: fixture extraction error' "$phase_failure_log" || \
   php_darwin_die 'installer did not explain its phase failure'
+if ! (
+  brew() { printf '{"taps":["shivammathur/php"]}\n'; }
+  php_darwin_tap_trusted shivammathur/php
+); then
+  php_darwin_die 'Homebrew trust helper did not recognize a trusted tap'
+fi
+if (
+  brew() { printf '{"taps":[]}\n'; }
+  php_darwin_tap_trusted shivammathur/php
+); then
+  php_darwin_die 'Homebrew trust helper accepted an untrusted tap'
+fi
+(
+  brew() { printf '{"invalid":true}\n'; }
+  php_darwin_tap_trusted shivammathur/php 2>/dev/null
+  [ "$?" -eq 2 ]
+) || php_darwin_die 'Homebrew trust helper masked malformed trust state'
 
 [ "$(php_darwin_prepare_tap_path "$tap_fixture" "$tap_backup")" = absent ] || \
   php_darwin_die 'absent Homebrew tap fixture returned the wrong state'

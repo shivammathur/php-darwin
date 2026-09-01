@@ -79,12 +79,21 @@ while IFS= read -r metadata; do
   [ -n "$version" ] || version=$metadata_version
   [ "$metadata_version" = "$version" ] || php_darwin_die 'publish input contains multiple PHP minor versions'
   channel=$(php_darwin_version_channel "$version")
-  metadata_php_src_commit=$(jq -er '.php_src_commit | select(type == "string")' "$metadata") || \
+  metadata_php_src_commit=$(jq -er --arg channel "$channel" '
+    select(.schema == 1 and has("php_src_commit")) |
+    if $channel == "nightly" then
+      .php_src_commit | select(type == "string" and test("^[0-9a-f]{40}$"))
+    elif $channel == "stable" then
+      if .php_src_commit == null or .php_src_commit == "" then "-" else error("invalid") end
+    else
+      error("invalid channel")
+    end
+  ' "$metadata") || \
     php_darwin_die "PHP source commit is missing in $metadata"
   case "$channel" in
     nightly) [[ "$metadata_php_src_commit" =~ ^[0-9a-f]{40}$ ]] || \
       php_darwin_die "nightly PHP source commit is invalid in $metadata" ;;
-    stable) [ -z "$metadata_php_src_commit" ] || \
+    stable) [ "$metadata_php_src_commit" = - ] || \
       php_darwin_die "stable PHP source commit must be empty in $metadata" ;;
   esac
   metadata_build=$(jq -er '.build' "$metadata") || php_darwin_die "build type is missing in $metadata"
@@ -129,6 +138,7 @@ while IFS= read -r metadata; do
     php_darwin_die "could not read formula metadata from $metadata"
   jq -er '.source_hash' "$metadata" >> "$source_hashes" || php_darwin_die "could not read source hash from $metadata"
   jq -er '.php_semver' "$metadata" >> "$semvers" || php_darwin_die "could not read PHP version from $metadata"
+  [ "$metadata_php_src_commit" != - ] || metadata_php_src_commit=
   printf '%s\n' "$metadata_php_src_commit" >> "$php_src_commits" || \
     php_darwin_die "could not read the PHP source commit from $metadata"
   jq -cn --arg architecture "$metadata_arch" --arg build "$metadata_build" --arg name "$expected_archive" \

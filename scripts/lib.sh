@@ -19,6 +19,24 @@ php_darwin_set_phase() {
   PHP_DARWIN_PHASE=$1
 }
 
+php_darwin_tap_trusted() {
+  local tap=$1
+  local trust_json
+  local trust_state
+
+  trust_json=$(brew trust --json=v1) || return 2
+  trust_state=$(jq -er --arg tap "$tap" '
+    if (.taps | type) != "array" then
+      error("invalid Homebrew trust response")
+    elif (.taps | index($tap)) != null then
+      "true"
+    else
+      "false"
+    end
+  ' <<< "$trust_json") || return 2
+  [ "$trust_state" = true ]
+}
+
 php_darwin_prepare_tap_path() {
   local tap_path=$1
   local backup_path=$2
@@ -406,7 +424,7 @@ php_darwin_validate_release_manifest() {
     (.source_hash | type == "string" and test("^[0-9a-f]{64}$")) and
     (.php_semver | type == "string" and startswith($version + ".") and
       test("^[0-9]+\\.[0-9]+\\.[0-9]+$")) and
-    (if $channel == "nightly" then
+    (has("php_src_commit") and if $channel == "nightly" then
        (.php_src_commit | type == "string" and test("^[0-9a-f]{40}$"))
      else
        (.php_src_commit == "" or .php_src_commit == null)
@@ -512,7 +530,7 @@ php_darwin_validate_cache_metadata() {
     ($expected_commit == "" or .homebrew_php_commit == $expected_commit) and
     (.formula_sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
     (.source_hash | type == "string" and test("^[0-9a-f]{64}$")) and
-    (if $channel == "nightly" then
+    (has("php_src_commit") and if $channel == "nightly" then
        (.php_src_commit | type == "string" and test("^[0-9a-f]{40}$")) and
        ($expected_php_src_commit == "" or .php_src_commit == $expected_php_src_commit)
      else

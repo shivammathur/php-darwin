@@ -35,16 +35,28 @@ export HOMEBREW_NO_ENV_HINTS=1
 export HOMEBREW_NO_INSTALL_CLEANUP=1
 export HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1
 
+php_darwin_test_tap_trust_state() {
+  local trust_status
+
+  if php_darwin_tap_trusted "$tap"; then
+    printf 'true\n'
+  else
+    trust_status=$?
+    [ "$trust_status" -eq 1 ] || return 1
+    printf 'false\n'
+  fi
+}
+
 prepare_homebrew() {
   local installed_php
   local installed_php_formulae=()
+  local tap_trust_state
 
   [[ "$source_commit" =~ ^[0-9a-f]{40}$ ]] || php_darwin_die 'invalid pinned homebrew-php source commit'
-  if brew trust --json=v1 | jq -e --arg tap "$tap" '.taps | index($tap) != null' >/dev/null; then
-    printf 'true\n' > "$tap_trust_before"
-  else
-    printf 'false\n' > "$tap_trust_before"
-  fi
+  tap_trust_state=$(php_darwin_test_tap_trust_state) || \
+    php_darwin_die "could not read the initial $tap trust state"
+  printf '%s\n' "$tap_trust_state" > "$tap_trust_before" || \
+    php_darwin_die "could not record the initial $tap trust state"
   brew untap --force "$tap" >/dev/null 2>&1 || true
   while IFS= read -r installed_php; do
     [[ "$installed_php" =~ ^php(@[0-9]+\.[0-9]+)?(-debug)?(-zts)?$ ]] && \
@@ -116,9 +128,19 @@ validate_runtime() {
 }
 
 cleanup_homebrew_validation() {
+  local cleanup_status=0
+  local trust_status
+
   if [ -f "$validation_trust_added" ]; then
-    brew untrust --tap "$tap" >/dev/null 2>&1 || true
-    rm -f "$validation_trust_added"
+    if php_darwin_tap_trusted "$tap"; then
+      brew untrust --tap "$tap" >/dev/null 2>&1 || cleanup_status=1
+    else
+      trust_status=$?
+      [ "$trust_status" -eq 1 ] || cleanup_status=1
+    fi
+    if [ "$cleanup_status" -eq 0 ]; then
+      rm -f "$validation_trust_added" || cleanup_status=1
+    fi
   fi
   brew services stop "$formula" >/dev/null 2>&1 || true
   if brew list --versions hello >/dev/null 2>&1; then
@@ -128,21 +150,40 @@ cleanup_homebrew_validation() {
     chmod u+w "$sentinel" >/dev/null 2>&1 || true
     rm -f "$sentinel" >/dev/null 2>&1 || true
   fi
+  return "$cleanup_status"
+}
+
+php_darwin_test_install_cleanup() {
+  local cleanup_status=$?
+
+  trap - EXIT
+  if ! cleanup_homebrew_validation; then
+    printf 'php-darwin: could not restore the Homebrew validation trust state\n' >&2
+    [ "$cleanup_status" -ne 0 ] || cleanup_status=1
+  fi
+  exit "$cleanup_status"
 }
 
 reset_homebrew() {
   local postinstall_path
+  local trust_status
 
-  cleanup_homebrew_validation
+  cleanup_homebrew_validation || php_darwin_die 'could not clean the previous Homebrew validation state'
+  trap php_darwin_test_install_cleanup EXIT
   brew services stop "$formula" >/dev/null 2>&1 || true
   if brew list --versions "$formula" >/dev/null 2>&1; then
-    if ! brew trust --json=v1 | jq -e --arg tap "$tap" '.taps | index($tap) != null' >/dev/null; then
+    if php_darwin_tap_trusted "$tap"; then
+      :
+    else
+      trust_status=$?
+      [ "$trust_status" -eq 1 ] || php_darwin_die "could not read the $tap trust state during reset"
+      : > "$validation_trust_added" || \
+        php_darwin_die "could not record temporary trust for the $tap validation reset"
       brew trust --tap "$tap" >/dev/null || php_darwin_die "could not trust $tap for validation reset"
-      : > "$validation_trust_added"
     fi
     brew uninstall --force --ignore-dependencies "$formula" || \
       php_darwin_die "could not reset $formula after validation"
-    cleanup_homebrew_validation
+    cleanup_homebrew_validation || php_darwin_die "could not restore $tap trust after validation reset"
   fi
   rm -rf "${brew_prefix:?}/$(php_darwin_pear_path "$version" "$formula")" || \
     php_darwin_die 'could not reset formula-managed PEAR state'
@@ -156,6 +197,8 @@ reset_homebrew() {
   if brew list --formula | grep -Eq '^php(@[0-9]+\.[0-9]+)?(-debug)?(-zts)?$'; then
     php_darwin_die 'a Homebrew PHP formula remained after the validation reset'
   fi
+  cleanup_homebrew_validation || php_darwin_die 'could not clean the Homebrew validation state after reset'
+  trap - EXIT
   printf 'Reset Homebrew after validating %s\n' "$asset"
 }
 
@@ -171,8 +214,11 @@ validate_homebrew() {
   local tap_branch
   local tap_path
   local tap_repository
+  local tap_trust_before_value
+  local tap_trust_after
+  local trust_status
 
-  trap cleanup_homebrew_validation EXIT
+  trap php_darwin_test_install_cleanup EXIT
 
   tap_path=$(brew --repository "$tap") || php_darwin_die "could not resolve the installed $tap repository"
   [ -d "$tap_path/.git" ] || php_darwin_die "the cache did not install the $tap repository"
@@ -186,14 +232,30 @@ validate_homebrew() {
   [ "$(git -C "$tap_path" config "branch.$tap_branch.remote")" = origin ] && \
     [ "$(git -C "$tap_path" config "branch.$tap_branch.merge")" = "refs/heads/$tap_branch" ] || \
     php_darwin_die "the cached $tap snapshot is not configured for updates"
-  if brew trust --json=v1 | jq -e --arg tap "$tap" '.taps | index($tap) != null' >/dev/null; then
-    tap_trust_after=true
-  else
-    tap_trust_after=false
-  fi
-  [ "$tap_trust_after" = true ] || php_darwin_die 'cache installation did not trust the installed Homebrew tap'
-  if [ "$(cat "$tap_trust_before")" = false ]; then
-    : > "$validation_trust_added"
+  tap_trust_before_value=$(cat "$tap_trust_before") || \
+    php_darwin_die "could not read the initial $tap trust state"
+  case "$tap_trust_before_value" in true|false) ;; *)
+    php_darwin_die "invalid initial $tap trust state"
+    ;;
+  esac
+  tap_trust_after=$(php_darwin_test_tap_trust_state) || \
+    php_darwin_die "could not read the installed $tap trust state"
+  [ "$tap_trust_after" = "$tap_trust_before_value" ] || \
+    php_darwin_die 'cache installation changed the Homebrew tap trust state'
+  if [ "$tap_trust_after" = false ]; then
+    : > "$validation_trust_added" || \
+      php_darwin_die "could not record temporary trust for $tap validation"
+    brew trust --tap "$tap" >/dev/null || php_darwin_die "could not trust $tap for validation"
+    if php_darwin_tap_trusted "$tap"; then
+      :
+    else
+      trust_status=$?
+      if [ "$trust_status" -eq 1 ]; then
+        php_darwin_die "Homebrew did not temporarily trust $tap"
+      else
+        php_darwin_die "could not verify temporary trust for $tap"
+      fi
+    fi
   fi
   brew formula "$tap/$requested_formula" >/dev/null || \
     php_darwin_die "Homebrew cannot resolve $tap/$requested_formula from the cached tap"
@@ -274,7 +336,7 @@ validate_homebrew() {
     fi
   fi
 
-  cleanup_homebrew_validation
+  cleanup_homebrew_validation || php_darwin_die 'could not clean the Homebrew validation state'
   trap - EXIT
 
   printf 'Homebrew validation passed for %s\n' "$asset"
