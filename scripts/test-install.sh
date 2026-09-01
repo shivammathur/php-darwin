@@ -27,7 +27,6 @@ php_config="$brew_prefix/opt/$formula/bin/php-config"
 php_fpm="$brew_prefix/opt/$formula/sbin/php-fpm"
 pear_fixture="$brew_prefix/$(php_darwin_pear_path "$version" "$formula")/php-darwin-user-package.php"
 tap_trust_before="${RUNNER_TEMP:?}/php-darwin-tap-trust-before.txt"
-validation_trust_added="${RUNNER_TEMP:?}/php-darwin-validation-trust-added"
 
 export HOMEBREW_NO_AUTO_UPDATE=1
 export HOMEBREW_NO_AUTOREMOVE=1
@@ -128,20 +127,6 @@ validate_runtime() {
 }
 
 cleanup_homebrew_validation() {
-  local cleanup_status=0
-  local trust_status
-
-  if [ -f "$validation_trust_added" ]; then
-    if php_darwin_tap_trusted "$tap"; then
-      brew untrust --tap "$tap" >/dev/null 2>&1 || cleanup_status=1
-    else
-      trust_status=$?
-      [ "$trust_status" -eq 1 ] || cleanup_status=1
-    fi
-    if [ "$cleanup_status" -eq 0 ]; then
-      rm -f "$validation_trust_added" || cleanup_status=1
-    fi
-  fi
   brew services stop "$formula" >/dev/null 2>&1 || true
   if brew list --versions hello >/dev/null 2>&1; then
     brew uninstall --force hello >/dev/null 2>&1 || true
@@ -150,7 +135,7 @@ cleanup_homebrew_validation() {
     chmod u+w "$sentinel" >/dev/null 2>&1 || true
     rm -f "$sentinel" >/dev/null 2>&1 || true
   fi
-  return "$cleanup_status"
+  return 0
 }
 
 php_darwin_test_install_cleanup() {
@@ -166,24 +151,15 @@ php_darwin_test_install_cleanup() {
 
 reset_homebrew() {
   local postinstall_path
+  local tap_trust_before_value
   local trust_status
 
   cleanup_homebrew_validation || php_darwin_die 'could not clean the previous Homebrew validation state'
   trap php_darwin_test_install_cleanup EXIT
   brew services stop "$formula" >/dev/null 2>&1 || true
   if brew list --versions "$formula" >/dev/null 2>&1; then
-    if php_darwin_tap_trusted "$tap"; then
-      :
-    else
-      trust_status=$?
-      [ "$trust_status" -eq 1 ] || php_darwin_die "could not read the $tap trust state during reset"
-      : > "$validation_trust_added" || \
-        php_darwin_die "could not record temporary trust for the $tap validation reset"
-      brew trust --tap "$tap" >/dev/null || php_darwin_die "could not trust $tap for validation reset"
-    fi
     brew uninstall --force --ignore-dependencies "$formula" || \
       php_darwin_die "could not reset $formula after validation"
-    cleanup_homebrew_validation || php_darwin_die "could not restore $tap trust after validation reset"
   fi
   rm -rf "${brew_prefix:?}/$(php_darwin_pear_path "$version" "$formula")" || \
     php_darwin_die 'could not reset formula-managed PEAR state'
@@ -196,6 +172,17 @@ reset_homebrew() {
     php_darwin_die 'could not reset formula-managed PHP configuration'
   if brew list --formula | grep -Eq '^php(@[0-9]+\.[0-9]+)?(-debug)?(-zts)?$'; then
     php_darwin_die 'a Homebrew PHP formula remained after the validation reset'
+  fi
+  tap_trust_before_value=$(cat "$tap_trust_before") || \
+    php_darwin_die "could not read the initial $tap trust state during reset"
+  if [ "$tap_trust_before_value" = false ]; then
+    if php_darwin_formula_trusted "$tap/$formula"; then
+      php_darwin_die "Homebrew uninstall retained trust for $tap/$formula"
+    else
+      trust_status=$?
+      [ "$trust_status" -eq 1 ] || \
+        php_darwin_die "could not verify removal of $tap/$formula trust"
+    fi
   fi
   cleanup_homebrew_validation || php_darwin_die 'could not clean the Homebrew validation state after reset'
   trap - EXIT
@@ -243,17 +230,14 @@ validate_homebrew() {
   [ "$tap_trust_after" = "$tap_trust_before_value" ] || \
     php_darwin_die 'cache installation changed the Homebrew tap trust state'
   if [ "$tap_trust_after" = false ]; then
-    : > "$validation_trust_added" || \
-      php_darwin_die "could not record temporary trust for $tap validation"
-    brew trust --tap "$tap" >/dev/null || php_darwin_die "could not trust $tap for validation"
-    if php_darwin_tap_trusted "$tap"; then
+    if php_darwin_formula_trusted "$tap/$formula"; then
       :
     else
       trust_status=$?
       if [ "$trust_status" -eq 1 ]; then
-        php_darwin_die "Homebrew did not temporarily trust $tap"
+        php_darwin_die "cache installation did not trust $tap/$formula"
       else
-        php_darwin_die "could not verify temporary trust for $tap"
+        php_darwin_die "could not verify trust for $tap/$formula"
       fi
     fi
   fi

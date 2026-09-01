@@ -19,22 +19,32 @@ php_darwin_set_phase() {
   PHP_DARWIN_PHASE=$1
 }
 
-php_darwin_tap_trusted() {
-  local tap=$1
-  local trust_json
+php_darwin_trust_entry() {
+  local collection=$1
+  local target=$2
+  local trust_json=${3:-}
   local trust_state
 
-  trust_json=$(brew trust --json=v1) || return 2
-  trust_state=$(jq -er --arg tap "$tap" '
-    if (.taps | type) != "array" then
+  case "$collection" in taps|formulae) ;; *) return 2 ;; esac
+  [ -n "$trust_json" ] || trust_json=$(brew trust --json=v1) || return 2
+  trust_state=$(jq -er --arg collection "$collection" --arg target "$target" '
+    if (.[$collection] | type) != "array" then
       error("invalid Homebrew trust response")
-    elif (.taps | index($tap)) != null then
+    elif (.[$collection] | index($target)) != null then
       "true"
     else
       "false"
     end
   ' <<< "$trust_json") || return 2
   [ "$trust_state" = true ]
+}
+
+php_darwin_tap_trusted() {
+  php_darwin_trust_entry taps "$1" "${2:-}"
+}
+
+php_darwin_formula_trusted() {
+  php_darwin_trust_entry formulae "$1" "${2:-}"
 }
 
 php_darwin_prepare_tap_path() {

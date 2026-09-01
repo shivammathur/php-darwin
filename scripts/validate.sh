@@ -190,16 +190,23 @@ fi
 grep -Fq 'php-darwin: archive.extract failed: fixture extraction error' "$phase_failure_log" || \
   php_darwin_die 'installer did not explain its phase failure'
 if ! (
-  brew() { printf '{"taps":["shivammathur/php"]}\n'; }
+  brew() { printf '{"taps":["shivammathur/php"],"formulae":[]}\n'; }
   php_darwin_tap_trusted shivammathur/php
 ); then
   php_darwin_die 'Homebrew trust helper did not recognize a trusted tap'
 fi
 if (
-  brew() { printf '{"taps":[]}\n'; }
+  brew() { printf '{"taps":[],"formulae":[]}\n'; }
   php_darwin_tap_trusted shivammathur/php
 ); then
   php_darwin_die 'Homebrew trust helper accepted an untrusted tap'
+fi
+if ! php_darwin_formula_trusted shivammathur/php/php \
+  '{"taps":[],"formulae":["shivammathur/php/php"]}'; then
+  php_darwin_die 'Homebrew trust helper did not recognize a trusted formula'
+fi
+if php_darwin_formula_trusted shivammathur/php/php '{"taps":[],"formulae":[]}'; then
+  php_darwin_die 'Homebrew trust helper accepted an untrusted formula'
 fi
 (
   brew() { printf '{"invalid":true}\n'; }

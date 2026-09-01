@@ -20,22 +20,32 @@ php_darwin_set_phase() {
   PHP_DARWIN_PHASE=$1
 }
 
-php_darwin_tap_trusted() {
-  local tap=$1
-  local trust_json
+php_darwin_trust_entry() {
+  local collection=$1
+  local target=$2
+  local trust_json=${3:-}
   local trust_state
 
-  trust_json=$(brew trust --json=v1) || return 2
-  trust_state=$(jq -er --arg tap "$tap" '
-    if (.taps | type) != "array" then
+  case "$collection" in taps|formulae) ;; *) return 2 ;; esac
+  [ -n "$trust_json" ] || trust_json=$(brew trust --json=v1) || return 2
+  trust_state=$(jq -er --arg collection "$collection" --arg target "$target" '
+    if (.[$collection] | type) != "array" then
       error("invalid Homebrew trust response")
-    elif (.taps | index($tap)) != null then
+    elif (.[$collection] | index($target)) != null then
       "true"
     else
       "false"
     end
   ' <<< "$trust_json") || return 2
   [ "$trust_state" = true ]
+}
+
+php_darwin_tap_trusted() {
+  php_darwin_trust_entry taps "$1" "${2:-}"
+}
+
+php_darwin_formula_trusted() {
+  php_darwin_trust_entry formulae "$1" "${2:-}"
 }
 
 php_darwin_prepare_tap_path() {
@@ -1112,6 +1122,7 @@ homebrew_prepare_pid=
 homebrew_prepare_phase_file="$tmp_dir/homebrew-prepare-phase.txt"
 tap_path_file="$tmp_dir/homebrew-tap-path.txt"
 tap_trust_file="$tmp_dir/homebrew-tap-trust.txt"
+formula_trust_file="$tmp_dir/homebrew-formula-trust.txt"
 missing_log="$tmp_dir/homebrew-missing.log"
 missing_pid=
 archive_hash_file="$tmp_dir/archive.sha256"
@@ -1130,9 +1141,10 @@ previous_opt_links="$tmp_dir/previous-opt-links.tsv"
 new_state_paths_file="$tmp_dir/new-state-paths.txt"
 target_keg_backup="$tmp_dir/target-keg-backup"
 target_keg_backed_up=false
-tap_trust_marker="$tmp_dir/tap-trust-added"
-tap_trust_pending="$tmp_dir/tap-trust-pending"
+formula_trust_marker="$tmp_dir/formula-trust-added"
+formula_trust_pending="$tmp_dir/formula-trust-pending"
 tap_was_trusted=false
+formula_was_trusted=false
 tap_installed=false
 tap_path=
 tap_path_backup=
@@ -1240,17 +1252,17 @@ php_darwin_wait_for_archive_hash() {
   actual_hash=$(cat "$archive_hash_file") || php_darwin_die "could not read the $asset hash"
 }
 
-php_darwin_restore_tap_trust() {
+php_darwin_restore_formula_trust() {
   local trust_status
 
-  [ -f "$tap_trust_marker" ] || [ -f "$tap_trust_pending" ] || return 0
-  if php_darwin_tap_trusted "$tap"; then
-    brew untrust --tap "$tap" || return 1
+  [ -f "$formula_trust_marker" ] || [ -f "$formula_trust_pending" ] || return 0
+  if php_darwin_formula_trusted "$tap/$formula"; then
+    brew untrust --formula "$tap/$formula" || return 1
   else
     trust_status=$?
     [ "$trust_status" -eq 1 ] || return 1
   fi
-  rm -f "$tap_trust_marker" "$tap_trust_pending"
+  rm -f "$formula_trust_marker" "$formula_trust_pending"
 }
 
 php_darwin_install_cleanup() {
@@ -1263,8 +1275,8 @@ php_darwin_install_cleanup() {
     [ -n "$background_pid" ] || continue
     wait "$background_pid" >/dev/null 2>&1 || true
   done
-  php_darwin_restore_tap_trust >> "$rollback_log" 2>&1 || rollback_status=failed
   if [ "$cleanup_status" -ne 0 ]; then
+    php_darwin_restore_formula_trust >> "$rollback_log" 2>&1 || rollback_status=failed
     if [ "$tap_installed" = true ]; then
       if [ -d "$tap_path" ] && [ ! -L "$tap_path" ]; then
         find "$tap_path" -mindepth 1 -delete >> "$rollback_log" 2>&1 && \
@@ -1410,12 +1422,20 @@ done
 : > "$homebrew_prepare_phase_file" || php_darwin_die 'could not create the Homebrew preparation phase file'
 (
   printf 'homebrew.trust-state\n' > "$homebrew_prepare_phase_file" || exit 1
-  if php_darwin_tap_trusted "$tap"; then
+  trust_json=$(brew trust --json=v1) || exit 1
+  if php_darwin_tap_trusted "$tap" "$trust_json"; then
     printf 'true\n' > "$tap_trust_file" || exit 1
   else
     trust_status=$?
     [ "$trust_status" -eq 1 ] || exit 1
     printf 'false\n' > "$tap_trust_file" || exit 1
+  fi
+  if php_darwin_formula_trusted "$tap/$formula" "$trust_json"; then
+    printf 'true\n' > "$formula_trust_file" || exit 1
+  else
+    trust_status=$?
+    [ "$trust_status" -eq 1 ] || exit 1
+    printf 'false\n' > "$formula_trust_file" || exit 1
   fi
   printf 'homebrew.tap-path\n' > "$homebrew_prepare_phase_file" || exit 1
   brew --repository "$tap" > "$tap_path_file" || exit 1
@@ -1541,6 +1561,12 @@ done < "$state_paths_inventory"
 
 php_darwin_set_phase homebrew.tap
 php_darwin_wait_for_homebrew_prepare
+formula_was_trusted=$(cat "$formula_trust_file") || \
+  php_darwin_die "could not read the $tap/$formula trust state"
+case "$formula_was_trusted" in true|false) ;; *)
+  php_darwin_die "invalid $tap/$formula trust state"
+  ;;
+esac
 case "$tap_path" in
   "$brew_prefix/Library/Taps/"*|"$brew_prefix/Homebrew/Library/Taps/"*) ;;
   *) php_darwin_die "unexpected Homebrew tap path: $tap_path" ;;
@@ -1716,12 +1742,14 @@ while IFS=$'\t' read -r package_name opt_target keg_only; do
 done < "$packages_file"
 if [ "$tap_was_trusted" = false ]; then
   php_darwin_wait_for_tap
-  php_darwin_set_phase homebrew.trust
-  : > "$tap_trust_pending" || php_darwin_die "could not record temporary trust for $tap"
-  printf 'Temporarily trusting %s for Homebrew validation\n' "$tap"
-  brew trust --tap "$tap" || php_darwin_die "could not temporarily trust $tap"
-  mv "$tap_trust_pending" "$tap_trust_marker" || \
-    php_darwin_die "could not commit temporary trust for $tap"
+  if [ "$formula_was_trusted" = false ]; then
+    php_darwin_set_phase homebrew.trust
+    : > "$formula_trust_pending" || php_darwin_die "could not record trust for $tap/$formula"
+    printf 'Trusting installed Homebrew formula %s\n' "$tap/$formula"
+    brew trust --formula "$tap/$formula" || php_darwin_die "could not trust $tap/$formula"
+    mv "$formula_trust_pending" "$formula_trust_marker" || \
+      php_darwin_die "could not commit trust for $tap/$formula"
+  fi
 fi
 php_darwin_set_phase homebrew.dependencies
 brew missing "$formula" > "$missing_log" 2>&1 &
@@ -1794,9 +1822,6 @@ php_bin="$brew_prefix/opt/$formula/bin/php"
 [ -x "$php_bin" ] || php_darwin_die "PHP binary missing after cache extraction: $php_bin"
 installed_semver=$($php_bin -r 'echo PHP_VERSION;') || php_darwin_die 'cached PHP could not report its version'
 [ "${installed_semver%.*}" = "$version" ] || php_darwin_die "cache installed PHP $installed_semver for requested $version"
-
-php_darwin_set_phase homebrew.trust
-php_darwin_restore_tap_trust || php_darwin_die "could not restore the original $tap trust state"
 
 if [ "$tap_path_backed_up" = true ]; then
   php_darwin_remove_tap_backup "$brew_prefix" "$tap_path_backup" || \
