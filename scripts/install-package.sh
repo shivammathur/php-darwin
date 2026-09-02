@@ -325,7 +325,8 @@ php_darwin_install_cleanup() {
   rollback_status=ok
   rollback_attempted=false
   rollback_log="$tmp_dir/rollback.log"
-  trap - EXIT HUP INT TERM
+  trap - EXIT
+  trap '' HUP INT TERM
   : > "$rollback_log"
   # Give the potentially mutating Homebrew preparation a bounded opportunity
   # to finish. Read-only validation jobs can be stopped immediately.
@@ -473,6 +474,8 @@ php_darwin_install_cleanup() {
   fi
   if [ "$runtime_verified" = true ] && [ "$tap_snapshot_backed_up" = true ]; then
     preserve_tmp_dir=true
+    printf 'php-darwin: restore the previous cache tap with: sudo mv %s %s\n' \
+      "$tap_snapshot_backup" "$tap_snapshot_path" >&2
   fi
   if [ "$preserve_tmp_dir" = true ]; then
     printf 'php-darwin: preserved recovery files in %s\n' "$tmp_dir" >&2
@@ -500,7 +503,7 @@ for linked_php_path in "$brew_prefix/var/homebrew/linked"/php*; do
     ;;
   esac
   linked_php_reference=$(php_darwin_keg_formula_reference "$brew_prefix" "$linked_php_formula" \
-    "${linked_php_target#../../../}") || \
+    "${linked_php_target#../../../}" "$tap") || \
     php_darwin_die "could not resolve the installed Homebrew formula $linked_php_formula"
   linked_php_references+=("$linked_php_reference")
 done
@@ -824,10 +827,7 @@ while IFS=$'\t' read -r package_name opt_target keg_only; do
           php_darwin_die "invalid linked dependency target for $package_name: $dependency_target"
           ;;
         esac
-        dependency_reference=$(php_darwin_keg_formula_reference "$brew_prefix" "$package_name" \
-          "${dependency_target#../../../}") || \
-          php_darwin_die "could not resolve the installed Homebrew dependency $package_name"
-        linked_dependency_references+=("$dependency_reference")
+        linked_dependency_references+=("$package_name")
       fi
     fi
   fi
@@ -978,13 +978,16 @@ if [ "$tap_snapshot_backed_up" = true ]; then
   fi
 fi
 if [ "$tap_restore_after_install" = true ]; then
-  # Keep formula-scoped trust with the installed keg. This is narrower than
-  # tap trust and lets a later cache install unlink/relink the formula safely.
+  # Formula trust is needed only while the temporary cached tap is active.
+  # Dependency link operations use bare rack names and do not load core formulae.
   if php_darwin_remove_tap_path "$brew_prefix" "$tap_path"; then
     tap_installed=false
     if php_darwin_restore_tap_path "$tap_path" "$tap_path_backup"; then
       tap_path_backed_up=false
       tap_restore_after_install=false
+      if ! php_darwin_restore_formula_trust; then
+        preserve_tmp_dir=true
+      fi
     else
       printf 'php-darwin: restore the original tap with: sudo mv %s %s\n' \
         "$tap_path_backup" "$tap_path" >&2

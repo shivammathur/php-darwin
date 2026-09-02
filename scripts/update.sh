@@ -15,9 +15,12 @@ if [ -n "$only_version" ]; then
   version_values=("$only_version")
 else
   version_values=()
+  configured_versions=$(php_darwin_configured_versions) || \
+    php_darwin_die 'could not read the configured PHP versions'
   while read -r channel version; do
     [ "$channel" = stable ] && version_values+=("$version")
-  done < <(php_darwin_configured_versions)
+  done <<< "$configured_versions"
+  [ "${#version_values[@]}" -gt 0 ] || php_darwin_die 'no stable PHP versions are configured'
 fi
 
 for version in "${version_values[@]}"; do

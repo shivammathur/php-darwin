@@ -33,13 +33,13 @@ grep -Fq "php_darwin_reap_job \"\$homebrew_prepare_pid\" 20" "$installer" || \
   php_darwin_die 'standalone installer does not bound failed Homebrew preparation cleanup'
 grep -Fq "php_darwin_remove_tap_path \"\$brew_prefix\" \"\$tap_path\"" "$installer" || \
   php_darwin_die 'standalone installer cannot restore a temporary user tap transaction'
-if awk '
+if ! awk '
   /if \[ "\$tap_restore_after_install" = true \]/ { temporary=1; next }
   temporary && /php_darwin_restore_formula_trust/ { found=1 }
-  temporary && /^fi$/ { temporary=0 }
+  temporary && /^elif / { temporary=0 }
   END { exit !found }
 ' "$installer"; then
-  php_darwin_die 'standalone installer removes trust required by its installed formula'
+  php_darwin_die 'standalone installer does not restore formula trust after a temporary tap install'
 fi
 if grep -Fq "wait \"\$background_pid\"" "$installer"; then
   php_darwin_die 'standalone installer still waits indefinitely for failed background jobs'
@@ -64,9 +64,30 @@ if ! awk '
   php_darwin_die 'standalone installer revokes formula trust before rollback relinking finishes'
 fi
 for signal_trap in "trap 'exit 129' HUP" "trap 'exit 130' INT" "trap 'exit 143' TERM"; do
-  grep -Fq "$signal_trap" "$installer" || \
+  awk -v signal_trap="$signal_trap" '
+    $0 == "# Source: scripts/install-package.sh" { install=1; next }
+    install && $0 == signal_trap { found=1 }
+    END { exit !found }
+  ' "$installer" || \
     php_darwin_die "standalone installer omitted signal handling: $signal_trap"
 done
+awk -v protected_trap="trap '' HUP INT TERM" '
+  $0 == "# Source: scripts/install-package.sh" { install=1; next }
+  install && index($0, protected_trap) { found=1 }
+  END { exit !found }
+' "$installer" || \
+  php_darwin_die 'standalone installer does not protect rollback from repeated cancellation signals'
+grep -Fq "php_darwin_signal_job_pids TERM \"\$job_pid\" \"\${tracked_pids[@]}\"" "$installer" || \
+  php_darwin_die 'standalone installer does not terminate the background job root'
+grep -Fq "linked_php_reference=\$(php_darwin_keg_formula_reference \"\$brew_prefix\" \"\$linked_php_formula\"" \
+  "$installer" || php_darwin_die 'standalone installer does not validate linked PHP receipts'
+grep -Fq "\"\${linked_php_target#../../../}\" \"\$tap\")" "$installer" || \
+  php_darwin_die 'standalone installer does not qualify custom-tap PHP formulae'
+grep -Fq "linked_dependency_references+=(\"\$package_name\")" "$installer" || \
+  php_darwin_die 'standalone installer does not use bare dependency formula names'
+if grep -Fq "dependency_reference=\$(php_darwin_keg_formula_reference" "$installer"; then
+  php_darwin_die 'standalone installer resolves core dependency taps from receipts'
+fi
 grep -Fq "\$php_bin -n -r" "$installer" || \
   php_darwin_die 'standalone installer allows user configuration warnings to corrupt its version probe'
 if ! awk '

@@ -20,7 +20,8 @@ publish_cleanup() {
   local previous_asset
   local previous_asset_files=()
 
-  trap - EXIT HUP INT TERM
+  trap - EXIT
+  trap '' HUP INT TERM
   if [ "$cleanup_status" -ne 0 ] && [ "$release_committed" = false ] && \
     [ "$mutable_mutation_started" = true ] && \
     [ "$release_exists" = true ] && [ -d "$previous_assets" ]; then
@@ -265,16 +266,16 @@ if [ -f "$previous_assets/$tag-manifest.json" ] && \
   jq -r '.assets[] | (.download // .name) as $download | $download, ($download + ".sha256")' \
     "$previous_assets/$tag-manifest.json" >> "$retained_assets" || \
     php_darwin_die 'could not record the previous immutable release assets'
-elif [ -f "$previous_assets/$tag-manifest.json" ]; then
-  rm -f "$previous_assets/$tag-manifest.json" || \
-    php_darwin_die 'could not discard an invalid previous release manifest backup'
 fi
 LC_ALL=C sort -u "$retained_assets" -o "$retained_assets" || \
   php_darwin_die 'could not sort the retained immutable release assets'
 : > "$stale_assets" || php_darwin_die 'could not initialize stale release assets'
 : > "$retired_assets" || php_darwin_die 'could not initialize retired release assets'
 while IFS= read -r previous_name; do
-  if [[ "$previous_name" =~ ^php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_arm64\.[0-9a-f]{64}\.tar\.zst(\.sha256)?$ ]]; then
+  if [[ "$previous_name" =~ ^php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_arm64\.[0-9a-f]{64}\.tar\.zst(\.sha256)?\.invalid\.[0-9]+$ ]]; then
+    printf '%s\n' "$previous_name" >> "$retired_assets" || \
+      php_darwin_die 'could not record a quarantined release asset'
+  elif [[ "$previous_name" =~ ^php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_arm64\.[0-9a-f]{64}\.tar\.zst(\.sha256)?$ ]]; then
     if [ "$previous_manifest_valid" = true ] && ! grep -Fxq "$previous_name" "$retained_assets"; then
       printf '%s\n' "$previous_name" >> "$stale_assets" || \
         php_darwin_die 'could not record a stale immutable release asset'
@@ -295,10 +296,14 @@ for upload_file in "${data_upload_files[@]}"; do
   case "$matching_assets" in
     0) upload_files+=("$upload_file") ;;
     1)
-      existing_asset=$(jq -r --arg name "$upload_name" \
-        '.assets[] | select(.name == $name) | [.state, (.digest // "")] | @tsv' \
-        "$release_assets_json") || php_darwin_die "could not inspect release asset $upload_name"
-      if [ "$existing_asset" != $'uploaded\t'"$upload_digest" ]; then
+      existing_state=$(jq -er --arg name "$upload_name" \
+        '.assets[] | select(.name == $name) | .state | select(type == "string")' \
+        "$release_assets_json") || php_darwin_die "could not inspect release asset $upload_name state"
+      existing_digest=$(jq -er --arg name "$upload_name" \
+        '.assets[] | select(.name == $name) | (.digest // "") | select(type == "string")' \
+        "$release_assets_json") || php_darwin_die "could not inspect release asset $upload_name digest"
+      if [ "$existing_state" != uploaded ] || \
+        { [ -n "$existing_digest" ] && [ "$existing_digest" != "$upload_digest" ]; }; then
         existing_api_url=$(jq -er --arg name "$upload_name" \
           '.assets[] | select(.name == $name) | .apiUrl | select(type == "string" and length > 0)' \
           "$release_assets_json") || php_darwin_die "release asset $upload_name has no API URL"

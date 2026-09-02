@@ -14,6 +14,9 @@ mode_list="$manifest_tmp/modes"
 value_list="$manifest_tmp/values"
 trap 'rm -f "$raw_output" "$path_list" "$file_list" "$directory_list" "$symlink_list" \
   "$relative_list" "$mode_list" "$value_list"; rmdir "$manifest_tmp" 2>/dev/null || true' EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 [ -d "$prefix" ] || {
   printf 'Missing Homebrew prefix: %s\n' "$prefix" >&2

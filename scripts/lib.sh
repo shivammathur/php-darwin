@@ -31,11 +31,9 @@ php_darwin_configure_homebrew_environment() {
 
 php_darwin_is_git_worktree() {
   local tap_path=$1
-  local inside_worktree
 
   [ -d "$tap_path" ] && [ ! -L "$tap_path" ] || return 1
-  inside_worktree=$(git -C "$tap_path" rev-parse --is-inside-work-tree 2>/dev/null) || return 1
-  [ "$inside_worktree" = true ]
+  [ -e "$tap_path/.git" ]
 }
 
 php_darwin_trust_entry() {
@@ -283,6 +281,7 @@ php_darwin_keg_formula_reference() {
   local brew_prefix=$1
   local formula=$2
   local keg_relative=$3
+  local custom_tap=${4:-}
   local receipt
   local source_tap
 
@@ -293,6 +292,8 @@ php_darwin_keg_formula_reference() {
     source_tap=
   if [ -n "$source_tap" ]; then
     [[ "$source_tap" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || return 1
+  fi
+  if [ -n "$custom_tap" ] && [ "$source_tap" = "$custom_tap" ]; then
     printf '%s/%s\n' "$source_tap" "$formula"
   else
     printf '%s\n' "$formula"
@@ -368,16 +369,9 @@ php_darwin_platform_arches() {
 
 php_darwin_legacy_platforms() {
   local legacy_config
-  local remove_after
 
   legacy_config=$(php_darwin_read_config legacy-platforms.json) || return 1
-  remove_after=$(jq -er '.remove_after | select(type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}$"))' \
-    <<< "$legacy_config") || return 1
-  if [[ "$(date +%F)" > "$remove_after" ]]; then
-    printf '{}\n'
-  else
-    jq -cer '.platforms | select(type == "object")' <<< "$legacy_config"
-  fi
+  jq -cer '.platforms | select(type == "object")' <<< "$legacy_config"
 }
 
 php_darwin_package_config() {
@@ -848,17 +842,10 @@ php_darwin_reap_job() {
     [ -n "$discovered_pid" ] || continue
     case " ${tracked_pids[*]} " in *" $discovered_pid "*) ;; *) tracked_pids+=("$discovered_pid") ;; esac
   done < <(php_darwin_collect_job_pids "$job_pid")
-  if [ "${#tracked_pids[@]}" -gt 0 ]; then
-    php_darwin_signal_job_pids TERM "${tracked_pids[@]}"
-  else
-    php_darwin_signal_job_pids TERM "$job_pid"
-  fi
+  php_darwin_signal_job_pids TERM "$job_pid" "${tracked_pids[@]}"
   if ! php_darwin_wait_for_job_pids 10 "$job_pid" "${tracked_pids[@]}"; then
-    php_darwin_signal_job_pids KILL "${tracked_pids[@]}"
-    if ! php_darwin_wait_for_job_pids 10 "$job_pid" "${tracked_pids[@]}"; then
-      php_darwin_signal_job_pids KILL "$job_pid"
-      php_darwin_wait_for_job_pids 10 "$job_pid" || true
-    fi
+    php_darwin_signal_job_pids KILL "${tracked_pids[@]}" "$job_pid"
+    php_darwin_wait_for_job_pids 10 "$job_pid" "${tracked_pids[@]}" || true
   fi
   wait "$job_pid" >/dev/null 2>&1 || true
 }

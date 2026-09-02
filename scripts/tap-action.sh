@@ -20,6 +20,11 @@ formula_status=$(git -C "$tap_path" status --porcelain --untracked-files=all -- 
   printf 'Could not inspect Homebrew tap formula status\n' >&2
   exit 1
 }
+formula_status=$(awk 'substr($0, 1, 3) == "?? " && $0 ~ /(^|\/)\.DS_Store$/ { next } { print }' \
+  <<< "$formula_status") || {
+  printf 'Could not filter Homebrew tap formula status\n' >&2
+  exit 1
+}
 if [ "$actual_hash" = "$expected_hash" ] && [ -z "$formula_status" ]; then
   printf 'keep\n'
   exit 0

@@ -57,6 +57,13 @@ printf 'finder metadata\n' > "$cached_tap/.DS_Store" || \
   "$source_hash" "$repository" "$source_commit" "$branch")" = keep ] || \
   php_darwin_die 'an exact tap hash was rejected because of an unrelated file'
 rm -f "$cached_tap/.DS_Store" || php_darwin_die 'could not remove the unrelated tap fixture'
+printf 'finder metadata\n' > "$cached_tap/Formula/.DS_Store" || \
+  php_darwin_die 'could not create the Formula Finder metadata fixture'
+[ "$(bash "$script_dir/tap-action.sh" "$cached_tap" "$cached_tap" 8.5 \
+  "$source_hash" "$repository" "$source_commit" "$branch")" = keep ] || \
+  php_darwin_die 'an exact tap hash was rejected because of Formula Finder metadata'
+rm -f "$cached_tap/Formula/.DS_Store" || \
+  php_darwin_die 'could not remove the Formula Finder metadata fixture'
 
 printf 'class NewerFixture\n' > "$source_tap/Formula/php.rb" || \
   php_darwin_die 'could not update the tap formula fixture'

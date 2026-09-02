@@ -23,10 +23,11 @@ else
 fi
 
 jq -e '
-  .status == "completed" and .conclusion == "success" and
+  .status == "completed" and
   (.workflowName | type == "string" and length > 0) and
   (.jobs | type == "array") and
-  ([.jobs[] | select(.name | test("(^| / )Build PHP "))] | length > 0) and
+  ([.jobs[] | select(.name | test("(^| / )Build PHP "))] as $builds |
+    ($builds | length > 0) and all($builds[]; .status == "completed" and .conclusion == "success")) and
   ([.jobs[] | select(.name | test("(^| / )Test PHP "))] as $tests |
     ($tests | length > 0) and all($tests[]; .status == "completed" and .conclusion == "success"))
 ' "$run_json" >/dev/null || \

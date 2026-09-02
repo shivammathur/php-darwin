@@ -285,6 +285,21 @@ GH_RELEASE_EXISTS=true GH_RELEASE_ASSETS_JSON="$invalid_previous_json" \
 ! grep -Fq "release delete-asset php-7.0 $stale_asset " "$gh_log" || \
   php_darwin_die 'publisher deleted immutable assets using an invalid previous manifest'
 
+# Even an invalid previous manifest remains a rollback source until the new
+# manifest commit point succeeds.
+invalid_manifest_upload_marker="$work_dir/invalid-manifest-upload.marker"
+: > "$gh_log" || php_darwin_die 'could not reset the invalid-manifest rollback log'
+if GH_RELEASE_EXISTS=true GH_RELEASE_ASSETS_JSON="$invalid_previous_json" \
+  GH_PREVIOUS_ASSETS="$invalid_previous_generation" \
+  GH_FAIL_UPLOAD_ONCE_MATCH='php-7.0-manifest.json' \
+  GH_FAIL_UPLOAD_ONCE_MARKER="$invalid_manifest_upload_marker" \
+  PHP_VERSION="$version" PATH="$fake_bin:$PATH" bash "$script_dir/publish.sh" "$builds_dir" \
+  >/dev/null 2>&1; then
+  php_darwin_die 'publish unexpectedly committed over an invalid previous manifest fixture'
+fi
+grep -Eq '^release upload php-7\.0 .*/previous-assets/.*php-7\.0-manifest\.json.*--clobber' \
+  "$gh_log" || php_darwin_die 'publisher discarded an invalid manifest needed for rollback'
+
 # A complete generation is idempotent and needs no archive upload.
 current_generation="$work_dir/current-generation"
 current_generation_json="$work_dir/current-generation-assets.json"
@@ -308,6 +323,40 @@ GH_RELEASE_EXISTS=true GH_RELEASE_ASSETS_JSON="$current_generation_json" \
   php_darwin_die 'idempotent release publish fixture failed'
 ! grep -Eq '^release upload php-7\.0 .*\.[0-9a-f]{64}\.tar\.zst' "$gh_log" || \
   php_darwin_die 'idempotent publisher re-uploaded immutable release assets'
+
+# GitHub may not have computed a digest for an uploaded immutable asset yet.
+# Its empty digest is unknown, not evidence that the asset is corrupt.
+unknown_digest_json="$work_dir/unknown-digest-assets.json"
+unknown_digest_asset=$(jq -er '[.assets[] | select(.name | test("\\.tar\\.zst$"))][0].name' \
+  "$current_generation_json") || exit 1
+unknown_digest_api=$(jq -er --arg name "$unknown_digest_asset" \
+  '.assets[] | select(.name == $name) | .apiUrl' "$current_generation_json") || exit 1
+jq --arg name "$unknown_digest_asset" \
+  '.assets |= map(if .name == $name then .digest="" else . end)' \
+  "$current_generation_json" > "$unknown_digest_json" || exit 1
+: > "$gh_log" || php_darwin_die 'could not reset the unknown-digest publish log'
+GH_RELEASE_EXISTS=true GH_RELEASE_ASSETS_JSON="$unknown_digest_json" \
+  GH_PREVIOUS_ASSETS="$current_generation" PHP_VERSION="$version" PATH="$fake_bin:$PATH" \
+  bash "$script_dir/publish.sh" "$builds_dir" >/dev/null || \
+  php_darwin_die 'publisher rejected an uploaded immutable asset with an unknown digest'
+! grep -Fq "api --method PATCH $unknown_digest_api " "$gh_log" || \
+  php_darwin_die 'publisher quarantined an uploaded immutable asset with an unknown digest'
+
+# Quarantine names left by an interrupted earlier repair are removed after a
+# successful manifest commit instead of accumulating indefinitely.
+quarantine_generation="$work_dir/quarantine-generation"
+quarantine_assets_json="$work_dir/quarantine-assets.json"
+cp -R "$current_generation" "$quarantine_generation" || exit 1
+quarantine_name="$unknown_digest_asset.invalid.999999"
+printf 'retired quarantine fixture\n' > "$quarantine_generation/$quarantine_name" || exit 1
+php_darwin_test_release_assets "$quarantine_generation" "$quarantine_assets_json" || exit 1
+: > "$gh_log" || php_darwin_die 'could not reset the quarantine cleanup log'
+GH_RELEASE_EXISTS=true GH_RELEASE_ASSETS_JSON="$quarantine_assets_json" \
+  GH_PREVIOUS_ASSETS="$quarantine_generation" PHP_VERSION="$version" PATH="$fake_bin:$PATH" \
+  bash "$script_dir/publish.sh" "$builds_dir" >/dev/null || \
+  php_darwin_die 'publisher could not recover an existing quarantined asset'
+grep -Fxq "release delete-asset php-7.0 $quarantine_name --yes --repo shivammathur/php-darwin" \
+  "$gh_log" || php_darwin_die 'publisher did not classify and remove a quarantined asset'
 
 # A corrupt partial immutable asset is quarantined, repaired, and only then removed.
 ghost_assets_json="$work_dir/ghost-assets.json"

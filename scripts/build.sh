@@ -44,6 +44,7 @@ pinned_formulae_file="$work_dir/pinned-formulae.txt"
 added_pins_file="$work_dir/added-pins.txt"
 reuse_dir="${RUNNER_TEMP:-/tmp}/php-darwin-reuse"
 reuse_baseline_formulae="$reuse_dir/preinstalled-formulae.txt"
+reuse_baseline_manifest="$reuse_dir/before.tsv"
 snapshot_paths="$script_dir/../conf/snapshot-paths"
 archive_roots="$script_dir/../conf/archive-paths"
 package_baseline_formulae=$reuse_baseline_formulae
@@ -162,12 +163,19 @@ clean_homebrew() {
 
   rm -rf "$brew_prefix/etc/php/$config_id" || \
     php_darwin_die 'could not clean the ephemeral runner PHP state'
+  mkdir -p "$reuse_dir" || php_darwin_die 'could not create the shared runner baseline directory'
   bash "$script_dir/filesystem-manifest.sh" "$brew_prefix" "$before_manifest" "$snapshot_paths" || \
     php_darwin_die 'could not capture the initial Homebrew manifest'
-  mkdir -p "$reuse_dir" || php_darwin_die 'could not create the shared runner baseline directory'
-  if [ ! -f "$reuse_baseline_formulae" ]; then
+  if [ ! -f "$reuse_baseline_formulae" ] && [ ! -f "$reuse_baseline_manifest" ]; then
     cp "$preinstalled_formulae" "$reuse_baseline_formulae" || \
       php_darwin_die 'could not preserve the shared formula baseline'
+    cp "$before_manifest" "$reuse_baseline_manifest" || \
+      php_darwin_die 'could not preserve the shared filesystem baseline'
+  elif [ -f "$reuse_baseline_formulae" ] && [ -f "$reuse_baseline_manifest" ]; then
+    cp "$reuse_baseline_manifest" "$before_manifest" || \
+      php_darwin_die 'could not restore the shared filesystem baseline'
+  else
+    php_darwin_die 'shared runner baseline is incomplete'
   fi
 }
 

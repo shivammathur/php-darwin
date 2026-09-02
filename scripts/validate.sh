@@ -67,9 +67,8 @@ jq -e '
   .arm64.test_runners == ["macos-14", "macos-15", "macos-26", "macos-latest"]
 ' "$script_dir/../conf/platforms.json" >/dev/null || php_darwin_die 'invalid platform configuration'
 jq -e '
-  keys == ["platforms", "purpose", "remove_after", "schema"] and .schema == 1 and
+  keys == ["platforms", "purpose", "schema"] and .schema == 1 and
   .purpose == "Validate pre-ARM64-only release manifests" and
-  (.remove_after | type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")) and
   .platforms == {"x86_64": {"minimum_macos": 15}}
 ' "$script_dir/../conf/legacy-platforms.json" >/dev/null || \
   php_darwin_die 'invalid legacy manifest platform configuration'
@@ -97,6 +96,10 @@ done < "$script_dir/../conf/archive-paths"
 snapshot_roots=$(awk '!/^#/ && NF { printf "%s%s", separator, $1; separator=" " }' \
   "$script_dir/../conf/snapshot-paths") || php_darwin_die 'could not read snapshot roots'
 [ "$snapshot_roots" = 'etc var' ] || php_darwin_die 'snapshot roots must be etc and var'
+if ! grep -Fq "reuse_baseline_manifest=\"\$reuse_dir/before.tsv\"" "$script_dir/build.sh" || \
+  ! grep -Fq "cp \"\$reuse_baseline_manifest\" \"\$before_manifest\"" "$script_dir/build.sh"; then
+  php_darwin_die 'build variants do not share their formula and filesystem baselines'
+fi
 
 jq -e '
   keys == ["compression_level", "compression_long", "max_archive_bytes"] and
@@ -177,6 +180,7 @@ fixture_snapshot_manifest="$fixture_dir/filesystem-manifest.tsv"
 fixture_truncated_archive="$fixture_dir/truncated.tar"
 fixture_plain_archive="$fixture_dir/metadata.tar"
 phase_failure_log="$fixture_dir/phase-failure.log"
+invalid_update_root="$fixture_dir/invalid-update-root"
 tap_fixture="$fixture_dir/tap"
 tap_backup="$fixture_dir/tap-backup"
 tap_symlink="$fixture_dir/tap-symlink"
@@ -188,6 +192,14 @@ cleanup_formulae="$fixture_dir/cleanup-formulae.txt"
 dependency_info="$fixture_dir/dependency-info.json"
 php_dependencies="$fixture_dir/php-dependencies.txt"
 unrelated_formulae="$fixture_dir/unrelated-formulae.txt"
+mkdir -p "$invalid_update_root/conf" || php_darwin_die 'could not create the invalid update fixture'
+cp "$script_dir/../conf/package.json" "$invalid_update_root/conf/package.json" || \
+  php_darwin_die 'could not stage the update package configuration fixture'
+printf 'stable 8.5 unexpected\n' > "$invalid_update_root/conf/versions" || \
+  php_darwin_die 'could not write the invalid update version fixture'
+if PHP_DARWIN_ROOT="$invalid_update_root" bash "$script_dir/update.sh" >/dev/null 2>&1; then
+  php_darwin_die 'stable cache update silently accepted invalid version configuration'
+fi
 bash "$script_dir/validate-install.sh" || php_darwin_die 'standalone installer validation failed'
 if bash -c '
   . "$1"
@@ -229,9 +241,16 @@ mkdir -p "$receipt_prefix/Cellar/php@8.4/8.4.16" || \
 printf '{"source":{"tap":"shivammathur/php"}}\n' \
   > "$receipt_prefix/Cellar/php@8.4/8.4.16/INSTALL_RECEIPT.json" || \
   php_darwin_die 'could not write the formula receipt fixture'
-[ "$(php_darwin_keg_formula_reference "$receipt_prefix" php@8.4 Cellar/php@8.4/8.4.16)" = \
+[ "$(php_darwin_keg_formula_reference "$receipt_prefix" php@8.4 Cellar/php@8.4/8.4.16 \
+  shivammathur/php)" = \
   shivammathur/php/php@8.4 ] || \
   php_darwin_die 'tap formula receipt did not resolve to a fully-qualified reference'
+printf '{"source":{"tap":"homebrew/core"}}\n' \
+  > "$receipt_prefix/Cellar/php@8.4/8.4.16/INSTALL_RECEIPT.json" || \
+  php_darwin_die 'could not update the formula receipt fixture'
+[ "$(php_darwin_keg_formula_reference "$receipt_prefix" php@8.4 Cellar/php@8.4/8.4.16 \
+  shivammathur/php)" = php@8.4 ] || \
+  php_darwin_die 'core formula receipt did not resolve to a bare reference'
 
 [ "$(php_darwin_prepare_tap_path "$tap_fixture" "$tap_backup")" = absent ] || \
   php_darwin_die 'absent Homebrew tap fixture returned the wrong state'
@@ -253,6 +272,11 @@ git -C "$worktree_source" worktree add -q --detach "$worktree_tap" HEAD || \
 [ "$(php_darwin_prepare_tap_path "$worktree_tap" "$tap_backup")" = git ] || \
   php_darwin_die 'linked Homebrew tap worktree was not preserved'
 [ -d "$worktree_tap" ] || php_darwin_die 'linked Homebrew tap worktree was moved'
+mkdir -p "$worktree_source/Library/Taps/example/homebrew-false-tap" || \
+  php_darwin_die 'could not create the parent-repository tap fixture'
+if php_darwin_is_git_worktree "$worktree_source/Library/Taps/example/homebrew-false-tap"; then
+  php_darwin_die 'tap detection inherited Git state from a parent repository'
+fi
 printf 'runner-placeholder\n' > "$tap_fixture/Formula.php"
 [ "$(php_darwin_prepare_tap_path "$tap_fixture" "$tap_backup")" = backed-up ] || \
   php_darwin_die 'non-Git Homebrew tap fixture returned the wrong state'

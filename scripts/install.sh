@@ -32,11 +32,9 @@ php_darwin_configure_homebrew_environment() {
 
 php_darwin_is_git_worktree() {
   local tap_path=$1
-  local inside_worktree
 
   [ -d "$tap_path" ] && [ ! -L "$tap_path" ] || return 1
-  inside_worktree=$(git -C "$tap_path" rev-parse --is-inside-work-tree 2>/dev/null) || return 1
-  [ "$inside_worktree" = true ]
+  [ -e "$tap_path/.git" ]
 }
 
 php_darwin_trust_entry() {
@@ -284,6 +282,7 @@ php_darwin_keg_formula_reference() {
   local brew_prefix=$1
   local formula=$2
   local keg_relative=$3
+  local custom_tap=${4:-}
   local receipt
   local source_tap
 
@@ -294,6 +293,8 @@ php_darwin_keg_formula_reference() {
     source_tap=
   if [ -n "$source_tap" ]; then
     [[ "$source_tap" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || return 1
+  fi
+  if [ -n "$custom_tap" ] && [ "$source_tap" = "$custom_tap" ]; then
     printf '%s/%s\n' "$source_tap" "$formula"
   else
     printf '%s\n' "$formula"
@@ -369,16 +370,9 @@ php_darwin_platform_arches() {
 
 php_darwin_legacy_platforms() {
   local legacy_config
-  local remove_after
 
   legacy_config=$(php_darwin_read_config legacy-platforms.json) || return 1
-  remove_after=$(jq -er '.remove_after | select(type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}$"))' \
-    <<< "$legacy_config") || return 1
-  if [[ "$(date +%F)" > "$remove_after" ]]; then
-    printf '{}\n'
-  else
-    jq -cer '.platforms | select(type == "object")' <<< "$legacy_config"
-  fi
+  jq -cer '.platforms | select(type == "object")' <<< "$legacy_config"
 }
 
 php_darwin_package_config() {
@@ -849,17 +843,10 @@ php_darwin_reap_job() {
     [ -n "$discovered_pid" ] || continue
     case " ${tracked_pids[*]} " in *" $discovered_pid "*) ;; *) tracked_pids+=("$discovered_pid") ;; esac
   done < <(php_darwin_collect_job_pids "$job_pid")
-  if [ "${#tracked_pids[@]}" -gt 0 ]; then
-    php_darwin_signal_job_pids TERM "${tracked_pids[@]}"
-  else
-    php_darwin_signal_job_pids TERM "$job_pid"
-  fi
+  php_darwin_signal_job_pids TERM "$job_pid" "${tracked_pids[@]}"
   if ! php_darwin_wait_for_job_pids 10 "$job_pid" "${tracked_pids[@]}"; then
-    php_darwin_signal_job_pids KILL "${tracked_pids[@]}"
-    if ! php_darwin_wait_for_job_pids 10 "$job_pid" "${tracked_pids[@]}"; then
-      php_darwin_signal_job_pids KILL "$job_pid"
-      php_darwin_wait_for_job_pids 10 "$job_pid" || true
-    fi
+    php_darwin_signal_job_pids KILL "${tracked_pids[@]}" "$job_pid"
+    php_darwin_wait_for_job_pids 10 "$job_pid" "${tracked_pids[@]}" || true
   fi
   wait "$job_pid" >/dev/null 2>&1 || true
 }
@@ -911,7 +898,6 @@ PHP_DARWIN_CONFIG_PLATFORMS_JSON
 {
   "schema": 1,
   "purpose": "Validate pre-ARM64-only release manifests",
-  "remove_after": "2026-12-31",
   "platforms": {
     "x86_64": {
       "minimum_macos": 15
@@ -1116,6 +1102,11 @@ actual_hash=$(HOMEBREW_PHP_PATH="$tap_path" php_darwin_source_hash "$version" 2>
   actual_hash=
 formula_status=$(git -C "$tap_path" status --porcelain --untracked-files=all -- Formula 2>/dev/null) || {
   printf 'Could not inspect Homebrew tap formula status\n' >&2
+  exit 1
+}
+formula_status=$(awk 'substr($0, 1, 3) == "?? " && $0 ~ /(^|\/)\.DS_Store$/ { next } { print }' \
+  <<< "$formula_status") || {
+  printf 'Could not filter Homebrew tap formula status\n' >&2
   exit 1
 }
 if [ "$actual_hash" = "$expected_hash" ] && [ -z "$formula_status" ]; then
@@ -1778,7 +1769,8 @@ php_darwin_install_cleanup() {
   rollback_status=ok
   rollback_attempted=false
   rollback_log="$tmp_dir/rollback.log"
-  trap - EXIT HUP INT TERM
+  trap - EXIT
+  trap '' HUP INT TERM
   : > "$rollback_log"
   # Give the potentially mutating Homebrew preparation a bounded opportunity
   # to finish. Read-only validation jobs can be stopped immediately.
@@ -1926,6 +1918,8 @@ php_darwin_install_cleanup() {
   fi
   if [ "$runtime_verified" = true ] && [ "$tap_snapshot_backed_up" = true ]; then
     preserve_tmp_dir=true
+    printf 'php-darwin: restore the previous cache tap with: sudo mv %s %s\n' \
+      "$tap_snapshot_backup" "$tap_snapshot_path" >&2
   fi
   if [ "$preserve_tmp_dir" = true ]; then
     printf 'php-darwin: preserved recovery files in %s\n' "$tmp_dir" >&2
@@ -1953,7 +1947,7 @@ for linked_php_path in "$brew_prefix/var/homebrew/linked"/php*; do
     ;;
   esac
   linked_php_reference=$(php_darwin_keg_formula_reference "$brew_prefix" "$linked_php_formula" \
-    "${linked_php_target#../../../}") || \
+    "${linked_php_target#../../../}" "$tap") || \
     php_darwin_die "could not resolve the installed Homebrew formula $linked_php_formula"
   linked_php_references+=("$linked_php_reference")
 done
@@ -2277,10 +2271,7 @@ while IFS=$'\t' read -r package_name opt_target keg_only; do
           php_darwin_die "invalid linked dependency target for $package_name: $dependency_target"
           ;;
         esac
-        dependency_reference=$(php_darwin_keg_formula_reference "$brew_prefix" "$package_name" \
-          "${dependency_target#../../../}") || \
-          php_darwin_die "could not resolve the installed Homebrew dependency $package_name"
-        linked_dependency_references+=("$dependency_reference")
+        linked_dependency_references+=("$package_name")
       fi
     fi
   fi
@@ -2431,13 +2422,16 @@ if [ "$tap_snapshot_backed_up" = true ]; then
   fi
 fi
 if [ "$tap_restore_after_install" = true ]; then
-  # Keep formula-scoped trust with the installed keg. This is narrower than
-  # tap trust and lets a later cache install unlink/relink the formula safely.
+  # Formula trust is needed only while the temporary cached tap is active.
+  # Dependency link operations use bare rack names and do not load core formulae.
   if php_darwin_remove_tap_path "$brew_prefix" "$tap_path"; then
     tap_installed=false
     if php_darwin_restore_tap_path "$tap_path" "$tap_path_backup"; then
       tap_path_backed_up=false
       tap_restore_after_install=false
+      if ! php_darwin_restore_formula_trust; then
+        preserve_tmp_dir=true
+      fi
     else
       printf 'php-darwin: restore the original tap with: sudo mv %s %s\n' \
         "$tap_path_backup" "$tap_path" >&2

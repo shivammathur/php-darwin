@@ -154,7 +154,8 @@ cleanup_homebrew_validation() {
 php_darwin_test_install_cleanup() {
   local cleanup_status=$?
 
-  trap - EXIT HUP INT TERM
+  trap - EXIT
+  trap '' HUP INT TERM
   if ! cleanup_homebrew_validation; then
     printf 'php-darwin: could not restore the Homebrew validation trust state\n' >&2
     [ "$cleanup_status" -ne 0 ] || cleanup_status=1
