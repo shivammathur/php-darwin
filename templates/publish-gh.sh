@@ -2,6 +2,12 @@
 
 printf '%s\n' "$*" >> "${GH_LOG:?}"
 case "${1:-}/${2:-}" in
+  api/*)
+    case "${GH_FAIL_API_MATCH:-}" in
+      '') exit 0 ;;
+      *) case "$*" in *"$GH_FAIL_API_MATCH"*) exit 1 ;; *) exit 0 ;; esac ;;
+    esac
+    ;;
   release/view)
     if [ "${GH_RELEASE_EXISTS:-false}" = true ]; then
       if [ -n "${GH_RELEASE_ASSETS_JSON:-}" ]; then
@@ -17,7 +23,7 @@ case "${1:-}/${2:-}" in
   release/delete-asset)
     case "${GH_FAIL_DELETE_MATCH:-}" in
       '') exit 0 ;;
-      *) case "${3:-}" in *"$GH_FAIL_DELETE_MATCH"*) exit 1 ;; *) exit 0 ;; esac ;;
+      *) case "$*" in *"$GH_FAIL_DELETE_MATCH"*) exit 1 ;; *) exit 0 ;; esac ;;
     esac
     ;;
   release/download)

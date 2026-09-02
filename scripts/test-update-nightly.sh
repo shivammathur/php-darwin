@@ -21,36 +21,30 @@ write_formulae() {
   local formula
   local formula_commit
 
-  for build in release debug; do
-    for ts in nts zts; do
-      formula=$(php_darwin_requested_formula 8.6 "$build" "$ts")
-      formula_commit=$commit
-      [ "$formula" != php@8.6-debug-zts ] || formula_commit=${MISMATCH_COMMIT:-$commit}
-      printf 'class Fixture < Formula\n  url "https://github.com/php/php-src/archive/%s.tar.gz?commit=%s"\nend\n' \
-        "$formula_commit" "$formula_commit" > "$formula_dir/$formula.rb" || \
-        php_darwin_die "could not write the $formula fixture"
-    done
-  done
+  while read -r build ts; do
+    formula=$(php_darwin_requested_formula 8.6 "$build" "$ts") || return 1
+    formula_commit=$commit
+    [ "$formula" != php@8.6-debug-zts ] || formula_commit=${MISMATCH_COMMIT:-$commit}
+    printf 'class Fixture < Formula\n  url "https://github.com/php/php-src/archive/%s.tar.gz?commit=%s"\nend\n' \
+      "$formula_commit" "$formula_commit" > "$formula_dir/$formula.rb" || \
+      php_darwin_die "could not write the $formula fixture"
+  done < <(php_darwin_configured_variants)
 }
 
 write_manifest() {
   local commit=$1
   : > "$assets_jsonl" || php_darwin_die 'could not reset the nightly asset fixtures'
-  while read -r build ts extra; do
-    [ -n "$build" ] || continue
-    case "$build" in \#*) continue ;; esac
-    [ -z "$extra" ] || php_darwin_die "invalid configured variant: $build $ts $extra"
+  while read -r build ts; do
     while IFS= read -r arch; do
       jq -cn --arg architecture "$arch" --arg build "$build" \
         --arg name "$(php_darwin_asset 8.6 "$build" "$ts" "$arch")" \
         --arg thread_safety "$ts" --arg sha256 "$(printf '%064d' 0)" \
-        --argjson minimum_macos "$(jq -r --arg arch "$arch" '.[$arch].minimum_macos' \
-          "$script_dir/../conf/platforms.json")" \
+        --argjson minimum_macos "$(php_darwin_platform_value "$arch" minimum_macos)" \
         '{architecture:$architecture,build:$build,bytes:1,minimum_macos:$minimum_macos,
           name:$name,sha256:$sha256,thread_safety:$thread_safety}' >> "$assets_jsonl" || \
         php_darwin_die 'could not write a nightly asset fixture'
-    done < <(jq -r 'keys[]' "$script_dir/../conf/platforms.json")
-  done < "$script_dir/../conf/variants"
+    done < <(php_darwin_platform_arches)
+  done < <(php_darwin_configured_variants)
   jq -s --arg commit "$commit" --arg homebrew_commit 0123456789abcdef0123456789abcdef01234567 \
     --arg source_hash "$(printf '%064d' 1)" '
     {schema:1,php_version:"8.6",php_semver:"8.6.0",php_src_commit:$commit,

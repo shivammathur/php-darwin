@@ -6,6 +6,7 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 bash -n "$script_dir"/*.sh "$script_dir"/../templates/*.sh || php_darwin_die 'shell syntax validation failed'
 bash "$script_dir/test-job-control.sh" || php_darwin_die 'bounded job cleanup validation failed'
+bash "$script_dir/test-publish-run.sh" || php_darwin_die 'publish workflow-run validation failed'
 
 for json_file in "$script_dir"/../conf/*.json "$script_dir"/../templates/*.json; do
   jq -e . "$json_file" >/dev/null || php_darwin_die "invalid JSON: $json_file"
@@ -16,39 +17,39 @@ php_darwin_validate_channel "$current_version" stable
 php_darwin_validate_channel 5.6 stable
 php_darwin_validate_channel 8.5 stable
 php_darwin_validate_channel 8.6 nightly
+php_darwin_validate_php_semver 8.6 8.6.0beta2 || \
+  php_darwin_die 'nightly prerelease PHP version validation failed'
+php_darwin_validate_php_semver 8.6 8.6.0RC1 || \
+  php_darwin_die 'nightly release-candidate PHP version validation failed'
+if php_darwin_validate_php_semver 8.6 8.6.beta2; then
+  php_darwin_die 'malformed nightly prerelease PHP version was accepted'
+fi
 [ "$(php_darwin_formula "$current_version" debug zts "$current_version")" = php-debug-zts ] || \
   php_darwin_die 'preloaded current-version formula resolution failed'
 
 version_count=0
 nightly_count=0
 seen_versions=
-while read -r channel version extra; do
-  [ -n "$channel" ] || continue
-  case "$channel" in \#*) continue ;; esac
-  [ -z "$extra" ] || php_darwin_die "invalid version configuration for PHP $version"
+while read -r channel version; do
   case " $seen_versions " in *" $version "*) php_darwin_die "duplicate PHP version: $version" ;; esac
   seen_versions="$seen_versions $version"
   php_darwin_validate_channel "$version" "$channel"
   version_count=$((version_count + 1))
   [ "$channel" != nightly ] || nightly_count=$((nightly_count + 1))
   seen_variants=
-  while read -r build ts variant_extra; do
-    [ -n "$build" ] || continue
-    case "$build" in \#*) continue ;; esac
-    [ -z "$variant_extra" ] || php_darwin_die "invalid variant configuration: $build $ts $variant_extra"
-    php_darwin_validate_build "$build"
-    php_darwin_validate_ts "$ts"
+  while read -r build ts; do
     case " $seen_variants " in *" $build/$ts "*) php_darwin_die "duplicate variant: $build/$ts" ;; esac
     seen_variants="$seen_variants $build/$ts"
     php_darwin_formula "$version" "$build" "$ts" >/dev/null
     php_darwin_requested_formula "$version" "$build" "$ts" >/dev/null
     php_darwin_asset "$version" "$build" "$ts" arm64 >/dev/null
-  done < "$script_dir/../conf/variants"
-done < "$script_dir/../conf/versions"
+  done < <(php_darwin_configured_variants)
+done < <(php_darwin_configured_versions)
 [ "$version_count" -eq 13 ] || php_darwin_die "expected 13 configured PHP versions, found $version_count"
 [ "$nightly_count" -eq 1 ] || php_darwin_die "expected one nightly PHP version, found $nightly_count"
-configured_versions=$(awk '!/^#/ && NF == 2 { printf "%s%s", separator, $1 ":" $2; separator=" " }' \
-  "$script_dir/../conf/versions") || php_darwin_die 'could not read configured PHP versions'
+configured_versions=$(php_darwin_configured_versions | \
+  awk '{ printf "%s%s", separator, $1 ":" $2; separator=" " }') || \
+  php_darwin_die 'could not read configured PHP versions'
 [ "$configured_versions" = \
   'stable:5.6 stable:7.0 stable:7.1 stable:7.2 stable:7.3 stable:7.4 stable:8.0 stable:8.1 stable:8.2 stable:8.3 stable:8.4 stable:8.5 nightly:8.6' ] || \
   php_darwin_die 'the PHP release-channel configuration is incomplete or out of order'
@@ -66,7 +67,10 @@ jq -e '
   .arm64.test_runners == ["macos-14", "macos-15", "macos-26", "macos-latest"]
 ' "$script_dir/../conf/platforms.json" >/dev/null || php_darwin_die 'invalid platform configuration'
 jq -e '
-  keys == ["x86_64"] and .x86_64 == {"minimum_macos": 15}
+  keys == ["platforms", "purpose", "remove_after", "schema"] and .schema == 1 and
+  .purpose == "Validate pre-ARM64-only release manifests" and
+  (.remove_after | type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")) and
+  .platforms == {"x86_64": {"minimum_macos": 15}}
 ' "$script_dir/../conf/legacy-platforms.json" >/dev/null || \
   php_darwin_die 'invalid legacy manifest platform configuration'
 [ "$(php_darwin_expected_asset_count)" -eq 4 ] || php_darwin_die 'expected four ARM64 release assets'
@@ -219,13 +223,36 @@ fi
   [ "$?" -eq 2 ]
 ) || php_darwin_die 'Homebrew trust helper masked malformed trust state'
 
+receipt_prefix="$fixture_dir/receipt-prefix"
+mkdir -p "$receipt_prefix/Cellar/php@8.4/8.4.16" || \
+  php_darwin_die 'could not create the formula receipt fixture'
+printf '{"source":{"tap":"shivammathur/php"}}\n' \
+  > "$receipt_prefix/Cellar/php@8.4/8.4.16/INSTALL_RECEIPT.json" || \
+  php_darwin_die 'could not write the formula receipt fixture'
+[ "$(php_darwin_keg_formula_reference "$receipt_prefix" php@8.4 Cellar/php@8.4/8.4.16)" = \
+  shivammathur/php/php@8.4 ] || \
+  php_darwin_die 'tap formula receipt did not resolve to a fully-qualified reference'
+
 [ "$(php_darwin_prepare_tap_path "$tap_fixture" "$tap_backup")" = absent ] || \
   php_darwin_die 'absent Homebrew tap fixture returned the wrong state'
-mkdir -p "$tap_fixture/.git" || php_darwin_die 'could not create the Git tap fixture'
+git init -q "$tap_fixture" || php_darwin_die 'could not create the Git tap fixture'
 [ "$(php_darwin_prepare_tap_path "$tap_fixture" "$tap_backup")" = git ] || \
   php_darwin_die 'Git Homebrew tap fixture returned the wrong state'
 [ -d "$tap_fixture/.git" ] || php_darwin_die 'Git Homebrew tap fixture was moved'
 rm -rf "$tap_fixture/.git"
+worktree_source="$fixture_dir/worktree-source"
+worktree_tap="$fixture_dir/worktree-tap"
+git init -q -b main "$worktree_source" || php_darwin_die 'could not create a worktree source fixture'
+printf 'fixture\n' > "$worktree_source/fixture" || php_darwin_die 'could not write a worktree fixture'
+git -C "$worktree_source" add fixture || php_darwin_die 'could not stage the worktree fixture'
+git -C "$worktree_source" -c user.name=php-darwin -c user.email=php-darwin@example.invalid \
+  commit -q -m fixture || php_darwin_die 'could not commit the worktree fixture'
+git -C "$worktree_source" worktree add -q --detach "$worktree_tap" HEAD || \
+  php_darwin_die 'could not create a linked worktree fixture'
+[ -f "$worktree_tap/.git" ] || php_darwin_die 'linked worktree fixture did not use a Git file'
+[ "$(php_darwin_prepare_tap_path "$worktree_tap" "$tap_backup")" = git ] || \
+  php_darwin_die 'linked Homebrew tap worktree was not preserved'
+[ -d "$worktree_tap" ] || php_darwin_die 'linked Homebrew tap worktree was moved'
 printf 'runner-placeholder\n' > "$tap_fixture/Formula.php"
 [ "$(php_darwin_prepare_tap_path "$tap_fixture" "$tap_backup")" = backed-up ] || \
   php_darwin_die 'non-Git Homebrew tap fixture returned the wrong state'
@@ -250,7 +277,7 @@ tap_backup=$(php_darwin_tap_backup_path "$tap_brew_prefix" "$tap_fixture" \
 php_darwin_remove_tap_backup "$tap_brew_prefix" "$tap_backup" || \
   php_darwin_die 'same-filesystem Homebrew tap backup fixture could not be removed'
 [ ! -e "$tap_backup" ] || php_darwin_die 'Homebrew tap backup fixture remained after removal'
-mkdir -p "$tap_fixture/.git" || php_darwin_die 'could not create the removable tap fixture'
+git init -q "$tap_fixture" || php_darwin_die 'could not create the removable tap fixture'
 php_darwin_remove_tap_path "$tap_brew_prefix" "$tap_fixture" || \
   php_darwin_die 'Homebrew tap fixture could not be removed transactionally'
 [ ! -e "$tap_fixture" ] || php_darwin_die 'removed Homebrew tap fixture remained'

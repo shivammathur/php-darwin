@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 php_darwin_root=${PHP_DARWIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}
+unset php_darwin_configured_versions_data php_darwin_configured_variants_data
 
 php_darwin_read_config() {
   cat "$php_darwin_root/conf/$1"
@@ -17,6 +18,24 @@ php_darwin_die() {
 
 php_darwin_set_phase() {
   PHP_DARWIN_PHASE=$1
+}
+
+php_darwin_configure_homebrew_environment() {
+  export HOMEBREW_NO_AUTO_UPDATE=1
+  export HOMEBREW_NO_AUTOREMOVE=1
+  export HOMEBREW_NO_ENV_HINTS=1
+  export HOMEBREW_NO_INSTALL_CLEANUP=1
+  export HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1
+  export HOMEBREW_NO_INSTALL_FROM_API=1
+}
+
+php_darwin_is_git_worktree() {
+  local tap_path=$1
+  local inside_worktree
+
+  [ -d "$tap_path" ] && [ ! -L "$tap_path" ] || return 1
+  inside_worktree=$(git -C "$tap_path" rev-parse --is-inside-work-tree 2>/dev/null) || return 1
+  [ "$inside_worktree" = true ]
 }
 
 php_darwin_trust_entry() {
@@ -67,7 +86,7 @@ php_darwin_prepare_tap_path() {
     printf 'Homebrew tap path is not a directory: %s\n' "$tap_path" >&2
     return 1
   fi
-  if [ -d "$tap_path/.git" ] && [ ! -L "$tap_path/.git" ]; then
+  if php_darwin_is_git_worktree "$tap_path"; then
     printf 'git\n'
     return 0
   fi
@@ -184,20 +203,100 @@ php_darwin_remove_tap_path() {
   sudo -n find "$tap_path" -mindepth 1 -delete && sudo -n rmdir "$tap_path"
 }
 
+php_darwin_load_versions() {
+  local channel
+  local configured=
+  local extra
+  local seen=
+  local version
+
+  [ "${php_darwin_configured_versions_data+x}" != x ] || return 0
+  while read -r channel version extra; do
+    [ -n "$channel" ] || continue
+    case "$channel" in \#*) continue ;; stable|nightly) ;; *) return 1 ;; esac
+    [ -n "$version" ] && [ -z "$extra" ] && [[ "$version" =~ ^[0-9]+\.[0-9]+$ ]] || return 1
+    case " $seen " in *" $version "*) return 1 ;; esac
+    seen="$seen $version"
+    configured=${configured:+"$configured"$'\n'}"$channel $version"
+  done < <(php_darwin_read_config versions)
+  [ -n "$configured" ] || return 1
+  php_darwin_configured_versions_data=$configured
+}
+
+php_darwin_configured_versions() {
+  php_darwin_load_versions || {
+    printf 'Invalid PHP version configuration\n' >&2
+    return 1
+  }
+  printf '%s\n' "$php_darwin_configured_versions_data"
+}
+
+php_darwin_load_variants() {
+  local build
+  local configured=
+  local extra
+  local seen=
+  local ts
+
+  [ "${php_darwin_configured_variants_data+x}" != x ] || return 0
+  while read -r build ts extra; do
+    [ -n "$build" ] || continue
+    case "$build" in \#*) continue ;; release|debug) ;; *) return 1 ;; esac
+    case "$ts" in nts|zts) ;; *) return 1 ;; esac
+    [ -z "$extra" ] || return 1
+    case " $seen " in *" $build/$ts "*) return 1 ;; esac
+    seen="$seen $build/$ts"
+    configured=${configured:+"$configured"$'\n'}"$build $ts"
+  done < <(php_darwin_read_config variants)
+  [ -n "$configured" ] || return 1
+  php_darwin_configured_variants_data=$configured
+}
+
+php_darwin_configured_variants() {
+  php_darwin_load_variants || {
+    printf 'Invalid PHP build variant configuration\n' >&2
+    return 1
+  }
+  printf '%s\n' "$php_darwin_configured_variants_data"
+}
+
 php_darwin_validate_version() {
   local requested_version=${1:-}
   local configured_channel
   local configured_version
   local extra
 
+  php_darwin_load_versions || php_darwin_die 'invalid PHP version configuration'
   while read -r configured_channel configured_version extra; do
-    [ -n "$configured_channel" ] || continue
-    case "$configured_channel" in \#*) continue ;; esac
     if [ "$configured_version" = "$requested_version" ]; then
       return 0
     fi
-  done < <(php_darwin_read_config versions)
+  done <<< "$php_darwin_configured_versions_data"
   php_darwin_die "unsupported PHP version: ${requested_version:-<empty>}"
+}
+
+php_darwin_is_php_formula() {
+  [[ "${1:-}" =~ ^php(@[0-9]+\.[0-9]+)?(-debug)?(-zts)?$ ]]
+}
+
+php_darwin_keg_formula_reference() {
+  local brew_prefix=$1
+  local formula=$2
+  local keg_relative=$3
+  local receipt
+  local source_tap
+
+  [[ "$formula" =~ ^[A-Za-z0-9@+._-]+$ ]] || return 1
+  case "$keg_relative" in "Cellar/$formula/"*) ;; *) return 1 ;; esac
+  receipt="$brew_prefix/$keg_relative/INSTALL_RECEIPT.json"
+  source_tap=$(jq -er '.source.tap // empty | select(type == "string")' "$receipt" 2>/dev/null) || \
+    source_tap=
+  if [ -n "$source_tap" ]; then
+    [[ "$source_tap" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || return 1
+    printf '%s/%s\n' "$source_tap" "$formula"
+  else
+    printf '%s\n' "$formula"
+  fi
 }
 
 php_darwin_version_channel() {
@@ -206,14 +305,13 @@ php_darwin_version_channel() {
   local configured_version
   local extra
 
+  php_darwin_load_versions || php_darwin_die 'invalid PHP version configuration'
   while read -r configured_channel configured_version extra; do
-    [ -n "$configured_channel" ] || continue
-    case "$configured_channel" in \#*) continue ;; esac
     if [ "$configured_version" = "$requested_version" ]; then
       printf '%s\n' "$configured_channel"
       return 0
     fi
-  done < <(php_darwin_read_config versions)
+  done <<< "$php_darwin_configured_versions_data"
   php_darwin_die "unsupported PHP version: ${requested_version:-<empty>}"
 }
 
@@ -223,7 +321,7 @@ php_darwin_validate_channel() {
   local actual
 
   case "$expected" in stable|nightly) ;; *) php_darwin_die "unsupported release channel: ${expected:-<empty>}" ;; esac
-  actual=$(php_darwin_version_channel "$version")
+  actual=$(php_darwin_version_channel "$version") || return 1
   [ "$actual" = "$expected" ] || php_darwin_die "PHP $version is $actual, not $expected"
 }
 
@@ -249,8 +347,37 @@ php_darwin_normalize_arch() {
 }
 
 php_darwin_expected_prefix() {
-  jq -er --arg arch "$(php_darwin_normalize_arch "${1:-}")" '.[$arch].brew_prefix' \
-    < <(php_darwin_read_config platforms.json) || php_darwin_die 'Homebrew prefix is not configured'
+  local arch
+
+  arch=$(php_darwin_normalize_arch "${1:-}") || return 1
+  php_darwin_platform_value "$arch" brew_prefix
+}
+
+php_darwin_platform_value() {
+  local arch=$1
+  local key=$2
+
+  case "$key" in brew_prefix|build_runner|minimum_macos|platform_key|test_runners) ;; *) return 1 ;; esac
+  jq -er --arg arch "$arch" --arg key "$key" '.[$arch][$key]' \
+    < <(php_darwin_read_config platforms.json)
+}
+
+php_darwin_platform_arches() {
+  jq -er 'keys[]' < <(php_darwin_read_config platforms.json)
+}
+
+php_darwin_legacy_platforms() {
+  local legacy_config
+  local remove_after
+
+  legacy_config=$(php_darwin_read_config legacy-platforms.json) || return 1
+  remove_after=$(jq -er '.remove_after | select(type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}$"))' \
+    <<< "$legacy_config") || return 1
+  if [[ "$(date +%F)" > "$remove_after" ]]; then
+    printf '{}\n'
+  else
+    jq -cer '.platforms | select(type == "object")' <<< "$legacy_config"
+  fi
 }
 
 php_darwin_package_config() {
@@ -268,24 +395,27 @@ php_darwin_nightly_version() {
   local extra
   local nightly_version=
 
+  php_darwin_load_versions || php_darwin_die 'invalid PHP version configuration'
   while read -r channel configured_version extra; do
-    [ -n "$channel" ] || continue
-    case "$channel" in \#*) continue ;; esac
-    [ -z "$extra" ] || php_darwin_die "invalid version configuration for PHP $configured_version"
     [ "$channel" = nightly ] || continue
     [ -z "$nightly_version" ] || php_darwin_die 'multiple nightly PHP versions are configured'
     nightly_version=$configured_version
-  done < <(php_darwin_read_config versions)
+  done <<< "$php_darwin_configured_versions_data"
   [ -n "$nightly_version" ] || php_darwin_die 'no nightly PHP version is configured'
   printf '%s\n' "$nightly_version"
 }
 
 php_darwin_expected_asset_count() {
+  local build
   local platform_count
+  local ts
   local variant_count
 
-  variant_count=$(awk '!/^#/ && NF == 2 { count++ } END { print count+0 }' \
-    < <(php_darwin_read_config variants)) || php_darwin_die 'could not count configured variants'
+  php_darwin_load_variants || php_darwin_die 'could not load configured variants'
+  variant_count=0
+  while read -r build ts; do
+    variant_count=$((variant_count + 1))
+  done <<< "$php_darwin_configured_variants_data"
   platform_count=$(jq -er 'keys | length | select(. > 0)' \
     < <(php_darwin_read_config platforms.json)) || php_darwin_die 'could not count configured platforms'
   printf '%s\n' "$((variant_count * platform_count))"
@@ -303,14 +433,22 @@ php_darwin_formula_suffix() {
   printf '%s\n' "$suffix"
 }
 
+php_darwin_validate_php_semver() {
+  local semver=$2
+  local version=$1
+
+  [[ "$semver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(alpha[0-9]+|beta[0-9]+|RC[0-9]+)?$ ]] || return 1
+  case "$semver" in "$version".*) ;; *) return 1 ;; esac
+}
+
 php_darwin_formula() {
   local version=$1
   local current_version=${4:-}
   local suffix
 
   php_darwin_validate_version "$version"
-  suffix=$(php_darwin_formula_suffix "${2:-release}" "${3:-nts}")
-  [ -n "$current_version" ] || current_version=$(php_darwin_package_config current_version)
+  suffix=$(php_darwin_formula_suffix "${2:-release}" "${3:-nts}") || return 1
+  [ -n "$current_version" ] || current_version=$(php_darwin_package_config current_version) || return 1
   if [ "$version" = "$current_version" ]; then
     printf 'php%s\n' "$suffix"
   else
@@ -323,7 +461,7 @@ php_darwin_requested_formula() {
   local suffix
 
   php_darwin_validate_version "$version"
-  suffix=$(php_darwin_formula_suffix "${2:-release}" "${3:-nts}")
+  suffix=$(php_darwin_formula_suffix "${2:-release}" "${3:-nts}") || return 1
   printf 'php@%s%s\n' "$version" "$suffix"
 }
 
@@ -352,7 +490,7 @@ php_darwin_config_id() {
   local suffix
 
   php_darwin_validate_version "$version"
-  suffix=$(php_darwin_formula_suffix "${2:-release}" "${3:-nts}")
+  suffix=$(php_darwin_formula_suffix "${2:-release}" "${3:-nts}") || return 1
   printf '%s%s\n' "$version" "$suffix"
 }
 
@@ -373,7 +511,7 @@ php_darwin_postinstall_paths() {
   local extra
 
   php_darwin_validate_version "$version"
-  config_id=$(php_darwin_config_id "$version" "${3:-release}" "${4:-nts}")
+  config_id=$(php_darwin_config_id "$version" "${3:-release}" "${4:-nts}") || return 1
   while read -r scope configured_path extra; do
     [ -n "$scope" ] || continue
     case "$scope" in \#*) continue ;; esac
@@ -403,7 +541,7 @@ php_darwin_asset() {
   php_darwin_validate_version "$version_major.$version_minor"
   php_darwin_validate_build "$build"
   php_darwin_validate_ts "$ts"
-  arch=$(php_darwin_normalize_arch "${4:-}")
+  arch=$(php_darwin_normalize_arch "${4:-}") || return 1
   printf 'php_%s-%s-%s+darwin_%s.tar.zst\n' "$version" "$ts" "$build" "$arch"
 }
 
@@ -446,21 +584,46 @@ php_darwin_checksum_from_file() {
   ' "$checksum_file"
 }
 
+php_darwin_release_manifest_url() {
+  local release_repository=$1
+  local version=$2
+
+  [[ "$release_repository" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || return 1
+  php_darwin_validate_version "$version"
+  printf 'https://github.com/%s/releases/download/php-%s/php-%s-manifest.json?cache=%s\n' \
+    "$release_repository" "$version" "$version" "$(date +%s)"
+}
+
+php_darwin_fetch_release_manifest() {
+  local destination=$3
+  local manifest_url
+  local request_status
+
+  if [ -n "${4:-}" ]; then
+    manifest_url=$4
+  else
+    manifest_url=$(php_darwin_release_manifest_url "$1" "$2") || return 1
+  fi
+  request_status=$(curl --retry 3 -sSL -w '%{http_code}' "$manifest_url" -o "$destination") || return 1
+  printf '%s\n' "$request_status"
+}
+
 php_darwin_validate_release_manifest() {
   local manifest=$1
   local version=$2
-  local channel=${3:-$(php_darwin_version_channel "$version")}
+  local channel=${3:-}
   local asset=${4:-}
   local expected_count
   local legacy_platforms
   local manifest_result
   local platforms
 
+  [ -n "$channel" ] || channel=$(php_darwin_version_channel "$version") || return 1
   case "$channel" in stable|nightly) ;; *) return 1 ;; esac
   [ "$(php_darwin_version_channel "$version")" = "$channel" ] || return 1
-  expected_count=$(php_darwin_expected_asset_count)
+  expected_count=$(php_darwin_expected_asset_count) || return 1
   platforms=$(php_darwin_read_config platforms.json) || return 1
-  legacy_platforms=$(php_darwin_read_config legacy-platforms.json) || return 1
+  legacy_platforms=$(php_darwin_legacy_platforms) || return 1
   manifest_result=$(jq -er --arg channel "$channel" --arg version "$version" \
     --arg asset "$asset" --argjson count "$expected_count" --argjson platforms "$platforms" \
     --argjson legacy_platforms "$legacy_platforms" '
@@ -472,7 +635,7 @@ php_darwin_validate_release_manifest() {
     (.homebrew_php_commit | type == "string" and test("^[0-9a-f]{40}$")) and
     (.source_hash | type == "string" and test("^[0-9a-f]{64}$")) and
     (.php_semver | type == "string" and startswith($version + ".") and
-      test("^[0-9]+\\.[0-9]+\\.[0-9]+$")) and
+      test("^[0-9]+\\.[0-9]+\\.[0-9]+(alpha[0-9]+|beta[0-9]+|RC[0-9]+)?$")) and
     (has("php_src_commit") and if $channel == "nightly" then
        (.php_src_commit | type == "string" and test("^[0-9a-f]{40}$"))
      else
@@ -517,16 +680,6 @@ php_darwin_validate_release_manifest() {
   fi
 }
 
-php_darwin_manifest_asset_sha256() {
-  local manifest=$1
-  local asset=$2
-
-  jq -er --arg asset "$asset" '
-    [.assets[] | select(.name == $asset) | .sha256] |
-    select(length == 1) | .[0] | select(type == "string" and test("^[0-9a-f]{64}$"))
-  ' "$manifest"
-}
-
 php_darwin_validate_cache_metadata() {
   local metadata_file=$1
   local version=$2
@@ -543,6 +696,7 @@ php_darwin_validate_cache_metadata() {
   local configured_platform_key=${13:-}
   local asset
   local channel
+  local config_id
   local formula
   local minimum_macos
   local pear_path
@@ -550,30 +704,29 @@ php_darwin_validate_cache_metadata() {
   local requested_formula
   local tap_snapshot
 
-  channel=$(php_darwin_version_channel "$version")
-  asset=$(php_darwin_asset "$version" "$build" "$ts" "$arch")
-  formula=$(php_darwin_formula "$version" "$build" "$ts" "$configured_current_version")
-  requested_formula=$(php_darwin_requested_formula "$version" "$build" "$ts")
-  pear_path=$(php_darwin_pear_path "$version" "$formula")
+  channel=$(php_darwin_version_channel "$version") || return 1
+  config_id=$(php_darwin_config_id "$version" "$build" "$ts") || return 1
+  asset=$(php_darwin_asset "$version" "$build" "$ts" "$arch") || return 1
+  formula=$(php_darwin_formula "$version" "$build" "$ts" "$configured_current_version") || return 1
+  requested_formula=$(php_darwin_requested_formula "$version" "$build" "$ts") || return 1
+  pear_path=$(php_darwin_pear_path "$version" "$formula") || return 1
   if [ -n "$configured_tap_snapshot" ]; then
     tap_snapshot=$configured_tap_snapshot
   else
-    tap_snapshot=$(php_darwin_package_config tap_snapshot)
+    tap_snapshot=$(php_darwin_package_config tap_snapshot) || return 1
   fi
   if [ -n "$configured_minimum_macos" ] && [ -n "$configured_platform_key" ]; then
     minimum_macos=$configured_minimum_macos
     platform_key=$configured_platform_key
   else
-    minimum_macos=$(jq -er --arg arch "$arch" '.[$arch].minimum_macos' \
-      < <(php_darwin_read_config platforms.json)) || return 1
-    platform_key=$(jq -er --arg arch "$arch" '.[$arch].platform_key' \
-      < <(php_darwin_read_config platforms.json)) || return 1
+    minimum_macos=$(php_darwin_platform_value "$arch" minimum_macos) || return 1
+    platform_key=$(php_darwin_platform_value "$arch" platform_key) || return 1
   fi
 
   jq -er --arg version "$version" --arg channel "$channel" --arg build "$build" --arg ts "$ts" \
     --arg arch "$arch" --arg brew_prefix "$brew_prefix" --arg asset "$asset" --arg formula "$formula" \
     --arg expected_commit "$expected_commit" --arg expected_php_src_commit "$expected_php_src_commit" \
-    --arg pear_path "$pear_path" --arg pear_conf "etc/php/$(php_darwin_config_id "$version" "$build" "$ts")/pear.conf" \
+    --arg pear_path "$pear_path" --arg pear_conf "etc/php/$config_id/pear.conf" \
     --arg platform_key "$platform_key" --arg requested_formula "$requested_formula" \
     --arg tap_snapshot "$tap_snapshot" --argjson macos_major "$macos_major" \
     --argjson minimum_macos "$minimum_macos" '
@@ -594,7 +747,7 @@ php_darwin_validate_cache_metadata() {
        (.php_src_commit == "" or .php_src_commit == null)
      end) and
     (.php_semver | type == "string" and startswith($version + ".") and
-      test("^[0-9]+\\.[0-9]+\\.[0-9]+$")) and
+      test("^[0-9]+\\.[0-9]+\\.[0-9]+(alpha[0-9]+|beta[0-9]+|RC[0-9]+)?$")) and
     (.links | type == "array" and length > 0) and
     ([.links[].path] | unique | length) == (.links | length) and
     all(.links[];
@@ -628,31 +781,10 @@ php_darwin_job_running() {
   kill -0 "$1" >/dev/null 2>&1
 }
 
-php_darwin_wait_for_job_exit() {
-  local attempt=0
-  local attempts=$2
+php_darwin_collect_job_pids() {
   local job_pid=$1
 
-  while [ "$attempt" -lt "$attempts" ]; do
-    php_darwin_job_running "$job_pid" || {
-      wait "$job_pid" >/dev/null 2>&1 || true
-      return 0
-    }
-    sleep 0.1
-    attempt=$((attempt + 1))
-  done
-  return 1
-}
-
-php_darwin_signal_job_tree() {
-  local child_pid
-  local job_pid=$1
-  local signal=$2
-  local job_descendants=()
-
-  while IFS= read -r child_pid; do
-    [ -n "$child_pid" ] && job_descendants+=("$child_pid")
-  done < <(ps -axo pid=,ppid= | awk -v root="$job_pid" '
+  ps -axo pid=,ppid= | awk -v root="$job_pid" '
     { parent[$1]=$2; pid[++count]=$1 }
     END {
       for (item_index=1; item_index<=count; item_index++) {
@@ -663,27 +795,70 @@ php_darwin_signal_job_tree() {
         }
       }
     }
-  ')
-  [ "${#job_descendants[@]}" -eq 0 ] || \
-    kill "-$signal" "${job_descendants[@]}" >/dev/null 2>&1 || true
-  kill "-$signal" "$job_pid" >/dev/null 2>&1 || true
+  '
+}
+
+php_darwin_wait_for_job_pids() {
+  local attempt=0
+  local attempts=$1
+  local job_pid
+  local running
+
+  shift
+
+  while [ "$attempt" -lt "$attempts" ]; do
+    running=false
+    for job_pid in "$@"; do
+      php_darwin_job_running "$job_pid" && running=true
+    done
+    [ "$running" = true ] || return 0
+    sleep 0.1
+    attempt=$((attempt + 1))
+  done
+  return 1
+}
+
+php_darwin_signal_job_pids() {
+  local job_pid
+  local signal=$1
+
+  shift
+  for job_pid in "$@"; do
+    php_darwin_job_running "$job_pid" || continue
+    kill "-$signal" "$job_pid" >/dev/null 2>&1 || true
+  done
 }
 
 php_darwin_reap_job() {
+  local discovered_pid
   local grace_attempts=$2
   local job_pid=$1
+  local tracked_pids=()
 
   [ -n "$job_pid" ] || return 0
-  if [ "$grace_attempts" -gt 0 ] && php_darwin_wait_for_job_exit "$job_pid" "$grace_attempts"; then
-    return 0
-  fi
-  php_darwin_job_running "$job_pid" || {
+  while IFS= read -r discovered_pid; do
+    [ -n "$discovered_pid" ] && tracked_pids+=("$discovered_pid")
+  done < <(php_darwin_collect_job_pids "$job_pid")
+  if [ "$grace_attempts" -gt 0 ] && \
+    php_darwin_wait_for_job_pids "$grace_attempts" "$job_pid" "${tracked_pids[@]}"; then
     wait "$job_pid" >/dev/null 2>&1 || true
     return 0
-  }
-  php_darwin_signal_job_tree "$job_pid" TERM
-  if ! php_darwin_wait_for_job_exit "$job_pid" 10; then
-    php_darwin_signal_job_tree "$job_pid" KILL
-    wait "$job_pid" >/dev/null 2>&1 || true
   fi
+  while IFS= read -r discovered_pid; do
+    [ -n "$discovered_pid" ] || continue
+    case " ${tracked_pids[*]} " in *" $discovered_pid "*) ;; *) tracked_pids+=("$discovered_pid") ;; esac
+  done < <(php_darwin_collect_job_pids "$job_pid")
+  if [ "${#tracked_pids[@]}" -gt 0 ]; then
+    php_darwin_signal_job_pids TERM "${tracked_pids[@]}"
+  else
+    php_darwin_signal_job_pids TERM "$job_pid"
+  fi
+  if ! php_darwin_wait_for_job_pids 10 "$job_pid" "${tracked_pids[@]}"; then
+    php_darwin_signal_job_pids KILL "${tracked_pids[@]}"
+    if ! php_darwin_wait_for_job_pids 10 "$job_pid" "${tracked_pids[@]}"; then
+      php_darwin_signal_job_pids KILL "$job_pid"
+      php_darwin_wait_for_job_pids 10 "$job_pid" || true
+    fi
+  fi
+  wait "$job_pid" >/dev/null 2>&1 || true
 }

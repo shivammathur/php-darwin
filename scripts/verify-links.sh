@@ -2,9 +2,15 @@
 
 prefix=${1:?}
 verify_links_file=${2:?}
-actual_links="$verify_links_file.actual.$$"
-raw_links="$verify_links_file.raw.$$"
+actual_links=$(mktemp "${RUNNER_TEMP:-/tmp}/php-darwin-links.XXXXXX") || exit 1
+raw_links=$(mktemp "${RUNNER_TEMP:-/tmp}/php-darwin-raw-links.XXXXXX") || {
+  rm -f "$actual_links"
+  exit 1
+}
 trap 'rm -f "$actual_links" "$raw_links"' EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 [ -d "$prefix" ] || {
   printf 'Missing Homebrew prefix: %s\n' "$prefix" >&2

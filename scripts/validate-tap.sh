@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=scripts/lib.sh
+. "$script_dir/lib.sh"
 
 tap_path=${1:?}
 version=${2:?}
@@ -10,7 +12,7 @@ expected_commit=${5:-}
 expected_branch=${6:-}
 require_clean=${7:-false}
 
-[ -d "$tap_path/.git" ] || {
+php_darwin_is_git_worktree "$tap_path" || {
   printf 'Homebrew tap is not a Git repository: %s\n' "$tap_path" >&2
   exit 1
 }

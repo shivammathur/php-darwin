@@ -5,7 +5,7 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 . "$script_dir/lib.sh"
 
 version=${PHP_VERSION:-}
-[ -n "$version" ] || version=$(php_darwin_nightly_version)
+[ -n "$version" ] || version=$(php_darwin_nightly_version) || exit 1
 force=${FORCE:-false}
 manifest_override=${PHP_DARWIN_MANIFEST_PATH:-}
 release_repository=$(php_darwin_package_config release_repository)
@@ -25,8 +25,7 @@ if [ -n "$manifest_override" ]; then
   cp "$manifest_override" "$manifest" || php_darwin_die 'could not copy the nightly manifest fixture'
   http_status=200
 else
-  manifest_url="https://github.com/$release_repository/releases/download/php-$version/php-$version-manifest.json?cache=$(date +%s)"
-  if ! http_status=$(curl --retry 3 -sSL -w '%{http_code}' "$manifest_url" -o "$manifest"); then
+  if ! http_status=$(php_darwin_fetch_release_manifest "$release_repository" "$version" "$manifest"); then
     php_darwin_die "could not request the PHP $version release manifest"
   fi
 fi

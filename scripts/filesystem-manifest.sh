@@ -3,16 +3,17 @@
 prefix=${1:?}
 output=${2:?}
 roots_file=${3:?}
-raw_output="$output.unsorted.$$"
-path_list="$output.paths.$$"
-file_list="$output.files.$$"
-directory_list="$output.directories.$$"
-symlink_list="$output.symlinks.$$"
-relative_list="$output.relative.$$"
-mode_list="$output.modes.$$"
-value_list="$output.values.$$"
+manifest_tmp=$(mktemp -d "${RUNNER_TEMP:-/tmp}/php-darwin-manifest.XXXXXX") || exit 1
+raw_output="$manifest_tmp/unsorted"
+path_list="$manifest_tmp/paths"
+file_list="$manifest_tmp/files"
+directory_list="$manifest_tmp/directories"
+symlink_list="$manifest_tmp/symlinks"
+relative_list="$manifest_tmp/relative"
+mode_list="$manifest_tmp/modes"
+value_list="$manifest_tmp/values"
 trap 'rm -f "$raw_output" "$path_list" "$file_list" "$directory_list" "$symlink_list" \
-  "$relative_list" "$mode_list" "$value_list"' EXIT
+  "$relative_list" "$mode_list" "$value_list"; rmdir "$manifest_tmp" 2>/dev/null || true' EXIT
 
 [ -d "$prefix" ] || {
   printf 'Missing Homebrew prefix: %s\n' "$prefix" >&2
@@ -57,14 +58,14 @@ append_entries() {
   expected_lines=$(wc -l < "$relative_list") || return 1
   expected_lines=${expected_lines//[[:space:]]/}
   if [ "$stat_flavor" = bsd ]; then
-    xargs -0 -n 100 stat -f '%Lp' < "$input" > "$mode_list" || return 1
+    xargs -0 stat -f '%Lp' < "$input" > "$mode_list" || return 1
   else
-    xargs -0 -n 100 stat -c '%a' < "$input" > "$mode_list" || return 1
+    xargs -0 stat -c '%a' < "$input" > "$mode_list" || return 1
   fi
   [ "$(wc -l < "$mode_list" | tr -d '[:space:]')" = "$expected_lines" ] || return 1
   case "$type" in
     f)
-      xargs -0 -n 100 shasum -a 256 < "$input" | awk '{ print $1 }' > "$value_list"
+      xargs -0 shasum -a 256 < "$input" | awk '{ print $1 }' > "$value_list"
       pipeline_status=("${PIPESTATUS[@]}")
       [ "${pipeline_status[0]}" -eq 0 ] && [ "${pipeline_status[1]}" -eq 0 ] || return 1
       [ "$(wc -l < "$value_list" | tr -d '[:space:]')" = "$expected_lines" ] || return 1
@@ -73,9 +74,9 @@ append_entries() {
       ;;
     l)
       if [ "$stat_flavor" = bsd ]; then
-        xargs -0 -n 100 stat -f '%Y' < "$input" > "$value_list" || return 1
+        xargs -0 stat -f '%Y' < "$input" > "$value_list" || return 1
       else
-        xargs -0 -n 100 readlink < "$input" > "$value_list" || return 1
+        xargs -0 readlink < "$input" > "$value_list" || return 1
       fi
       [ "$(wc -l < "$value_list" | tr -d '[:space:]')" = "$expected_lines" ] || return 1
       if grep -Eq $'[\r\t]' "$value_list"; then

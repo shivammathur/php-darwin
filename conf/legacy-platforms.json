@@ -1,5 +1,10 @@
 {
-  "x86_64": {
-    "minimum_macos": 15
+  "schema": 1,
+  "purpose": "Validate pre-ARM64-only release manifests",
+  "remove_after": "2026-12-31",
+  "platforms": {
+    "x86_64": {
+      "minimum_macos": 15
+    }
   }
 }

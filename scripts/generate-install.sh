@@ -56,6 +56,9 @@ grep -Fxq scripts/lib.sh "$seen_inputs" || php_darwin_die 'standalone installer 
     !skipping_config { print }
   ' "$root/scripts/lib.sh"
 } > "$library" || php_darwin_die 'could not stage the standalone installer library'
+if grep -Eq '^php_darwin_root=' "$library"; then
+  php_darwin_die 'standalone installer library retained the repository root'
+fi
 
 {
   printf 'php_darwin_read_config() {\n'
@@ -157,7 +160,7 @@ replace_marker __PHP_DARWIN_CONFIG__ "$config"
 replace_marker __PHP_DARWIN_HELPERS__ "$helpers"
 replace_marker __PHP_DARWIN_INSTALL__ "$install"
 
-if grep -Eq '__PHP_DARWIN_[A-Z_]+__|base64|gzip -d' "$generated"; then
+if grep -Eq '__PHP_DARWIN_[A-Z_]+__|base64|gzip -d|\$\$' "$generated"; then
   php_darwin_die 'standalone installer contains an encoded payload or an unresolved marker'
 fi
 if grep -Fq "\$script_dir/" "$generated"; then

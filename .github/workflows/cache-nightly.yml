@@ -32,7 +32,7 @@ on:
         type: boolean
 
 concurrency:
-  group: cache-nightly-${{ inputs.php-version || 'configured' }}
+  group: cache-nightly
   cancel-in-progress: false
 
 permissions:

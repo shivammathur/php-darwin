@@ -3,9 +3,15 @@
 archive=${1:?}
 prefix=${2:?}
 exclude_file=${3:?}
-archive_members="$exclude_file.archive-members.$$"
-extract_members="$exclude_file.extract-members.$$"
+archive_members=$(mktemp "${RUNNER_TEMP:-/tmp}/php-darwin-archive-members.XXXXXX") || exit 1
+extract_members=$(mktemp "${RUNNER_TEMP:-/tmp}/php-darwin-extract-members.XXXXXX") || {
+  rm -f "$archive_members"
+  exit 1
+}
 trap 'rm -f "$archive_members" "$extract_members"' EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 [ -f "$archive" ] || {
   printf 'Archive not found: %s\n' "$archive" >&2

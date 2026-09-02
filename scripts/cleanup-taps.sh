@@ -4,9 +4,7 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=scripts/lib.sh
 . "$script_dir/lib.sh"
 
-export HOMEBREW_NO_AUTO_UPDATE=1
-export HOMEBREW_NO_AUTOREMOVE=1
-export HOMEBREW_NO_ENV_HINTS=1
+php_darwin_configure_homebrew_environment
 
 required_tap=$(php_darwin_package_config tap)
 installed_taps=$(brew tap) || php_darwin_die 'could not list installed Homebrew taps'

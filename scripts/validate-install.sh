@@ -33,14 +33,13 @@ grep -Fq "php_darwin_reap_job \"\$homebrew_prepare_pid\" 20" "$installer" || \
   php_darwin_die 'standalone installer does not bound failed Homebrew preparation cleanup'
 grep -Fq "php_darwin_remove_tap_path \"\$brew_prefix\" \"\$tap_path\"" "$installer" || \
   php_darwin_die 'standalone installer cannot restore a temporary user tap transaction'
-if ! awk '
+if awk '
   /if \[ "\$tap_restore_after_install" = true \]/ { temporary=1; next }
-  temporary && /php_darwin_restore_formula_trust/ { untrusted=NR }
-  temporary && /php_darwin_remove_tap_path/ { removed=NR }
+  temporary && /php_darwin_restore_formula_trust/ { found=1 }
   temporary && /^fi$/ { temporary=0 }
-  END { exit !(untrusted > 0 && removed > untrusted) }
+  END { exit !found }
 ' "$installer"; then
-  php_darwin_die 'standalone installer retains formula trust after restoring a temporary user tap'
+  php_darwin_die 'standalone installer removes trust required by its installed formula'
 fi
 if grep -Fq "wait \"\$background_pid\"" "$installer"; then
   php_darwin_die 'standalone installer still waits indefinitely for failed background jobs'
@@ -57,12 +56,33 @@ if ! awk '
 fi
 if ! awk '
   /^php_darwin_install_cleanup\(\)/ { cleanup=1; next }
-  cleanup && /brew link --overwrite .*linked_dependency_formulae/ { relinked=NR }
+  cleanup && /brew link --overwrite .*linked_dependency_references/ { relinked=NR }
   cleanup && /php_darwin_restore_formula_trust >>/ { untrusted=NR }
   cleanup && /^}/ { cleanup=0 }
   END { exit !(relinked > 0 && untrusted > relinked) }
 ' "$installer"; then
   php_darwin_die 'standalone installer revokes formula trust before rollback relinking finishes'
+fi
+for signal_trap in "trap 'exit 129' HUP" "trap 'exit 130' INT" "trap 'exit 143' TERM"; do
+  grep -Fq "$signal_trap" "$installer" || \
+    php_darwin_die "standalone installer omitted signal handling: $signal_trap"
+done
+grep -Fq "\$php_bin -n -r" "$installer" || \
+  php_darwin_die 'standalone installer allows user configuration warnings to corrupt its version probe'
+if ! awk '
+  /if ! php_darwin_download_release_archive/ { failed=1 }
+  failed && /\$release_archive_error" = not-found/ { not_found=NR }
+  failed && /php_darwin_refresh_release_manifest/ { fallback=NR; exit }
+  END { exit !(not_found > 0 && fallback > not_found) }
+' "$installer"; then
+  php_darwin_die 'standalone installer falls back after errors other than a retired archive'
+fi
+if awk '
+  /runtime_verified=true/ { verified=1; next }
+  verified && /php_darwin_die/ { found=1 }
+  END { exit !found }
+' "$installer"; then
+  php_darwin_die 'standalone installer can roll back after runtime verification'
 fi
 if ! awk '
   $0 == "# Source: scripts/install-package.sh" { install=1; next }

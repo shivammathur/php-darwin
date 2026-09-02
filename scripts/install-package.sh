@@ -10,7 +10,7 @@ version=${1:-}
 build=${2:-release}
 ts=${3:-nts}
 local_archive=${4:-}
-arch=$(php_darwin_normalize_arch "$(uname -m)")
+arch=$(php_darwin_normalize_arch "$(uname -m)") || exit 1
 
 php_darwin_set_phase environment
 [ "$(uname -s)" = Darwin ] || php_darwin_die 'the cache installer only supports macOS'
@@ -42,15 +42,15 @@ IFS=$'\t' read -r current_version package_release_repository tap tap_repository 
   php_darwin_die 'package and platform configuration fields are invalid'
 [ -n "$version" ] || version=$current_version
 php_darwin_validate_version "$version"
-channel=$(php_darwin_version_channel "$version")
+channel=$(php_darwin_version_channel "$version") || exit 1
 php_darwin_validate_build "$build"
 php_darwin_validate_ts "$ts"
-requested_formula=$(php_darwin_requested_formula "$version" "$build" "$ts")
-formula=$(php_darwin_formula "$version" "$build" "$ts" "$current_version")
-config_id=$(php_darwin_config_id "$version" "$build" "$ts")
-asset=$(php_darwin_asset "$version" "$build" "$ts" "$arch")
-pear_path=$(php_darwin_pear_path "$version" "$formula")
-internal_metadata_path=$(php_darwin_metadata_path "$asset")
+requested_formula=$(php_darwin_requested_formula "$version" "$build" "$ts") || exit 1
+formula=$(php_darwin_formula "$version" "$build" "$ts" "$current_version") || exit 1
+config_id=$(php_darwin_config_id "$version" "$build" "$ts") || exit 1
+asset=$(php_darwin_asset "$version" "$build" "$ts" "$arch") || exit 1
+pear_path=$(php_darwin_pear_path "$version" "$formula") || exit 1
+internal_metadata_path=$(php_darwin_metadata_path "$asset") || exit 1
 
 brew_command=$(command -v brew)
 if [ "$brew_command" = "$expected_prefix/bin/brew" ]; then
@@ -92,12 +92,7 @@ while IFS= read -r managed_dir extra; do
     php_darwin_die "Homebrew directory is not writable: $brew_prefix/$managed_dir"
 done < <(php_darwin_read_config archive-paths)
 
-export HOMEBREW_NO_AUTO_UPDATE=1
-export HOMEBREW_NO_AUTOREMOVE=1
-export HOMEBREW_NO_ENV_HINTS=1
-export HOMEBREW_NO_INSTALL_CLEANUP=1
-export HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1
-export HOMEBREW_NO_INSTALL_FROM_API=1
+php_darwin_configure_homebrew_environment
 
 tmp_dir=$(mktemp -d "${RUNNER_TEMP:-/tmp}/php-darwin-install.XXXXXX") || \
   php_darwin_die 'could not create the installation directory'
@@ -120,8 +115,8 @@ missing_output=
 archive_hash_file="$tmp_dir/archive.sha256"
 archive_hash_log="$tmp_dir/archive-hash.log"
 archive_hash_pid=
-linked_php_formulae=()
-linked_dependency_formulae=()
+linked_php_references=()
+linked_dependency_references=()
 postinstall_paths_file="$tmp_dir/postinstall-paths.txt"
 postinstall_candidates_file="$tmp_dir/postinstall-candidates.txt"
 postinstall_backup_dir="$tmp_dir/postinstall-backup"
@@ -152,6 +147,8 @@ tap_snapshot_path="$brew_prefix/$tap_snapshot"
 : > "$postinstall_restored_file" || php_darwin_die 'could not create the restored-state list'
 : > "$new_state_paths_file" || php_darwin_die 'could not create the new-state list'
 archive_mutation_started=false
+runtime_verified=false
+preserve_tmp_dir=false
 php_darwin_collect_dependencies() {
   [ -n "$missing_pid" ] || return 0
   if wait "$missing_pid"; then
@@ -189,7 +186,7 @@ php_darwin_resolve_tap_and_dependencies() {
       missing_status=
       missing_output=
       php_darwin_set_phase homebrew.dependencies
-      brew missing "$formula" > "$missing_log" 2>&1 &
+      brew missing "$tap/$formula" > "$missing_log" 2>&1 &
       missing_pid=$!
     fi
   else
@@ -326,8 +323,9 @@ php_darwin_restore_formula_trust() {
 php_darwin_install_cleanup() {
   cleanup_status=$?
   rollback_status=ok
+  rollback_attempted=false
   rollback_log="$tmp_dir/rollback.log"
-  trap - EXIT
+  trap - EXIT HUP INT TERM
   : > "$rollback_log"
   # Give the potentially mutating Homebrew preparation a bounded opportunity
   # to finish. Read-only validation jobs can be stopped immediately.
@@ -335,7 +333,8 @@ php_darwin_install_cleanup() {
   php_darwin_reap_job "$tap_pid" 0
   php_darwin_reap_job "$missing_pid" 0
   php_darwin_reap_job "$archive_hash_pid" 0
-  if [ "$cleanup_status" -ne 0 ]; then
+  if [ "$cleanup_status" -ne 0 ] && [ "$runtime_verified" = false ]; then
+    rollback_attempted=true
     if [ "$tap_installed" = true ]; then
       if [ ! -e "$tap_path" ] && [ ! -L "$tap_path" ]; then
         :
@@ -453,27 +452,39 @@ php_darwin_install_cleanup() {
     if [ "$archive_mutation_started" = true ]; then
       rm -f "$brew_prefix/$internal_metadata_path" >> "$rollback_log" 2>&1 || rollback_status=failed
     fi
-    if [ "${#linked_php_formulae[@]}" -gt 0 ]; then
-      brew link --overwrite --force "${linked_php_formulae[@]}" >> "$rollback_log" 2>&1 || \
+    if [ "${#linked_php_references[@]}" -gt 0 ]; then
+      brew link --overwrite --force "${linked_php_references[@]}" >> "$rollback_log" 2>&1 || \
         rollback_status=failed
     fi
-    if [ "${#linked_dependency_formulae[@]}" -gt 0 ]; then
-      brew link --overwrite "${linked_dependency_formulae[@]}" >> "$rollback_log" 2>&1 || \
+    if [ "${#linked_dependency_references[@]}" -gt 0 ]; then
+      brew link --overwrite "${linked_dependency_references[@]}" >> "$rollback_log" 2>&1 || \
         rollback_status=failed
     fi
     php_darwin_restore_formula_trust >> "$rollback_log" 2>&1 || rollback_status=failed
   fi
   if [ "$cleanup_status" -ne 0 ]; then
-    if [ "$rollback_status" = failed ]; then
+    if [ "$rollback_attempted" = false ]; then
+      printf 'php-darwin: verified installation preserved after post-install interruption\n' >&2
+    elif [ "$rollback_status" = failed ]; then
       printf 'php-darwin: rollback failed; Homebrew diagnostics follow\n' >&2
       cat "$rollback_log" >&2
     fi
-    printf 'php-darwin: rollback %s\n' "$rollback_status" >&2
+    [ "$rollback_attempted" = false ] || printf 'php-darwin: rollback %s\n' "$rollback_status" >&2
   fi
-  rm -rf "$tmp_dir"
+  if [ "$runtime_verified" = true ] && [ "$tap_snapshot_backed_up" = true ]; then
+    preserve_tmp_dir=true
+  fi
+  if [ "$preserve_tmp_dir" = true ]; then
+    printf 'php-darwin: preserved recovery files in %s\n' "$tmp_dir" >&2
+  else
+    rm -rf "$tmp_dir"
+  fi
   exit "$cleanup_status"
 }
 trap php_darwin_install_cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # Homebrew preparation and reading the cache are independent. Keep Homebrew
 # operations serial within one worker while overlapping them with the archive
@@ -481,8 +492,17 @@ trap php_darwin_install_cleanup EXIT
 for linked_php_path in "$brew_prefix/var/homebrew/linked"/php*; do
   [ -L "$linked_php_path" ] || continue
   linked_php_formula=${linked_php_path##*/}
-  [[ "$linked_php_formula" =~ ^php(@[0-9]+\.[0-9]+)?(-debug)?(-zts)?$ ]] || continue
-  linked_php_formulae+=("$linked_php_formula")
+  php_darwin_is_php_formula "$linked_php_formula" || continue
+  linked_php_target=$(readlink "$linked_php_path") || \
+    php_darwin_die "could not read the linked Homebrew formula $linked_php_formula"
+  case "$linked_php_target" in "../../../Cellar/$linked_php_formula/"*) ;; *)
+    php_darwin_die "invalid linked Homebrew formula target: $linked_php_target"
+    ;;
+  esac
+  linked_php_reference=$(php_darwin_keg_formula_reference "$brew_prefix" "$linked_php_formula" \
+    "${linked_php_target#../../../}") || \
+    php_darwin_die "could not resolve the installed Homebrew formula $linked_php_formula"
+  linked_php_references+=("$linked_php_reference")
 done
 : > "$homebrew_prepare_phase_file" || php_darwin_die 'could not create the Homebrew preparation phase file'
 (
@@ -504,9 +524,9 @@ done
   fi
   printf 'homebrew.tap-path\n' > "$homebrew_prepare_phase_file" || exit 1
   brew --repository "$tap" > "$tap_path_file" || exit 1
-  if [ "${#linked_php_formulae[@]}" -gt 0 ]; then
+  if [ "${#linked_php_references[@]}" -gt 0 ]; then
     printf 'homebrew.unlink\n' > "$homebrew_prepare_phase_file" || exit 1
-    brew unlink "${linked_php_formulae[@]}" || exit 1
+    brew unlink "${linked_php_references[@]}" || exit 1
   fi
 ) > "$homebrew_prepare_log" 2>&1 &
 homebrew_prepare_pid=$!
@@ -536,21 +556,38 @@ php_darwin_use_release_manifest() {
   [ "$manifest_php_src_commit" != - ] || manifest_php_src_commit=
 }
 
-php_darwin_fetch_release_manifest() {
-  manifest_url=${PHP_DARWIN_MANIFEST_URL:-https://github.com/$release_repository/releases/download/php-$version/php-$version-manifest.json?cache=$(date +%s)}
-  curl --retry 3 --retry-all-errors -fsSL "$manifest_url" -o "$release_manifest" || \
-    php_darwin_die "could not download $manifest_url"
+php_darwin_refresh_release_manifest() {
+  manifest_url=${PHP_DARWIN_MANIFEST_URL:-}
+  [ -n "$manifest_url" ] || manifest_url=$(php_darwin_release_manifest_url "$release_repository" "$version") || \
+    php_darwin_die 'could not construct the release manifest URL'
+  manifest_status=$(php_darwin_fetch_release_manifest "$release_repository" "$version" \
+    "$release_manifest" "$manifest_url") || php_darwin_die "could not request $manifest_url"
+  [ "$manifest_status" = 200 ] || \
+    php_darwin_die "could not fetch the PHP $version release manifest (HTTP $manifest_status)"
   php_darwin_use_release_manifest "$release_manifest" || \
     php_darwin_die 'release manifest did not match the requested PHP version'
   manifest_from_embedded=false
 }
 
 php_darwin_download_release_archive() {
+  local archive_curl_status
+  local archive_http_status
+
   release_archive_error=
   release_url=${PHP_DARWIN_RELEASE_URL:-https://github.com/$release_repository/releases/download/php-$version/$manifest_download_asset}
   # Do not retry a retired immutable name: a single 404 should immediately
   # fall through to the current manifest instead of consuming the fetch budget.
-  curl --retry 3 -fsSL "$release_url" -o "$archive" || {
+  archive_http_status=$(curl --retry 3 -fsSL -w '%{http_code}' "$release_url" -o "$archive")
+  archive_curl_status=$?
+  if [ "$archive_curl_status" -ne 0 ]; then
+    if [ "$archive_http_status" = 404 ]; then
+      release_archive_error=not-found
+    else
+      release_archive_error=download
+    fi
+    return 1
+  fi
+  [ "$archive_http_status" = 200 ] || {
     release_archive_error=download
     return 1
   }
@@ -586,16 +623,16 @@ else
     if php_darwin_use_release_manifest "$release_manifest"; then
       manifest_from_embedded=true
     else
-      php_darwin_fetch_release_manifest
+      php_darwin_refresh_release_manifest
     fi
   else
-    php_darwin_fetch_release_manifest
+    php_darwin_refresh_release_manifest
   fi
   if ! php_darwin_download_release_archive; then
-    if [ "$manifest_from_embedded" = true ] && [ -z "${PHP_DARWIN_RELEASE_URL:-}" ]; then
-      printf 'Embedded release archive %s failed; retrying with the current release manifest\n' \
-        "$release_archive_error" >&2
-      php_darwin_fetch_release_manifest
+    if [ "$manifest_from_embedded" = true ] && [ "$release_archive_error" = not-found ] && \
+      [ -z "${PHP_DARWIN_RELEASE_URL:-}" ]; then
+      printf 'Embedded release archive was retired; retrying with the current release manifest\n' >&2
+      php_darwin_refresh_release_manifest
       if ! php_darwin_download_release_archive; then
         case "$release_archive_error" in
           checksum) php_darwin_die "checksum mismatch for the current release archive $asset" ;;
@@ -632,7 +669,6 @@ fi
 
 existing_kegs="$tmp_dir/existing-kegs.txt"
 changed_formulae_file="$tmp_dir/changed-formulae.txt"
-linkable_formulae_file="$tmp_dir/linkable-formulae.txt"
 packages_file="$tmp_dir/packages.tsv"
 package_kegs_file="$tmp_dir/package-kegs.txt"
 links_file="$tmp_dir/links.tsv"
@@ -710,6 +746,17 @@ if [ -e "$tap_snapshot_path" ] || [ -L "$tap_snapshot_path" ]; then
   tap_snapshot_backed_up=true
 fi
 if [ -d "$brew_prefix/$target_keg_relative" ]; then
+  target_opt_path="$brew_prefix/opt/$formula"
+  if [ -L "$target_opt_path" ]; then
+    target_opt_previous=$(readlink "$target_opt_path") || \
+      php_darwin_die "could not read the existing Homebrew opt link for $formula"
+    case "$target_opt_previous" in "../Cellar/$formula/"*) ;; *)
+      php_darwin_die "unsupported existing Homebrew opt link for $formula: $target_opt_previous"
+      ;;
+    esac
+    printf '%s\t%s\n' "$formula" "$target_opt_previous" >> "$previous_opt_links" || \
+      php_darwin_die "could not preserve the existing Homebrew opt link for $formula"
+  fi
   mv "$brew_prefix/$target_keg_relative" "$target_keg_backup" || \
     php_darwin_die "could not back up the existing cached $formula keg"
   target_keg_backed_up=true
@@ -758,7 +805,6 @@ bash "$script_dir/existing-paths.sh" "$brew_prefix" "$exclude_file" \
   "$existing_kegs" "$managed_paths_file" "$package_kegs_file" || \
   php_darwin_die 'could not record existing Homebrew paths'
 : > "$changed_formulae_file"
-: > "$linkable_formulae_file"
 while IFS=$'\t' read -r package_name opt_target keg_only; do
   keg_relative=${opt_target#../}
   if ! grep -Fxq "$keg_relative" "$existing_kegs"; then
@@ -770,12 +816,29 @@ while IFS=$'\t' read -r package_name opt_target keg_only; do
     fi
     if [ "$package_name" != "$formula" ] && [ "$keg_only" = false ] && \
       [ "$package_preexisting" = true ]; then
-      printf '%s\n' "$package_name" >> "$linkable_formulae_file"
+      dependency_link="$brew_prefix/var/homebrew/linked/$package_name"
+      if [ -L "$dependency_link" ]; then
+        dependency_target=$(readlink "$dependency_link") || \
+          php_darwin_die "could not read the linked dependency $package_name"
+        case "$dependency_target" in "../../../Cellar/$package_name/"*) ;; *)
+          php_darwin_die "invalid linked dependency target for $package_name: $dependency_target"
+          ;;
+        esac
+        dependency_reference=$(php_darwin_keg_formula_reference "$brew_prefix" "$package_name" \
+          "${dependency_target#../../../}") || \
+          php_darwin_die "could not resolve the installed Homebrew dependency $package_name"
+        linked_dependency_references+=("$dependency_reference")
+      fi
     fi
   fi
 done < "$packages_file"
 [ -s "$changed_formulae_file" ] || php_darwin_die 'cache extraction would not add any Homebrew kegs'
 grep -Fxq "$formula" "$changed_formulae_file" || php_darwin_die "cache extraction would not add $formula"
+if [ "${#linked_dependency_references[@]}" -gt 0 ]; then
+  php_darwin_set_phase homebrew.unlink
+  brew unlink "${linked_dependency_references[@]}" >/dev/null || \
+    php_darwin_die 'could not unlink the existing Homebrew dependencies'
+fi
 
 php_darwin_set_phase archive.extract
 archive_mutation_started=true
@@ -790,7 +853,7 @@ bash "$script_dir/validate-tap.sh" "$tap_snapshot_path" "$version" '' \
   "$tap_repository" "$metadata_homebrew_commit" "$tap_branch" >/dev/null || \
   php_darwin_die 'cached Homebrew tap snapshot validation failed'
 if [ -e "$tap_path" ]; then
-  [ -d "$tap_path/.git" ] && [ ! -L "$tap_path" ] || \
+  php_darwin_is_git_worktree "$tap_path" || \
     php_darwin_die "installed Homebrew tap is not a Git repository: $tap_path"
   bash "$script_dir/tap-action.sh" "$tap_path" "$tap_snapshot_path" "$version" \
     "$cached_source_hash" "$tap_repository" "$metadata_homebrew_commit" "$tap_branch" \
@@ -849,7 +912,7 @@ if [ "$tap_was_trusted" = false ] && [ "$formula_was_trusted" = false ]; then
 fi
 php_darwin_set_phase homebrew.dependencies
 [ -z "$tap_pid" ] || dependencies_started_with_pending_tap=true
-brew missing "$formula" > "$missing_log" 2>&1 &
+brew missing "$tap/$formula" > "$missing_log" 2>&1 &
 missing_pid=$!
 
 php_darwin_set_phase homebrew.configure
@@ -888,23 +951,6 @@ grep -Fq "$brew_prefix/lib/php/pecl/$pecl_extension" "$brew_prefix/etc/php/$conf
   php_darwin_die 'cached PHP PECL link has no shared directory target'
 
 php_darwin_set_phase homebrew.link
-linkable_formulae=()
-while IFS= read -r linkable_formula; do
-  [ -n "$linkable_formula" ] && linkable_formulae+=("$linkable_formula")
-done < "$linkable_formulae_file"
-if [ "${#linkable_formulae[@]}" -gt 0 ]; then
-  php_darwin_set_phase homebrew.dependencies
-  php_darwin_resolve_tap_and_dependencies
-  php_darwin_set_phase homebrew.link
-  for linkable_formula in "${linkable_formulae[@]}"; do
-    [ -L "$brew_prefix/var/homebrew/linked/$linkable_formula" ] && \
-      linked_dependency_formulae+=("$linkable_formula")
-  done
-  brew unlink "${linkable_formulae[@]}" >/dev/null || \
-    php_darwin_die 'could not unlink the changed Homebrew dependencies'
-  brew link --overwrite "${linkable_formulae[@]}" >/dev/null || \
-    php_darwin_die 'could not link the extracted Homebrew dependencies'
-fi
 bash "$script_dir/verify-links.sh" "$brew_prefix" "$links_file" || \
   php_darwin_die 'cached Homebrew links did not match the archive metadata'
 
@@ -914,26 +960,39 @@ php_darwin_resolve_tap_and_dependencies
 php_darwin_set_phase runtime.verify
 php_bin="$brew_prefix/opt/$formula/bin/php"
 [ -x "$php_bin" ] || php_darwin_die "PHP binary missing after cache extraction: $php_bin"
-installed_semver=$($php_bin -r 'echo PHP_VERSION;') || php_darwin_die 'cached PHP could not report its version'
+installed_semver=$($php_bin -n -r 'echo PHP_VERSION;' 2>/dev/null) || \
+  php_darwin_die 'cached PHP could not report its version'
 [ "${installed_semver%.*}" = "$version" ] || php_darwin_die "cache installed PHP $installed_semver for requested $version"
+runtime_verified=true
+php_darwin_set_phase complete
 
 if [ "$tap_snapshot_backed_up" = true ]; then
-  [ ! -e "$tap_snapshot_path" ] && [ ! -L "$tap_snapshot_path" ] || \
-    php_darwin_die 'could not restore the previous Homebrew tap snapshot over an existing path'
-  mv "$tap_snapshot_backup" "$tap_snapshot_path" || \
-    php_darwin_die 'could not restore the previous Homebrew tap snapshot'
-  tap_snapshot_backed_up=false
+  if { [ ! -e "$tap_snapshot_path" ] && [ ! -L "$tap_snapshot_path" ]; } && \
+    { mv "$tap_snapshot_backup" "$tap_snapshot_path" 2>/dev/null || \
+      { command -v sudo >/dev/null 2>&1 && sudo -n mv "$tap_snapshot_backup" "$tap_snapshot_path"; }; }; then
+    tap_snapshot_backed_up=false
+  else
+    preserve_tmp_dir=true
+    printf 'php-darwin: restore the previous cache tap with: sudo mv %s %s\n' \
+      "$tap_snapshot_backup" "$tap_snapshot_path" >&2
+  fi
 fi
 if [ "$tap_restore_after_install" = true ]; then
-  php_darwin_restore_formula_trust || \
-    php_darwin_die "could not remove temporary trust for $tap/$formula"
-  php_darwin_remove_tap_path "$brew_prefix" "$tap_path" || \
-    php_darwin_die 'could not remove the temporary cached Homebrew tap snapshot'
-  tap_installed=false
-  php_darwin_restore_tap_path "$tap_path" "$tap_path_backup" || \
-    php_darwin_die 'could not restore the existing Homebrew tap after installation'
-  tap_path_backed_up=false
-  tap_restore_after_install=false
+  # Keep formula-scoped trust with the installed keg. This is narrower than
+  # tap trust and lets a later cache install unlink/relink the formula safely.
+  if php_darwin_remove_tap_path "$brew_prefix" "$tap_path"; then
+    tap_installed=false
+    if php_darwin_restore_tap_path "$tap_path" "$tap_path_backup"; then
+      tap_path_backed_up=false
+      tap_restore_after_install=false
+    else
+      printf 'php-darwin: restore the original tap with: sudo mv %s %s\n' \
+        "$tap_path_backup" "$tap_path" >&2
+    fi
+  else
+    printf 'php-darwin: remove %s, then restore the original tap with: sudo mv %s %s\n' \
+      "$tap_path" "$tap_path_backup" "$tap_path" >&2
+  fi
 elif [ "$tap_path_backed_up" = true ]; then
   # The new tap is committed at this point. A best-effort cleanup failure must
   # not trigger rollback from a backup that may already be partially removed.
@@ -943,6 +1002,5 @@ elif [ "$tap_path_backed_up" = true ]; then
     printf 'php-darwin: could not remove the retired Homebrew tap backup: %s\n' \
       "$tap_path_backup" >&2
 fi
-php_darwin_set_phase complete
 printf 'Installed PHP %s (%s, %s, %s) from %s\n' \
   "$installed_semver" "$build" "$ts" "$arch" "$asset"

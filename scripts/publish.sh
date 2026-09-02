@@ -7,7 +7,7 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 builds_dir=${1:?}
 expected_version=${PHP_VERSION:-}
 source_commit=${HOMEBREW_PHP_COMMIT:-}
-release_repository=$(php_darwin_package_config release_repository)
+release_repository=$(php_darwin_package_config release_repository) || exit 1
 work_dir=$(mktemp -d "${RUNNER_TEMP:-/tmp}/php-darwin-publish.XXXXXX") || \
   php_darwin_die 'could not create the release staging directory'
 release_exists=false
@@ -20,7 +20,7 @@ publish_cleanup() {
   local previous_asset
   local previous_asset_files=()
 
-  trap - EXIT
+  trap - EXIT HUP INT TERM
   if [ "$cleanup_status" -ne 0 ] && [ "$release_committed" = false ] && \
     [ "$mutable_mutation_started" = true ] && \
     [ "$release_exists" = true ] && [ -d "$previous_assets" ]; then
@@ -42,6 +42,9 @@ publish_cleanup() {
   exit "$cleanup_status"
 }
 trap publish_cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 metadata_unsorted="$work_dir/metadata-unsorted.txt"
 metadata_list="$work_dir/metadata.txt"
 matrix_keys="$work_dir/matrix-keys.txt"
@@ -54,6 +57,7 @@ retained_assets="$work_dir/retained-assets.txt"
 release_assets_json="$work_dir/release-assets.json"
 release_asset_names="$work_dir/release-asset-names.txt"
 stale_assets="$work_dir/stale-assets.txt"
+retired_assets="$work_dir/retired-assets.txt"
 staging="$work_dir/release"
 
 [ -z "$expected_version" ] || php_darwin_validate_version "$expected_version"
@@ -85,7 +89,7 @@ while IFS= read -r metadata; do
     php_darwin_die "metadata PHP version is $metadata_version; expected $expected_version"
   [ -n "$version" ] || version=$metadata_version
   [ "$metadata_version" = "$version" ] || php_darwin_die 'publish input contains multiple PHP minor versions'
-  channel=$(php_darwin_version_channel "$version")
+  channel=$(php_darwin_version_channel "$version") || exit 1
   metadata_php_src_commit=$(jq -er --arg channel "$channel" '
     select(.schema == 1 and has("php_src_commit")) |
     if $channel == "nightly" then
@@ -108,12 +112,12 @@ while IFS= read -r metadata; do
   metadata_arch=$(jq -er '.architecture' "$metadata") || php_darwin_die "architecture is missing in $metadata"
   php_darwin_validate_build "$metadata_build"
   php_darwin_validate_ts "$metadata_ts"
-  metadata_arch=$(php_darwin_normalize_arch "$metadata_arch")
-  expected_archive=$(php_darwin_asset "$version" "$metadata_build" "$metadata_ts" "$metadata_arch")
-  expected_prefix=$(jq -er --arg arch "$metadata_arch" '.[$arch].brew_prefix' \
-    "$script_dir/../conf/platforms.json") || php_darwin_die "brew prefix is not configured for $metadata_arch"
-  expected_minimum=$(jq -er --arg arch "$metadata_arch" '.[$arch].minimum_macos' \
-    "$script_dir/../conf/platforms.json") || php_darwin_die "minimum macOS is not configured for $metadata_arch"
+  metadata_arch=$(php_darwin_normalize_arch "$metadata_arch") || exit 1
+  expected_archive=$(php_darwin_asset "$version" "$metadata_build" "$metadata_ts" "$metadata_arch") || exit 1
+  expected_prefix=$(php_darwin_platform_value "$metadata_arch" brew_prefix) || \
+    php_darwin_die "brew prefix is not configured for $metadata_arch"
+  expected_minimum=$(php_darwin_platform_value "$metadata_arch" minimum_macos) || \
+    php_darwin_die "minimum macOS is not configured for $metadata_arch"
 
   php_darwin_validate_cache_metadata "$metadata" "$version" "$metadata_build" "$metadata_ts" \
     "$metadata_arch" "$expected_prefix" "$expected_minimum" "$source_commit" \
@@ -159,8 +163,9 @@ while IFS= read -r metadata; do
     php_darwin_die "could not create the release record for $expected_archive"
 done < "$metadata_list"
 
-variant_count=$(awk '!/^#/ && NF == 2 { count++ } END { print count+0 }' "$script_dir/../conf/variants")
-expected_count=$(php_darwin_expected_asset_count)
+variant_count=$(php_darwin_configured_variants | awk 'END { print NR+0 }') || \
+  php_darwin_die 'could not count configured build variants'
+expected_count=$(php_darwin_expected_asset_count) || exit 1
 metadata_count=$(awk 'END { print NR+0 }' "$metadata_list")
 [ "$metadata_count" -eq "$expected_count" ] || \
   php_darwin_die "incomplete publish matrix; expected $expected_count metadata files, found $metadata_count"
@@ -211,15 +216,32 @@ PHP_DARWIN_RELEASE_MANIFEST="$manifest" bash "$script_dir/generate-install.sh" "
 if gh release view "$tag" --repo "$release_repository" --json assets > "$release_assets_json" 2>/dev/null; then
   release_exists=true
   mkdir -p "$previous_assets" || php_darwin_die 'could not create the release backup directory'
-  jq -e '.assets | type == "array" and all(.[]; .name | type == "string")' \
+  jq -e '(.assets | type == "array") and
+    ([.assets[].name] | unique | length) == (.assets | length) and all(.assets[];
+    (.name | type == "string") and (.state | type == "string") and
+    ((.digest // "") | type == "string") and ((.apiUrl // "") | type == "string"))' \
     "$release_assets_json" >/dev/null || php_darwin_die "could not inspect existing release assets for $tag"
   jq -r '.assets[].name' "$release_assets_json" > "$release_asset_names" || \
     php_darwin_die "could not read existing release asset names for $tag"
   for mutable_asset in install.sh "$tag-manifest.json"; do
     grep -Fxq "$mutable_asset" "$release_asset_names" || continue
-    if ! gh release download "$tag" --pattern "$mutable_asset" --dir "$previous_assets" \
-      --repo "$release_repository"; then
-      printf 'Could not back up existing release asset %s; continuing so it can be replaced\n' \
+    mutable_state=$(jq -er --arg name "$mutable_asset" \
+      '.assets[] | select(.name == $name) | .state | select(type == "string")' \
+      "$release_assets_json") || php_darwin_die "could not inspect $mutable_asset"
+    mutable_digest=$(jq -er --arg name "$mutable_asset" \
+      '.assets[] | select(.name == $name) | (.digest // "") | select(type == "string")' \
+      "$release_assets_json") || php_darwin_die "could not inspect $mutable_asset digest"
+    if [ "$mutable_state" = uploaded ] && \
+      { [ -z "$mutable_digest" ] || [[ "$mutable_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; }; then
+      gh release download "$tag" --pattern "$mutable_asset" --dir "$previous_assets" \
+        --repo "$release_repository" || \
+        php_darwin_die "could not back up existing release asset $mutable_asset"
+      if [ -n "$mutable_digest" ]; then
+        [ "sha256:$(php_darwin_sha256 "$previous_assets/$mutable_asset")" = "$mutable_digest" ] || \
+          php_darwin_die "existing release asset digest changed while backing up $mutable_asset"
+      fi
+    else
+      printf 'Replacing incomplete release asset %s without using it as a rollback source\n' \
         "$mutable_asset" >&2
     fi
   done
@@ -243,10 +265,14 @@ if [ -f "$previous_assets/$tag-manifest.json" ] && \
   jq -r '.assets[] | (.download // .name) as $download | $download, ($download + ".sha256")' \
     "$previous_assets/$tag-manifest.json" >> "$retained_assets" || \
     php_darwin_die 'could not record the previous immutable release assets'
+elif [ -f "$previous_assets/$tag-manifest.json" ]; then
+  rm -f "$previous_assets/$tag-manifest.json" || \
+    php_darwin_die 'could not discard an invalid previous release manifest backup'
 fi
 LC_ALL=C sort -u "$retained_assets" -o "$retained_assets" || \
   php_darwin_die 'could not sort the retained immutable release assets'
 : > "$stale_assets" || php_darwin_die 'could not initialize stale release assets'
+: > "$retired_assets" || php_darwin_die 'could not initialize retired release assets'
 while IFS= read -r previous_name; do
   if [[ "$previous_name" =~ ^php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_arm64\.[0-9a-f]{64}\.tar\.zst(\.sha256)?$ ]]; then
     if [ "$previous_manifest_valid" = true ] && ! grep -Fxq "$previous_name" "$retained_assets"; then
@@ -254,7 +280,7 @@ while IFS= read -r previous_name; do
         php_darwin_die 'could not record a stale immutable release asset'
     fi
   elif [[ "$previous_name" =~ ^php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_(arm64|x86_64)(\.[0-9a-f]{64})?\.tar\.zst(\.sha256)?$ ]]; then
-    printf '%s\n' "$previous_name" >> "$stale_assets" || \
+    printf '%s\n' "$previous_name" >> "$retired_assets" || \
       php_darwin_die 'could not record a retired mutable release asset'
   fi
 done < "$release_asset_names"
@@ -273,9 +299,19 @@ for upload_file in "${data_upload_files[@]}"; do
         '.assets[] | select(.name == $name) | [.state, (.digest // "")] | @tsv' \
         "$release_assets_json") || php_darwin_die "could not inspect release asset $upload_name"
       if [ "$existing_asset" != $'uploaded\t'"$upload_digest" ]; then
-        gh release delete-asset "$tag" "$upload_name" --yes --repo "$release_repository" || \
-          php_darwin_die "could not remove corrupt release asset $upload_name"
-        upload_files+=("$upload_file")
+        existing_api_url=$(jq -er --arg name "$upload_name" \
+          '.assets[] | select(.name == $name) | .apiUrl | select(type == "string" and length > 0)' \
+          "$release_assets_json") || php_darwin_die "release asset $upload_name has no API URL"
+        invalid_name="$upload_name.invalid.${existing_api_url##*/}"
+        gh api --method PATCH "$existing_api_url" -f "name=$invalid_name" >/dev/null || \
+          php_darwin_die "could not quarantine corrupt release asset $upload_name"
+        if ! gh release upload "$tag" "$upload_file" --repo "$release_repository"; then
+          gh api --method PATCH "$existing_api_url" -f "name=$upload_name" >/dev/null 2>&1 || \
+            printf 'Could not restore corrupt release asset name %s\n' "$upload_name" >&2
+          php_darwin_die "could not repair release asset $upload_name"
+        fi
+        gh release delete-asset "$tag" "$invalid_name" --yes --repo "$release_repository" || \
+          php_darwin_die "could not remove quarantined release asset $invalid_name"
       fi
       ;;
     *) php_darwin_die "release contains duplicate assets named $upload_name" ;;
@@ -294,10 +330,9 @@ gh release upload "$tag" "$manifest" --clobber --repo "$release_repository" || \
   php_darwin_die "could not commit release assets for $tag"
 release_committed=true
 
-# Cleanup is deliberately best-effort after the manifest commit point. Old
-# content-addressed archives remain installable through the manifest fallback;
-# retired mutable names are removed so old clients fail closed instead of
-# silently installing frozen builds.
+# Old content-addressed cleanup is best-effort after the manifest commit point.
+# Retired mutable names are mandatory removals so old clients fail closed
+# instead of silently installing frozen builds.
 while IFS= read -r stale_asset; do
   [ -n "$stale_asset" ] || continue
   if ! gh release delete-asset "$tag" "$stale_asset" --yes --repo "$release_repository" \
@@ -305,4 +340,15 @@ while IFS= read -r stale_asset; do
     printf 'Could not remove stale release asset %s from %s\n' "$stale_asset" "$tag" >&2
   fi
 done < "$stale_assets"
+retired_cleanup_failed=false
+while IFS= read -r retired_asset; do
+  [ -n "$retired_asset" ] || continue
+  if ! gh release delete-asset "$tag" "$retired_asset" --yes --repo "$release_repository" \
+    >/dev/null 2>&1; then
+    printf 'Could not remove retired release asset %s from %s\n' "$retired_asset" "$tag" >&2
+    retired_cleanup_failed=true
+  fi
+done < "$retired_assets"
+[ "$retired_cleanup_failed" = false ] || \
+  php_darwin_die "retired release assets remain in $tag"
 printf 'Published PHP %s release assets with source hash %s\n' "$version" "$source_hash"

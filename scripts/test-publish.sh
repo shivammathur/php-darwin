@@ -23,6 +23,7 @@ chmod 0755 "$fake_bin/gh" || php_darwin_die 'could not make the gh fixture execu
 php_darwin_test_release_assets() {
   local asset_file
   local asset_hash
+  local asset_id=0
   local asset_records="$2.records"
   local assets_dir=$1
   local output=$2
@@ -30,45 +31,42 @@ php_darwin_test_release_assets() {
   : > "$asset_records" || return 1
   for asset_file in "$assets_dir"/*; do
     [ -f "$asset_file" ] || continue
+    asset_id=$((asset_id + 1))
     asset_hash=$(php_darwin_sha256 "$asset_file") || return 1
-    jq -cn --arg digest "sha256:$asset_hash" --arg name "${asset_file##*/}" \
+    jq -cn --arg api_url "https://api.github.test/assets/$asset_id" \
+      --arg digest "sha256:$asset_hash" --arg name "${asset_file##*/}" \
       --argjson size "$(wc -c < "$asset_file" | tr -d '[:space:]')" \
-      '{name:$name,digest:$digest,size:$size,state:"uploaded"}' >> "$asset_records" || return 1
+      '{apiUrl:$api_url,name:$name,digest:$digest,size:$size,state:"uploaded"}' \
+      >> "$asset_records" || return 1
   done
   jq -s '{assets:.}' "$asset_records" > "$output"
 }
 
 : > "$formulae"
 variant_index=0
-while read -r build ts extra; do
-  [ -n "$build" ] || continue
-  case "$build" in \#*) continue ;; esac
-  [ -z "$extra" ] || php_darwin_die "invalid configured variant: $build $ts $extra"
+while read -r build ts; do
   variant_index=$((variant_index + 1))
-  formula=$(php_darwin_formula "$version" "$build" "$ts")
+  formula=$(php_darwin_formula "$version" "$build" "$ts") || exit 1
   formula_hash=$(printf '%064d' "$variant_index")
   printf '%s\t%s\n' "$formula" "$formula_hash" >> "$formulae" || \
     php_darwin_die 'could not create formula fixtures'
-done < "$script_dir/../conf/variants"
+done < <(php_darwin_configured_variants)
 LC_ALL=C sort -u "$formulae" -o "$formulae" || php_darwin_die 'could not sort formula fixtures'
 source_hash=$(php_darwin_sha256 "$formulae") || php_darwin_die 'could not hash formula fixtures'
 
-while read -r build ts extra; do
-  [ -n "$build" ] || continue
-  case "$build" in \#*) continue ;; esac
-  [ -z "$extra" ] || php_darwin_die "invalid configured variant: $build $ts $extra"
-  formula=$(php_darwin_formula "$version" "$build" "$ts")
-  requested=$(php_darwin_requested_formula "$version" "$build" "$ts")
+while read -r build ts; do
+  formula=$(php_darwin_formula "$version" "$build" "$ts") || exit 1
+  requested=$(php_darwin_requested_formula "$version" "$build" "$ts") || exit 1
   formula_hash=$(awk -F '\t' -v formula="$formula" '$1 == formula { print $2; found=1; exit } END { exit !found }' \
     "$formulae") || php_darwin_die "could not read fixture hash for $formula"
   while IFS= read -r arch; do
-    asset=$(php_darwin_asset "$version" "$build" "$ts" "$arch")
+    asset=$(php_darwin_asset "$version" "$build" "$ts" "$arch") || exit 1
     artifact_dir="$builds_dir/$build-$ts-$arch"
     archive="$artifact_dir/$asset"
     metadata="$artifact_dir/${asset%.tar.zst}.json"
-    prefix=$(jq -er --arg arch "$arch" '.[$arch].brew_prefix' "$script_dir/../conf/platforms.json") || exit 1
-    minimum=$(jq -er --arg arch "$arch" '.[$arch].minimum_macos' "$script_dir/../conf/platforms.json") || exit 1
-    platform=$(jq -er --arg arch "$arch" '.[$arch].platform_key' "$script_dir/../conf/platforms.json") || exit 1
+    prefix=$(php_darwin_platform_value "$arch" brew_prefix) || exit 1
+    minimum=$(php_darwin_platform_value "$arch" minimum_macos) || exit 1
+    platform=$(php_darwin_platform_value "$arch" platform_key) || exit 1
     mkdir -p "$artifact_dir" || php_darwin_die 'could not create an artifact fixture directory'
     printf 'archive fixture for %s/%s/%s\n' "$build" "$ts" "$arch" > "$archive"
     archive_hash=$(php_darwin_sha256 "$archive") || php_darwin_die 'could not hash an archive fixture'
@@ -94,8 +92,8 @@ while read -r build ts extra; do
       .thread_safety=$thread_safety
     ' "$script_dir/../templates/cache-metadata.json" > "$metadata" || \
       php_darwin_die 'could not write metadata fixture'
-  done < <(jq -r 'keys[]' "$script_dir/../conf/platforms.json")
-done < "$script_dir/../conf/variants"
+  done < <(php_darwin_platform_arches)
+done < <(php_darwin_configured_variants)
 
 # One schema-1 stable cache may still use the legacy explicit null. Publishing
 # must normalize it without accepting a missing field.
@@ -139,7 +137,8 @@ manifest_values=$(php_darwin_validate_release_manifest "$gh_manifest" "$version"
 IFS=$'\t' read -r manifest_hash manifest_commit manifest_php_src_commit manifest_semver manifest_source_hash \
   manifest_download_asset \
   <<< "$manifest_values" || php_darwin_die 'could not parse the published stable manifest'
-[ "$manifest_hash" = "$(php_darwin_manifest_asset_sha256 "$gh_manifest" "$manifest_asset")" ] && \
+[ "$manifest_hash" = "$(jq -er --arg asset "$manifest_asset" \
+  '.assets[] | select(.name == $asset) | .sha256' "$gh_manifest")" ] && \
   [ "$manifest_commit" = "$source_commit" ] && [ "$manifest_php_src_commit" = - ] && \
   [ "$manifest_semver" = "$semver" ] && \
   [ "$manifest_source_hash" = "$source_hash" ] && \
@@ -163,7 +162,7 @@ legacy_asset_values=$(php_darwin_validate_release_manifest \
 [ "${legacy_asset_values##*$'\t'}" = "$manifest_asset" ] || \
   php_darwin_die 'legacy release asset name was not preserved'
 legacy_intel_manifest="$work_dir/legacy-intel-manifest.json"
-jq --argjson minimum_macos "$(jq -er '.x86_64.minimum_macos' "$script_dir/../conf/legacy-platforms.json")" '
+jq --argjson minimum_macos "$(php_darwin_legacy_platforms | jq -er '.x86_64.minimum_macos')" '
   .assets += [.assets[] |
     .architecture="x86_64" |
     .minimum_macos=$minimum_macos |
@@ -190,12 +189,12 @@ jq '.php_src_commit=null' "$metadata" > "$legacy_metadata" || \
 legacy_build=$(jq -er '.build' "$legacy_metadata") || php_darwin_die 'could not read the legacy build'
 legacy_ts=$(jq -er '.thread_safety' "$legacy_metadata") || php_darwin_die 'could not read legacy thread safety'
 legacy_arch=$(jq -er '.architecture' "$legacy_metadata") || php_darwin_die 'could not read the legacy architecture'
-legacy_prefix=$(jq -er --arg arch "$legacy_arch" '.[$arch].brew_prefix' \
-  "$script_dir/../conf/platforms.json") || php_darwin_die 'could not read the configured legacy prefix'
-legacy_minimum=$(jq -er --arg arch "$legacy_arch" '.[$arch].minimum_macos' \
-  "$script_dir/../conf/platforms.json") || php_darwin_die 'could not read the configured minimum macOS'
-legacy_platform=$(jq -er --arg arch "$legacy_arch" '.[$arch].platform_key' \
-  "$script_dir/../conf/platforms.json") || php_darwin_die 'could not read the configured legacy platform'
+legacy_prefix=$(php_darwin_platform_value "$legacy_arch" brew_prefix) || \
+  php_darwin_die 'could not read the configured legacy prefix'
+legacy_minimum=$(php_darwin_platform_value "$legacy_arch" minimum_macos) || \
+  php_darwin_die 'could not read the configured minimum macOS'
+legacy_platform=$(php_darwin_platform_value "$legacy_arch" platform_key) || \
+  php_darwin_die 'could not read the configured legacy platform'
 php_darwin_validate_cache_metadata "$legacy_metadata" "$version" "$legacy_build" "$legacy_ts" \
   "$legacy_arch" "$legacy_prefix" 26 "$source_commit" '' "$(php_darwin_package_config current_version)" \
   "$(php_darwin_package_config tap_snapshot)" "$legacy_minimum" "$legacy_platform" >/dev/null || \
@@ -310,9 +309,12 @@ GH_RELEASE_EXISTS=true GH_RELEASE_ASSETS_JSON="$current_generation_json" \
 ! grep -Eq '^release upload php-7\.0 .*\.[0-9a-f]{64}\.tar\.zst' "$gh_log" || \
   php_darwin_die 'idempotent publisher re-uploaded immutable release assets'
 
-# A corrupt partial immutable asset is deleted and repaired on retry.
+# A corrupt partial immutable asset is quarantined, repaired, and only then removed.
 ghost_assets_json="$work_dir/ghost-assets.json"
 ghost_asset=$(jq -er '.assets[0].download' "$gh_manifest") || exit 1
+ghost_api_url=$(jq -er --arg name "$ghost_asset" '.assets[] | select(.name == $name) | .apiUrl' \
+  "$current_generation_json") || exit 1
+ghost_invalid="$ghost_asset.invalid.${ghost_api_url##*/}"
 jq --arg name "$ghost_asset" --arg digest "sha256:$(printf '0%.0s' {1..64})" '
   .assets |= map(if .name == $name then .digest=$digest else . end)
 ' "$current_generation_json" > "$ghost_assets_json" || exit 1
@@ -321,11 +323,24 @@ GH_RELEASE_EXISTS=true GH_RELEASE_ASSETS_JSON="$ghost_assets_json" \
   GH_PREVIOUS_ASSETS="$current_generation" PHP_VERSION="$version" PATH="$fake_bin:$PATH" \
   bash "$script_dir/publish.sh" "$builds_dir" >/dev/null || \
   php_darwin_die 'partial immutable release retry fixture failed'
-grep -Fxq "release delete-asset php-7.0 $ghost_asset --yes --repo shivammathur/php-darwin" "$gh_log" || \
-  php_darwin_die 'publisher did not remove the corrupt immutable asset'
+grep -Fq "api --method PATCH $ghost_api_url -f name=$ghost_invalid" \
+  "$gh_log" || php_darwin_die 'publisher did not quarantine the corrupt immutable asset'
 grep -F 'release upload php-7.0 ' "$gh_log" | \
   grep -Fq "/$ghost_asset --repo shivammathur/php-darwin" || \
   php_darwin_die 'publisher did not repair the corrupt immutable asset'
+grep -Fxq "release delete-asset php-7.0 $ghost_invalid --yes --repo shivammathur/php-darwin" \
+  "$gh_log" || php_darwin_die 'publisher did not remove the quarantined immutable asset'
+
+# A failed corrupt-asset repair restores the original public name.
+: > "$gh_log" || php_darwin_die 'could not reset the failed repair log'
+if GH_RELEASE_EXISTS=true GH_RELEASE_ASSETS_JSON="$ghost_assets_json" \
+  GH_PREVIOUS_ASSETS="$current_generation" GH_FAIL_UPLOAD_MATCH="$ghost_asset" \
+  PHP_VERSION="$version" PATH="$fake_bin:$PATH" bash "$script_dir/publish.sh" "$builds_dir" \
+  >/dev/null 2>&1; then
+  php_darwin_die 'publisher accepted a failed corrupt immutable-asset repair'
+fi
+grep -Fq "api --method PATCH $ghost_api_url -f name=$ghost_asset" "$gh_log" || \
+  php_darwin_die 'publisher did not restore the corrupt immutable asset name after upload failure'
 
 # An existing release with zero assets is recoverable without a backup download.
 empty_release="$work_dir/empty-release"
@@ -354,6 +369,18 @@ GH_RELEASE_EXISTS=true GH_RELEASE_ASSETS_JSON="$postcommit_assets_json" \
 ! grep -Eq '^release upload php-7\.0 .*/previous-assets/' "$gh_log" || \
   php_darwin_die 'postcommit cleanup failure restored the previous release'
 
+# Retired mutable and Intel names are security-sensitive and fail the publish
+# after the manifest commit if GitHub does not remove them.
+: > "$gh_log" || php_darwin_die 'could not reset the retired-asset failure log'
+if GH_RELEASE_EXISTS=true GH_RELEASE_ASSETS_JSON="$previous_generation_json" \
+  GH_PREVIOUS_ASSETS="$previous_generation" GH_FAIL_DELETE_MATCH="$plain_asset" \
+  PHP_VERSION="$version" PATH="$fake_bin:$PATH" bash "$script_dir/publish.sh" "$builds_dir" \
+  >/dev/null 2>&1; then
+  php_darwin_die 'publisher ignored a retired mutable release asset deletion failure'
+fi
+! grep -Eq '^release upload php-7\.0 .*/previous-assets/' "$gh_log" || \
+  php_darwin_die 'retired-asset cleanup failure rolled back a committed release'
+
 if PHP_VERSION=7.1 HOMEBREW_PHP_COMMIT="$source_commit" PATH="$fake_bin:$PATH" \
   bash "$script_dir/publish.sh" "$builds_dir" >/dev/null 2>&1; then
   php_darwin_die 'publish validation accepted a different requested PHP version'
@@ -370,12 +397,28 @@ fi
 mv "$checksum_fixture.missing" "$checksum_fixture" || \
   php_darwin_die 'could not restore the checksum fixture'
 
-# A broken mutable backup download does not wedge replacement.
+# A complete mutable asset must be backed up before any release mutation.
 : > "$gh_log" || php_darwin_die 'could not reset the backup recovery log'
-GH_RELEASE_EXISTS=true GH_RELEASE_ASSETS_JSON="$current_generation_json" \
+if GH_RELEASE_EXISTS=true GH_RELEASE_ASSETS_JSON="$current_generation_json" \
   GH_PREVIOUS_ASSETS="$current_generation" GH_FAIL_DOWNLOAD_MATCH=install.sh \
   PHP_VERSION="$version" PATH="$fake_bin:$PATH" bash "$script_dir/publish.sh" "$builds_dir" \
-  >/dev/null 2>&1 || php_darwin_die 'publisher did not recover from a broken mutable backup'
+  >/dev/null 2>&1; then
+  php_darwin_die 'publisher mutated a release without a recoverable mutable-asset backup'
+fi
+! grep -Fq 'release upload ' "$gh_log" || \
+  php_darwin_die 'publisher uploaded assets after a mutable-asset backup failure'
+
+# An incomplete mutable asset is not a valid rollback source and self-heals.
+incomplete_mutable_json="$work_dir/incomplete-mutable-assets.json"
+jq '.assets |= map(if .name == "install.sh" then .state="new" | .digest="" else . end)' \
+  "$current_generation_json" > "$incomplete_mutable_json" || exit 1
+: > "$gh_log" || php_darwin_die 'could not reset the incomplete mutable-asset log'
+GH_RELEASE_EXISTS=true GH_RELEASE_ASSETS_JSON="$incomplete_mutable_json" \
+  GH_PREVIOUS_ASSETS="$current_generation" PHP_VERSION="$version" PATH="$fake_bin:$PATH" \
+  bash "$script_dir/publish.sh" "$builds_dir" >/dev/null || \
+  php_darwin_die 'publisher did not repair an incomplete mutable release asset'
+! grep -Fq 'release download php-7.0 --pattern install.sh ' "$gh_log" || \
+  php_darwin_die 'publisher used an incomplete mutable asset as a rollback source'
 
 # A failure at the manifest commit point restores the previous mutable files.
 upload_once_marker="$work_dir/upload-once.marker"

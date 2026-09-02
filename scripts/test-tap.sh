@@ -103,12 +103,27 @@ git -C "$unmarked_tap" update-ref "refs/remotes/origin/$branch" "$new_source_com
 [ "$(bash "$script_dir/tap-action.sh" "$unmarked_tap" "$new_cached_tap" 8.5 \
   "$new_source_hash" "$repository" "$new_source_commit" "$branch")" = temporary ] || \
   php_darwin_die 'a clean full Homebrew tap behind its remote was not preserved transactionally'
+git -C "$unmarked_tap" config php-darwin.snapshot-commit "$(printf '0%.0s' {1..40})" || \
+  php_darwin_die 'could not create the stale snapshot-marker fixture'
+stale_action=$(bash "$script_dir/tap-action.sh" "$unmarked_tap" "$new_cached_tap" 8.5 \
+  "$new_source_hash" "$repository" "$new_source_commit" "$branch" 2> "$validation_log") || \
+  php_darwin_die 'a Homebrew-updated tap was rejected'
+[ "$stale_action" = temporary ] || php_darwin_die 'a Homebrew-updated tap was not preserved'
+grep -Fq 'Homebrew updated the cached tap' "$validation_log" || \
+  php_darwin_die 'tap selection did not explain how it handled a stale snapshot marker'
+git -C "$unmarked_tap" config --unset php-darwin.snapshot-commit || \
+  php_darwin_die 'could not reset the stale snapshot-marker fixture'
 printf 'finder metadata\n' > "$unmarked_tap/.DS_Store" || \
   php_darwin_die 'could not dirty the full Homebrew tap fixture'
+[ "$(bash "$script_dir/tap-action.sh" "$unmarked_tap" "$new_cached_tap" 8.5 \
+  "$new_source_hash" "$repository" "$new_source_commit" "$branch")" = temporary ] || \
+  php_darwin_die 'Finder metadata blocked a stale normal Homebrew tap'
+printf 'untracked fixture\n' > "$unmarked_tap/untracked.txt" || \
+  php_darwin_die 'could not add the untracked tap fixture'
 if bash "$script_dir/tap-action.sh" "$unmarked_tap" "$new_cached_tap" 8.5 \
   "$new_source_hash" "$repository" "$new_source_commit" "$branch" \
   >/dev/null 2> "$validation_log"; then
-  php_darwin_die 'tap selection accepted a dirty hash-mismatched checkout'
+  php_darwin_die 'tap selection accepted a hash-mismatched checkout with an untracked file'
 fi
 grep -Fq 'Remove changes from' "$validation_log" || \
   php_darwin_die 'tap selection did not provide a remedy for a dirty checkout'

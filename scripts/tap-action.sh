@@ -25,8 +25,20 @@ if [ "$actual_hash" = "$expected_hash" ] && [ -z "$formula_status" ]; then
   exit 0
 fi
 
-bash "$script_dir/validate-tap.sh" "$tap_path" "$version" '' "$repository" '' '' true \
-  >/dev/null || {
+if ! git -C "$tap_path" diff --quiet -- . || ! git -C "$tap_path" diff --cached --quiet -- .; then
+  printf 'Remove changes from %s or untap %s before retrying the cache install\n' "$tap_path" \
+    "$(php_darwin_package_config tap)" >&2
+  exit 1
+fi
+untracked_paths=$(git -C "$tap_path" ls-files --others --exclude-standard) || {
+  printf 'Could not inspect untracked Homebrew tap files\n' >&2
+  exit 1
+}
+untracked_path=
+while IFS= read -r candidate_path; do
+  case "$candidate_path" in .DS_Store|*/.DS_Store) ;; *) untracked_path=$candidate_path; break ;; esac
+done <<< "$untracked_paths"
+[ -z "$untracked_path" ] || {
   printf 'Remove changes from %s or untap %s before retrying the cache install\n' "$tap_path" \
     "$(php_darwin_package_config tap)" >&2
   exit 1
@@ -45,7 +57,7 @@ actual_cached_commit=$(git -C "$cached_tap_path" rev-parse HEAD) || {
 }
 snapshot_commit=$(git -C "$tap_path" config --get php-darwin.snapshot-commit 2>/dev/null) || \
   snapshot_commit=
-if [ -z "$snapshot_commit" ]; then
+if [ -z "$snapshot_commit" ] || [ "$snapshot_commit" != "$existing_commit" ]; then
   existing_branch=$(git -C "$tap_path" symbolic-ref --short HEAD 2>/dev/null) || {
     printf 'Homebrew tap formula hash mismatch on a detached checkout; run brew untap %s before retrying\n' \
       "$(php_darwin_package_config tap)" >&2
@@ -68,13 +80,12 @@ if [ -z "$snapshot_commit" ]; then
       "$(php_darwin_package_config tap)" >&2
     exit 1
   }
+  if [ -n "$snapshot_commit" ]; then
+    printf 'Homebrew updated the cached tap; preserving it and using the requested snapshot temporarily\n' >&2
+  fi
   printf 'temporary\n'
   exit 0
 fi
-[ "$snapshot_commit" = "$existing_commit" ] || {
-  printf 'Homebrew tap snapshot provenance does not match its checkout\n' >&2
-  exit 1
-}
 [ "$existing_commit" != "$cached_commit" ] || {
   printf 'Homebrew tap source hash differs at the same cache snapshot commit\n' >&2
   exit 1

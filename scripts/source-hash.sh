@@ -13,21 +13,19 @@ tmp_dir=$(mktemp -d "${RUNNER_TEMP:-/tmp}/php-darwin-source.XXXXXX")
 trap 'rm -rf "$tmp_dir"' EXIT
 hashes="$tmp_dir/formulae.tsv"
 
-for build in release debug; do
-  for ts in nts zts; do
-    formula=$(php_darwin_formula "$version" "$build" "$ts")
-    formula_file="$tmp_dir/$formula.rb"
-    if [ -n "$tap_path" ]; then
-      cp "$tap_path/Formula/$formula.rb" "$formula_file" || php_darwin_die "could not read $formula from the local tap"
-    else
-      curl --retry 3 --retry-all-errors -fsSL \
-        "${repository/github.com/raw.githubusercontent.com}/$branch/Formula/$formula.rb" \
-        -o "$formula_file" || php_darwin_die "could not download $formula"
-    fi
-    formula_hash=$(php_darwin_sha256 "$formula_file") || php_darwin_die "could not hash $formula"
-    printf '%s\t%s\n' "$formula" "$formula_hash" >> "$hashes" || php_darwin_die 'could not record a formula hash'
-  done
-done
+while read -r build ts; do
+  formula=$(php_darwin_formula "$version" "$build" "$ts") || exit 1
+  formula_file="$tmp_dir/$formula.rb"
+  if [ -n "$tap_path" ]; then
+    cp "$tap_path/Formula/$formula.rb" "$formula_file" || php_darwin_die "could not read $formula from the local tap"
+  else
+    curl --retry 3 --retry-all-errors -fsSL \
+      "${repository/github.com/raw.githubusercontent.com}/$branch/Formula/$formula.rb" \
+      -o "$formula_file" || php_darwin_die "could not download $formula"
+  fi
+  formula_hash=$(php_darwin_sha256 "$formula_file") || php_darwin_die "could not hash $formula"
+  printf '%s\t%s\n' "$formula" "$formula_hash" >> "$hashes" || php_darwin_die 'could not record a formula hash'
+done < <(php_darwin_configured_variants)
 
 LC_ALL=C sort -u "$hashes" -o "$hashes" || php_darwin_die 'could not sort formula hashes'
 php_darwin_sha256 "$hashes" || php_darwin_die 'could not hash formula metadata'

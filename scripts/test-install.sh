@@ -8,10 +8,10 @@ stage=${1:-all}
 version=${PHP_VERSION:?}
 build=${BUILD:?}
 ts=${TS:?}
-arch=$(php_darwin_normalize_arch "${ARCH:?}")
-asset=$(php_darwin_asset "$version" "$build" "$ts" "$arch")
-formula=$(php_darwin_formula "$version" "$build" "$ts")
-requested_formula=$(php_darwin_requested_formula "$version" "$build" "$ts")
+arch=$(php_darwin_normalize_arch "${ARCH:?}") || exit 1
+asset=$(php_darwin_asset "$version" "$build" "$ts" "$arch") || exit 1
+formula=$(php_darwin_formula "$version" "$build" "$ts") || exit 1
+requested_formula=$(php_darwin_requested_formula "$version" "$build" "$ts") || exit 1
 archive=${ARCHIVE_DIR:-${RUNNER_TEMP:?}/php-darwin}/$asset
 source_commit=${HOMEBREW_PHP_COMMIT:-}
 if [ -z "$source_commit" ]; then
@@ -25,14 +25,23 @@ installed_before="${RUNNER_TEMP:?}/php-darwin-installed-before.txt"
 php_bin="$brew_prefix/opt/$formula/bin/php"
 php_config="$brew_prefix/opt/$formula/bin/php-config"
 php_fpm="$brew_prefix/opt/$formula/sbin/php-fpm"
-pear_fixture="$brew_prefix/$(php_darwin_pear_path "$version" "$formula")/php-darwin-user-package.php"
+pear_path=$(php_darwin_pear_path "$version" "$formula") || exit 1
+config_id=$(php_darwin_config_id "$version" "$build" "$ts") || exit 1
+pear_fixture="$brew_prefix/$pear_path/php-darwin-user-package.php"
 tap_trust_before="${RUNNER_TEMP:?}/php-darwin-tap-trust-before.txt"
 
-export HOMEBREW_NO_AUTO_UPDATE=1
-export HOMEBREW_NO_AUTOREMOVE=1
-export HOMEBREW_NO_ENV_HINTS=1
-export HOMEBREW_NO_INSTALL_CLEANUP=1
-export HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1
+php_darwin_configure_homebrew_environment
+
+php_darwin_record_formulae() {
+  brew list --formula > "$1" || php_darwin_die 'could not list installed Homebrew formulae'
+}
+
+php_darwin_enable_test_cleanup() {
+  trap php_darwin_test_install_cleanup EXIT
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+}
 
 php_darwin_test_tap_trust_state() {
   local trust_status
@@ -49,6 +58,7 @@ php_darwin_test_tap_trust_state() {
 prepare_homebrew() {
   local installed_php
   local installed_php_formulae=()
+  local installed_formulae_list=${RUNNER_TEMP:?}/php-darwin-prepare-formulae.txt
   local tap_trust_state
 
   [[ "$source_commit" =~ ^[0-9a-f]{40}$ ]] || php_darwin_die 'invalid pinned homebrew-php source commit'
@@ -56,18 +66,20 @@ prepare_homebrew() {
     php_darwin_die "could not read the initial $tap trust state"
   printf '%s\n' "$tap_trust_state" > "$tap_trust_before" || \
     php_darwin_die "could not record the initial $tap trust state"
+  php_darwin_record_formulae "$installed_formulae_list"
   brew untap --force "$tap" >/dev/null 2>&1 || true
   while IFS= read -r installed_php; do
-    [[ "$installed_php" =~ ^php(@[0-9]+\.[0-9]+)?(-debug)?(-zts)?$ ]] && \
-      installed_php_formulae+=("$installed_php")
-  done < <(brew list --formula)
+    php_darwin_is_php_formula "$installed_php" && installed_php_formulae+=("$installed_php")
+  done < "$installed_formulae_list"
   if [ "${#installed_php_formulae[@]}" -gt 0 ]; then
     brew uninstall --force --ignore-dependencies "${installed_php_formulae[@]}" || \
       php_darwin_die 'could not remove preinstalled Homebrew PHP formulae'
   fi
-  if brew list --formula | grep -Eq '^php(@[0-9]+\.[0-9]+)?(-debug)?(-zts)?$'; then
-    php_darwin_die 'a Homebrew PHP formula remained before cache installation'
-  fi
+  php_darwin_record_formulae "$installed_formulae_list"
+  while IFS= read -r installed_php; do
+    php_darwin_is_php_formula "$installed_php" && \
+      php_darwin_die 'a Homebrew PHP formula remained before cache installation'
+  done < "$installed_formulae_list"
   brew fetch --retry hello || php_darwin_die 'could not fetch the Homebrew validation formula after retries'
   brew install hello || php_darwin_die 'could not prepare an existing Homebrew formula'
   mkdir -p "${pear_fixture%/*}" || php_darwin_die 'could not create the existing PEAR fixture'
@@ -75,8 +87,9 @@ prepare_homebrew() {
     php_darwin_die 'could not write the existing PEAR fixture'
   printf 'preserve-existing-homebrew-state\n' > "$sentinel" || php_darwin_die 'could not create the preservation fixture'
   chmod 0444 "$sentinel" || php_darwin_die 'could not protect the preservation fixture'
-  brew list --formula | LC_ALL=C sort -u > "$installed_before" || \
-    php_darwin_die 'could not record the initial Homebrew formulae'
+  php_darwin_record_formulae "$installed_before"
+  LC_ALL=C sort -u "$installed_before" -o "$installed_before" || \
+    php_darwin_die 'could not sort the initial Homebrew formulae'
 }
 
 install_cache() {
@@ -141,7 +154,7 @@ cleanup_homebrew_validation() {
 php_darwin_test_install_cleanup() {
   local cleanup_status=$?
 
-  trap - EXIT
+  trap - EXIT HUP INT TERM
   if ! cleanup_homebrew_validation; then
     printf 'php-darwin: could not restore the Homebrew validation trust state\n' >&2
     [ "$cleanup_status" -ne 0 ] || cleanup_status=1
@@ -151,28 +164,33 @@ php_darwin_test_install_cleanup() {
 
 reset_homebrew() {
   local postinstall_path
+  local reset_formula
+  local reset_formulae
   local tap_trust_before_value
   local trust_status
 
   cleanup_homebrew_validation || php_darwin_die 'could not clean the previous Homebrew validation state'
-  trap php_darwin_test_install_cleanup EXIT
+  php_darwin_enable_test_cleanup
   brew services stop "$formula" >/dev/null 2>&1 || true
   if brew list --versions "$formula" >/dev/null 2>&1; then
     brew uninstall --force --ignore-dependencies "$formula" || \
       php_darwin_die "could not reset $formula after validation"
   fi
-  rm -rf "${brew_prefix:?}/$(php_darwin_pear_path "$version" "$formula")" || \
+  rm -rf "${brew_prefix:?}/${pear_path:?}" || \
     php_darwin_die 'could not reset formula-managed PEAR state'
   while IFS= read -r postinstall_path; do
     [ -n "$postinstall_path" ] || continue
     rm -rf "${brew_prefix:?}/${postinstall_path:?}" || \
       php_darwin_die "could not reset $postinstall_path"
   done < <(php_darwin_postinstall_paths "$version" "$formula" "$build" "$ts")
-  rm -rf "${brew_prefix:?}/etc/php/$(php_darwin_config_id "$version" "$build" "$ts")" || \
+  rm -rf "${brew_prefix:?}/etc/php/${config_id:?}" || \
     php_darwin_die 'could not reset formula-managed PHP configuration'
-  if brew list --formula | grep -Eq '^php(@[0-9]+\.[0-9]+)?(-debug)?(-zts)?$'; then
-    php_darwin_die 'a Homebrew PHP formula remained after the validation reset'
-  fi
+  reset_formulae=${RUNNER_TEMP:?}/php-darwin-reset-formulae.txt
+  php_darwin_record_formulae "$reset_formulae"
+  while IFS= read -r reset_formula; do
+    php_darwin_is_php_formula "$reset_formula" && \
+      php_darwin_die 'a Homebrew PHP formula remained after the validation reset'
+  done < "$reset_formulae"
   tap_trust_before_value=$(cat "$tap_trust_before") || \
     php_darwin_die "could not read the initial $tap trust state during reset"
   if [ "$tap_trust_before_value" = false ]; then
@@ -185,7 +203,7 @@ reset_homebrew() {
     fi
   fi
   cleanup_homebrew_validation || php_darwin_die 'could not clean the Homebrew validation state after reset'
-  trap - EXIT
+  trap - EXIT HUP INT TERM
   printf 'Reset Homebrew after validating %s\n' "$asset"
 }
 
@@ -203,13 +221,15 @@ validate_homebrew() {
   local tap_repository
   local tap_trust_before_value
   local tap_trust_after
+  local tap_list=${RUNNER_TEMP:-/tmp}/php-darwin-taps.txt
   local trust_status
 
-  trap php_darwin_test_install_cleanup EXIT
+  php_darwin_enable_test_cleanup
 
   tap_path=$(brew --repository "$tap") || php_darwin_die "could not resolve the installed $tap repository"
-  [ -d "$tap_path/.git" ] || php_darwin_die "the cache did not install the $tap repository"
-  brew tap | grep -Fxq "$tap" || php_darwin_die "Homebrew does not list the cached $tap snapshot"
+  php_darwin_is_git_worktree "$tap_path" || php_darwin_die "the cache did not install the $tap repository"
+  brew tap > "$tap_list" || php_darwin_die 'could not list installed Homebrew taps'
+  grep -Fxq "$tap" "$tap_list" || php_darwin_die "Homebrew does not list the cached $tap snapshot"
   tap_repository=$(php_darwin_package_config tap_repository)
   [ "$(git -C "$tap_path" remote get-url origin)" = "$tap_repository" ] || \
     php_darwin_die "the cached $tap snapshot has the wrong origin"
@@ -245,16 +265,14 @@ validate_homebrew() {
     php_darwin_die "Homebrew cannot resolve $tap/$requested_formula from the cached tap"
 
   brew list --versions "$formula" || php_darwin_die 'Homebrew does not list the cached PHP formula'
-  brew info --installed --json=v2 | jq -e --arg formula "$formula" \
-    'any(.formulae[]; .name == $formula and (.installed | length > 0))' >/dev/null || \
-    php_darwin_die 'Homebrew cannot read the cached PHP receipt'
   missing=$(brew missing "$formula" 2>&1)
   missing_status=$?
   [ "$missing_status" -eq 0 ] || [ -n "$missing" ] || php_darwin_die 'Homebrew dependency validation failed without diagnostics'
   [ -z "$missing" ] || php_darwin_die "Homebrew reports missing dependencies: $missing"
   brew linkage --test "$formula" || php_darwin_die 'Homebrew linkage validation failed'
-  brew list --formula | LC_ALL=C sort -u > "$installed_after" || \
-    php_darwin_die 'could not record the final Homebrew formulae'
+  php_darwin_record_formulae "$installed_after"
+  LC_ALL=C sort -u "$installed_after" -o "$installed_after" || \
+    php_darwin_die 'could not sort the final Homebrew formulae'
   LC_ALL=C comm -13 "$installed_before" "$installed_after" > "$new_formulae" || \
     php_darwin_die 'could not identify the newly installed Homebrew formulae'
   printf '%s\n' "$formula" >> "$new_formulae" || php_darwin_die 'could not record the PHP formula'
@@ -265,6 +283,9 @@ validate_homebrew() {
   done < "$new_formulae"
   brew info --installed --json=v2 "${installed_formulae[@]}" > "$formula_info" || \
     php_darwin_die 'could not inspect the newly installed Homebrew formulae'
+  jq -e --arg formula "$formula" \
+    'any(.formulae[]; .name == $formula and (.installed | length > 0))' "$formula_info" >/dev/null || \
+    php_darwin_die 'Homebrew cannot read the cached PHP receipt'
   jq -e --rawfile installed "$new_formulae" '
     ($installed | split("\n") | map(select(length > 0))) as $installed |
     all(.formulae[] | select(.name as $name | $installed | index($name));
@@ -288,8 +309,9 @@ validate_homebrew() {
   "$(brew --prefix hello)/bin/hello" | grep -F 'Hello, world!' || \
     php_darwin_die 'an existing Homebrew formula stopped working after cache extraction'
 
-  brew unlink "$formula" || php_darwin_die 'Homebrew could not unlink the cached PHP formula'
-  brew link --overwrite --force "$formula" || php_darwin_die 'Homebrew could not relink the cached PHP formula'
+  brew unlink "$tap/$formula" || php_darwin_die 'Homebrew could not unlink the cached PHP formula'
+  brew link --overwrite --force "$tap/$formula" || \
+    php_darwin_die 'Homebrew could not relink the cached PHP formula'
   "$php_bin" -d date.timezone=UTC -r "if (strpos(PHP_VERSION, '$version') !== 0) { exit(1); }" || \
     php_darwin_die 'PHP failed after Homebrew relinking'
 
@@ -321,7 +343,7 @@ validate_homebrew() {
   fi
 
   cleanup_homebrew_validation || php_darwin_die 'could not clean the Homebrew validation state'
-  trap - EXIT
+  trap - EXIT HUP INT TERM
 
   printf 'Homebrew validation passed for %s\n' "$asset"
 }

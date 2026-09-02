@@ -15,21 +15,17 @@ if [ -n "$only_version" ]; then
   version_values=("$only_version")
 else
   version_values=()
-  while read -r channel version extra; do
-    [ -n "$channel" ] || continue
-    case "$channel" in \#*) continue ;; esac
-    [ -z "$extra" ] || php_darwin_die "invalid version configuration for PHP $version"
+  while read -r channel version; do
     [ "$channel" = stable ] && version_values+=("$version")
-  done < "$script_dir/../conf/versions"
+  done < <(php_darwin_configured_versions)
 fi
 
 for version in "${version_values[@]}"; do
   current=$(bash "$script_dir/source-hash.sh" "$version") || \
     php_darwin_die "could not compute the PHP $version source hash"
   manifest="$work_dir/php-$version-manifest.json"
-  manifest_url="https://github.com/$release_repository/releases/download/php-$version/php-$version-manifest.json?cache=$(date +%s)"
   published=
-  if ! http_status=$(curl --retry 3 -sSL -w '%{http_code}' "$manifest_url" -o "$manifest"); then
+  if ! http_status=$(php_darwin_fetch_release_manifest "$release_repository" "$version" "$manifest"); then
     php_darwin_die "could not request the PHP $version release manifest"
   fi
   case "$http_status" in

@@ -33,7 +33,7 @@ for ts in "${ts_values[@]}"; do
 done
 seen_arches=
 for requested_arch in "${arch_values[@]}"; do
-  normalized_arch=$(php_darwin_normalize_arch "$requested_arch")
+  normalized_arch=$(php_darwin_normalize_arch "$requested_arch") || exit 1
   case " $seen_arches " in *" $normalized_arch "*) php_darwin_die "duplicate architecture: $normalized_arch" ;; esac
   seen_arches="$seen_arches $normalized_arch"
 done
@@ -53,12 +53,12 @@ test_entries_file="$work_dir/test.jsonl"
 : > "$build_entries_file"
 : > "$test_entries_file"
 for requested_arch in "${arch_values[@]}"; do
-  arch=$(php_darwin_normalize_arch "$requested_arch")
-  runner=$(jq -er --arg arch "$arch" '.[$arch].build_runner' "$script_dir/../conf/platforms.json") || \
+  arch=$(php_darwin_normalize_arch "$requested_arch") || exit 1
+  runner=$(php_darwin_platform_value "$arch" build_runner) || \
     php_darwin_die "build runner is not configured for $arch"
   jq -cn --arg php "$php_version" --arg arch "$arch" --arg runner "$runner" \
     '{php:$php,arch:$arch,runner:$runner}' >> "$build_entries_file"
-  test_runners=$(jq -cer --arg arch "$arch" '.[$arch].test_runners' "$script_dir/../conf/platforms.json") || \
+  test_runners=$(php_darwin_platform_value "$arch" test_runners | jq -c .) || \
     php_darwin_die "test runners are not configured for $arch"
   while IFS= read -r test_runner; do
     jq -cn --arg php "$php_version" --arg arch "$arch" --arg runner "$test_runner" \

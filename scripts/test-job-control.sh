@@ -9,11 +9,10 @@ child_file=$(mktemp -t php-darwin-child.XXXXXX) || \
 trap 'rm -f "$child_file"' EXIT
 
 (
-  trap '' TERM
   /bin/sh -c 'trap "" TERM; sleep 30' &
   printf '%s\n' "$!" > "$child_file"
   wait
-) &
+) 2>/dev/null &
 worker_pid=$!
 
 attempt=0

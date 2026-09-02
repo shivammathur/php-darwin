@@ -11,18 +11,18 @@ stage=${1:-all}
 version=${PHP_VERSION:?}
 build=${BUILD:?}
 ts=${TS:?}
-arch=$(php_darwin_normalize_arch "${ARCH:?}")
+arch=$(php_darwin_normalize_arch "${ARCH:?}") || exit 1
 source_commit=${HOMEBREW_PHP_COMMIT:?}
-formula=$(php_darwin_formula "$version" "$build" "$ts")
-requested_formula=$(php_darwin_requested_formula "$version" "$build" "$ts")
-config_id=$(php_darwin_config_id "$version" "$build" "$ts")
-pear_path=$(php_darwin_pear_path "$version" "$formula")
-expected_prefix=$(php_darwin_expected_prefix "$arch")
+formula=$(php_darwin_formula "$version" "$build" "$ts") || exit 1
+requested_formula=$(php_darwin_requested_formula "$version" "$build" "$ts") || exit 1
+config_id=$(php_darwin_config_id "$version" "$build" "$ts") || exit 1
+pear_path=$(php_darwin_pear_path "$version" "$formula") || exit 1
+expected_prefix=$(php_darwin_expected_prefix "$arch") || php_darwin_die "Homebrew prefix is not configured for $arch"
 brew_prefix=$(brew --prefix)
-tap=$(php_darwin_package_config tap)
-minimum_macos=$(jq -er --arg arch "$arch" '.[$arch].minimum_macos' "$script_dir/../conf/platforms.json") || \
+tap=$(php_darwin_package_config tap) || exit 1
+minimum_macos=$(php_darwin_platform_value "$arch" minimum_macos) || \
   php_darwin_die "minimum macOS is not configured for $arch"
-platform_key=$(jq -er --arg arch "$arch" '.[$arch].platform_key' "$script_dir/../conf/platforms.json") || \
+platform_key=$(php_darwin_platform_value "$arch" platform_key) || \
   php_darwin_die "platform key is not configured for $arch"
 work_dir="${RUNNER_TEMP:-/tmp}/php-darwin-build"
 before_manifest="$work_dir/before.tsv"
@@ -31,7 +31,9 @@ changed_manifest="$work_dir/changed.tsv"
 archive_paths="$work_dir/archive-paths.txt"
 packages_file="$work_dir/packages.tsv"
 preinstalled_formulae="$work_dir/preinstalled-formulae.txt"
+cleanup_formulae="$work_dir/cleanup-formulae.txt"
 installed_formulae_file="$work_dir/installed-formulae.txt"
+installed_formulae_raw="$work_dir/installed-formulae-raw.txt"
 packages_to_archive="$work_dir/packages-to-archive.txt"
 php_dependencies="$work_dir/php-dependencies.txt"
 raw_dependencies="$work_dir/raw-dependencies.txt"
@@ -42,25 +44,16 @@ pinned_formulae_file="$work_dir/pinned-formulae.txt"
 added_pins_file="$work_dir/added-pins.txt"
 reuse_dir="${RUNNER_TEMP:-/tmp}/php-darwin-reuse"
 reuse_baseline_formulae="$reuse_dir/preinstalled-formulae.txt"
-reuse_before_manifest="$reuse_dir/before.tsv"
 snapshot_paths="$script_dir/../conf/snapshot-paths"
 archive_roots="$script_dir/../conf/archive-paths"
-reuse_runner=${PHP_DARWIN_REUSE_RUNNER:-false}
-package_baseline_formulae=$preinstalled_formulae
+package_baseline_formulae=$reuse_baseline_formulae
 
 [ "$(uname -s)" = Darwin ] || php_darwin_die 'builds require macOS'
 [[ "$source_commit" =~ ^[0-9a-f]{40}$ ]] || php_darwin_die 'invalid homebrew-php source commit'
-[ "$(php_darwin_normalize_arch "$(uname -m)")" = "$arch" ] || php_darwin_die 'runner architecture does not match the matrix'
+runner_arch=$(php_darwin_normalize_arch "$(uname -m)") || exit 1
+[ "$runner_arch" = "$arch" ] || php_darwin_die 'runner architecture does not match the matrix'
 [ "$brew_prefix" = "$expected_prefix" ] || php_darwin_die "expected Homebrew at $expected_prefix, found $brew_prefix"
-case "$reuse_runner" in true|false) ;; *) php_darwin_die "invalid runner reuse setting: $reuse_runner" ;; esac
-[ "$reuse_runner" = false ] || package_baseline_formulae=$reuse_baseline_formulae
-
-export HOMEBREW_NO_AUTO_UPDATE=1
-export HOMEBREW_NO_AUTOREMOVE=1
-export HOMEBREW_NO_ENV_HINTS=1
-export HOMEBREW_NO_INSTALL_CLEANUP=1
-export HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1
-export HOMEBREW_NO_INSTALL_FROM_API=1
+php_darwin_configure_homebrew_environment
 
 prepare_homebrew() {
   local formula_file
@@ -97,9 +90,9 @@ clean_homebrew() {
 
   # Preserve Homebrew's complete dependency graph for the pinned PHP formula
   # and the tools used after cleanup to package the archive.
-  brew list --formula --versions > "$preinstalled_formulae" || \
+  brew list --formula --versions > "$cleanup_formulae" || \
     php_darwin_die 'could not record preinstalled Homebrew formula versions'
-  LC_ALL=C sort -u "$preinstalled_formulae" -o "$preinstalled_formulae" || \
+  LC_ALL=C sort -u "$cleanup_formulae" -o "$cleanup_formulae" || \
     php_darwin_die 'could not sort preinstalled Homebrew formula versions'
   brew deps --formula --union --include-build --include-implicit \
     "$tap/$requested_formula" jq zstd > "$raw_dependencies" || \
@@ -121,10 +114,10 @@ clean_homebrew() {
   pipeline_status=("${PIPESTATUS[@]}")
   [ "${pipeline_status[0]}" -eq 0 ] && [ "${pipeline_status[1]}" -eq 0 ] || \
     php_darwin_die "could not canonicalize dependencies for $requested_formula"
-  bash "$script_dir/select-cleanup-formulae.sh" "$preinstalled_formulae" "$php_dependencies" \
+  bash "$script_dir/select-cleanup-formulae.sh" "$cleanup_formulae" "$php_dependencies" \
     "$formulae_to_remove" || php_darwin_die 'could not select unrelated Homebrew formulae'
   awk 'NR == FNR { if (NF) dependencies[$1]=1; next } NF && $1 in dependencies { print $1 }' \
-    "$php_dependencies" "$preinstalled_formulae" | LC_ALL=C sort -u > "$preserved_formulae_file"
+    "$php_dependencies" "$cleanup_formulae" | LC_ALL=C sort -u > "$preserved_formulae_file"
   pipeline_status=("${PIPESTATUS[@]}")
   [ "${pipeline_status[0]}" -eq 0 ] && [ "${pipeline_status[1]}" -eq 0 ] || \
     php_darwin_die 'could not select installed PHP dependencies'
@@ -141,9 +134,6 @@ clean_homebrew() {
     grep -Fxq "$preserved_formula" "$pinned_formulae_file" || \
       preserved_formulae_to_pin+=("$preserved_formula")
   done < "$preserved_formulae_file"
-  awk 'NR == FNR { if (NF) preserved[$1]=1; next } $1 in preserved' \
-    "$preserved_formulae_file" "$preinstalled_formulae" > "$preserved_versions_file" || \
-    php_darwin_die 'could not record preserved PHP dependency versions'
   preserved_count=${#preserved_formulae[@]}
   removed_count=${#installed_formulae[@]}
   printf 'Preserving %s installed PHP dependencies; removing %s unrelated formulae\n' \
@@ -162,26 +152,22 @@ clean_homebrew() {
   fi
   brew cleanup --prune=all || php_darwin_die 'Homebrew cleanup failed'
 
+  brew list --formula --versions > "$preinstalled_formulae" || \
+    php_darwin_die 'could not record the cleaned Homebrew formula baseline'
+  LC_ALL=C sort -u "$preinstalled_formulae" -o "$preinstalled_formulae" || \
+    php_darwin_die 'could not sort the cleaned Homebrew formula baseline'
+  awk 'NR == FNR { if (NF) preserved[$1]=1; next } $1 in preserved' \
+    "$preserved_formulae_file" "$preinstalled_formulae" > "$preserved_versions_file" || \
+    php_darwin_die 'could not record cleaned PHP dependency versions'
+
   rm -rf "$brew_prefix/etc/php/$config_id" || \
     php_darwin_die 'could not clean the ephemeral runner PHP state'
   bash "$script_dir/filesystem-manifest.sh" "$brew_prefix" "$before_manifest" "$snapshot_paths" || \
     php_darwin_die 'could not capture the initial Homebrew manifest'
-  if [ "$reuse_runner" = true ]; then
-    mkdir -p "$reuse_dir" || php_darwin_die 'could not create the shared runner baseline directory'
-    if [ -f "$reuse_baseline_formulae" ]; then
-      [ -f "$reuse_before_manifest" ] || \
-        php_darwin_die 'shared runner baseline is incomplete'
-      # Formula variants may have different dependency graphs. Cleanup above
-      # reconciles the retained formulae for this variant; package it against
-      # the original runner state so newly required dependencies are included.
-      cp "$reuse_before_manifest" "$before_manifest" || \
-        php_darwin_die 'could not restore the shared filesystem baseline'
-    else
-      cp "$preinstalled_formulae" "$reuse_baseline_formulae" || \
-        php_darwin_die 'could not preserve the shared formula baseline'
-      cp "$before_manifest" "$reuse_before_manifest" || \
-        php_darwin_die 'could not preserve the shared filesystem baseline'
-    fi
+  mkdir -p "$reuse_dir" || php_darwin_die 'could not create the shared runner baseline directory'
+  if [ ! -f "$reuse_baseline_formulae" ]; then
+    cp "$preinstalled_formulae" "$reuse_baseline_formulae" || \
+      php_darwin_die 'could not preserve the shared formula baseline'
   fi
 }
 
@@ -233,7 +219,8 @@ install_formula() {
   [ -x "$php_config" ] || php_darwin_die "php-config missing after brew install: $php_config"
   semver_output=$($php_config --version) || php_darwin_die 'php-config could not report the installed version'
   semver=${semver_output%%-*}
-  [[ "$semver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || php_darwin_die "installed PHP returned an invalid version: $semver_output"
+  php_darwin_validate_php_semver "$version" "$semver" || \
+    php_darwin_die "installed PHP returned an invalid version: $semver_output"
   [ "${semver%.*}" = "$version" ] || php_darwin_die "installed PHP $semver for requested $version"
   printf '%s\n' "$semver" > "$work_dir/semver"
 }
@@ -298,9 +285,9 @@ package_cache() {
   tap_path=$(brew --repository "$tap") || php_darwin_die "could not resolve the $tap repository"
   tap_commit=$(git -C "$tap_path" rev-parse HEAD) || php_darwin_die 'could not resolve the homebrew-php commit'
   [ "$tap_commit" = "$source_commit" ] || php_darwin_die 'homebrew-php moved away from the pinned source commit'
-  tap_branch=$(php_darwin_package_config tap_branch)
-  tap_repository=$(php_darwin_package_config tap_repository)
-  tap_snapshot=$(php_darwin_package_config tap_snapshot)
+  tap_branch=$(php_darwin_package_config tap_branch) || exit 1
+  tap_repository=$(php_darwin_package_config tap_repository) || exit 1
+  tap_snapshot=$(php_darwin_package_config tap_snapshot) || exit 1
   case "$tap_snapshot" in var/php-darwin/*) ;; *)
     php_darwin_die "unsafe Homebrew tap snapshot path: $tap_snapshot"
     ;;
@@ -324,8 +311,12 @@ package_cache() {
 
   : > "$packages_file"
   : > "$archive_paths"
-  brew list --formula --versions | awk 'NF' | LC_ALL=C sort -u > "$installed_formulae_file" || \
+  brew list --formula --versions > "$installed_formulae_raw" || \
     php_darwin_die 'could not record installed Homebrew formula versions'
+  awk 'NF' "$installed_formulae_raw" > "$installed_formulae_file" || \
+    php_darwin_die 'could not filter installed Homebrew formula versions'
+  LC_ALL=C sort -u "$installed_formulae_file" -o "$installed_formulae_file" || \
+    php_darwin_die 'could not sort installed Homebrew formula versions'
   bash "$script_dir/select-packages.sh" "$package_baseline_formulae" "$installed_formulae_file" \
     "$formula" "$packages_to_archive" || php_darwin_die 'could not select cache package delta'
   while IFS= read -r installed_formula; do
@@ -410,7 +401,7 @@ package_cache() {
   awk -F '\t' 'seen[$1]++ { exit 1 }' "$links_file" || php_darwin_die 'Homebrew link plan contains duplicate paths'
   [ -s "$links_file" ] || php_darwin_die 'Homebrew link plan is empty'
 
-  pear_path=$(php_darwin_pear_path "$version" "$formula")
+  pear_path=$(php_darwin_pear_path "$version" "$formula") || exit 1
   [ -d "$brew_prefix/$pear_path" ] || php_darwin_die "formula post-install did not create $pear_path"
   pear_members="$work_dir/pear-paths.txt"
   find "$brew_prefix/$pear_path" ! -type d -print0 > "$pear_members" || \
@@ -482,7 +473,7 @@ package_cache() {
   LC_ALL=C sort -u "$archive_paths" -o "$archive_paths" || php_darwin_die 'could not sort the archive path list'
   [ -s "$archive_paths" ] || php_darwin_die 'filesystem snapshot did not capture any installed files'
 
-  asset=$(php_darwin_asset "$version" "$build" "$ts" "$arch")
+  asset=$(php_darwin_asset "$version" "$build" "$ts" "$arch") || exit 1
   metadata_path="$work_dir/${asset%.tar.zst}.json"
   mkdir -p "${GITHUB_WORKSPACE:?}/builds" || php_darwin_die 'could not create the build output directory'
 
@@ -529,7 +520,7 @@ package_cache() {
     "$script_dir/../templates/cache-metadata.json" > "$metadata_path" || \
     php_darwin_die 'could not create archive metadata'
 
-  internal_metadata_path=$(php_darwin_metadata_path "$asset")
+  internal_metadata_path=$(php_darwin_metadata_path "$asset") || exit 1
   internal_metadata_dir="$brew_prefix/${internal_metadata_path%/*}"
   [ ! -L "$internal_metadata_dir" ] || php_darwin_die 'embedded metadata directory is a symlink'
   [ ! -e "$internal_metadata_dir" ] || [ -d "$internal_metadata_dir" ] || \
@@ -580,10 +571,10 @@ verify_cache() {
   local tap_snapshot
   local tap_path
 
-  asset=$(php_darwin_asset "$version" "$build" "$ts" "$arch")
+  asset=$(php_darwin_asset "$version" "$build" "$ts" "$arch") || exit 1
   output="${GITHUB_WORKSPACE:?}/builds/$asset"
   metadata="${GITHUB_WORKSPACE:?}/builds/${asset%.tar.zst}.json"
-  tap_snapshot=$(php_darwin_package_config tap_snapshot)
+  tap_snapshot=$(php_darwin_package_config tap_snapshot) || exit 1
   contents="$work_dir/archive-contents.txt"
   embedded_metadata="$work_dir/embedded-metadata.json"
   [ -f "$output" ] || php_darwin_die "archive not found: $output"
@@ -670,6 +661,7 @@ reset_homebrew() {
   local added_pin
   local added_pins=()
   local postinstall_path
+  local reset_asset
 
   brew services stop "$formula" >/dev/null 2>&1 || true
   if brew list --versions "$formula" >/dev/null 2>&1; then
@@ -695,7 +687,8 @@ reset_homebrew() {
     brew unpin --formula "${added_pins[@]}" || \
       php_darwin_die 'could not remove temporary Homebrew dependency pins'
   fi
-  printf 'Reset Homebrew after packaging %s\n' "$(php_darwin_asset "$version" "$build" "$ts" "$arch")"
+  reset_asset=$(php_darwin_asset "$version" "$build" "$ts" "$arch") || exit 1
+  printf 'Reset Homebrew after packaging %s\n' "$reset_asset"
 }
 
 case "$stage" in

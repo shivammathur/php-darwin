@@ -65,7 +65,6 @@ jobs:
     env:
       ARCH: ${{ matrix.arch }}
       HOMEBREW_PHP_COMMIT: ${{ needs.matrix.outputs.source-commit }}
-      PHP_DARWIN_REUSE_RUNNER: 'true'
       PHP_VERSION: ${{ matrix.php }}
     strategy:
       fail-fast: false
