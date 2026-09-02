@@ -161,6 +161,29 @@ php_darwin_remove_tap_backup() {
   sudo -n find "$backup_path" -mindepth 1 -delete && sudo -n rmdir "$backup_path"
 }
 
+php_darwin_remove_tap_path() {
+  local brew_prefix=$1
+  local tap_path=$2
+
+  case "$tap_path" in
+    "$brew_prefix/Library/Taps/"*|"$brew_prefix/Homebrew/Library/Taps/"*) ;;
+    *)
+      printf 'Unsafe Homebrew tap path: %s\n' "$tap_path" >&2
+      return 1
+      ;;
+  esac
+  [ -d "$tap_path" ] && [ ! -L "$tap_path" ] || {
+    printf 'Homebrew tap path is not a directory: %s\n' "$tap_path" >&2
+    return 1
+  }
+  if find "$tap_path" -mindepth 1 -delete >/dev/null 2>&1 && \
+    rmdir "$tap_path" >/dev/null 2>&1; then
+    return 0
+  fi
+  command -v sudo >/dev/null 2>&1 || return 1
+  sudo -n find "$tap_path" -mindepth 1 -delete && sudo -n rmdir "$tap_path"
+}
+
 php_darwin_validate_version() {
   local requested_version=${1:-}
   local configured_channel
@@ -429,6 +452,7 @@ php_darwin_validate_release_manifest() {
   local channel=${3:-$(php_darwin_version_channel "$version")}
   local asset=${4:-}
   local expected_count
+  local legacy_platforms
   local manifest_result
   local platforms
 
@@ -436,8 +460,14 @@ php_darwin_validate_release_manifest() {
   [ "$(php_darwin_version_channel "$version")" = "$channel" ] || return 1
   expected_count=$(php_darwin_expected_asset_count)
   platforms=$(php_darwin_read_config platforms.json) || return 1
+  legacy_platforms=$(php_darwin_read_config legacy-platforms.json) || return 1
   manifest_result=$(jq -er --arg channel "$channel" --arg version "$version" \
-    --arg asset "$asset" --argjson count "$expected_count" --argjson platforms "$platforms" '
+    --arg asset "$asset" --argjson count "$expected_count" --argjson platforms "$platforms" \
+    --argjson legacy_platforms "$legacy_platforms" '
+    ($platforms + $legacy_platforms) as $manifest_platforms |
+    ($platforms | keys) as $current_architectures |
+    ($manifest_platforms | keys) as $legacy_architectures |
+    ($count / ($platforms | length) * ($manifest_platforms | length)) as $legacy_count |
     select(.schema == 1 and .php_version == $version and
     (.homebrew_php_commit | type == "string" and test("^[0-9a-f]{40}$")) and
     (.source_hash | type == "string" and test("^[0-9a-f]{64}$")) and
@@ -448,19 +478,22 @@ php_darwin_validate_release_manifest() {
      else
        (.php_src_commit == "" or .php_src_commit == null)
      end) and
-    (.assets | type == "array" and length == $count) and
+    (.assets | type == "array") and
+    (([.assets[].architecture] | unique) as $architectures |
+      ((.assets | length == $count) and $architectures == $current_architectures) or
+      ((.assets | length == $legacy_count) and $architectures == $legacy_architectures)) and
     ([.assets[].name] | unique | length) == (.assets | length) and
     ([.assets[] | (.download // .name)] | unique | length) == (.assets | length) and
     all(.assets[];
       . as $item | .architecture as $architecture |
-      ($architecture == "arm64") and
+      ($manifest_platforms[$architecture] != null) and
       (.build == "debug" or .build == "release") and
       (.thread_safety == "nts" or .thread_safety == "zts") and
       .name == ("php_" + $version + "-" + .thread_safety + "-" + .build +
         "+darwin_" + .architecture + ".tar.zst") and
       (.bytes | type == "number" and floor == . and . > 0) and
       (.minimum_macos | type == "number" and floor == . and . > 0 and
-        . == $platforms[$architecture].minimum_macos) and
+        . == $manifest_platforms[$architecture].minimum_macos) and
       (.sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
       ((.download // .name) as $download |
         ($download | type == "string") and
@@ -589,4 +622,68 @@ php_darwin_validate_cache_metadata() {
      (.packages[] | select(.name == $formula) | .opt_target | ltrimstr("../")),
      .pecl_extension, .php_semver] | @tsv
   ' "$metadata_file"
+}
+
+php_darwin_job_running() {
+  kill -0 "$1" >/dev/null 2>&1
+}
+
+php_darwin_wait_for_job_exit() {
+  local attempt=0
+  local attempts=$2
+  local job_pid=$1
+
+  while [ "$attempt" -lt "$attempts" ]; do
+    php_darwin_job_running "$job_pid" || {
+      wait "$job_pid" >/dev/null 2>&1 || true
+      return 0
+    }
+    sleep 0.1
+    attempt=$((attempt + 1))
+  done
+  return 1
+}
+
+php_darwin_signal_job_tree() {
+  local child_pid
+  local job_pid=$1
+  local signal=$2
+  local job_descendants=()
+
+  while IFS= read -r child_pid; do
+    [ -n "$child_pid" ] && job_descendants+=("$child_pid")
+  done < <(ps -axo pid=,ppid= | awk -v root="$job_pid" '
+    { parent[$1]=$2; pid[++count]=$1 }
+    END {
+      for (item_index=1; item_index<=count; item_index++) {
+        current=pid[item_index]
+        for (depth=0; depth<count && current in parent; depth++) {
+          if (parent[current] == root) { print pid[item_index]; break }
+          current=parent[current]
+        }
+      }
+    }
+  ')
+  [ "${#job_descendants[@]}" -eq 0 ] || \
+    kill "-$signal" "${job_descendants[@]}" >/dev/null 2>&1 || true
+  kill "-$signal" "$job_pid" >/dev/null 2>&1 || true
+}
+
+php_darwin_reap_job() {
+  local grace_attempts=$2
+  local job_pid=$1
+
+  [ -n "$job_pid" ] || return 0
+  if [ "$grace_attempts" -gt 0 ] && php_darwin_wait_for_job_exit "$job_pid" "$grace_attempts"; then
+    return 0
+  fi
+  php_darwin_job_running "$job_pid" || {
+    wait "$job_pid" >/dev/null 2>&1 || true
+    return 0
+  }
+  php_darwin_signal_job_tree "$job_pid" TERM
+  if ! php_darwin_wait_for_job_exit "$job_pid" 10; then
+    php_darwin_signal_job_tree "$job_pid" KILL
+    wait "$job_pid" >/dev/null 2>&1 || true
+  fi
 }

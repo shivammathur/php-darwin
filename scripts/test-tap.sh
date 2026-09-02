@@ -12,10 +12,17 @@ new_cached_tap="$fixture_dir/new-cache"
 unmarked_tap="$fixture_dir/unmarked-cache"
 legacy_tap="$fixture_dir/legacy-cache"
 status_failure_tap="$fixture_dir/status-failure-cache"
+fake_bin="$fixture_dir/bin"
 validation_log="$fixture_dir/validation.log"
 snapshot_validation_log="$fixture_dir/snapshot-validation.log"
 repository=$(php_darwin_package_config tap_repository)
 branch=$(php_darwin_package_config tap_branch)
+mkdir -p "$fake_bin" || php_darwin_die 'could not create the tap comparison fixture directory'
+# shellcheck disable=SC2016
+printf '%s\n' '#!/usr/bin/env bash' \
+  'printf '\''{"status":"%s"}\n'\'' "${TAP_COMPARE_STATUS:-diverged}"' \
+  > "$fake_bin/curl" || php_darwin_die 'could not create the tap comparison fixture'
+chmod 0755 "$fake_bin/curl" || php_darwin_die 'could not make the tap comparison fixture executable'
 
 git init -q -b "$branch" "$source_tap" || php_darwin_die 'could not create the tap source fixture'
 mkdir -p "$source_tap/Formula" || php_darwin_die 'could not create the tap formula fixtures'
@@ -44,6 +51,12 @@ bash "$script_dir/create-tap-snapshot.sh" "$source_tap" "$source_commit" "$repos
 [ "$(bash "$script_dir/tap-action.sh" "$cached_tap" "$cached_tap" 8.5 \
   "$source_hash" "$repository" "$source_commit" "$branch")" = keep ] || \
   php_darwin_die 'an exact installed tap snapshot was not kept'
+printf 'finder metadata\n' > "$cached_tap/.DS_Store" || \
+  php_darwin_die 'could not create the unrelated tap fixture'
+[ "$(bash "$script_dir/tap-action.sh" "$cached_tap" "$cached_tap" 8.5 \
+  "$source_hash" "$repository" "$source_commit" "$branch")" = keep ] || \
+  php_darwin_die 'an exact tap hash was rejected because of an unrelated file'
+rm -f "$cached_tap/.DS_Store" || php_darwin_die 'could not remove the unrelated tap fixture'
 
 printf 'class NewerFixture\n' > "$source_tap/Formula/php.rb" || \
   php_darwin_die 'could not update the tap formula fixture'
@@ -57,25 +70,24 @@ new_source_hash=$(HOMEBREW_PHP_PATH="$source_tap" bash "$script_dir/source-hash.
   php_darwin_die 'could not hash the newer tap source fixture'
 bash "$script_dir/create-tap-snapshot.sh" "$source_tap" "$new_source_commit" "$repository" \
   "$branch" "$new_cached_tap" || php_darwin_die 'could not create the newer cached tap fixture'
-[ "$(bash "$script_dir/tap-action.sh" "$cached_tap" "$new_cached_tap" 8.5 \
+[ "$(TAP_COMPARE_STATUS=ahead PATH="$fake_bin:$PATH" \
+  bash "$script_dir/tap-action.sh" "$cached_tap" "$new_cached_tap" 8.5 \
   "$new_source_hash" "$repository" "$new_source_commit" "$branch")" = replace ] || \
   php_darwin_die 'an older cache snapshot was not advanced to the newer cache snapshot'
-if bash "$script_dir/tap-action.sh" "$new_cached_tap" "$cached_tap" 8.5 \
-  "$source_hash" "$repository" "$source_commit" "$branch" >/dev/null 2> "$validation_log"; then
-  php_darwin_die 'tap selection downgraded a newer cache snapshot'
-fi
-grep -Fxq 'Homebrew tap formula hash mismatch and the cached snapshot is not newer' "$validation_log" || \
-  php_darwin_die 'tap selection did not explain the refused snapshot downgrade'
+[ "$(TAP_COMPARE_STATUS=behind PATH="$fake_bin:$PATH" \
+  bash "$script_dir/tap-action.sh" "$new_cached_tap" "$cached_tap" 8.5 \
+  "$source_hash" "$repository" "$source_commit" "$branch")" = temporary ] || \
+  php_darwin_die 'tap selection would have persistently downgraded a newer cache snapshot'
 cp -R "$cached_tap" "$legacy_tap" || php_darwin_die 'could not create a legacy tap fixture'
 git -C "$legacy_tap" config --unset php-darwin.snapshot-commit || \
   php_darwin_die 'could not remove the legacy tap snapshot provenance fixture'
 [ "$(bash "$script_dir/tap-action.sh" "$legacy_tap" "$new_cached_tap" 8.5 \
-  "$new_source_hash" "$repository" "$new_source_commit" "$branch")" = replace ] || \
-  php_darwin_die 'an older legacy cache snapshot was not advanced'
+  "$new_source_hash" "$repository" "$new_source_commit" "$branch")" = temporary ] || \
+  php_darwin_die 'a legacy cache snapshot was not handled transactionally'
 missing_formula_hash=$(printf '0%.0s' {1..64})
 [ "$(bash "$script_dir/tap-action.sh" "$legacy_tap" "$new_cached_tap" 8.6 \
-  "$missing_formula_hash" "$repository" "$new_source_commit" "$branch")" = replace ] || \
-  php_darwin_die 'a legacy snapshot without the new formula was not advanced'
+  "$missing_formula_hash" "$repository" "$new_source_commit" "$branch")" = temporary ] || \
+  php_darwin_die 'a legacy snapshot without the new formula was not handled transactionally'
 git clone -q "$source_tap" "$unmarked_tap" || php_darwin_die 'could not create an unmarked tap fixture'
 git -C "$unmarked_tap" checkout -q -B "$branch" "$source_commit" || \
   php_darwin_die 'could not select the older unmarked tap fixture'
@@ -83,12 +95,23 @@ git -C "$unmarked_tap" remote set-url origin "$repository" || \
   php_darwin_die 'could not configure the unmarked tap origin fixture'
 git -C "$unmarked_tap" update-ref "refs/remotes/origin/$branch" "$source_commit" || \
   php_darwin_die 'could not configure the unmarked tap branch fixture'
+[ "$(bash "$script_dir/tap-action.sh" "$unmarked_tap" "$new_cached_tap" 8.5 \
+  "$new_source_hash" "$repository" "$new_source_commit" "$branch")" = temporary ] || \
+  php_darwin_die 'a normal full Homebrew tap was not preserved transactionally'
+git -C "$unmarked_tap" update-ref "refs/remotes/origin/$branch" "$new_source_commit" || \
+  php_darwin_die 'could not advance the full tap remote fixture'
+[ "$(bash "$script_dir/tap-action.sh" "$unmarked_tap" "$new_cached_tap" 8.5 \
+  "$new_source_hash" "$repository" "$new_source_commit" "$branch")" = temporary ] || \
+  php_darwin_die 'a clean full Homebrew tap behind its remote was not preserved transactionally'
+printf 'finder metadata\n' > "$unmarked_tap/.DS_Store" || \
+  php_darwin_die 'could not dirty the full Homebrew tap fixture'
 if bash "$script_dir/tap-action.sh" "$unmarked_tap" "$new_cached_tap" 8.5 \
-  "$new_source_hash" "$repository" "$new_source_commit" "$branch" >/dev/null 2> "$validation_log"; then
-  php_darwin_die 'tap selection replaced an unmarked Homebrew checkout'
+  "$new_source_hash" "$repository" "$new_source_commit" "$branch" \
+  >/dev/null 2> "$validation_log"; then
+  php_darwin_die 'tap selection accepted a dirty hash-mismatched checkout'
 fi
-grep -Fxq 'Homebrew tap formula hash mismatch on an unmarked checkout' "$validation_log" || \
-  php_darwin_die 'tap selection did not explain the unmarked checkout mismatch'
+grep -Fq 'Remove changes from' "$validation_log" || \
+  php_darwin_die 'tap selection did not provide a remedy for a dirty checkout'
 
 cp -R "$cached_tap" "$status_failure_tap" || \
   php_darwin_die 'could not create the Git status failure fixture'
@@ -117,6 +140,13 @@ git -C "$cached_tap" checkout -q -- Formula/php.rb || \
   php_darwin_die 'could not restore the changed tap fixture'
 printf 'class InjectedFormula\n' > "$cached_tap/Formula/injected.rb" || \
   php_darwin_die 'could not add the untracked tap fixture'
+if bash "$script_dir/tap-action.sh" "$cached_tap" "$new_cached_tap" 8.5 \
+  "$source_hash" "$repository" "$new_source_commit" "$branch" \
+  >/dev/null 2> "$validation_log"; then
+  php_darwin_die 'tap selection kept an exact formula hash with an injected formula'
+fi
+grep -Fq 'Remove changes from' "$validation_log" || \
+  php_darwin_die 'tap selection did not explain the injected formula rejection'
 if bash "$script_dir/validate-tap.sh" "$cached_tap" 8.5 "$source_hash" \
   "$repository" > /dev/null 2> "$snapshot_validation_log"; then
   php_darwin_die 'formula-hash validation accepted an untracked tap file'

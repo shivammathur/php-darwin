@@ -19,8 +19,9 @@
 |---|---|---|---|
 | ARM64 | `macos-14` | `macos-14`, `macos-15`, `macos-26`, `macos-latest` | `arm64_sonoma` |
 
-Each PHP minor uses a release tag such as `php-8.5`. Assets use the format
-`php_8.5-nts-release+darwin_arm64.tar.zst` and are replaced when a new patch release is available.
+Each PHP minor uses a release tag such as `php-8.5`. The release manifest maps a
+logical name such as `php_8.5-nts-release+darwin_arm64.tar.zst` to an immutable,
+checksum-addressed archive. New patch releases update the manifest without replacing archives in place.
 
 ## Dependencies
 

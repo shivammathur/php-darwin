@@ -11,7 +11,9 @@ release_repository=$(php_darwin_package_config release_repository)
 work_dir=$(mktemp -d "${RUNNER_TEMP:-/tmp}/php-darwin-publish.XXXXXX") || \
   php_darwin_die 'could not create the release staging directory'
 release_exists=false
-publish_mutation_started=false
+release_created=false
+release_committed=false
+mutable_mutation_started=false
 previous_assets="$work_dir/previous-assets"
 publish_cleanup() {
   local cleanup_status=$?
@@ -19,7 +21,8 @@ publish_cleanup() {
   local previous_asset_files=()
 
   trap - EXIT
-  if [ "$cleanup_status" -ne 0 ] && [ "$publish_mutation_started" = true ] && \
+  if [ "$cleanup_status" -ne 0 ] && [ "$release_committed" = false ] && \
+    [ "$mutable_mutation_started" = true ] && \
     [ "$release_exists" = true ] && [ -d "$previous_assets" ]; then
     while IFS= read -r -d '' previous_asset; do
       previous_asset_files+=("$previous_asset")
@@ -30,8 +33,8 @@ publish_cleanup() {
         --repo "$release_repository" >/dev/null 2>&1 || \
         printf 'Could not fully restore the previous %s release assets\n' "$tag" >&2
     fi
-  elif [ "$cleanup_status" -ne 0 ] && [ "$publish_mutation_started" = true ] && \
-    [ "$release_exists" = false ]; then
+  elif [ "$cleanup_status" -ne 0 ] && [ "$release_committed" = false ] && \
+    [ "$release_created" = true ]; then
     gh release delete "$tag" --cleanup-tag --yes --repo "$release_repository" >/dev/null 2>&1 || \
       printf 'Could not remove the incomplete %s release\n' "$tag" >&2
   fi
@@ -48,6 +51,9 @@ semvers="$work_dir/semvers.txt"
 php_src_commits="$work_dir/php-src-commits.txt"
 assets_jsonl="$work_dir/assets.jsonl"
 retained_assets="$work_dir/retained-assets.txt"
+release_assets_json="$work_dir/release-assets.json"
+release_asset_names="$work_dir/release-asset-names.txt"
+stale_assets="$work_dir/stale-assets.txt"
 staging="$work_dir/release"
 
 [ -z "$expected_version" ] || php_darwin_validate_version "$expected_version"
@@ -202,56 +208,101 @@ bash "$script_dir/validate-install.sh" >/dev/null || \
 PHP_DARWIN_RELEASE_MANIFEST="$manifest" bash "$script_dir/generate-install.sh" "$installer" >/dev/null || \
   php_darwin_die 'could not generate the release-specific standalone installer'
 
-if gh release view "$tag" --repo "$release_repository" >/dev/null 2>&1; then
+if gh release view "$tag" --repo "$release_repository" --json assets > "$release_assets_json" 2>/dev/null; then
   release_exists=true
   mkdir -p "$previous_assets" || php_darwin_die 'could not create the release backup directory'
-  gh release download "$tag" --dir "$previous_assets" --repo "$release_repository" || \
-    php_darwin_die "could not back up existing release assets from $tag"
+  jq -e '.assets | type == "array" and all(.[]; .name | type == "string")' \
+    "$release_assets_json" >/dev/null || php_darwin_die "could not inspect existing release assets for $tag"
+  jq -r '.assets[].name' "$release_assets_json" > "$release_asset_names" || \
+    php_darwin_die "could not read existing release asset names for $tag"
+  for mutable_asset in install.sh "$tag-manifest.json"; do
+    grep -Fxq "$mutable_asset" "$release_asset_names" || continue
+    if ! gh release download "$tag" --pattern "$mutable_asset" --dir "$previous_assets" \
+      --repo "$release_repository"; then
+      printf 'Could not back up existing release asset %s; continuing so it can be replaced\n' \
+        "$mutable_asset" >&2
+    fi
+  done
 else
   gh release create "$tag" --repo "$release_repository" --title "PHP $version" \
     --notes "ARM64 Homebrew PHP $version caches for macOS runners." --latest=false || \
     php_darwin_die "could not create release $tag"
+  release_created=true
+  printf '{"assets":[]}\n' > "$release_assets_json" || \
+    php_darwin_die 'could not initialize the release asset inventory'
+  : > "$release_asset_names" || php_darwin_die 'could not initialize the release asset names'
 fi
+
+# Prepare retention and cleanup decisions before publishing the commit point.
+jq -r '.assets[] | .download, (.download + ".sha256")' "$manifest" > "$retained_assets" || \
+  php_darwin_die 'could not record the current immutable release assets'
+previous_manifest_valid=false
+if [ -f "$previous_assets/$tag-manifest.json" ] && \
+  php_darwin_validate_release_manifest "$previous_assets/$tag-manifest.json" "$version" "$channel"; then
+  previous_manifest_valid=true
+  jq -r '.assets[] | (.download // .name) as $download | $download, ($download + ".sha256")' \
+    "$previous_assets/$tag-manifest.json" >> "$retained_assets" || \
+    php_darwin_die 'could not record the previous immutable release assets'
+fi
+LC_ALL=C sort -u "$retained_assets" -o "$retained_assets" || \
+  php_darwin_die 'could not sort the retained immutable release assets'
+: > "$stale_assets" || php_darwin_die 'could not initialize stale release assets'
+while IFS= read -r previous_name; do
+  if [[ "$previous_name" =~ ^php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_arm64\.[0-9a-f]{64}\.tar\.zst(\.sha256)?$ ]]; then
+    if [ "$previous_manifest_valid" = true ] && ! grep -Fxq "$previous_name" "$retained_assets"; then
+      printf '%s\n' "$previous_name" >> "$stale_assets" || \
+        php_darwin_die 'could not record a stale immutable release asset'
+    fi
+  elif [[ "$previous_name" =~ ^php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_(arm64|x86_64)(\.[0-9a-f]{64})?\.tar\.zst(\.sha256)?$ ]]; then
+    printf '%s\n' "$previous_name" >> "$stale_assets" || \
+      php_darwin_die 'could not record a retired mutable release asset'
+  fi
+done < "$release_asset_names"
+
 upload_files=()
 for upload_file in "${data_upload_files[@]}"; do
   upload_name=${upload_file##*/}
-  if [ "$release_exists" = true ] && [ -f "$previous_assets/$upload_name" ]; then
-    cmp -s "$upload_file" "$previous_assets/$upload_name" || \
-      php_darwin_die "immutable release asset changed: $upload_name"
-  else
-    upload_files+=("$upload_file")
-  fi
+  upload_digest="sha256:$(php_darwin_sha256 "$upload_file")" || \
+    php_darwin_die "could not hash staged release asset $upload_name"
+  matching_assets=$(jq -r --arg name "$upload_name" '[.assets[] | select(.name == $name)] | length' \
+    "$release_assets_json") || php_darwin_die "could not inspect release asset $upload_name"
+  case "$matching_assets" in
+    0) upload_files+=("$upload_file") ;;
+    1)
+      existing_asset=$(jq -r --arg name "$upload_name" \
+        '.assets[] | select(.name == $name) | [.state, (.digest // "")] | @tsv' \
+        "$release_assets_json") || php_darwin_die "could not inspect release asset $upload_name"
+      if [ "$existing_asset" != $'uploaded\t'"$upload_digest" ]; then
+        gh release delete-asset "$tag" "$upload_name" --yes --repo "$release_repository" || \
+          php_darwin_die "could not remove corrupt release asset $upload_name"
+        upload_files+=("$upload_file")
+      fi
+      ;;
+    *) php_darwin_die "release contains duplicate assets named $upload_name" ;;
+  esac
 done
-publish_mutation_started=true
 if [ "${#upload_files[@]}" -gt 0 ]; then
   gh release upload "$tag" "${upload_files[@]}" --repo "$release_repository" || \
     php_darwin_die "could not upload release archives to $tag"
 fi
+mutable_mutation_started=true
 gh release upload "$tag" "$installer" --clobber --repo "$release_repository" || \
   php_darwin_die "could not upload the release installer to $tag"
 # The manifest is the release commit point. Upload it only after every archive,
 # checksum, and the matching embedded-manifest installer is available.
 gh release upload "$tag" "$manifest" --clobber --repo "$release_repository" || \
   php_darwin_die "could not commit release assets for $tag"
+release_committed=true
 
-# Keep the generation referenced by a potentially cached previous installer,
-# but remove older content-addressed generations after the new manifest commits.
-jq -r '.assets[] | .download, (.download + ".sha256")' "$manifest" > "$retained_assets" || \
-  php_darwin_die 'could not record the current immutable release assets'
-if [ "$release_exists" = true ] && [ -f "$previous_assets/$tag-manifest.json" ] && \
-  php_darwin_validate_release_manifest "$previous_assets/$tag-manifest.json" "$version" "$channel"; then
-  jq -r '.assets[] | (.download // .name) as $download | $download, ($download + ".sha256")' \
-    "$previous_assets/$tag-manifest.json" >> "$retained_assets" || \
-    php_darwin_die 'could not record the previous immutable release assets'
-  LC_ALL=C sort -u "$retained_assets" -o "$retained_assets" || \
-    php_darwin_die 'could not sort the retained immutable release assets'
-  for previous_asset in "$previous_assets"/*; do
-    [ -f "$previous_asset" ] || continue
-    previous_name=${previous_asset##*/}
-    [[ "$previous_name" =~ ^php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_arm64\.[0-9a-f]{64}\.tar\.zst(\.sha256)?$ ]] || continue
-    grep -Fxq "$previous_name" "$retained_assets" && continue
-    gh release delete-asset "$tag" "$previous_name" --yes --repo "$release_repository" >/dev/null 2>&1 || \
-      printf 'Could not remove stale release asset %s from %s\n' "$previous_name" "$tag" >&2
-  done
-fi
+# Cleanup is deliberately best-effort after the manifest commit point. Old
+# content-addressed archives remain installable through the manifest fallback;
+# retired mutable names are removed so old clients fail closed instead of
+# silently installing frozen builds.
+while IFS= read -r stale_asset; do
+  [ -n "$stale_asset" ] || continue
+  if ! gh release delete-asset "$tag" "$stale_asset" --yes --repo "$release_repository" \
+    >/dev/null 2>&1; then
+    printf 'Could not remove stale release asset %s from %s\n' "$stale_asset" "$tag" >&2
+  fi
+done < "$stale_assets"
 printf 'Published PHP %s release assets with source hash %s\n' "$version" "$source_hash"

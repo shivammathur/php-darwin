@@ -162,6 +162,29 @@ php_darwin_remove_tap_backup() {
   sudo -n find "$backup_path" -mindepth 1 -delete && sudo -n rmdir "$backup_path"
 }
 
+php_darwin_remove_tap_path() {
+  local brew_prefix=$1
+  local tap_path=$2
+
+  case "$tap_path" in
+    "$brew_prefix/Library/Taps/"*|"$brew_prefix/Homebrew/Library/Taps/"*) ;;
+    *)
+      printf 'Unsafe Homebrew tap path: %s\n' "$tap_path" >&2
+      return 1
+      ;;
+  esac
+  [ -d "$tap_path" ] && [ ! -L "$tap_path" ] || {
+    printf 'Homebrew tap path is not a directory: %s\n' "$tap_path" >&2
+    return 1
+  }
+  if find "$tap_path" -mindepth 1 -delete >/dev/null 2>&1 && \
+    rmdir "$tap_path" >/dev/null 2>&1; then
+    return 0
+  fi
+  command -v sudo >/dev/null 2>&1 || return 1
+  sudo -n find "$tap_path" -mindepth 1 -delete && sudo -n rmdir "$tap_path"
+}
+
 php_darwin_validate_version() {
   local requested_version=${1:-}
   local configured_channel
@@ -430,6 +453,7 @@ php_darwin_validate_release_manifest() {
   local channel=${3:-$(php_darwin_version_channel "$version")}
   local asset=${4:-}
   local expected_count
+  local legacy_platforms
   local manifest_result
   local platforms
 
@@ -437,8 +461,14 @@ php_darwin_validate_release_manifest() {
   [ "$(php_darwin_version_channel "$version")" = "$channel" ] || return 1
   expected_count=$(php_darwin_expected_asset_count)
   platforms=$(php_darwin_read_config platforms.json) || return 1
+  legacy_platforms=$(php_darwin_read_config legacy-platforms.json) || return 1
   manifest_result=$(jq -er --arg channel "$channel" --arg version "$version" \
-    --arg asset "$asset" --argjson count "$expected_count" --argjson platforms "$platforms" '
+    --arg asset "$asset" --argjson count "$expected_count" --argjson platforms "$platforms" \
+    --argjson legacy_platforms "$legacy_platforms" '
+    ($platforms + $legacy_platforms) as $manifest_platforms |
+    ($platforms | keys) as $current_architectures |
+    ($manifest_platforms | keys) as $legacy_architectures |
+    ($count / ($platforms | length) * ($manifest_platforms | length)) as $legacy_count |
     select(.schema == 1 and .php_version == $version and
     (.homebrew_php_commit | type == "string" and test("^[0-9a-f]{40}$")) and
     (.source_hash | type == "string" and test("^[0-9a-f]{64}$")) and
@@ -449,19 +479,22 @@ php_darwin_validate_release_manifest() {
      else
        (.php_src_commit == "" or .php_src_commit == null)
      end) and
-    (.assets | type == "array" and length == $count) and
+    (.assets | type == "array") and
+    (([.assets[].architecture] | unique) as $architectures |
+      ((.assets | length == $count) and $architectures == $current_architectures) or
+      ((.assets | length == $legacy_count) and $architectures == $legacy_architectures)) and
     ([.assets[].name] | unique | length) == (.assets | length) and
     ([.assets[] | (.download // .name)] | unique | length) == (.assets | length) and
     all(.assets[];
       . as $item | .architecture as $architecture |
-      ($architecture == "arm64") and
+      ($manifest_platforms[$architecture] != null) and
       (.build == "debug" or .build == "release") and
       (.thread_safety == "nts" or .thread_safety == "zts") and
       .name == ("php_" + $version + "-" + .thread_safety + "-" + .build +
         "+darwin_" + .architecture + ".tar.zst") and
       (.bytes | type == "number" and floor == . and . > 0) and
       (.minimum_macos | type == "number" and floor == . and . > 0 and
-        . == $platforms[$architecture].minimum_macos) and
+        . == $manifest_platforms[$architecture].minimum_macos) and
       (.sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
       ((.download // .name) as $download |
         ($download | type == "string") and
@@ -592,6 +625,70 @@ php_darwin_validate_cache_metadata() {
   ' "$metadata_file"
 }
 
+php_darwin_job_running() {
+  kill -0 "$1" >/dev/null 2>&1
+}
+
+php_darwin_wait_for_job_exit() {
+  local attempt=0
+  local attempts=$2
+  local job_pid=$1
+
+  while [ "$attempt" -lt "$attempts" ]; do
+    php_darwin_job_running "$job_pid" || {
+      wait "$job_pid" >/dev/null 2>&1 || true
+      return 0
+    }
+    sleep 0.1
+    attempt=$((attempt + 1))
+  done
+  return 1
+}
+
+php_darwin_signal_job_tree() {
+  local child_pid
+  local job_pid=$1
+  local signal=$2
+  local job_descendants=()
+
+  while IFS= read -r child_pid; do
+    [ -n "$child_pid" ] && job_descendants+=("$child_pid")
+  done < <(ps -axo pid=,ppid= | awk -v root="$job_pid" '
+    { parent[$1]=$2; pid[++count]=$1 }
+    END {
+      for (item_index=1; item_index<=count; item_index++) {
+        current=pid[item_index]
+        for (depth=0; depth<count && current in parent; depth++) {
+          if (parent[current] == root) { print pid[item_index]; break }
+          current=parent[current]
+        }
+      }
+    }
+  ')
+  [ "${#job_descendants[@]}" -eq 0 ] || \
+    kill "-$signal" "${job_descendants[@]}" >/dev/null 2>&1 || true
+  kill "-$signal" "$job_pid" >/dev/null 2>&1 || true
+}
+
+php_darwin_reap_job() {
+  local grace_attempts=$2
+  local job_pid=$1
+
+  [ -n "$job_pid" ] || return 0
+  if [ "$grace_attempts" -gt 0 ] && php_darwin_wait_for_job_exit "$job_pid" "$grace_attempts"; then
+    return 0
+  fi
+  php_darwin_job_running "$job_pid" || {
+    wait "$job_pid" >/dev/null 2>&1 || true
+    return 0
+  }
+  php_darwin_signal_job_tree "$job_pid" TERM
+  if ! php_darwin_wait_for_job_exit "$job_pid" 10; then
+    php_darwin_signal_job_tree "$job_pid" KILL
+    wait "$job_pid" >/dev/null 2>&1 || true
+  fi
+}
+
 php_darwin_read_config() {
   case "${1:-}" in
     archive-paths)
@@ -633,6 +730,15 @@ PHP_DARWIN_CONFIG_PACKAGE_JSON
   }
 }
 PHP_DARWIN_CONFIG_PLATFORMS_JSON
+      ;;
+    legacy-platforms.json)
+      cat <<'PHP_DARWIN_CONFIG_LEGACY_PLATFORMS_JSON'
+{
+  "x86_64": {
+    "minimum_macos": 15
+  }
+}
+PHP_DARWIN_CONFIG_LEGACY_PLATFORMS_JSON
       ;;
     postinstall-paths)
       cat <<'PHP_DARWIN_CONFIG_POSTINSTALL_PATHS'
@@ -754,32 +860,48 @@ require_clean=${7:-false}
   printf 'Homebrew tap is not a Git repository: %s\n' "$tap_path" >&2
   exit 1
 }
-actual_repository=$(git -C "$tap_path" remote get-url origin) || exit 1
+actual_repository=$(git -C "$tap_path" remote get-url origin) || {
+  printf 'Could not resolve the Homebrew tap origin\n' >&2
+  exit 1
+}
 actual_repository=${actual_repository%.git}
 [ "$actual_repository" = "${repository%.git}" ] || {
   printf 'Homebrew tap origin mismatch: %s\n' "$actual_repository" >&2
   exit 1
 }
 if [ -n "$expected_commit" ]; then
-  actual_commit=$(git -C "$tap_path" rev-parse HEAD) || exit 1
+  actual_commit=$(git -C "$tap_path" rev-parse HEAD) || {
+    printf 'Could not resolve the Homebrew tap commit\n' >&2
+    exit 1
+  }
   [ "$actual_commit" = "$expected_commit" ] || {
     printf 'Homebrew tap commit mismatch: %s\n' "$actual_commit" >&2
     exit 1
   }
 fi
 if [ -n "$expected_branch" ]; then
-  actual_branch=$(git -C "$tap_path" symbolic-ref --short HEAD) || exit 1
+  actual_branch=$(git -C "$tap_path" symbolic-ref --short HEAD) || {
+    printf 'Could not resolve the Homebrew tap branch\n' >&2
+    exit 1
+  }
   [ "$actual_branch" = "$expected_branch" ] || {
     printf 'Homebrew tap branch mismatch: %s\n' "$actual_branch" >&2
     exit 1
   }
-  [ "$(git -C "$tap_path" rev-parse "refs/remotes/origin/$expected_branch")" = "$expected_commit" ] || {
+  remote_commit=$(git -C "$tap_path" rev-parse "refs/remotes/origin/$expected_branch") || {
+    printf 'Could not resolve the Homebrew tap remote branch\n' >&2
+    exit 1
+  }
+  [ "$remote_commit" = "$expected_commit" ] || {
     printf 'Homebrew tap remote branch does not match its snapshot commit\n' >&2
     exit 1
   }
 fi
 if [ -n "$expected_hash" ]; then
-  actual_hash=$(HOMEBREW_PHP_PATH="$tap_path" php_darwin_source_hash "$version") || exit 1
+  actual_hash=$(HOMEBREW_PHP_PATH="$tap_path" php_darwin_source_hash "$version") || {
+    printf 'Could not hash the Homebrew tap formulae\n' >&2
+    exit 1
+  }
   [ "$actual_hash" = "$expected_hash" ] || {
     printf 'Homebrew tap formula hash mismatch\n' >&2
     exit 1
@@ -810,36 +932,90 @@ repository=${5:?}
 cached_commit=${6:?}
 expected_branch=${7:?}
 
-php_darwin_validate_tap "$tap_path" "$version" '' "$repository" '' '' true \
+php_darwin_validate_tap "$tap_path" "$version" '' "$repository" \
   >/dev/null || exit 1
 actual_hash=$(HOMEBREW_PHP_PATH="$tap_path" php_darwin_source_hash "$version" 2>/dev/null) || \
   actual_hash=
-if [ "$actual_hash" = "$expected_hash" ]; then
+formula_status=$(git -C "$tap_path" status --porcelain --untracked-files=all -- Formula 2>/dev/null) || {
+  printf 'Could not inspect Homebrew tap formula status\n' >&2
+  exit 1
+}
+if [ "$actual_hash" = "$expected_hash" ] && [ -z "$formula_status" ]; then
   printf 'keep\n'
   exit 0
 fi
 
-existing_commit=$(git -C "$tap_path" rev-parse HEAD) || exit 1
-snapshot_commit=$(git -C "$tap_path" config --get php-darwin.snapshot-commit 2>/dev/null) || \
-  snapshot_commit=
-if [ "$snapshot_commit" != "$existing_commit" ]; then
-  [ -z "$snapshot_commit" ] && \
-    [ "$(git -C "$tap_path" rev-parse --is-shallow-repository)" = true ] && \
-    [ "$(git -C "$tap_path" symbolic-ref --short HEAD)" = "$expected_branch" ] && \
-    [ "$(git -C "$tap_path" rev-parse "refs/remotes/origin/$expected_branch")" = "$existing_commit" ] || {
-    printf 'Homebrew tap formula hash mismatch on an unmarked checkout\n' >&2
-    exit 1
-  }
-fi
-[ "$(git -C "$cached_tap_path" rev-parse HEAD)" = "$cached_commit" ] || exit 1
-existing_time=$(git -C "$tap_path" show -s --format=%ct "$existing_commit") || exit 1
-cached_time=$(git -C "$cached_tap_path" show -s --format=%ct "$cached_commit") || exit 1
-[[ "$existing_time" =~ ^[0-9]+$ ]] && [[ "$cached_time" =~ ^[0-9]+$ ]] || exit 1
-[ "$cached_time" -gt "$existing_time" ] || {
-  printf 'Homebrew tap formula hash mismatch and the cached snapshot is not newer\n' >&2
+php_darwin_validate_tap "$tap_path" "$version" '' "$repository" '' '' true \
+  >/dev/null || {
+  printf 'Remove changes from %s or untap %s before retrying the cache install\n' "$tap_path" \
+    "$(php_darwin_package_config tap)" >&2
   exit 1
 }
-printf 'replace\n'
+existing_commit=$(git -C "$tap_path" rev-parse HEAD) || {
+  printf 'Could not resolve the installed Homebrew tap commit\n' >&2
+  exit 1
+}
+actual_cached_commit=$(git -C "$cached_tap_path" rev-parse HEAD) || {
+  printf 'Could not resolve the cached Homebrew tap commit\n' >&2
+  exit 1
+}
+[ "$actual_cached_commit" = "$cached_commit" ] || {
+  printf 'Cached Homebrew tap commit does not match the archive metadata\n' >&2
+  exit 1
+}
+snapshot_commit=$(git -C "$tap_path" config --get php-darwin.snapshot-commit 2>/dev/null) || \
+  snapshot_commit=
+if [ -z "$snapshot_commit" ]; then
+  existing_branch=$(git -C "$tap_path" symbolic-ref --short HEAD 2>/dev/null) || {
+    printf 'Homebrew tap formula hash mismatch on a detached checkout; run brew untap %s before retrying\n' \
+      "$(php_darwin_package_config tap)" >&2
+    exit 1
+  }
+  remote_commit=$(git -C "$tap_path" rev-parse "refs/remotes/origin/$expected_branch" 2>/dev/null) || {
+    printf 'Homebrew tap formula hash mismatch without an origin/%s reference; run brew untap %s before retrying\n' \
+      "$expected_branch" "$(php_darwin_package_config tap)" >&2
+    exit 1
+  }
+  standard_checkout=false
+  if [ "$existing_branch" = "$expected_branch" ]; then
+    if [ "$remote_commit" = "$existing_commit" ] || \
+      git -C "$tap_path" merge-base --is-ancestor "$existing_commit" "$remote_commit" 2>/dev/null; then
+      standard_checkout=true
+    fi
+  fi
+  [ "$standard_checkout" = true ] || {
+    printf 'Homebrew tap has local commits or a nonstandard branch; run brew untap %s before retrying\n' \
+      "$(php_darwin_package_config tap)" >&2
+    exit 1
+  }
+  printf 'temporary\n'
+  exit 0
+fi
+[ "$snapshot_commit" = "$existing_commit" ] || {
+  printf 'Homebrew tap snapshot provenance does not match its checkout\n' >&2
+  exit 1
+}
+[ "$existing_commit" != "$cached_commit" ] || {
+  printf 'Homebrew tap source hash differs at the same cache snapshot commit\n' >&2
+  exit 1
+}
+
+comparison_status=
+repository_slug=${repository#https://github.com/}
+repository_slug=${repository_slug%.git}
+if [[ "$repository_slug" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+  comparison_status=$(curl --retry 2 -fsSL \
+    "https://api.github.com/repos/$repository_slug/compare/$existing_commit...$cached_commit" 2>/dev/null | \
+    jq -er '.status | select(. == "ahead" or . == "behind" or . == "identical" or . == "diverged")' \
+      2>/dev/null) || comparison_status=
+fi
+if [ "$comparison_status" = ahead ]; then
+  printf 'replace\n'
+else
+  # Use an older, rebased, or unorderable cache snapshot only for this install.
+  # Restoring the existing cache-owned tap avoids a persistent downgrade.
+  printf 'temporary\n'
+fi
 )
 
 # Source: scripts/verify-links.sh
@@ -1191,6 +1367,8 @@ tap_trust_file="$tmp_dir/homebrew-tap-trust.txt"
 formula_trust_file="$tmp_dir/homebrew-formula-trust.txt"
 missing_log="$tmp_dir/homebrew-missing.log"
 missing_pid=
+missing_status=
+missing_output=
 archive_hash_file="$tmp_dir/archive.sha256"
 archive_hash_log="$tmp_dir/archive-hash.log"
 archive_hash_pid=
@@ -1219,16 +1397,14 @@ tap_snapshot_backup="$tmp_dir/homebrew-tap-snapshot-backup"
 tap_snapshot_backed_up=false
 tap_snapshot_extracted=false
 tap_replaced=false
+tap_restore_after_install=false
 dependencies_started_with_pending_tap=false
 tap_snapshot_path="$brew_prefix/$tap_snapshot"
 : > "$previous_opt_links" || php_darwin_die 'could not create the Homebrew opt-link backup'
 : > "$postinstall_restored_file" || php_darwin_die 'could not create the restored-state list'
 : > "$new_state_paths_file" || php_darwin_die 'could not create the new-state list'
 archive_mutation_started=false
-php_darwin_wait_for_dependencies() {
-  local missing
-  local missing_status
-
+php_darwin_collect_dependencies() {
   [ -n "$missing_pid" ] || return 0
   if wait "$missing_pid"; then
     missing_status=0
@@ -1236,12 +1412,43 @@ php_darwin_wait_for_dependencies() {
     missing_status=$?
   fi
   missing_pid=
-  missing=$(cat "$missing_log") || php_darwin_die 'could not read Homebrew dependency diagnostics'
-  [ "$missing_status" -eq 0 ] || [ -n "$missing" ] || \
+  missing_output=$(cat "$missing_log") || php_darwin_die 'could not read Homebrew dependency diagnostics'
+}
+
+php_darwin_validate_dependencies() {
+  [ -n "$missing_status" ] || return 0
+  [ "$missing_status" -eq 0 ] || [ -n "$missing_output" ] || \
     php_darwin_die 'Homebrew dependency validation failed without diagnostics'
-  if [ -n "$missing" ]; then
-    php_darwin_die "cache has missing Homebrew dependencies: $missing"
+  if [ -n "$missing_output" ]; then
+    php_darwin_die "cache has missing Homebrew dependencies: $missing_output"
   fi
+  missing_status=
+  missing_output=
+}
+
+php_darwin_wait_for_dependencies() {
+  php_darwin_collect_dependencies
+  php_darwin_validate_dependencies
+}
+
+php_darwin_resolve_tap_and_dependencies() {
+  if [ -n "$tap_pid" ]; then
+    # Do not replace the tap while Homebrew is reading the outgoing formula.
+    # Its result is authoritative only if that tap remains installed.
+    php_darwin_collect_dependencies
+    php_darwin_wait_for_tap
+    if [ "$tap_replaced" = true ] && [ "$dependencies_started_with_pending_tap" = true ]; then
+      missing_status=
+      missing_output=
+      php_darwin_set_phase homebrew.dependencies
+      brew missing "$formula" > "$missing_log" 2>&1 &
+      missing_pid=$!
+    fi
+  else
+    php_darwin_wait_for_tap
+  fi
+  php_darwin_set_phase homebrew.dependencies
+  php_darwin_wait_for_dependencies
 }
 
 php_darwin_wait_for_tap() {
@@ -1260,6 +1467,7 @@ php_darwin_wait_for_tap() {
     cat "$tap_log" >&2
     php_darwin_die "could not validate $tap"
   fi
+  php_darwin_set_phase homebrew.tap
   tap_action=$(cat "$tap_action_file") || php_darwin_die "could not read the $tap tap action"
   case "$tap_action" in
     keep)
@@ -1268,7 +1476,8 @@ php_darwin_wait_for_tap() {
       rmdir "$tap_snapshot_path" || php_darwin_die 'could not remove the empty Homebrew tap snapshot'
       tap_snapshot_extracted=false
       ;;
-    replace)
+    replace|temporary)
+      [ "$tap_action" != temporary ] || tap_restore_after_install=true
       tap_path_backed_up=true
       if ! mv "$tap_path" "$tap_path_backup" 2>/dev/null; then
         command -v sudo >/dev/null 2>&1 || \
@@ -1277,7 +1486,12 @@ php_darwin_wait_for_tap() {
           php_darwin_die "could not back up the older $tap snapshot"
       fi
       tap_installed=true
-      mv "$tap_snapshot_path" "$tap_path" || php_darwin_die "could not advance the $tap snapshot"
+      if ! mv "$tap_snapshot_path" "$tap_path" 2>/dev/null; then
+        command -v sudo >/dev/null 2>&1 || \
+          php_darwin_die "could not install the cached $tap snapshot"
+        sudo -n mv "$tap_snapshot_path" "$tap_path" || \
+          php_darwin_die "could not install the cached $tap snapshot"
+      fi
       tap_snapshot_extracted=false
       tap_replaced=true
       ;;
@@ -1349,7 +1563,11 @@ php_darwin_restore_formula_trust() {
 
   [ -f "$formula_trust_marker" ] || [ -f "$formula_trust_pending" ] || return 0
   if php_darwin_formula_trusted "$tap/$formula"; then
-    brew untrust --formula "$tap/$formula" || return 1
+    brew untrust --formula "$tap/$formula" || {
+      printf 'Run brew untrust --formula %s to remove trust added by the failed cache install\n' \
+        "$tap/$formula" >&2
+      return 1
+    }
   else
     trust_status=$?
     [ "$trust_status" -eq 1 ] || return 1
@@ -1363,18 +1581,19 @@ php_darwin_install_cleanup() {
   rollback_log="$tmp_dir/rollback.log"
   trap - EXIT
   : > "$rollback_log"
-  for background_pid in "$tap_pid" "$homebrew_prepare_pid" "$missing_pid" "$archive_hash_pid"; do
-    [ -n "$background_pid" ] || continue
-    wait "$background_pid" >/dev/null 2>&1 || true
-  done
+  # Give the potentially mutating Homebrew preparation a bounded opportunity
+  # to finish. Read-only validation jobs can be stopped immediately.
+  php_darwin_reap_job "$homebrew_prepare_pid" 20
+  php_darwin_reap_job "$tap_pid" 0
+  php_darwin_reap_job "$missing_pid" 0
+  php_darwin_reap_job "$archive_hash_pid" 0
   if [ "$cleanup_status" -ne 0 ]; then
-    php_darwin_restore_formula_trust >> "$rollback_log" 2>&1 || rollback_status=failed
     if [ "$tap_installed" = true ]; then
       if [ ! -e "$tap_path" ] && [ ! -L "$tap_path" ]; then
         :
       elif [ -d "$tap_path" ] && [ ! -L "$tap_path" ]; then
-        find "$tap_path" -mindepth 1 -delete >> "$rollback_log" 2>&1 && \
-          rmdir "$tap_path" >> "$rollback_log" 2>&1 || rollback_status=failed
+        php_darwin_remove_tap_path "$brew_prefix" "$tap_path" >> "$rollback_log" 2>&1 || \
+          rollback_status=failed
       else
         rollback_status=failed
       fi
@@ -1494,6 +1713,7 @@ php_darwin_install_cleanup() {
       brew link --overwrite "${linked_dependency_formulae[@]}" >> "$rollback_log" 2>&1 || \
         rollback_status=failed
     fi
+    php_darwin_restore_formula_trust >> "$rollback_log" 2>&1 || rollback_status=failed
   fi
   if [ "$cleanup_status" -ne 0 ]; then
     if [ "$rollback_status" = failed ]; then
@@ -1551,6 +1771,48 @@ manifest_php_src_commit=
 manifest_php_semver=
 manifest_source_hash=
 manifest_download_asset=
+manifest_from_embedded=false
+release_archive_error=
+
+php_darwin_use_release_manifest() {
+  local manifest_file=$1
+  local manifest_values
+
+  manifest_values=$(php_darwin_validate_release_manifest \
+    "$manifest_file" "$version" "$channel" "$asset") || return 1
+  IFS=$'\t' read -r expected_hash manifest_homebrew_commit manifest_php_src_commit \
+    manifest_php_semver manifest_source_hash manifest_download_asset <<< "$manifest_values" || return 1
+  [ -n "$expected_hash" ] && [ -n "$manifest_homebrew_commit" ] && \
+    [ -n "$manifest_php_src_commit" ] && [ -n "$manifest_php_semver" ] && \
+    [ -n "$manifest_source_hash" ] && [ -n "$manifest_download_asset" ] || return 1
+  [ "$manifest_php_src_commit" != - ] || manifest_php_src_commit=
+}
+
+php_darwin_fetch_release_manifest() {
+  manifest_url=${PHP_DARWIN_MANIFEST_URL:-https://github.com/$release_repository/releases/download/php-$version/php-$version-manifest.json?cache=$(date +%s)}
+  curl --retry 3 --retry-all-errors -fsSL "$manifest_url" -o "$release_manifest" || \
+    php_darwin_die "could not download $manifest_url"
+  php_darwin_use_release_manifest "$release_manifest" || \
+    php_darwin_die 'release manifest did not match the requested PHP version'
+  manifest_from_embedded=false
+}
+
+php_darwin_download_release_archive() {
+  release_archive_error=
+  release_url=${PHP_DARWIN_RELEASE_URL:-https://github.com/$release_repository/releases/download/php-$version/$manifest_download_asset}
+  # Do not retry a retired immutable name: a single 404 should immediately
+  # fall through to the current manifest instead of consuming the fetch budget.
+  curl --retry 3 -fsSL "$release_url" -o "$archive" || {
+    release_archive_error=download
+    return 1
+  }
+  php_darwin_start_archive_hash "$archive"
+  php_darwin_wait_for_archive_hash
+  [ "$actual_hash" = "$expected_hash" ] || {
+    release_archive_error=checksum
+    return 1
+  }
+}
 
 php_darwin_set_phase fetch
 metadata_copy="$tmp_dir/cache-metadata.json"
@@ -1572,28 +1834,33 @@ else
   [[ "$release_repository" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || \
     php_darwin_die "invalid release repository: $release_repository"
   release_manifest="$tmp_dir/php-$version-manifest.json"
-  manifest_values=
   if php_darwin_read_config release-manifest.json > "$release_manifest" 2>/dev/null; then
-    manifest_values=$(php_darwin_validate_release_manifest \
-      "$release_manifest" "$version" "$channel" "$asset") || manifest_values=
+    if php_darwin_use_release_manifest "$release_manifest"; then
+      manifest_from_embedded=true
+    else
+      php_darwin_fetch_release_manifest
+    fi
+  else
+    php_darwin_fetch_release_manifest
   fi
-  if [ -z "$manifest_values" ]; then
-    manifest_url=${PHP_DARWIN_MANIFEST_URL:-https://github.com/$release_repository/releases/download/php-$version/php-$version-manifest.json?cache=$(date +%s)}
-    curl --retry 3 --retry-all-errors -fsSL "$manifest_url" -o "$release_manifest" || \
-      php_darwin_die "could not download $manifest_url"
-    manifest_values=$(php_darwin_validate_release_manifest \
-      "$release_manifest" "$version" "$channel" "$asset") || \
-      php_darwin_die 'release manifest did not match the requested PHP version'
+  if ! php_darwin_download_release_archive; then
+    if [ "$manifest_from_embedded" = true ] && [ -z "${PHP_DARWIN_RELEASE_URL:-}" ]; then
+      printf 'Embedded release archive %s failed; retrying with the current release manifest\n' \
+        "$release_archive_error" >&2
+      php_darwin_fetch_release_manifest
+      if ! php_darwin_download_release_archive; then
+        case "$release_archive_error" in
+          checksum) php_darwin_die "checksum mismatch for the current release archive $asset" ;;
+          *) php_darwin_die "could not download the current release archive from $release_url" ;;
+        esac
+      fi
+    else
+      case "$release_archive_error" in
+        checksum) php_darwin_die "checksum mismatch for $asset" ;;
+        *) php_darwin_die "could not download $release_url" ;;
+      esac
+    fi
   fi
-  IFS=$'\t' read -r expected_hash manifest_homebrew_commit manifest_php_src_commit \
-    manifest_php_semver manifest_source_hash manifest_download_asset <<< "$manifest_values" || \
-    php_darwin_die 'could not parse the release source commits'
-  [ "$manifest_php_src_commit" != - ] || manifest_php_src_commit=
-  release_url=${PHP_DARWIN_RELEASE_URL:-https://github.com/$release_repository/releases/download/php-$version/$manifest_download_asset}
-  curl --retry 3 --retry-all-errors -fsSL "$release_url" -o "$archive" || \
-    php_darwin_die "could not download $release_url"
-  php_darwin_start_archive_hash "$archive"
-  php_darwin_wait_for_archive_hash
   [ "$actual_hash" = "$expected_hash" ] || php_darwin_die "checksum mismatch for $asset"
   php_darwin_read_metadata "$archive" "$internal_metadata_path" "$metadata_copy" || \
     php_darwin_die 'could not read metadata from the verified release archive'
@@ -1879,7 +2146,7 @@ while IFS= read -r linkable_formula; do
 done < "$linkable_formulae_file"
 if [ "${#linkable_formulae[@]}" -gt 0 ]; then
   php_darwin_set_phase homebrew.dependencies
-  php_darwin_wait_for_dependencies
+  php_darwin_resolve_tap_and_dependencies
   php_darwin_set_phase homebrew.link
   for linkable_formula in "${linkable_formulae[@]}"; do
     [ -L "$brew_prefix/var/homebrew/linked/$linkable_formula" ] && \
@@ -1894,16 +2161,7 @@ php_darwin_verify_links "$brew_prefix" "$links_file" || \
   php_darwin_die 'cached Homebrew links did not match the archive metadata'
 
 php_darwin_set_phase homebrew.dependencies
-php_darwin_wait_for_dependencies
-
-php_darwin_set_phase homebrew.tap
-php_darwin_wait_for_tap
-if [ "$tap_replaced" = true ] && [ "$dependencies_started_with_pending_tap" = true ]; then
-  php_darwin_set_phase homebrew.dependencies
-  brew missing "$formula" > "$missing_log" 2>&1 &
-  missing_pid=$!
-  php_darwin_wait_for_dependencies
-fi
+php_darwin_resolve_tap_and_dependencies
 
 php_darwin_set_phase runtime.verify
 php_bin="$brew_prefix/opt/$formula/bin/php"
@@ -1918,7 +2176,17 @@ if [ "$tap_snapshot_backed_up" = true ]; then
     php_darwin_die 'could not restore the previous Homebrew tap snapshot'
   tap_snapshot_backed_up=false
 fi
-if [ "$tap_path_backed_up" = true ]; then
+if [ "$tap_restore_after_install" = true ]; then
+  php_darwin_restore_formula_trust || \
+    php_darwin_die "could not remove temporary trust for $tap/$formula"
+  php_darwin_remove_tap_path "$brew_prefix" "$tap_path" || \
+    php_darwin_die 'could not remove the temporary cached Homebrew tap snapshot'
+  tap_installed=false
+  php_darwin_restore_tap_path "$tap_path" "$tap_path_backup" || \
+    php_darwin_die 'could not restore the existing Homebrew tap after installation'
+  tap_path_backed_up=false
+  tap_restore_after_install=false
+elif [ "$tap_path_backed_up" = true ]; then
   # The new tap is committed at this point. A best-effort cleanup failure must
   # not trigger rollback from a backup that may already be partially removed.
   tap_path_backed_up=false

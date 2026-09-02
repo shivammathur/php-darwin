@@ -12,33 +12,87 @@ repository=${5:?}
 cached_commit=${6:?}
 expected_branch=${7:?}
 
-bash "$script_dir/validate-tap.sh" "$tap_path" "$version" '' "$repository" '' '' true \
+bash "$script_dir/validate-tap.sh" "$tap_path" "$version" '' "$repository" \
   >/dev/null || exit 1
 actual_hash=$(HOMEBREW_PHP_PATH="$tap_path" bash "$script_dir/source-hash.sh" "$version" 2>/dev/null) || \
   actual_hash=
-if [ "$actual_hash" = "$expected_hash" ]; then
+formula_status=$(git -C "$tap_path" status --porcelain --untracked-files=all -- Formula 2>/dev/null) || {
+  printf 'Could not inspect Homebrew tap formula status\n' >&2
+  exit 1
+}
+if [ "$actual_hash" = "$expected_hash" ] && [ -z "$formula_status" ]; then
   printf 'keep\n'
   exit 0
 fi
 
-existing_commit=$(git -C "$tap_path" rev-parse HEAD) || exit 1
-snapshot_commit=$(git -C "$tap_path" config --get php-darwin.snapshot-commit 2>/dev/null) || \
-  snapshot_commit=
-if [ "$snapshot_commit" != "$existing_commit" ]; then
-  [ -z "$snapshot_commit" ] && \
-    [ "$(git -C "$tap_path" rev-parse --is-shallow-repository)" = true ] && \
-    [ "$(git -C "$tap_path" symbolic-ref --short HEAD)" = "$expected_branch" ] && \
-    [ "$(git -C "$tap_path" rev-parse "refs/remotes/origin/$expected_branch")" = "$existing_commit" ] || {
-    printf 'Homebrew tap formula hash mismatch on an unmarked checkout\n' >&2
-    exit 1
-  }
-fi
-[ "$(git -C "$cached_tap_path" rev-parse HEAD)" = "$cached_commit" ] || exit 1
-existing_time=$(git -C "$tap_path" show -s --format=%ct "$existing_commit") || exit 1
-cached_time=$(git -C "$cached_tap_path" show -s --format=%ct "$cached_commit") || exit 1
-[[ "$existing_time" =~ ^[0-9]+$ ]] && [[ "$cached_time" =~ ^[0-9]+$ ]] || exit 1
-[ "$cached_time" -gt "$existing_time" ] || {
-  printf 'Homebrew tap formula hash mismatch and the cached snapshot is not newer\n' >&2
+bash "$script_dir/validate-tap.sh" "$tap_path" "$version" '' "$repository" '' '' true \
+  >/dev/null || {
+  printf 'Remove changes from %s or untap %s before retrying the cache install\n' "$tap_path" \
+    "$(php_darwin_package_config tap)" >&2
   exit 1
 }
-printf 'replace\n'
+existing_commit=$(git -C "$tap_path" rev-parse HEAD) || {
+  printf 'Could not resolve the installed Homebrew tap commit\n' >&2
+  exit 1
+}
+actual_cached_commit=$(git -C "$cached_tap_path" rev-parse HEAD) || {
+  printf 'Could not resolve the cached Homebrew tap commit\n' >&2
+  exit 1
+}
+[ "$actual_cached_commit" = "$cached_commit" ] || {
+  printf 'Cached Homebrew tap commit does not match the archive metadata\n' >&2
+  exit 1
+}
+snapshot_commit=$(git -C "$tap_path" config --get php-darwin.snapshot-commit 2>/dev/null) || \
+  snapshot_commit=
+if [ -z "$snapshot_commit" ]; then
+  existing_branch=$(git -C "$tap_path" symbolic-ref --short HEAD 2>/dev/null) || {
+    printf 'Homebrew tap formula hash mismatch on a detached checkout; run brew untap %s before retrying\n' \
+      "$(php_darwin_package_config tap)" >&2
+    exit 1
+  }
+  remote_commit=$(git -C "$tap_path" rev-parse "refs/remotes/origin/$expected_branch" 2>/dev/null) || {
+    printf 'Homebrew tap formula hash mismatch without an origin/%s reference; run brew untap %s before retrying\n' \
+      "$expected_branch" "$(php_darwin_package_config tap)" >&2
+    exit 1
+  }
+  standard_checkout=false
+  if [ "$existing_branch" = "$expected_branch" ]; then
+    if [ "$remote_commit" = "$existing_commit" ] || \
+      git -C "$tap_path" merge-base --is-ancestor "$existing_commit" "$remote_commit" 2>/dev/null; then
+      standard_checkout=true
+    fi
+  fi
+  [ "$standard_checkout" = true ] || {
+    printf 'Homebrew tap has local commits or a nonstandard branch; run brew untap %s before retrying\n' \
+      "$(php_darwin_package_config tap)" >&2
+    exit 1
+  }
+  printf 'temporary\n'
+  exit 0
+fi
+[ "$snapshot_commit" = "$existing_commit" ] || {
+  printf 'Homebrew tap snapshot provenance does not match its checkout\n' >&2
+  exit 1
+}
+[ "$existing_commit" != "$cached_commit" ] || {
+  printf 'Homebrew tap source hash differs at the same cache snapshot commit\n' >&2
+  exit 1
+}
+
+comparison_status=
+repository_slug=${repository#https://github.com/}
+repository_slug=${repository_slug%.git}
+if [[ "$repository_slug" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+  comparison_status=$(curl --retry 2 -fsSL \
+    "https://api.github.com/repos/$repository_slug/compare/$existing_commit...$cached_commit" 2>/dev/null | \
+    jq -er '.status | select(. == "ahead" or . == "behind" or . == "identical" or . == "diverged")' \
+      2>/dev/null) || comparison_status=
+fi
+if [ "$comparison_status" = ahead ]; then
+  printf 'replace\n'
+else
+  # Use an older, rebased, or unorderable cache snapshot only for this install.
+  # Restoring the existing cache-owned tap avoids a persistent downgrade.
+  printf 'temporary\n'
+fi

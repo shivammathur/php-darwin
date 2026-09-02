@@ -3,29 +3,59 @@
 printf '%s\n' "$*" >> "${GH_LOG:?}"
 case "${1:-}/${2:-}" in
   release/view)
-    [ "${GH_RELEASE_EXISTS:-false}" = true ] && exit 0
+    if [ "${GH_RELEASE_EXISTS:-false}" = true ]; then
+      if [ -n "${GH_RELEASE_ASSETS_JSON:-}" ]; then
+        cat "$GH_RELEASE_ASSETS_JSON" || exit 1
+      else
+        printf '{"assets":[]}\n'
+      fi
+      exit 0
+    fi
     exit 1
     ;;
-  release/create|release/delete-asset) exit 0 ;;
+  release/create) exit 0 ;;
+  release/delete-asset)
+    case "${GH_FAIL_DELETE_MATCH:-}" in
+      '') exit 0 ;;
+      *) case "${3:-}" in *"$GH_FAIL_DELETE_MATCH"*) exit 1 ;; *) exit 0 ;; esac ;;
+    esac
+    ;;
   release/download)
     destination=
+    patterns=()
     previous=
     while [ "$#" -gt 0 ]; do
       case "$1" in
         --dir) shift; destination=${1:-} ;;
+        --pattern) shift; patterns+=("${1:-}") ;;
       esac
       shift
     done
     [ -n "$destination" ] && [ -d "${GH_PREVIOUS_ASSETS:-}" ] || exit 1
     mkdir -p "$destination" || exit 1
-    for previous in "${GH_PREVIOUS_ASSETS}"/*; do
-      [ -f "$previous" ] || continue
+    for pattern in "${patterns[@]}"; do
+      case "${GH_FAIL_DOWNLOAD_MATCH:-}" in
+        '') ;;
+        *) case "$pattern" in *"$GH_FAIL_DOWNLOAD_MATCH"*) exit 1 ;; esac ;;
+      esac
+      previous="${GH_PREVIOUS_ASSETS}/$pattern"
+      [ -f "$previous" ] || exit 1
       cp "$previous" "$destination/" || exit 1
     done
     exit 0
     ;;
   release/upload)
     for argument in "$@"; do
+      case "${GH_FAIL_UPLOAD_ONCE_MATCH:-}" in
+        '') ;;
+        *) case "$argument" in *"$GH_FAIL_UPLOAD_ONCE_MATCH"*)
+          if [ ! -f "${GH_FAIL_UPLOAD_ONCE_MARKER:?}" ]; then
+            : > "$GH_FAIL_UPLOAD_ONCE_MARKER" || exit 1
+            exit 1
+          fi
+          ;;
+        esac ;;
+      esac
       case "${GH_FAIL_UPLOAD_MATCH:-}" in
         '') ;;
         *) case "$argument" in *"$GH_FAIL_UPLOAD_MATCH"*) exit 1 ;; esac ;;

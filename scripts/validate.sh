@@ -5,6 +5,7 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 . "$script_dir/lib.sh"
 
 bash -n "$script_dir"/*.sh "$script_dir"/../templates/*.sh || php_darwin_die 'shell syntax validation failed'
+bash "$script_dir/test-job-control.sh" || php_darwin_die 'bounded job cleanup validation failed'
 
 for json_file in "$script_dir"/../conf/*.json "$script_dir"/../templates/*.json; do
   jq -e . "$json_file" >/dev/null || php_darwin_die "invalid JSON: $json_file"
@@ -64,6 +65,10 @@ jq -e '
   .arm64.platform_key == "arm64_sonoma" and
   .arm64.test_runners == ["macos-14", "macos-15", "macos-26", "macos-latest"]
 ' "$script_dir/../conf/platforms.json" >/dev/null || php_darwin_die 'invalid platform configuration'
+jq -e '
+  keys == ["x86_64"] and .x86_64 == {"minimum_macos": 15}
+' "$script_dir/../conf/legacy-platforms.json" >/dev/null || \
+  php_darwin_die 'invalid legacy manifest platform configuration'
 [ "$(php_darwin_expected_asset_count)" -eq 4 ] || php_darwin_die 'expected four ARM64 release assets'
 if (php_darwin_normalize_arch x86_64) >/dev/null 2>&1 || \
   (php_darwin_normalize_arch amd64) >/dev/null 2>&1; then
@@ -245,6 +250,10 @@ tap_backup=$(php_darwin_tap_backup_path "$tap_brew_prefix" "$tap_fixture" \
 php_darwin_remove_tap_backup "$tap_brew_prefix" "$tap_backup" || \
   php_darwin_die 'same-filesystem Homebrew tap backup fixture could not be removed'
 [ ! -e "$tap_backup" ] || php_darwin_die 'Homebrew tap backup fixture remained after removal'
+mkdir -p "$tap_fixture/.git" || php_darwin_die 'could not create the removable tap fixture'
+php_darwin_remove_tap_path "$tap_brew_prefix" "$tap_fixture" || \
+  php_darwin_die 'Homebrew tap fixture could not be removed transactionally'
+[ ! -e "$tap_fixture" ] || php_darwin_die 'removed Homebrew tap fixture remained'
 ln -s "$tap_fixture" "$tap_symlink" || php_darwin_die 'could not create the tap symlink fixture'
 if php_darwin_prepare_tap_path "$tap_symlink" "$tap_backup" 2> /dev/null; then
   php_darwin_die 'Homebrew tap preparation accepted a symlink'

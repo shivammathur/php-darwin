@@ -20,6 +20,24 @@ mkdir -p "$builds_dir" "$fake_bin" || php_darwin_die 'could not create publish f
 cp "$script_dir/../templates/publish-gh.sh" "$fake_bin/gh" || php_darwin_die 'could not copy the gh fixture'
 chmod 0755 "$fake_bin/gh" || php_darwin_die 'could not make the gh fixture executable'
 
+php_darwin_test_release_assets() {
+  local asset_file
+  local asset_hash
+  local asset_records="$2.records"
+  local assets_dir=$1
+  local output=$2
+
+  : > "$asset_records" || return 1
+  for asset_file in "$assets_dir"/*; do
+    [ -f "$asset_file" ] || continue
+    asset_hash=$(php_darwin_sha256 "$asset_file") || return 1
+    jq -cn --arg digest "sha256:$asset_hash" --arg name "${asset_file##*/}" \
+      --argjson size "$(wc -c < "$asset_file" | tr -d '[:space:]')" \
+      '{name:$name,digest:$digest,size:$size,state:"uploaded"}' >> "$asset_records" || return 1
+  done
+  jq -s '{assets:.}' "$asset_records" > "$output"
+}
+
 : > "$formulae"
 variant_index=0
 while read -r build ts extra; do
@@ -144,6 +162,20 @@ legacy_asset_values=$(php_darwin_validate_release_manifest \
   php_darwin_die 'legacy release asset names did not pass compatibility validation'
 [ "${legacy_asset_values##*$'\t'}" = "$manifest_asset" ] || \
   php_darwin_die 'legacy release asset name was not preserved'
+legacy_intel_manifest="$work_dir/legacy-intel-manifest.json"
+jq --argjson minimum_macos "$(jq -er '.x86_64.minimum_macos' "$script_dir/../conf/legacy-platforms.json")" '
+  .assets += [.assets[] |
+    .architecture="x86_64" |
+    .minimum_macos=$minimum_macos |
+    .name=(.name | sub("arm64\\.tar\\.zst$"; "x86_64.tar.zst")) |
+    del(.download)]
+' "$legacy_asset_manifest" > "$legacy_intel_manifest" || \
+  php_darwin_die 'could not create a legacy Intel manifest fixture'
+legacy_intel_values=$(php_darwin_validate_release_manifest \
+  "$legacy_intel_manifest" "$version" stable "$manifest_asset") || \
+  php_darwin_die 'legacy eight-asset manifest did not pass compatibility validation'
+[ "${legacy_intel_values##*$'\t'}" = "$manifest_asset" ] || \
+  php_darwin_die 'legacy eight-asset manifest did not select the ARM64 archive'
 missing_commit_manifest="$work_dir/missing-commit-stable-manifest.json"
 jq 'del(.php_src_commit)' "$gh_manifest" > "$missing_commit_manifest" || \
   php_darwin_die 'could not create a missing-commit stable manifest fixture'
@@ -190,11 +222,15 @@ grep -Fq "\"download\": \"$installer_download\"" "$gh_installer" || \
   php_darwin_die 'published installer did not embed the immutable release asset'
 
 # A subsequent publish keeps the generation referenced by the previous
-# installer, uploads a new immutable generation, and removes only older ones.
+# installer, uploads a new immutable generation, and removes older immutable
+# assets plus the retired mutable and Intel archive names.
 previous_generation="$work_dir/previous-generation"
+previous_generation_json="$work_dir/previous-generation-assets.json"
 mkdir -p "$previous_generation" || php_darwin_die 'could not create immutable release fixtures'
 cp "$gh_manifest" "$previous_generation/php-$version-manifest.json" || \
   php_darwin_die 'could not preserve the previous release manifest fixture'
+cp "$gh_installer" "$previous_generation/install.sh" || \
+  php_darwin_die 'could not preserve the previous release installer fixture'
 while IFS= read -r previous_download; do
   printf 'previous immutable archive\n' > "$previous_generation/$previous_download" || exit 1
   printf 'previous immutable checksum\n' > "$previous_generation/$previous_download.sha256" || exit 1
@@ -203,19 +239,30 @@ stale_hash=$(printf 'f%.0s' {1..64})
 stale_asset="php_7.0-nts-release+darwin_arm64.$stale_hash.tar.zst"
 printf 'stale immutable archive\n' > "$previous_generation/$stale_asset" || exit 1
 printf 'stale immutable checksum\n' > "$previous_generation/$stale_asset.sha256" || exit 1
+plain_asset="php_7.0-nts-release+darwin_arm64.tar.zst"
+intel_asset="php_7.0-nts-release+darwin_x86_64.tar.zst"
+printf 'retired mutable archive\n' > "$previous_generation/$plain_asset" || exit 1
+printf 'retired Intel archive\n' > "$previous_generation/$intel_asset" || exit 1
+php_darwin_test_release_assets "$previous_generation" "$previous_generation_json" || \
+  php_darwin_die 'could not inventory the previous release generation'
 while IFS= read -r archive_fixture; do
   printf 'next generation\n' >> "$archive_fixture" || exit 1
   archive_fixture_hash=$(php_darwin_sha256 "$archive_fixture") || exit 1
   printf '%s  %s\n' "$archive_fixture_hash" "${archive_fixture##*/}" > "$archive_fixture.sha256" || exit 1
 done < <(find "$builds_dir" -type f -name '*.tar.zst' -print)
 : > "$gh_log" || php_darwin_die 'could not reset the immutable publish log'
-GH_RELEASE_EXISTS=true GH_PREVIOUS_ASSETS="$previous_generation" PHP_VERSION="$version" \
+GH_RELEASE_EXISTS=true GH_RELEASE_ASSETS_JSON="$previous_generation_json" \
+  GH_PREVIOUS_ASSETS="$previous_generation" PHP_VERSION="$version" \
   PATH="$fake_bin:$PATH" bash "$script_dir/publish.sh" "$builds_dir" >/dev/null || \
   php_darwin_die 'immutable release replacement fixture failed'
 grep -Fxq "release delete-asset php-7.0 $stale_asset --yes --repo shivammathur/php-darwin" "$gh_log" || \
   php_darwin_die 'publisher did not remove a stale immutable archive'
 grep -Fxq "release delete-asset php-7.0 $stale_asset.sha256 --yes --repo shivammathur/php-darwin" "$gh_log" || \
   php_darwin_die 'publisher did not remove a stale immutable checksum'
+grep -Fxq "release delete-asset php-7.0 $plain_asset --yes --repo shivammathur/php-darwin" "$gh_log" || \
+  php_darwin_die 'publisher did not retire the mutable archive name'
+grep -Fxq "release delete-asset php-7.0 $intel_asset --yes --repo shivammathur/php-darwin" "$gh_log" || \
+  php_darwin_die 'publisher did not remove the unsupported Intel archive'
 while IFS= read -r previous_download; do
   ! grep -Fq "release delete-asset php-7.0 $previous_download " "$gh_log" || \
     php_darwin_die 'publisher removed the previous installer generation'
@@ -223,17 +270,89 @@ done < <(jq -r '.assets[].download' "$previous_generation/php-$version-manifest.
 
 # A malformed prior manifest cannot authorize deletion of any immutable asset.
 invalid_previous_generation="$work_dir/invalid-previous-generation"
+invalid_previous_json="$work_dir/invalid-previous-assets.json"
 cp -R "$previous_generation" "$invalid_previous_generation" || \
   php_darwin_die 'could not create an invalid previous release fixture'
 jq 'del(.homebrew_php_commit)' "$previous_generation/php-$version-manifest.json" \
   > "$invalid_previous_generation/php-$version-manifest.json" || \
   php_darwin_die 'could not invalidate the previous release manifest fixture'
+php_darwin_test_release_assets "$invalid_previous_generation" "$invalid_previous_json" || \
+  php_darwin_die 'could not inventory the invalid previous release fixture'
 : > "$gh_log" || php_darwin_die 'could not reset the invalid-manifest publish log'
-GH_RELEASE_EXISTS=true GH_PREVIOUS_ASSETS="$invalid_previous_generation" PHP_VERSION="$version" \
+GH_RELEASE_EXISTS=true GH_RELEASE_ASSETS_JSON="$invalid_previous_json" \
+  GH_PREVIOUS_ASSETS="$invalid_previous_generation" PHP_VERSION="$version" \
   PATH="$fake_bin:$PATH" bash "$script_dir/publish.sh" "$builds_dir" >/dev/null || \
   php_darwin_die 'publish with an invalid previous manifest fixture failed'
-! grep -Fq 'release delete-asset ' "$gh_log" || \
+! grep -Fq "release delete-asset php-7.0 $stale_asset " "$gh_log" || \
   php_darwin_die 'publisher deleted immutable assets using an invalid previous manifest'
+
+# A complete generation is idempotent and needs no archive upload.
+current_generation="$work_dir/current-generation"
+current_generation_json="$work_dir/current-generation-assets.json"
+mkdir -p "$current_generation" || php_darwin_die 'could not create the current generation fixture'
+cp "$gh_manifest" "$current_generation/php-$version-manifest.json" || exit 1
+cp "$gh_installer" "$current_generation/install.sh" || exit 1
+while IFS= read -r archive_fixture; do
+  logical_name=${archive_fixture##*/}
+  archive_fixture_hash=$(php_darwin_sha256 "$archive_fixture") || exit 1
+  immutable_name=$(php_darwin_download_asset "$logical_name" "$archive_fixture_hash") || exit 1
+  cp "$archive_fixture" "$current_generation/$immutable_name" || exit 1
+  printf '%s  %s\n' "$archive_fixture_hash" "$immutable_name" \
+    > "$current_generation/$immutable_name.sha256" || exit 1
+done < <(find "$builds_dir" -type f -name '*.tar.zst' -print)
+php_darwin_test_release_assets "$current_generation" "$current_generation_json" || \
+  php_darwin_die 'could not inventory the current release generation'
+: > "$gh_log" || php_darwin_die 'could not reset the idempotent publish log'
+GH_RELEASE_EXISTS=true GH_RELEASE_ASSETS_JSON="$current_generation_json" \
+  GH_PREVIOUS_ASSETS="$current_generation" PHP_VERSION="$version" PATH="$fake_bin:$PATH" \
+  bash "$script_dir/publish.sh" "$builds_dir" >/dev/null || \
+  php_darwin_die 'idempotent release publish fixture failed'
+! grep -Eq '^release upload php-7\.0 .*\.[0-9a-f]{64}\.tar\.zst' "$gh_log" || \
+  php_darwin_die 'idempotent publisher re-uploaded immutable release assets'
+
+# A corrupt partial immutable asset is deleted and repaired on retry.
+ghost_assets_json="$work_dir/ghost-assets.json"
+ghost_asset=$(jq -er '.assets[0].download' "$gh_manifest") || exit 1
+jq --arg name "$ghost_asset" --arg digest "sha256:$(printf '0%.0s' {1..64})" '
+  .assets |= map(if .name == $name then .digest=$digest else . end)
+' "$current_generation_json" > "$ghost_assets_json" || exit 1
+: > "$gh_log" || php_darwin_die 'could not reset the ghost-asset publish log'
+GH_RELEASE_EXISTS=true GH_RELEASE_ASSETS_JSON="$ghost_assets_json" \
+  GH_PREVIOUS_ASSETS="$current_generation" PHP_VERSION="$version" PATH="$fake_bin:$PATH" \
+  bash "$script_dir/publish.sh" "$builds_dir" >/dev/null || \
+  php_darwin_die 'partial immutable release retry fixture failed'
+grep -Fxq "release delete-asset php-7.0 $ghost_asset --yes --repo shivammathur/php-darwin" "$gh_log" || \
+  php_darwin_die 'publisher did not remove the corrupt immutable asset'
+grep -F 'release upload php-7.0 ' "$gh_log" | \
+  grep -Fq "/$ghost_asset --repo shivammathur/php-darwin" || \
+  php_darwin_die 'publisher did not repair the corrupt immutable asset'
+
+# An existing release with zero assets is recoverable without a backup download.
+empty_release="$work_dir/empty-release"
+empty_assets_json="$work_dir/empty-assets.json"
+mkdir -p "$empty_release" || exit 1
+printf '{"assets":[]}\n' > "$empty_assets_json" || exit 1
+: > "$gh_log" || php_darwin_die 'could not reset the empty-release publish log'
+GH_RELEASE_EXISTS=true GH_RELEASE_ASSETS_JSON="$empty_assets_json" \
+  GH_PREVIOUS_ASSETS="$empty_release" PHP_VERSION="$version" PATH="$fake_bin:$PATH" \
+  bash "$script_dir/publish.sh" "$builds_dir" >/dev/null || \
+  php_darwin_die 'empty release recovery fixture failed'
+! grep -Fq 'release download ' "$gh_log" || \
+  php_darwin_die 'publisher tried to download assets from an empty release'
+
+# Garbage-collection failure after the manifest commit cannot roll back it.
+postcommit_generation="$work_dir/postcommit-generation"
+postcommit_assets_json="$work_dir/postcommit-assets.json"
+cp -R "$current_generation" "$postcommit_generation" || exit 1
+printf 'postcommit stale archive\n' > "$postcommit_generation/$stale_asset" || exit 1
+php_darwin_test_release_assets "$postcommit_generation" "$postcommit_assets_json" || exit 1
+: > "$gh_log" || php_darwin_die 'could not reset the postcommit publish log'
+GH_RELEASE_EXISTS=true GH_RELEASE_ASSETS_JSON="$postcommit_assets_json" \
+  GH_PREVIOUS_ASSETS="$postcommit_generation" GH_FAIL_DELETE_MATCH="$stale_asset" \
+  PHP_VERSION="$version" PATH="$fake_bin:$PATH" bash "$script_dir/publish.sh" "$builds_dir" \
+  >/dev/null || php_darwin_die 'postcommit cleanup failure rolled back the release'
+! grep -Eq '^release upload php-7\.0 .*/previous-assets/' "$gh_log" || \
+  php_darwin_die 'postcommit cleanup failure restored the previous release'
 
 if PHP_VERSION=7.1 HOMEBREW_PHP_COMMIT="$source_commit" PATH="$fake_bin:$PATH" \
   bash "$script_dir/publish.sh" "$builds_dir" >/dev/null 2>&1; then
@@ -250,18 +369,29 @@ fi
 
 mv "$checksum_fixture.missing" "$checksum_fixture" || \
   php_darwin_die 'could not restore the checksum fixture'
-previous_assets="$work_dir/previous-assets"
-mkdir -p "$previous_assets" || php_darwin_die 'could not create previous release fixtures'
-printf 'previous archive\n' > "$previous_assets/previous.tar.zst" || \
-  php_darwin_die 'could not write a previous release fixture'
+
+# A broken mutable backup download does not wedge replacement.
+: > "$gh_log" || php_darwin_die 'could not reset the backup recovery log'
+GH_RELEASE_EXISTS=true GH_RELEASE_ASSETS_JSON="$current_generation_json" \
+  GH_PREVIOUS_ASSETS="$current_generation" GH_FAIL_DOWNLOAD_MATCH=install.sh \
+  PHP_VERSION="$version" PATH="$fake_bin:$PATH" bash "$script_dir/publish.sh" "$builds_dir" \
+  >/dev/null 2>&1 || php_darwin_die 'publisher did not recover from a broken mutable backup'
+
+# A failure at the manifest commit point restores the previous mutable files.
+upload_once_marker="$work_dir/upload-once.marker"
 : > "$gh_log" || php_darwin_die 'could not reset the publish rollback log'
-if GH_RELEASE_EXISTS=true GH_PREVIOUS_ASSETS="$previous_assets" GH_FAIL_UPLOAD_MATCH='/release/php_' \
+if GH_RELEASE_EXISTS=true GH_RELEASE_ASSETS_JSON="$current_generation_json" \
+  GH_PREVIOUS_ASSETS="$current_generation" GH_FAIL_UPLOAD_ONCE_MATCH='php-7.0-manifest.json' \
+  GH_FAIL_UPLOAD_ONCE_MARKER="$upload_once_marker" \
   PHP_VERSION="$version" PATH="$fake_bin:$PATH" bash "$script_dir/publish.sh" "$builds_dir" \
   >/dev/null 2>&1; then
   php_darwin_die 'publish rollback fixture unexpectedly succeeded'
 fi
-grep -Eq '^release download php-7\.0 --dir .* --repo shivammathur/php-darwin$' "$gh_log" || \
-  php_darwin_die 'publisher did not back up the existing release assets'
-tail -n 1 "$gh_log" | grep -Eq '^release upload php-7\.0 .*/previous-assets/previous\.tar\.zst --clobber --repo shivammathur/php-darwin$' || \
-  php_darwin_die 'publisher did not restore the previous assets after an upload failure'
+grep -Eq '^release download php-7\.0 --pattern install\.sh --dir .* --repo shivammathur/php-darwin$' \
+  "$gh_log" || php_darwin_die 'publisher did not back up the existing installer'
+grep -Eq '^release download php-7\.0 --pattern php-7\.0-manifest\.json --dir .* --repo shivammathur/php-darwin$' \
+  "$gh_log" || php_darwin_die 'publisher did not back up the existing manifest'
+tail -n 1 "$gh_log" | grep -Eq \
+  '^release upload php-7\.0 .*/previous-assets/(install\.sh|php-7\.0-manifest\.json) .*/previous-assets/(install\.sh|php-7\.0-manifest\.json) --clobber --repo shivammathur/php-darwin$' || \
+  php_darwin_die 'publisher did not restore the previous mutable assets after an upload failure'
 printf 'Release publish validation passed\n'
