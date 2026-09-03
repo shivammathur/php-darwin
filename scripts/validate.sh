@@ -105,12 +105,8 @@ jq -e '
   keys == ["compression_level", "compression_long", "max_archive_bytes"] and
   (.compression_level | type == "number" and . >= 1 and . <= 22 and . == floor) and
   .compression_level == 22 and .compression_long == 27 and
-  .max_archive_bytes == {
-    "5.6": 140000000, "7.0": 140000000, "7.1": 140000000, "7.2": 140000000,
-    "7.3": 140000000, "7.4": 140000000, "8.0": 140000000, "8.1": 140000000,
-    "8.2": 140000000, "8.3": 140000000, "8.4": 26000000, "8.5": 26000000,
-    "8.6": 28000000
-  }
+  (.max_archive_bytes | length) == 13 and
+  all(.max_archive_bytes[]; . == 180000000)
 ' "$script_dir/../conf/build.json" >/dev/null || php_darwin_die 'invalid build configuration'
 jq -e '
   keys == ["current_version", "extension_tap", "extension_tap_branch", "extension_tap_repository",

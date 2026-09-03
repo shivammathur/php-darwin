@@ -635,18 +635,15 @@ verify_cache() {
   local checksum
   local contents
   local embedded_metadata
-  local extension
-  local extension_path
-  local extension_type
   local expected_php_src_commit
   local invalid_path
   local invalid_managed_path
   local managed_paths
   local metadata
   local max_archive_bytes
+  local missing_managed_path
   local output
   local output_bytes
-  local postinstall_path
   local tap_snapshot
   local tap_path
 
@@ -691,6 +688,12 @@ verify_cache() {
     php_darwin_die 'could not add the managed metadata path'
   LC_ALL=C sort -u "$managed_paths" -o "$managed_paths" || \
     php_darwin_die 'could not sort managed archive paths'
+  missing_managed_path=$(awk '
+    NR == FNR { contents[$0]=1; next }
+    !($0 in contents) { print; exit }
+  ' "$contents" "$managed_paths") || php_darwin_die 'could not compare managed paths with archive contents'
+  [ -z "$missing_managed_path" ] || \
+    php_darwin_die "archive does not contain managed path: $missing_managed_path"
   invalid_managed_path=$(awk -v pear="$(jq -r '.pear_path' "$metadata")/" -v tap="$tap_snapshot/" '
     NR == FNR { exact[$0]=1; next }
     index($0, "Cellar/") == 1 || index($0, pear) == 1 || index($0, tap) == 1 || ($0 in exact) { next }
@@ -720,18 +723,6 @@ verify_cache() {
     php_darwin_die 'embedded installation metadata does not match its external record'
   grep -Fxq "var/homebrew/linked/$formula" "$contents" || \
     php_darwin_die 'archive does not contain the requested PHP linked-keg marker'
-  while IFS= read -r link_relative; do
-    grep -Fxq "$link_relative" "$contents" || \
-      php_darwin_die "archive does not contain Homebrew link: $link_relative"
-  done < <(jq -r '.links[].path' "$metadata")
-  while IFS= read -r postinstall_path; do
-    grep -Fxq "$postinstall_path" "$contents" || \
-      php_darwin_die "archive does not contain formula-managed state: $postinstall_path"
-  done < <(jq -r '.state_paths[]' "$metadata")
-  while IFS=$'\t' read -r extension extension_type extension_path; do
-    grep -Fxq "$extension_path" "$contents" || \
-      php_darwin_die "archive does not contain cached $extension"
-  done < <(jq -r '.extensions[] | [.name,.type,.path] | @tsv' "$metadata")
   checksum=$(php_darwin_checksum_from_file "$output.sha256" "$asset") || \
     php_darwin_die 'archive checksum record is missing'
   actual_checksum=$(php_darwin_sha256 "$output") || php_darwin_die 'could not hash the archive during verification'
