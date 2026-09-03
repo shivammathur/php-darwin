@@ -107,7 +107,7 @@ homebrew_prepare_pid=
 homebrew_prepare_phase_file="$tmp_dir/homebrew-prepare-phase.txt"
 tap_path_file="$tmp_dir/homebrew-tap-path.txt"
 tap_trust_file="$tmp_dir/homebrew-tap-trust.txt"
-trust_json_file="$tmp_dir/homebrew-trust.json"
+initial_formula_trust_file="$tmp_dir/homebrew-formula-trust.txt"
 missing_log="$tmp_dir/homebrew-missing.log"
 missing_pid=
 missing_status=
@@ -305,10 +305,7 @@ php_darwin_wait_for_archive_hash() {
 php_darwin_restore_formula_trust() {
   local added_formula
   local added_formulae=()
-  local formulae_to_untrust=()
   local trust_entries_file
-  local trust_json
-  local trust_status
 
   [ -f "$formula_trust_marker" ] || [ -f "$formula_trust_pending" ] || return 0
   trust_entries_file=$formula_trust_marker
@@ -317,22 +314,15 @@ php_darwin_restore_formula_trust() {
     case "$added_formula" in "$tap/"*) added_formulae+=("$added_formula") ;; *) return 1 ;; esac
   done < "$trust_entries_file"
   [ "${#added_formulae[@]}" -gt 0 ] || return 1
-  trust_json=$(brew trust --json=v1) || return 1
-  for added_formula in "${added_formulae[@]}"; do
-    if php_darwin_formula_trusted "$added_formula" "$trust_json"; then
-      formulae_to_untrust+=("$added_formula")
-    else
-      trust_status=$?
-      [ "$trust_status" -eq 1 ] || return 1
-    fi
-  done
-  if [ "${#formulae_to_untrust[@]}" -gt 0 ]; then
-    brew untrust --formula "${formulae_to_untrust[@]}" || {
-      printf 'Run brew untrust --formula %s to remove trust added by the failed cache install\n' \
-        "${formulae_to_untrust[*]}" >&2
-      return 1
-    }
-  fi
+  # Homebrew's untrust command is idempotent. The marker contains only
+  # formulae absent from the initial trust snapshot, so querying trust again
+  # after archive extraction is unnecessary and would depend on the mutated
+  # Homebrew prefix during rollback.
+  brew untrust --formula "${added_formulae[@]}" || {
+    printf 'Run brew untrust --formula %s to remove trust added by the failed cache install\n' \
+      "${added_formulae[*]}" >&2
+    return 1
+  }
   rm -f "$formula_trust_marker" "$formula_trust_pending"
 }
 
@@ -409,6 +399,9 @@ php_darwin_install_cleanup() {
           rollback_keg=${rollback_opt_target#../}
           case "$rollback_keg" in "Cellar/$rollback_formula/"*)
             rm -rf "${brew_prefix:?}/${rollback_keg:?}" >> "$rollback_log" 2>&1 || rollback_status=failed
+            # Extraction may have created the rack. Remove it only when empty;
+            # an older side-by-side keg keeps the directory in place.
+            rmdir "$brew_prefix/Cellar/$rollback_formula" >> "$rollback_log" 2>&1 || true
             ;;
           esac
         done < "$packages_file"
@@ -527,7 +520,6 @@ done
 (
   printf 'homebrew.trust-state\n' > "$homebrew_prepare_phase_file" || exit 1
   trust_json=$(brew trust --json=v1) || exit 1
-  printf '%s\n' "$trust_json" > "$trust_json_file" || exit 1
   if php_darwin_tap_trusted "$tap" "$trust_json"; then
     printf 'true\n' > "$tap_trust_file" || exit 1
   else
@@ -535,6 +527,14 @@ done
     [ "$trust_status" -eq 1 ] || exit 1
     printf 'false\n' > "$tap_trust_file" || exit 1
   fi
+  # Ask Homebrew for the selected collection so this remains compatible with
+  # changes to plural keys in the combined JSON response. Resolve it before
+  # extraction, while the runner's Homebrew tools are untouched.
+  brew trust --formula --json=v1 | jq -r '
+    if type == "array" and all(.[]; type == "string") then .[]
+    else error("invalid Homebrew formula trust response")
+    end
+  ' > "$initial_formula_trust_file" || exit 1
   printf 'homebrew.tap-path\n' > "$homebrew_prepare_phase_file" || exit 1
   brew --repository "$tap" > "$tap_path_file" || exit 1
   if [ "${#linked_php_references[@]}" -gt 0 ]; then
@@ -760,6 +760,15 @@ case "$tap_path_state" in
   *) php_darwin_die "invalid $tap tap-path state: $tap_path_state" ;;
 esac
 
+formula_trust_references=()
+if [ "$tap_was_trusted" = false ]; then
+  while IFS= read -r package_name; do
+    formula_reference="$tap/$package_name"
+    grep -Fxq "$formula_reference" "$initial_formula_trust_file" || \
+      formula_trust_references+=("$formula_reference")
+  done < "$tap_formulae_file"
+fi
+
 php_darwin_set_phase cache.validation
 
 # Keep older kegs side-by-side as Homebrew does during an upgrade. An exact
@@ -928,19 +937,8 @@ if [ -n "$tap_pid" ] && [ ! -f "$tap_path/Formula/$formula.rb" ]; then
   php_darwin_wait_for_tap
 fi
 if [ "$tap_was_trusted" = false ]; then
-  formula_trust_references=()
   php_darwin_wait_for_tap
   php_darwin_set_phase homebrew.trust
-  trust_json=$(cat "$trust_json_file") || php_darwin_die 'could not read the initial Homebrew trust state'
-  while IFS= read -r package_name; do
-    formula_reference="$tap/$package_name"
-    if php_darwin_formula_trusted "$formula_reference" "$trust_json"; then
-      continue
-    fi
-    trust_status=$?
-    [ "$trust_status" -eq 1 ] || php_darwin_die "could not read trust for $formula_reference"
-    formula_trust_references+=("$formula_reference")
-  done < "$tap_formulae_file"
   if [ "${#formula_trust_references[@]}" -gt 0 ]; then
     printf '%s\n' "${formula_trust_references[@]}" > "$formula_trust_pending" || \
       php_darwin_die 'could not record formula trust added by the cache installation'

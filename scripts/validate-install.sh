@@ -92,8 +92,13 @@ grep -Fq '.tap_formulae // []' "$installer" || \
   php_darwin_die 'standalone installer does not read authenticated custom-tap formula metadata'
 grep -Fq "brew trust --formula \"\${formula_trust_references[@]}\"" "$installer" || \
   php_darwin_die 'standalone installer does not batch custom-tap formula trust'
-grep -Fq "brew untrust --formula \"\${formulae_to_untrust[@]}\"" "$installer" || \
+grep -Fq 'brew trust --formula --json=v1' "$installer" || \
+  php_darwin_die 'standalone installer does not snapshot formula trust before extraction'
+grep -Fq "brew untrust --formula \"\${added_formulae[@]}\"" "$installer" || \
   php_darwin_die 'standalone installer does not restore all formula trust added by a failed install'
+if grep -Fq 'trust_json_file=' "$installer"; then
+  php_darwin_die 'standalone installer retains a post-extraction trust parser dependency'
+fi
 grep -Fq "\$php_bin -n -r" "$installer" || \
   php_darwin_die 'standalone installer allows user configuration warnings to corrupt its version probe'
 if ! awk '
