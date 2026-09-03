@@ -241,6 +241,7 @@ package_cache() {
   local asset
   local cached_extensions
   local extension
+  local extension_parent
   local extension_path
   local extension_type
   local formula_file
@@ -342,6 +343,12 @@ package_cache() {
   while IFS=$'\t' read -r extension extension_type extension_path; do
     [ -f "$brew_prefix/$extension_path" ] && [ ! -L "$brew_prefix/$extension_path" ] || \
       php_darwin_die "cached extension is missing: $extension_path"
+    extension_parent=${extension_path%/*}
+    while [ "$extension_parent" != "${extension_parent%/*}" ]; do
+      [ ! -L "$brew_prefix/$extension_parent" ] || \
+        php_darwin_die "cached extension path traverses a symlink: $extension_path"
+      extension_parent=${extension_parent%/*}
+    done
     printf '%s\n' "$extension_path" >> "$archive_paths" || \
       php_darwin_die "could not archive cached $extension"
   done < "$cached_extensions_file"

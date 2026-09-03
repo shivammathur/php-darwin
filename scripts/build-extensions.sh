@@ -151,6 +151,12 @@ if [ ! -d "$extension_dir" ]; then
       php_darwin_die 'could not create the protected PHP extension directory'
   fi
 fi
+extension_dir=$(cd "$extension_dir" && pwd -P) || \
+  php_darwin_die 'could not resolve the physical PHP extension directory'
+case "$extension_dir" in "$brew_prefix"/*) ;; *)
+  php_darwin_die "physical extension directory is outside Homebrew: $extension_dir"
+  ;;
+esac
 
 for extension_formula in "${extension_formulae[@]}"; do
   extension=${extension_formula%@*}

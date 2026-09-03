@@ -180,6 +180,8 @@ reset_homebrew() {
   local extension
   local extension_path
   local extension_type
+  local installed_php
+  local installed_php_formulae=()
   local postinstall_path
   local reset_formula
   local reset_formulae
@@ -189,9 +191,14 @@ reset_homebrew() {
   cleanup_homebrew_validation || php_darwin_die 'could not clean the previous Homebrew validation state'
   php_darwin_enable_test_cleanup
   brew services stop "$formula" >/dev/null 2>&1 || true
-  if brew list --versions "$formula" >/dev/null 2>&1; then
-    brew uninstall --force --ignore-dependencies "$formula" || \
-      php_darwin_die "could not reset $formula after validation"
+  reset_formulae=${RUNNER_TEMP:?}/php-darwin-reset-formulae.txt
+  php_darwin_record_formulae "$reset_formulae"
+  while IFS= read -r installed_php; do
+    php_darwin_is_php_formula "$installed_php" && installed_php_formulae+=("$installed_php")
+  done < "$reset_formulae"
+  if [ "${#installed_php_formulae[@]}" -gt 0 ]; then
+    brew uninstall --force --ignore-dependencies "${installed_php_formulae[@]}" || \
+      php_darwin_die 'could not reset Homebrew PHP after validation'
   fi
   while IFS=$'\t' read -r extension extension_type extension_path; do
     case "$extension:$extension_type:$extension_path" in
@@ -217,7 +224,6 @@ reset_homebrew() {
   done < <(php_darwin_postinstall_paths "$version" "$formula" "$build" "$ts")
   rm -rf "${brew_prefix:?}/etc/php/${config_id:?}" || \
     php_darwin_die 'could not reset formula-managed PHP configuration'
-  reset_formulae=${RUNNER_TEMP:?}/php-darwin-reset-formulae.txt
   php_darwin_record_formulae "$reset_formulae"
   while IFS= read -r reset_formula; do
     php_darwin_is_php_formula "$reset_formula" && \
