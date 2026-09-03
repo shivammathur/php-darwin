@@ -8,8 +8,6 @@ extract_members=$(mktemp "${RUNNER_TEMP:-/tmp}/php-darwin-extract-members.XXXXXX
   rm -f "$archive_members"
   exit 1
 }
-retry_members=
-parent_paths=
 permission_records=
 
 path_uid() {
@@ -66,8 +64,7 @@ cleanup() {
 
   trap '' HUP INT TERM
   restore_permissions || true
-  for temporary_file in "$archive_members" "$extract_members" "$retry_members" \
-    "$parent_paths" "$permission_records"; do
+  for temporary_file in "$archive_members" "$extract_members" "$permission_records"; do
     [ -z "$temporary_file" ] || rm -f "$temporary_file"
   done
 }
@@ -124,31 +121,13 @@ esac
   exit 1
 }
 
-if tar --ignore-zeros -xkmpf "$archive" --no-same-owner -C "$prefix" \
-  -T "$extract_members" 2> "$archive_members"; then
-  exit 0
-fi
-
-retry_members=$(mktemp "${RUNNER_TEMP:-/tmp}/php-darwin-retry-members.XXXXXX") || exit 1
-parent_paths=$(mktemp "${RUNNER_TEMP:-/tmp}/php-darwin-parent-paths.XXXXXX") || exit 1
 permission_records=$(mktemp "${RUNNER_TEMP:-/tmp}/php-darwin-permissions.XXXXXX") || exit 1
-: > "$retry_members" || exit 1
-while IFS= read -r member; do
-  if [ ! -e "$prefix/$member" ] && [ ! -L "$prefix/$member" ]; then
-    printf '%s\n' "$member" >> "$retry_members" || exit 1
-  fi
-done < "$extract_members"
-[ -s "$retry_members" ] || {
-  cat "$archive_members" >&2
-  exit 1
-}
-
 awk '
   {
     path=$0
     while (sub("/[^/]+$", "", path)) print path
   }
-' "$retry_members" | LC_ALL=C sort -u > "$parent_paths" || exit 1
+' "$extract_members" | LC_ALL=C sort -u > "$archive_members" || exit 1
 : > "$permission_records" || exit 1
 current_uid=$(id -u) || exit 1
 current_gid=$(id -g) || exit 1
@@ -176,14 +155,11 @@ while IFS= read -r relative_path; do
   fi
   chmod u+rwx "$absolute_path" || exit 1
   [ -w "$absolute_path" ] || exit 1
-done < "$parent_paths"
+done < "$archive_members"
 
-[ -s "$permission_records" ] || {
-  cat "$archive_members" >&2
-  exit 1
-}
-printf 'Retrying cache extraction after temporarily granting access to Homebrew directories\n'
-tar --ignore-zeros -xkmpf "$archive" --no-same-owner -C "$prefix" -T "$retry_members"
+[ ! -s "$permission_records" ] || \
+  printf 'Temporarily granting access to protected Homebrew directories\n'
+tar --ignore-zeros -xkmpf "$archive" --no-same-owner -C "$prefix" -T "$extract_members"
 extract_status=$?
 restore_permissions || exit 1
 exit "$extract_status"
