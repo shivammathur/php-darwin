@@ -27,12 +27,30 @@ env:
   use_package_cache: 'true'
 
 jobs:
-  test:
+  direct:
+    name: Install PHP ${{ inputs.php-version }} with the release installer
+    runs-on: macos-15
+    timeout-minutes: 15
+    env:
+      PHP_VERSION: ${{ inputs.php-version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run the published installer with visible output
+        run: bash scripts/test-release.sh
+
+      - name: Verify the direct cache installation
+        run: bash scripts/test-setup-php.sh
+
+  setup-php:
     name: Install PHP ${{ inputs.php-version }} through setup-php
     runs-on: macos-15
     timeout-minutes: 30
     env:
       EXTENSIONS: xdebug
+      PHP_DARWIN_REQUIRE_XDEBUG: 'true'
       PHP_VERSION: ${{ inputs.php-version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
