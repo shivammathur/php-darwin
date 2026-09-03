@@ -99,6 +99,10 @@ grep -Fq "brew untrust --formula \"\${added_formulae[@]}\"" "$installer" || \
 if grep -Fq 'trust_json_file=' "$installer"; then
   php_darwin_die 'standalone installer retains a post-extraction trust parser dependency'
 fi
+grep -Fq "\"\$exclude_file\" \"\$links_file\" > \"\$installed_links_file\"" "$installer" || \
+  php_darwin_die 'standalone installer does not preserve pre-existing Homebrew links'
+grep -Fq "php_darwin_verify_links \"\$brew_prefix\" \"\$installed_links_file\"" "$installer" || \
+  php_darwin_die 'standalone installer verifies links excluded from cache extraction'
 grep -Fq "\$php_bin -n -r" "$installer" || \
   php_darwin_die 'standalone installer allows user configuration warnings to corrupt its version probe'
 if ! awk '

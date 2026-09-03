@@ -376,7 +376,7 @@ php_darwin_install_cleanup() {
         mv "$tap_snapshot_backup" "$tap_snapshot_path" >> "$rollback_log" 2>&1 || rollback_status=failed
     fi
     if [ -s "${changed_formulae_file:-}" ]; then
-      if [ -s "${links_file:-}" ]; then
+      if [ -s "${installed_links_file:-}" ]; then
         while IFS=$'\t' read -r rollback_link rollback_target; do
           rollback_owned=false
           while IFS= read -r rollback_formula; do
@@ -386,7 +386,7 @@ php_darwin_install_cleanup() {
             [ "$(readlink "$brew_prefix/$rollback_link")" = "$rollback_target" ]; then
             rm -f "$brew_prefix/$rollback_link" >> "$rollback_log" 2>&1 || rollback_status=failed
           fi
-        done < "$links_file"
+        done < "$installed_links_file"
       fi
       if [ -s "${packages_file:-}" ]; then
         while IFS=$'\t' read -r rollback_formula rollback_opt_target rollback_keg_only; do
@@ -690,6 +690,7 @@ changed_formulae_file="$tmp_dir/changed-formulae.txt"
 packages_file="$tmp_dir/packages.tsv"
 package_kegs_file="$tmp_dir/package-kegs.txt"
 links_file="$tmp_dir/links.tsv"
+installed_links_file="$tmp_dir/installed-links.tsv"
 managed_paths_file="$tmp_dir/managed-paths.txt"
 exclude_file="$tmp_dir/existing-paths.txt"
 metadata_records_file="$tmp_dir/metadata-records.tsv"
@@ -700,6 +701,7 @@ tap_formulae_file="$tmp_dir/tap-formulae.txt"
 : > "$package_kegs_file" || php_darwin_die 'could not create the Homebrew keg path list'
 : > "$managed_paths_file" || php_darwin_die 'could not create the managed archive path list'
 : > "$links_file" || php_darwin_die 'could not create the Homebrew link list'
+: > "$installed_links_file" || php_darwin_die 'could not create the installed Homebrew link list'
 : > "$state_paths_inventory" || php_darwin_die 'could not create the Homebrew state path list'
 : > "$extension_paths_inventory" || php_darwin_die 'could not create the cached extension path list'
 jq -er '
@@ -842,6 +844,14 @@ bash "$script_dir/existing-paths.sh" "$brew_prefix" "$exclude_file" \
   "$archive_roots_file" \
   "$existing_kegs" "$managed_paths_file" "$package_kegs_file" || \
   php_darwin_die 'could not record existing Homebrew paths'
+# Existing Homebrew links are excluded from extraction and remain owned by the
+# user's installed keg. Verify and roll back only links the cache will add.
+awk -F '\t' '
+  NR == FNR { excluded[$0]=1; next }
+  !($1 in excluded)
+' "$exclude_file" "$links_file" > "$installed_links_file" || \
+  php_darwin_die 'could not select Homebrew links installed by the cache'
+[ -s "$installed_links_file" ] || php_darwin_die 'cache extraction would not add any Homebrew links'
 : > "$changed_formulae_file"
 while IFS=$'\t' read -r package_name opt_target keg_only; do
   keg_relative=${opt_target#../}
@@ -991,7 +1001,7 @@ grep -Fq "$brew_prefix/lib/php/pecl/$pecl_extension" "$brew_prefix/etc/php/$conf
   php_darwin_die 'cached PHP PECL link has no shared directory target'
 
 php_darwin_set_phase homebrew.link
-bash "$script_dir/verify-links.sh" "$brew_prefix" "$links_file" || \
+bash "$script_dir/verify-links.sh" "$brew_prefix" "$installed_links_file" || \
   php_darwin_die 'cached Homebrew links did not match the archive metadata'
 
 php_darwin_set_phase homebrew.dependencies
