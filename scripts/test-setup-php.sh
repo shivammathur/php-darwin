@@ -30,11 +30,9 @@ fi
 tap=$(php_darwin_package_config tap) || php_darwin_die 'could not read the Homebrew tap configuration'
 formula=$(php_darwin_formula "$version" release nts) || php_darwin_die 'could not resolve the PHP formula'
 trust_json=$(brew trust --json=v1) || php_darwin_die 'could not read Homebrew trust state'
-if ! php_darwin_formula_trusted "$tap/$formula" "$trust_json"; then
-  if [ "${PHP_DARWIN_REQUIRE_XDEBUG:-false}" = true ]; then
-    php_darwin_die "setup-php fell back to Homebrew for PHP $version"
-  fi
-  php_darwin_die "the PHP $version release installer did not retain formula trust"
+if ! php_darwin_tap_trusted "$tap" "$trust_json" && \
+  ! php_darwin_formula_trusted "$tap/$formula" "$trust_json"; then
+  php_darwin_die "Homebrew does not trust the installed PHP $version formula"
 fi
 
 printf 'Verified php-darwin cache installation for PHP %s' "$version"
