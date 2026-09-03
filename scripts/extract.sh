@@ -9,17 +9,27 @@ extract_members=$(mktemp "${RUNNER_TEMP:-/tmp}/php-darwin-extract-members.XXXXXX
   exit 1
 }
 permission_records=
+stat_style=
 
 path_uid() {
-  stat -f '%u' "$1" 2>/dev/null || stat -c '%u' "$1"
+  case "$stat_style" in
+    bsd) stat -f '%u' "$1" ;;
+    gnu) stat -c '%u' "$1" ;;
+  esac
 }
 
 path_gid() {
-  stat -f '%g' "$1" 2>/dev/null || stat -c '%g' "$1"
+  case "$stat_style" in
+    bsd) stat -f '%g' "$1" ;;
+    gnu) stat -c '%g' "$1" ;;
+  esac
 }
 
 path_mode() {
-  stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1"
+  case "$stat_style" in
+    bsd) stat -f '%Lp' "$1" ;;
+    gnu) stat -c '%a' "$1" ;;
+  esac
 }
 
 restore_permissions() {
@@ -85,6 +95,10 @@ trap 'exit 143' TERM
   printf 'Extraction exclusion list not found: %s\n' "$exclude_file" >&2
   exit 1
 }
+case "$(uname -s)" in
+  Darwin) stat_style=bsd ;;
+  *) stat_style=gnu ;;
+esac
 
 tar --ignore-zeros -tf "$archive" > "$archive_members" || {
   printf 'Could not list archive members: %s\n' "$archive" >&2
