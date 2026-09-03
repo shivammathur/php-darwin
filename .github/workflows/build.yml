@@ -370,3 +370,11 @@ jobs:
           HOMEBREW_PHP_COMMIT: ${{ needs.matrix.outputs.source-commit }}
           PHP_VERSION: ${{ inputs.php-version }}
         run: bash scripts/publish.sh builds
+
+  e2e:
+    name: Test the published PHP ${{ inputs.php-version }} cache through setup-php
+    if: ${{ inputs.publish && contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
+    needs: publish
+    uses: ./.github/workflows/e2e.yml
+    with:
+      php-version: ${{ inputs.php-version }}

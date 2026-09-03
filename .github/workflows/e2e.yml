@@ -1,0 +1,70 @@
+name: Test setup-php end to end
+run-name: Test PHP ${{ inputs.php-version }} cache through setup-php
+
+on:
+  workflow_call:
+    inputs:
+      php-version:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      php-version:
+        description: Published PHP minor version
+        default: '8.5'
+        required: true
+        type: string
+
+concurrency:
+  group: setup-php-e2e-${{ inputs.php-version }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  HOMEBREW_DEVELOPER: '1'
+  use_package_cache: 'true'
+
+jobs:
+  test:
+    name: Install PHP ${{ inputs.php-version }} through setup-php
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      EXTENSIONS: xdebug
+      PHP_VERSION: ${{ inputs.php-version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configure the extension cache
+        id: cache-env
+        uses: shivammathur/cache-extensions@de3c642a5fce0ef91581a1c9831e229f525196d6 # v1
+        with:
+          php-version: ${{ inputs.php-version }}
+          extensions: ${{ env.EXTENSIONS }}
+          key: php-darwin-e2e-v1
+
+      - name: Restore cached extensions
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
+        with:
+          path: ${{ steps.cache-env.outputs.dir }}
+          key: ${{ steps.cache-env.outputs.key }}
+          restore-keys: ${{ steps.cache-env.outputs.key }}
+
+      - name: Install PHP and extensions through setup-php
+        uses: shivammathur/setup-php@develop
+        with:
+          php-version: ${{ inputs.php-version }}
+          extensions: ${{ env.EXTENSIONS }}
+
+      - name: Verify the php-darwin cache installation
+        run: bash scripts/test-setup-php.sh
+
+      - name: Update Homebrew after the cache installation
+        run: brew update
+
+      - name: Upgrade Homebrew packages after the cache installation
+        run: brew upgrade
