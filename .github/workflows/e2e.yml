@@ -73,7 +73,8 @@ jobs:
           restore-keys: ${{ steps.cache-env.outputs.key }}
 
       - name: Install PHP and extensions through setup-php
-        uses: shivammathur/setup-php@develop
+        # Switch to the verbose tag after its next setup-php release.
+        uses: shivammathur/setup-php@test/php-darwin-cache-logs
         with:
           php-version: ${{ inputs.php-version }}
           extensions: ${{ env.EXTENSIONS }}
