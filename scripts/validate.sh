@@ -157,7 +157,7 @@ variant_postinstall_paths=$(php_darwin_postinstall_paths 8.4 'php@8.4-debug-zts'
 
 command -v zstd >/dev/null 2>&1 || php_darwin_die 'zstd is required for extraction validation'
 fixture_dir=$(mktemp -d "${RUNNER_TEMP:-/tmp}/php-darwin-validation.XXXXXX")
-trap 'rm -rf "$fixture_dir"' EXIT
+trap 'chmod u+w "$fixture_dir/prefix/lib/php" 2>/dev/null || true; rm -rf "$fixture_dir"' EXIT
 fixture_source="$fixture_dir/source"
 fixture_prefix="$fixture_dir/prefix"
 fixture_archive="$fixture_dir/cache.tar.zst"
@@ -336,11 +336,13 @@ bash "$script_dir/select-cleanup-formulae.sh" "$cleanup_formulae" "$php_dependen
 
 mkdir -p "$fixture_source/Cellar/php/1/bin" "$fixture_source/Cellar/php/1/lib" \
   "$fixture_source/Cellar/dependency/1/bin" \
+  "$fixture_source/lib/php/20200930" \
   "$fixture_source/etc" "$fixture_source/opt" \
   "$fixture_source/share/pear" "$fixture_source/var/homebrew/linked" "$fixture_source/var/php-darwin" \
   "$fixture_source/etc/existing-link" "$fixture_prefix/Cellar/dependency/1/bin" \
   "$fixture_prefix/Cellar/hello/1/bin" "$fixture_prefix/etc" \
-  "$fixture_prefix/Frameworks" "$fixture_prefix/bin" "$fixture_prefix/include" "$fixture_prefix/lib" \
+  "$fixture_prefix/Frameworks" "$fixture_prefix/bin" "$fixture_prefix/include" \
+  "$fixture_prefix/lib/php" \
   "$fixture_prefix/opt" "$fixture_prefix/sbin" "$fixture_prefix/share/pear" "$fixture_prefix/var" \
   "$fixture_outside" "$fixture_symlink_prefix/Cellar" || \
   php_darwin_die 'could not create extraction fixtures'
@@ -348,6 +350,7 @@ printf '#!/usr/bin/env bash\nprintf fixture-php\\n\n' > "$fixture_source/Cellar/
 chmod 0755 "$fixture_source/Cellar/php/1/bin/php"
 printf 'archive-dependency\n' > "$fixture_source/Cellar/dependency/1/bin/dependency"
 printf 'archive-oniguruma\n' > "$fixture_source/Cellar/php/1/lib/libonig.5.dylib"
+printf 'cached-extension\n' > "$fixture_source/lib/php/20200930/cache.so"
 printf 'existing-dependency\n' > "$fixture_prefix/Cellar/dependency/1/bin/dependency"
 printf 'existing-oniguruma\n' > "$fixture_prefix/lib/libonig.5.dylib"
 printf 'archive-value\n' > "$fixture_source/etc/existing[1].conf"
@@ -360,13 +363,15 @@ printf 'cached-pear\n' > "$fixture_source/share/pear/new.php"
 printf 'existing-pear\n' > "$fixture_prefix/share/pear/existing.php"
 printf 'user-value\n' > "$fixture_prefix/etc/existing[1].conf"
 chmod 0444 "$fixture_prefix/etc/existing[1].conf"
+chmod 0555 "$fixture_prefix/lib/php"
 ln -s "$fixture_outside" "$fixture_prefix/etc/existing-link"
 printf '#!/usr/bin/env bash\nprintf hello\\n\n' > "$fixture_prefix/Cellar/hello/1/bin/hello"
 chmod 0755 "$fixture_prefix/Cellar/hello/1/bin/hello"
 printf '%s\n' var/php-darwin/php_8.5-nts-release+darwin_arm64.json \
   Cellar/dependency/1/bin/dependency Cellar/php/1/bin/php \
   Cellar/php/1/lib/libonig.5.dylib \
-  'etc/existing[1].conf' etc/existing-link/new.conf opt/php share/pear/new.php \
+  'etc/existing[1].conf' etc/existing-link/new.conf lib/php/20200930/cache.so \
+  opt/php share/pear/new.php \
   var/homebrew/linked/php > "$fixture_paths"
 awk '$0 !~ /^Cellar\//' "$fixture_paths" > "$fixture_managed_paths" || \
   php_darwin_die 'could not create managed path fixtures'
@@ -417,6 +422,16 @@ case "$fixture_mode" in 444) ;; *) fixture_mode=$(stat -c '%a' "$fixture_prefix/
   php_darwin_die 'an unanchored exclusion suppressed a file inside the PHP keg'
 [ "$(cat "$fixture_prefix/lib/libonig.5.dylib")" = existing-oniguruma ] || \
   php_darwin_die 'direct extraction replaced the linked dependency fixture'
+[ "$(cat "$fixture_prefix/lib/php/20200930/cache.so")" = cached-extension ] || \
+  php_darwin_die 'direct extraction did not recover from an unwritable Homebrew directory'
+fixture_php_mode=$(stat -f '%Lp' "$fixture_prefix/lib/php" 2>/dev/null || true)
+case "$fixture_php_mode" in 555) ;; *)
+  fixture_php_mode=$(stat -c '%a' "$fixture_prefix/lib/php") || \
+    php_darwin_die 'could not inspect restored Homebrew directory permissions'
+  ;;
+esac
+[ "$fixture_php_mode" = 555 ] || \
+  php_darwin_die 'direct extraction did not restore Homebrew directory permissions'
 [ "$(readlink "$fixture_prefix/opt/php")" = ../Cellar/php/1 ] || php_darwin_die 'direct extraction lost the PHP opt link'
 [ "$(readlink "$fixture_prefix/var/homebrew/linked/php")" = ../../../Cellar/php/1 ] || \
   php_darwin_die 'direct extraction omitted the Homebrew linked-keg marker'
