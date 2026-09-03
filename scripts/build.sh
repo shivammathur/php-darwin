@@ -38,17 +38,17 @@ installed_formulae_raw="$work_dir/installed-formulae-raw.txt"
 packages_to_archive="$work_dir/packages-to-archive.txt"
 php_dependencies="$work_dir/php-dependencies.txt"
 raw_dependencies="$work_dir/raw-dependencies.txt"
+runtime_dependencies="$work_dir/runtime-dependencies.txt"
+raw_runtime_dependencies="$work_dir/raw-runtime-dependencies.txt"
 formulae_to_remove="$work_dir/formulae-to-remove.txt"
 preserved_formulae_file="$work_dir/preserved-formulae.txt"
 preserved_versions_file="$work_dir/preserved-versions.txt"
 pinned_formulae_file="$work_dir/pinned-formulae.txt"
 added_pins_file="$work_dir/added-pins.txt"
 reuse_dir="${RUNNER_TEMP:-/tmp}/php-darwin-reuse"
-reuse_baseline_formulae="$reuse_dir/preinstalled-formulae.txt"
 reuse_baseline_manifest="$reuse_dir/before.tsv"
 snapshot_paths="$script_dir/../conf/snapshot-paths"
 archive_roots="$script_dir/../conf/archive-paths"
-package_baseline_formulae=$reuse_baseline_formulae
 cached_extensions_file="$work_dir/cached-extension-paths.txt"
 
 [ "$(uname -s)" = Darwin ] || php_darwin_die 'builds require macOS'
@@ -170,16 +170,12 @@ clean_homebrew() {
   mkdir -p "$reuse_dir" || php_darwin_die 'could not create the shared runner baseline directory'
   bash "$script_dir/filesystem-manifest.sh" "$brew_prefix" "$before_manifest" "$snapshot_paths" || \
     php_darwin_die 'could not capture the initial Homebrew manifest'
-  if [ ! -f "$reuse_baseline_formulae" ] && [ ! -f "$reuse_baseline_manifest" ]; then
-    cp "$preinstalled_formulae" "$reuse_baseline_formulae" || \
-      php_darwin_die 'could not preserve the shared formula baseline'
+  if [ ! -f "$reuse_baseline_manifest" ]; then
     cp "$before_manifest" "$reuse_baseline_manifest" || \
       php_darwin_die 'could not preserve the shared filesystem baseline'
-  elif [ -f "$reuse_baseline_formulae" ] && [ -f "$reuse_baseline_manifest" ]; then
+  else
     cp "$reuse_baseline_manifest" "$before_manifest" || \
       php_darwin_die 'could not restore the shared filesystem baseline'
-  else
-    php_darwin_die 'shared runner baseline is incomplete'
   fi
 }
 
@@ -271,6 +267,8 @@ package_cache() {
   local package_info
   local package_info_tsv
   local package_formulae=()
+  local runtime_dependency
+  local runtime_dependency_formulae=()
   local pear_member
   local pear_members
   local pear_path
@@ -283,6 +281,7 @@ package_cache() {
   local state_paths
   local state_paths_file
   local source_hash
+  local tap_formulae
   local tar_paths
   local pipeline_status
   local compression_level
@@ -352,18 +351,35 @@ package_cache() {
     printf '%s\n' "$extension_path" >> "$archive_paths" || \
       php_darwin_die "could not archive cached $extension"
   done < "$cached_extensions_file"
+  brew deps "$tap/$requested_formula" > "$raw_runtime_dependencies" || \
+    php_darwin_die "could not resolve installed runtime dependencies for $requested_formula"
+  LC_ALL=C sort -u "$raw_runtime_dependencies" -o "$raw_runtime_dependencies" || \
+    php_darwin_die 'could not sort installed runtime dependencies'
+  awk 'NF != 1 || $1 !~ /^([A-Za-z0-9@+._-]+\/){0,2}[A-Za-z0-9@+._-]+$/ { exit 1 }' \
+    "$raw_runtime_dependencies" || \
+    php_darwin_die "Homebrew returned an invalid runtime dependency for $requested_formula"
+  while IFS= read -r runtime_dependency; do
+    [ -n "$runtime_dependency" ] && runtime_dependency_formulae+=("$runtime_dependency")
+  done < "$raw_runtime_dependencies"
+  [ "${#runtime_dependency_formulae[@]}" -gt 0 ] || \
+    php_darwin_die "Homebrew returned no runtime dependencies for $requested_formula"
+  brew info --json=v2 --formula "${runtime_dependency_formulae[@]}" | \
+    bash "$script_dir/canonicalize-formulae.sh" > "$runtime_dependencies"
+  pipeline_status=("${PIPESTATUS[@]}")
+  [ "${pipeline_status[0]}" -eq 0 ] && [ "${pipeline_status[1]}" -eq 0 ] || \
+    php_darwin_die "could not canonicalize runtime dependencies for $requested_formula"
   brew list --formula --versions > "$installed_formulae_raw" || \
     php_darwin_die 'could not record installed Homebrew formula versions'
   awk 'NF' "$installed_formulae_raw" > "$installed_formulae_file" || \
     php_darwin_die 'could not filter installed Homebrew formula versions'
   LC_ALL=C sort -u "$installed_formulae_file" -o "$installed_formulae_file" || \
     php_darwin_die 'could not sort installed Homebrew formula versions'
-  bash "$script_dir/select-packages.sh" "$package_baseline_formulae" "$installed_formulae_file" \
-    "$formula" "$packages_to_archive" || php_darwin_die 'could not select cache package delta'
+  bash "$script_dir/select-packages.sh" "$runtime_dependencies" "$installed_formulae_file" \
+    "$formula" "$packages_to_archive" || php_darwin_die 'could not select the cache runtime package set'
   while IFS= read -r installed_formula; do
     [ -n "$installed_formula" ] && package_formulae+=("$installed_formula")
   done < "$packages_to_archive"
-  [ "${#package_formulae[@]}" -gt 0 ] || php_darwin_die 'cache package delta is empty'
+  [ "${#package_formulae[@]}" -gt 0 ] || php_darwin_die 'cache runtime package set is empty'
   package_info="$work_dir/package-info.json"
   package_info_tsv="$work_dir/package-info.tsv"
   brew info --json=v2 "${package_formulae[@]}" > "$package_info" || \
@@ -372,7 +388,12 @@ package_cache() {
     ($selected | split("\n") | map(select(length > 0)) | sort) as $selected |
     ([.formulae[].name] | sort) == $selected and
     all(.formulae[]; .keg_only | type == "boolean")
-  ' "$package_info" >/dev/null || php_darwin_die 'Homebrew package metadata did not match the cache delta'
+  ' "$package_info" >/dev/null || php_darwin_die 'Homebrew package metadata did not match the cache runtime package set'
+  tap_formulae=$(jq -ce --arg tap "$tap" --arg formula "$formula" '
+    ([.formulae[] | select(.tap == $tap or ((.full_name // "") | startswith($tap + "/"))) | .name] + [$formula]) |
+    unique | sort |
+    select(length > 0 and all(.[]; test("^[A-Za-z0-9@+._-]+$")))
+  ' "$package_info") || php_darwin_die "could not identify cached formulae from $tap"
   jq -r '.formulae[] | [.name, .keg_only] | @tsv' "$package_info" > "$package_info_tsv" || \
     php_darwin_die 'could not serialize Homebrew package metadata'
   while IFS= read -r installed_formula; do
@@ -554,6 +575,7 @@ package_cache() {
     --arg runner_image "${ImageVersion:-}" \
     --arg source_hash "$source_hash" \
     --argjson state_paths "$state_paths" \
+    --argjson tap_formulae "$tap_formulae" \
     --arg tap_snapshot "$tap_snapshot" \
     --arg thread_safety "$ts" \
     '.archive=$archive | .architecture=$architecture | .brew_prefix=$brew_prefix | .build=$build |
@@ -564,7 +586,8 @@ package_cache() {
      .pecl_extension=$pecl_extension | .php_semver=$php_semver |
      .php_src_commit=$php_src_commit | .php_version=$php_version | .platform_key=$platform_key |
      .requested_formula=$requested_formula |
-     .runner_image=$runner_image | .source_hash=$source_hash | .state_paths=$state_paths | .tap_snapshot=$tap_snapshot |
+     .runner_image=$runner_image | .source_hash=$source_hash | .state_paths=$state_paths |
+     .tap_formulae=$tap_formulae | .tap_snapshot=$tap_snapshot |
      .thread_safety=$thread_safety' \
     "$script_dir/../templates/cache-metadata.json" > "$metadata_path" || \
     php_darwin_die 'could not create archive metadata'

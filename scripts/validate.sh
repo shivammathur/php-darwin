@@ -98,7 +98,7 @@ snapshot_roots=$(awk '!/^#/ && NF { printf "%s%s", separator, $1; separator=" " 
 [ "$snapshot_roots" = 'etc var' ] || php_darwin_die 'snapshot roots must be etc and var'
 if ! grep -Fq "reuse_baseline_manifest=\"\$reuse_dir/before.tsv\"" "$script_dir/build.sh" || \
   ! grep -Fq "cp \"\$reuse_baseline_manifest\" \"\$before_manifest\"" "$script_dir/build.sh"; then
-  php_darwin_die 'build variants do not share their formula and filesystem baselines'
+  php_darwin_die 'build variants do not share their filesystem baseline'
 fi
 
 jq -e '
@@ -127,9 +127,9 @@ jq -e '
            "formula_sha256", "homebrew_extensions_commit", "homebrew_php_commit", "links",
            "macos_version", "minimum_macos", "packages",
            "pear_path", "pecl_extension", "php_semver", "php_src_commit", "php_version", "platform_key", "requested_formula",
-           "runner_image", "schema", "source_hash", "state_paths", "tap_snapshot", "thread_safety"] and .schema == 1 and
+           "runner_image", "schema", "source_hash", "state_paths", "tap_formulae", "tap_snapshot", "thread_safety"] and .schema == 1 and
   .extensions == [] and .homebrew_extensions_commit == "" and
-  .links == [] and .packages == [] and .state_paths == [] and
+  .links == [] and .packages == [] and .state_paths == [] and .tap_formulae == [] and
   .pear_path == "" and .pecl_extension == "" and .php_src_commit == "" and
   .source_hash == "" and .tap_snapshot == ""
 ' "$script_dir/../templates/cache-metadata.json" >/dev/null || php_darwin_die 'invalid cache metadata template'
@@ -201,7 +201,7 @@ tap_fixture="$fixture_dir/tap"
 tap_backup="$fixture_dir/tap-backup"
 tap_symlink="$fixture_dir/tap-symlink"
 tap_brew_prefix="$fixture_dir/brew"
-baseline_formulae="$fixture_dir/baseline-formulae.txt"
+runtime_dependencies="$fixture_dir/runtime-dependencies.txt"
 installed_formulae="$fixture_dir/installed-formulae.txt"
 selected_formulae="$fixture_dir/selected-formulae.txt"
 cleanup_formulae="$fixture_dir/cleanup-formulae.txt"
@@ -326,13 +326,18 @@ if php_darwin_prepare_tap_path "$tap_symlink" "$tap_backup" 2> /dev/null; then
   php_darwin_die 'Homebrew tap preparation accepted a symlink'
 fi
 
-printf '%s\n' 'hello 1.0' 'php 8.5.9' 'updated-dependency 1.0' 'zstd 1.5.7' > "$baseline_formulae"
 printf '%s\n' 'dependency-new 1.0' 'hello 1.0' 'php-debug 8.5.10' \
   'updated-dependency 2.0' 'zstd 1.5.7' > "$installed_formulae"
-bash "$script_dir/select-packages.sh" "$baseline_formulae" "$installed_formulae" php-debug "$selected_formulae" || \
-  php_darwin_die 'runner-delta package selection failed'
-[ "$(tr '\n' ' ' < "$selected_formulae")" = 'dependency-new php-debug ' ] || \
-  php_darwin_die 'runner-delta package selection included a preinstalled dependency'
+printf '%s\n' dependency-new updated-dependency zstd > "$runtime_dependencies"
+bash "$script_dir/select-packages.sh" "$runtime_dependencies" "$installed_formulae" php-debug "$selected_formulae" || \
+  php_darwin_die 'runtime dependency package selection failed'
+[ "$(tr '\n' ' ' < "$selected_formulae")" = 'dependency-new php-debug updated-dependency ' ] || \
+  php_darwin_die 'runtime dependency package selection was incomplete'
+printf '%s\n' dependency-new missing-dependency > "$runtime_dependencies"
+if bash "$script_dir/select-packages.sh" "$runtime_dependencies" "$installed_formulae" php-debug \
+  "$selected_formulae" 2>/dev/null; then
+  php_darwin_die 'runtime dependency package selection accepted a missing dependency'
+fi
 
 printf '%s\n' \
   '{"formulae":[{"name":"zstd","full_name":"zstd"},{"name":"oniguruma","full_name":"oniguruma"},{"name":"openssl@3","full_name":"openssl@3"},{"name":"jq","full_name":"jq"},{"name":"icu4c@78","full_name":"icu4c@78"},{"name":"autoconf@2.69","full_name":"shivammathur/php/autoconf@2.69"}]}' \

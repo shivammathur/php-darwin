@@ -24,6 +24,7 @@
   "schema": 1,
   "source_hash": "",
   "state_paths": [],
+  "tap_formulae": [],
   "tap_snapshot": "",
   "thread_safety": ""
 }

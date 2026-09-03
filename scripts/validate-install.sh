@@ -88,6 +88,12 @@ grep -Fq "linked_dependency_references+=(\"\$package_name\")" "$installer" || \
 if grep -Fq "dependency_reference=\$(php_darwin_keg_formula_reference" "$installer"; then
   php_darwin_die 'standalone installer resolves core dependency taps from receipts'
 fi
+grep -Fq '.tap_formulae // []' "$installer" || \
+  php_darwin_die 'standalone installer does not read authenticated custom-tap formula metadata'
+grep -Fq "brew trust --formula \"\${formula_trust_references[@]}\"" "$installer" || \
+  php_darwin_die 'standalone installer does not batch custom-tap formula trust'
+grep -Fq "brew untrust --formula \"\${formulae_to_untrust[@]}\"" "$installer" || \
+  php_darwin_die 'standalone installer does not restore all formula trust added by a failed install'
 grep -Fq "\$php_bin -n -r" "$installer" || \
   php_darwin_die 'standalone installer allows user configuration warnings to corrupt its version probe'
 if ! awk '

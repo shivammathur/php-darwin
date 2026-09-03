@@ -260,6 +260,9 @@ validate_homebrew() {
   local tap_trust_before_value
   local tap_trust_after
   local tap_list=${RUNNER_TEMP:-/tmp}/php-darwin-taps.txt
+  local tap_formula
+  local tap_formulae_file=${RUNNER_TEMP:-/tmp}/php-darwin-tap-formulae.txt
+  local trust_json
   local trust_status
 
   php_darwin_enable_test_cleanup
@@ -288,16 +291,19 @@ validate_homebrew() {
   [ "$tap_trust_after" = "$tap_trust_before_value" ] || \
     php_darwin_die 'cache installation changed the Homebrew tap trust state'
   if [ "$tap_trust_after" = false ]; then
-    if php_darwin_formula_trusted "$tap/$formula"; then
-      :
-    else
-      trust_status=$?
-      if [ "$trust_status" -eq 1 ]; then
-        php_darwin_die "cache installation did not trust $tap/$formula"
-      else
-        php_darwin_die "could not verify trust for $tap/$formula"
+    trust_json=$(brew trust --json=v1) || php_darwin_die 'could not read installed Homebrew formula trust'
+    jq -er 'if ((.tap_formulae // []) | length) > 0 then .tap_formulae[] else .formula end' \
+      "$cache_metadata" > "$tap_formulae_file" || \
+      php_darwin_die 'could not read cached custom-tap formulae'
+    while IFS= read -r tap_formula; do
+      if php_darwin_formula_trusted "$tap/$tap_formula" "$trust_json"; then
+        continue
       fi
-    fi
+      trust_status=$?
+      [ "$trust_status" -ne 1 ] || \
+        php_darwin_die "cache installation did not trust $tap/$tap_formula"
+      php_darwin_die "could not verify trust for $tap/$tap_formula"
+    done < "$tap_formulae_file"
   fi
   brew formula "$tap/$requested_formula" >/dev/null || \
     php_darwin_die "Homebrew cannot resolve $tap/$requested_formula from the cached tap"

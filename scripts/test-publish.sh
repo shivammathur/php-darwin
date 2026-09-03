@@ -92,7 +92,8 @@ while read -r build ts; do
       .php_src_commit=$php_src_commit | .php_version=$php_version | .platform_key=$platform_key |
       .requested_formula=$requested_formula |
       .runner_image="fixture" | .source_hash=$source_hash |
-      .state_paths=[("etc/php/" + $config_id + "/pear.conf")] | .tap_snapshot=$tap_snapshot |
+      .state_paths=[("etc/php/" + $config_id + "/pear.conf")] | .tap_formulae=[$formula] |
+      .tap_snapshot=$tap_snapshot |
       .thread_safety=$thread_safety
     ' "$script_dir/../templates/cache-metadata.json" > "$metadata" || \
       php_darwin_die 'could not write metadata fixture'
@@ -221,6 +222,23 @@ php_darwin_validate_cache_metadata "$legacy_metadata" "$version" "$legacy_build"
   "$(php_darwin_package_config tap_snapshot)" "$legacy_minimum" "$legacy_platform" \
   "$extension_source_commit" >/dev/null || \
   php_darwin_die 'legacy stable cache metadata did not pass compatibility validation'
+legacy_trust_metadata="$work_dir/legacy-trust-metadata.json"
+jq 'del(.tap_formulae)' "$legacy_metadata" > "$legacy_trust_metadata" || \
+  php_darwin_die 'could not create legacy formula-trust metadata'
+php_darwin_validate_cache_metadata "$legacy_trust_metadata" "$version" "$legacy_build" "$legacy_ts" \
+  "$legacy_arch" "$legacy_prefix" 26 "$source_commit" '' "$(php_darwin_package_config current_version)" \
+  "$(php_darwin_package_config tap_snapshot)" "$legacy_minimum" "$legacy_platform" \
+  "$extension_source_commit" >/dev/null || \
+  php_darwin_die 'legacy cache metadata without custom-tap formulae was rejected'
+invalid_trust_metadata="$work_dir/invalid-trust-metadata.json"
+jq '.tap_formulae=["not-in-packages"]' "$legacy_metadata" > "$invalid_trust_metadata" || \
+  php_darwin_die 'could not create invalid formula-trust metadata'
+if php_darwin_validate_cache_metadata "$invalid_trust_metadata" "$version" "$legacy_build" "$legacy_ts" \
+  "$legacy_arch" "$legacy_prefix" 26 "$source_commit" '' "$(php_darwin_package_config current_version)" \
+  "$(php_darwin_package_config tap_snapshot)" "$legacy_minimum" "$legacy_platform" \
+  "$extension_source_commit" >/dev/null 2>&1; then
+  php_darwin_die 'cache metadata accepted a custom-tap formula outside its package set'
+fi
 if php_darwin_validate_cache_metadata "$legacy_metadata" "$version" "$legacy_build" "$legacy_ts" \
   "$legacy_arch" "$legacy_prefix" 26 "$source_commit" '' "$(php_darwin_package_config current_version)" \
   "$(php_darwin_package_config tap_snapshot)" "$((legacy_minimum + 1))" "$legacy_platform" \

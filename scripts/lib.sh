@@ -729,6 +729,7 @@ php_darwin_validate_cache_metadata() {
     --arg platform_key "$platform_key" --arg requested_formula "$requested_formula" \
     --arg tap_snapshot "$tap_snapshot" --argjson macos_major "$macos_major" \
     --argjson minimum_macos "$minimum_macos" '
+    . as $metadata |
     select(.schema == 1 and .php_version == $version and .build == $build and
     .thread_safety == $ts and .architecture == $arch and .brew_prefix == $brew_prefix and
     .archive == $asset and .formula == $formula and .requested_formula == $requested_formula and
@@ -783,7 +784,14 @@ php_darwin_validate_cache_metadata() {
       (.keg_only | type == "boolean") and
       (.name as $name | .opt_target | split("/") |
         length == 4 and .[0] == ".." and .[1] == "Cellar" and .[2] == $name and
-        (.[3] | type == "string" and test("^[^\\r\\n\\t/]+$") and . != "." and . != "..")))) |
+        (.[3] | type == "string" and test("^[^\\r\\n\\t/]+$") and . != "." and . != ".."))) and
+    ((.tap_formulae // []) as $tap_formulae |
+      ($tap_formulae | type == "array") and
+      ([$tap_formulae[]] | unique | length) == ($tap_formulae | length) and
+      (($tap_formulae | length) == 0 or ($tap_formulae | index($formula)) != null) and
+      all($tap_formulae[];
+        type == "string" and test("^[A-Za-z0-9@+._-]+$") and
+        (. as $tap_formula | any($metadata.packages[]; .name == $tap_formula))))) |
     [.homebrew_php_commit, .source_hash,
      (.packages[] | select(.name == $formula) | .opt_target | ltrimstr("../")),
      .pecl_extension, .php_semver] | @tsv
