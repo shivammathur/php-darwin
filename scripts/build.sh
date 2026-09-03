@@ -235,7 +235,7 @@ install_formula() {
 
 package_cache() {
   local asset
-  local cached_extensions
+  local cached_extensions_json
   local extension
   local extension_parent
   local extension_path
@@ -256,14 +256,14 @@ package_cache() {
   local link_path
   local link_plan
   local link_relative
-  local links
+  local links_json
   local links_file
   local link_target
   local opt_link
   local opt_target
   local output
   local output_sha256
-  local packages
+  local packages_json
   local package_info
   local package_info_tsv
   local package_formulae=()
@@ -278,7 +278,7 @@ package_cache() {
   local postinstall_path
   local postinstall_candidates_file
   local postinstall_paths_file
-  local state_paths
+  local state_paths_json
   local state_paths_file
   local source_hash
   local tap_formulae
@@ -541,15 +541,19 @@ package_cache() {
   metadata_path="$work_dir/${asset%.tar.zst}.json"
   mkdir -p "${GITHUB_WORKSPACE:?}/builds" || php_darwin_die 'could not create the build output directory'
 
-  packages=$(jq -Rn '[inputs | split("\t") | {name:.[0],opt_target:.[1],keg_only:(.[2] == "true")}]' \
-    < "$packages_file") || \
+  packages_json="$work_dir/packages.json"
+  jq -Rn '[inputs | split("\t") | {name:.[0],opt_target:.[1],keg_only:(.[2] == "true")}]' \
+    < "$packages_file" > "$packages_json" || \
     php_darwin_die 'could not create the Homebrew package manifest'
-  cached_extensions=$(jq -Rn \
-    '[inputs | split("\t") | {name:.[0],type:.[1],path:.[2]}]' < "$cached_extensions_file") || \
+  cached_extensions_json="$work_dir/cached-extensions.json"
+  jq -Rn '[inputs | split("\t") | {name:.[0],type:.[1],path:.[2]}]' \
+    < "$cached_extensions_file" > "$cached_extensions_json" || \
     php_darwin_die 'could not create the cached extension manifest'
-  links=$(jq -Rn '[inputs | split("\t") | {path:.[0],target:.[1]}]' < "$links_file") || \
+  links_json="$work_dir/links.json"
+  jq -Rn '[inputs | split("\t") | {path:.[0],target:.[1]}]' < "$links_file" > "$links_json" || \
     php_darwin_die 'could not create the Homebrew link manifest'
-  state_paths=$(jq -Rn '[inputs]' < "$state_paths_file") || \
+  state_paths_json="$work_dir/state-paths.json"
+  jq -Rn '[inputs]' < "$state_paths_file" > "$state_paths_json" || \
     php_darwin_die 'could not create the Homebrew state manifest'
   jq --arg archive "$asset" \
     --arg architecture "$arch" \
@@ -560,11 +564,11 @@ package_cache() {
     --arg formula_sha256 "$formula_sha256" \
     --arg homebrew_extensions_commit "$extension_source_commit" \
     --arg homebrew_php_commit "$tap_commit" \
-    --argjson extensions "$cached_extensions" \
+    --slurpfile extensions "$cached_extensions_json" \
     --arg macos_version "$(sw_vers -productVersion)" \
-    --argjson links "$links" \
+    --slurpfile links "$links_json" \
     --argjson minimum_macos "$minimum_macos" \
-    --argjson packages "$packages" \
+    --slurpfile packages "$packages_json" \
     --arg pear_path "$pear_path" \
     --arg pecl_extension "$pecl_extension" \
     --arg php_semver "$semver" \
@@ -574,19 +578,19 @@ package_cache() {
     --arg requested_formula "$requested_formula" \
     --arg runner_image "${ImageVersion:-}" \
     --arg source_hash "$source_hash" \
-    --argjson state_paths "$state_paths" \
+    --slurpfile state_paths "$state_paths_json" \
     --argjson tap_formulae "$tap_formulae" \
     --arg tap_snapshot "$tap_snapshot" \
     --arg thread_safety "$ts" \
     '.archive=$archive | .architecture=$architecture | .brew_prefix=$brew_prefix | .build=$build |
      .created_at=$created_at | .formula=$formula | .formula_sha256=$formula_sha256 |
-     .extensions=$extensions | .homebrew_extensions_commit=$homebrew_extensions_commit |
-     .homebrew_php_commit=$homebrew_php_commit | .links=$links | .macos_version=$macos_version |
-     .minimum_macos=$minimum_macos | .packages=$packages | .pear_path=$pear_path |
+     .extensions=$extensions[0] | .homebrew_extensions_commit=$homebrew_extensions_commit |
+     .homebrew_php_commit=$homebrew_php_commit | .links=$links[0] | .macos_version=$macos_version |
+     .minimum_macos=$minimum_macos | .packages=$packages[0] | .pear_path=$pear_path |
      .pecl_extension=$pecl_extension | .php_semver=$php_semver |
      .php_src_commit=$php_src_commit | .php_version=$php_version | .platform_key=$platform_key |
      .requested_formula=$requested_formula |
-     .runner_image=$runner_image | .source_hash=$source_hash | .state_paths=$state_paths |
+     .runner_image=$runner_image | .source_hash=$source_hash | .state_paths=$state_paths[0] |
      .tap_formulae=$tap_formulae | .tap_snapshot=$tap_snapshot |
      .thread_safety=$thread_safety' \
     "$script_dir/../templates/cache-metadata.json" > "$metadata_path" || \
