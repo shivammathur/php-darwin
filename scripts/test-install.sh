@@ -13,6 +13,7 @@ asset=$(php_darwin_asset "$version" "$build" "$ts" "$arch") || exit 1
 formula=$(php_darwin_formula "$version" "$build" "$ts") || exit 1
 requested_formula=$(php_darwin_requested_formula "$version" "$build" "$ts") || exit 1
 archive=${ARCHIVE_DIR:-${RUNNER_TEMP:?}/php-darwin}/$asset
+cache_metadata="${archive%.tar.zst}.json"
 source_commit=${HOMEBREW_PHP_COMMIT:-}
 if [ -z "$source_commit" ]; then
   source_commit=$(jq -er '.homebrew_php_commit' "${archive%.tar.zst}.json") || \
@@ -99,6 +100,9 @@ install_cache() {
 }
 
 validate_runtime() {
+  local extension
+  local extension_path
+  local extension_type
   local expected_pear_dir
   local pear_dir
   local php_info
@@ -137,6 +141,15 @@ validate_runtime() {
   else
     grep -Eq '^Debug Build => (no|disabled)$' <<< "$php_info" || php_darwin_die 'PHP is not a release build'
   fi
+  while IFS=$'\t' read -r extension extension_type extension_path; do
+    [ -f "$brew_prefix/$extension_path" ] && [ ! -L "$brew_prefix/$extension_path" ] || \
+      php_darwin_die "the archive did not install cached $extension"
+    "$php_bin" -n -d "$extension_type=$brew_prefix/$extension_path" -r \
+      "if (!extension_loaded('$extension')) { exit(1); }" || \
+      php_darwin_die "cached $extension failed its explicit load test"
+    "$php_bin" -r "if (extension_loaded('$extension')) { exit(1); }" || \
+      php_darwin_die "$extension is enabled by default in the cache"
+  done < <(jq -r '(.extensions // [])[] | [.name,.type,.path] | @tsv' "$cache_metadata")
 }
 
 cleanup_homebrew_validation() {
@@ -164,6 +177,9 @@ php_darwin_test_install_cleanup() {
 }
 
 reset_homebrew() {
+  local extension
+  local extension_path
+  local extension_type
   local postinstall_path
   local reset_formula
   local reset_formulae
@@ -177,6 +193,21 @@ reset_homebrew() {
     brew uninstall --force --ignore-dependencies "$formula" || \
       php_darwin_die "could not reset $formula after validation"
   fi
+  while IFS=$'\t' read -r extension extension_type extension_path; do
+    case "$extension:$extension_type:$extension_path" in
+      xdebug:zend_extension:*/xdebug.so|pcov:extension:*/pcov.so) ;;
+      *) php_darwin_die 'cached extension reset path is invalid' ;;
+    esac
+    [ -e "$brew_prefix/$extension_path" ] || [ -L "$brew_prefix/$extension_path" ] || continue
+    if [ -w "$brew_prefix/${extension_path%/*}" ]; then
+      rm -f "$brew_prefix/$extension_path" || php_darwin_die "could not reset cached $extension"
+    else
+      command -v sudo >/dev/null 2>&1 || \
+        php_darwin_die 'sudo is required to reset a protected cached extension'
+      sudo -n rm -f "$brew_prefix/$extension_path" || \
+        php_darwin_die "could not reset cached $extension in a protected directory"
+    fi
+  done < <(jq -r '(.extensions // [])[] | [.name,.type,.path] | @tsv' "$cache_metadata")
   rm -rf "${brew_prefix:?}/${pear_path:?}" || \
     php_darwin_die 'could not reset formula-managed PEAR state'
   while IFS= read -r postinstall_path; do

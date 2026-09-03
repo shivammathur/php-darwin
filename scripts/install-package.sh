@@ -542,6 +542,7 @@ manifest_php_src_commit=
 manifest_php_semver=
 manifest_source_hash=
 manifest_download_asset=
+manifest_extensions_commit=
 manifest_from_embedded=false
 release_archive_error=
 
@@ -552,11 +553,14 @@ php_darwin_use_release_manifest() {
   manifest_values=$(php_darwin_validate_release_manifest \
     "$manifest_file" "$version" "$channel" "$asset") || return 1
   IFS=$'\t' read -r expected_hash manifest_homebrew_commit manifest_php_src_commit \
-    manifest_php_semver manifest_source_hash manifest_download_asset <<< "$manifest_values" || return 1
+    manifest_php_semver manifest_source_hash manifest_download_asset manifest_extensions_commit \
+    <<< "$manifest_values" || return 1
   [ -n "$expected_hash" ] && [ -n "$manifest_homebrew_commit" ] && \
     [ -n "$manifest_php_src_commit" ] && [ -n "$manifest_php_semver" ] && \
-    [ -n "$manifest_source_hash" ] && [ -n "$manifest_download_asset" ] || return 1
+    [ -n "$manifest_source_hash" ] && [ -n "$manifest_download_asset" ] && \
+    [ -n "$manifest_extensions_commit" ] || return 1
   [ "$manifest_php_src_commit" != - ] || manifest_php_src_commit=
+  [ "$manifest_extensions_commit" != - ] || manifest_extensions_commit=
 }
 
 php_darwin_refresh_release_manifest() {
@@ -658,7 +662,8 @@ php_darwin_set_phase cache.metadata
 expected_metadata_commit=${HOMEBREW_PHP_COMMIT:-$manifest_homebrew_commit}
 metadata_values=$(php_darwin_validate_cache_metadata "$metadata_copy" "$version" "$build" "$ts" "$arch" \
   "$brew_prefix" "$macos_major" "$expected_metadata_commit" "$manifest_php_src_commit" \
-  "$current_version" "$tap_snapshot" "$minimum_macos" "$platform_key") || \
+  "$current_version" "$tap_snapshot" "$minimum_macos" "$platform_key" \
+  "$manifest_extensions_commit") || \
   php_darwin_die 'cache metadata did not match the runner or request'
 IFS=$'\t' read -r metadata_homebrew_commit cached_source_hash target_keg_relative pecl_extension \
   metadata_php_semver <<< "$metadata_values" || \
@@ -679,23 +684,28 @@ managed_paths_file="$tmp_dir/managed-paths.txt"
 exclude_file="$tmp_dir/existing-paths.txt"
 metadata_records_file="$tmp_dir/metadata-records.tsv"
 state_paths_inventory="$tmp_dir/state-paths-inventory.txt"
+extension_paths_inventory="$tmp_dir/extension-paths-inventory.tsv"
 : > "$packages_file" || php_darwin_die 'could not create the Homebrew package receipt list'
 : > "$package_kegs_file" || php_darwin_die 'could not create the Homebrew keg path list'
 : > "$managed_paths_file" || php_darwin_die 'could not create the managed archive path list'
 : > "$links_file" || php_darwin_die 'could not create the Homebrew link list'
 : > "$state_paths_inventory" || php_darwin_die 'could not create the Homebrew state path list'
+: > "$extension_paths_inventory" || php_darwin_die 'could not create the cached extension path list'
 jq -r '[
     (.packages[] | ["package", .name, .opt_target, (.keg_only | tostring)]),
     (.packages[] | ["keg", (.opt_target | ltrimstr("../"))]),
     (.links[] | ["managed", .path]),
+    ((.extensions // [])[] | ["extension", .name, .type, .path]),
+    ((.extensions // [])[] | ["managed", .path]),
     (.packages[] | ["managed", ("opt/" + .name)]),
     (.links[] | ["link", .path, .target])
   ][] | @tsv' "$metadata_copy" > "$metadata_records_file" || \
   php_darwin_die 'could not read embedded Homebrew installation records'
 awk -F '\t' -v packages="$packages_file" -v kegs="$package_kegs_file" \
-  -v managed="$managed_paths_file" -v links="$links_file" '
+  -v extensions="$extension_paths_inventory" -v managed="$managed_paths_file" -v links="$links_file" '
   $1 == "package" && NF == 4 { print $2 "\t" $3 "\t" $4 > packages; next }
   $1 == "keg" && NF == 2 { print $2 > kegs; next }
+  $1 == "extension" && NF == 4 { print $2 "\t" $3 "\t" $4 > extensions; next }
   $1 == "managed" && NF == 2 { print $2 > managed; next }
   $1 == "link" && NF == 3 { print $2 "\t" $3 > links; next }
   { exit 1 }
@@ -710,6 +720,13 @@ while IFS= read -r state_path; do
       php_darwin_die "could not record new Homebrew state path: $state_path"
   fi
 done < "$state_paths_inventory"
+while IFS=$'\t' read -r extension extension_type extension_path; do
+  [ -n "$extension_path" ] || continue
+  if [ ! -e "$brew_prefix/$extension_path" ] && [ ! -L "$brew_prefix/$extension_path" ]; then
+    printf '%s\n' "$extension_path" >> "$new_state_paths_file" || \
+      php_darwin_die "could not record new cached extension path: $extension_path"
+  fi
+done < "$extension_paths_inventory"
 
 php_darwin_set_phase homebrew.tap
 php_darwin_wait_for_homebrew_prepare
@@ -963,6 +980,13 @@ php_bin="$brew_prefix/opt/$formula/bin/php"
 installed_semver=$($php_bin -n -r 'echo PHP_VERSION;' 2>/dev/null) || \
   php_darwin_die 'cached PHP could not report its version'
 [ "${installed_semver%.*}" = "$version" ] || php_darwin_die "cache installed PHP $installed_semver for requested $version"
+while IFS=$'\t' read -r extension extension_type extension_path; do
+  [ -f "$brew_prefix/$extension_path" ] && [ ! -L "$brew_prefix/$extension_path" ] || \
+    php_darwin_die "cached $extension module is missing after extraction"
+  "$php_bin" -n -d "$extension_type=$brew_prefix/$extension_path" -r \
+    "if (!extension_loaded('$extension')) { exit(1); }" || \
+    php_darwin_die "cached $extension module does not load"
+done < "$extension_paths_inventory"
 runtime_verified=true
 php_darwin_set_phase complete
 

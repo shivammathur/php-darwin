@@ -13,6 +13,7 @@ build=${BUILD:?}
 ts=${TS:?}
 arch=$(php_darwin_normalize_arch "${ARCH:?}") || exit 1
 source_commit=${HOMEBREW_PHP_COMMIT:?}
+extension_source_commit=${HOMEBREW_EXTENSIONS_COMMIT:?}
 formula=$(php_darwin_formula "$version" "$build" "$ts") || exit 1
 requested_formula=$(php_darwin_requested_formula "$version" "$build" "$ts") || exit 1
 config_id=$(php_darwin_config_id "$version" "$build" "$ts") || exit 1
@@ -48,9 +49,12 @@ reuse_baseline_manifest="$reuse_dir/before.tsv"
 snapshot_paths="$script_dir/../conf/snapshot-paths"
 archive_roots="$script_dir/../conf/archive-paths"
 package_baseline_formulae=$reuse_baseline_formulae
+cached_extensions_file="$work_dir/cached-extension-paths.txt"
 
 [ "$(uname -s)" = Darwin ] || php_darwin_die 'builds require macOS'
 [[ "$source_commit" =~ ^[0-9a-f]{40}$ ]] || php_darwin_die 'invalid homebrew-php source commit'
+[[ "$extension_source_commit" =~ ^[0-9a-f]{40}$ ]] || \
+  php_darwin_die 'invalid homebrew-extensions source commit'
 runner_arch=$(php_darwin_normalize_arch "$(uname -m)") || exit 1
 [ "$runner_arch" = "$arch" ] || php_darwin_die 'runner architecture does not match the matrix'
 [ "$brew_prefix" = "$expected_prefix" ] || php_darwin_die "expected Homebrew at $expected_prefix, found $brew_prefix"
@@ -235,6 +239,10 @@ install_formula() {
 
 package_cache() {
   local asset
+  local cached_extensions
+  local extension
+  local extension_path
+  local extension_type
   local formula_file
   local formula_sha256
   local installed_formula
@@ -319,6 +327,24 @@ package_cache() {
 
   : > "$packages_file"
   : > "$archive_paths"
+  [ -s "$cached_extensions_file" ] || php_darwin_die 'cached coverage extensions are missing'
+  awk -F '\t' '
+    NF != 3 || $1 !~ /^(xdebug|pcov)$/ ||
+      ($1 == "xdebug" && $2 != "zend_extension") ||
+      ($1 == "pcov" && $2 != "extension") ||
+      $3 !~ /^(Cellar|lib)\// || $3 ~ /(^|\/)\.\.($|\/)/ ||
+      $3 !~ ("/" $1 "\\.so$") { exit 1 }
+  ' "$cached_extensions_file" || php_darwin_die 'cached extension paths are invalid'
+  if ! cmp -s <(bash "$script_dir/cached-extensions.sh" "$version" | LC_ALL=C sort -u) \
+    <(awk -F '\t' '{ print $1 }' "$cached_extensions_file" | LC_ALL=C sort -u); then
+    php_darwin_die "cached extensions are incomplete for PHP $version"
+  fi
+  while IFS=$'\t' read -r extension extension_type extension_path; do
+    [ -f "$brew_prefix/$extension_path" ] && [ ! -L "$brew_prefix/$extension_path" ] || \
+      php_darwin_die "cached extension is missing: $extension_path"
+    printf '%s\n' "$extension_path" >> "$archive_paths" || \
+      php_darwin_die "could not archive cached $extension"
+  done < "$cached_extensions_file"
   brew list --formula --versions > "$installed_formulae_raw" || \
     php_darwin_die 'could not record installed Homebrew formula versions'
   awk 'NF' "$installed_formulae_raw" > "$installed_formulae_file" || \
@@ -433,8 +459,10 @@ package_cache() {
   LC_ALL=C comm -13 "$before_manifest" "$after_manifest" > "$changed_manifest" || \
     php_darwin_die 'could not compare Homebrew manifests'
   state_paths_file="$work_dir/state-paths.txt"
-  awk -F '\t' '$2 != "d" && $1 !~ /^var\/homebrew\/(linked|locks|pinned)(\/|$)/ { print $1 }' \
-    "$changed_manifest" > "$state_paths_file"
+  awk -F '\t' '
+    NR == FNR { extensions[$3]=1; next }
+    $2 != "d" && $1 !~ /^var\/homebrew\/(linked|locks|pinned)(\/|$)/ && !($1 in extensions) { print $1 }
+  ' "$cached_extensions_file" "$changed_manifest" > "$state_paths_file"
   pipeline_status=("${PIPESTATUS[@]}")
   [ "${pipeline_status[0]}" -eq 0 ] || \
     php_darwin_die 'could not create the archive path list'
@@ -488,6 +516,9 @@ package_cache() {
   packages=$(jq -Rn '[inputs | split("\t") | {name:.[0],opt_target:.[1],keg_only:(.[2] == "true")}]' \
     < "$packages_file") || \
     php_darwin_die 'could not create the Homebrew package manifest'
+  cached_extensions=$(jq -Rn \
+    '[inputs | split("\t") | {name:.[0],type:.[1],path:.[2]}]' < "$cached_extensions_file") || \
+    php_darwin_die 'could not create the cached extension manifest'
   links=$(jq -Rn '[inputs | split("\t") | {path:.[0],target:.[1]}]' < "$links_file") || \
     php_darwin_die 'could not create the Homebrew link manifest'
   state_paths=$(jq -Rn '[inputs]' < "$state_paths_file") || \
@@ -499,7 +530,9 @@ package_cache() {
     --arg created_at "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
     --arg formula "$formula" \
     --arg formula_sha256 "$formula_sha256" \
+    --arg homebrew_extensions_commit "$extension_source_commit" \
     --arg homebrew_php_commit "$tap_commit" \
+    --argjson extensions "$cached_extensions" \
     --arg macos_version "$(sw_vers -productVersion)" \
     --argjson links "$links" \
     --argjson minimum_macos "$minimum_macos" \
@@ -518,6 +551,7 @@ package_cache() {
     --arg thread_safety "$ts" \
     '.archive=$archive | .architecture=$architecture | .brew_prefix=$brew_prefix | .build=$build |
      .created_at=$created_at | .formula=$formula | .formula_sha256=$formula_sha256 |
+     .extensions=$extensions | .homebrew_extensions_commit=$homebrew_extensions_commit |
      .homebrew_php_commit=$homebrew_php_commit | .links=$links | .macos_version=$macos_version |
      .minimum_macos=$minimum_macos | .packages=$packages | .pear_path=$pear_path |
      .pecl_extension=$pecl_extension | .php_semver=$php_semver |
@@ -567,6 +601,9 @@ verify_cache() {
   local checksum
   local contents
   local embedded_metadata
+  local extension
+  local extension_path
+  local extension_type
   local expected_php_src_commit
   local invalid_path
   local invalid_managed_path
@@ -596,8 +633,13 @@ verify_cache() {
   macos_major=$(sw_vers -productVersion) || php_darwin_die 'could not determine the macOS version'
   macos_major=${macos_major%%.*}
   php_darwin_validate_cache_metadata "$metadata" "$version" "$build" "$ts" "$arch" \
-    "$brew_prefix" "$macos_major" "$source_commit" "$expected_php_src_commit" >/dev/null || \
+    "$brew_prefix" "$macos_major" "$source_commit" "$expected_php_src_commit" '' '' '' '' \
+    "$extension_source_commit" >/dev/null || \
     php_darwin_die 'archive metadata validation failed'
+  if ! cmp -s <(bash "$script_dir/cached-extensions.sh" "$version" | LC_ALL=C sort -u) \
+    <(jq -r '.extensions[].name' "$metadata" | LC_ALL=C sort -u); then
+    php_darwin_die 'archive metadata omitted a configured cached extension'
+  fi
   zstd -t "$output" || php_darwin_die 'archive integrity check failed'
   bash "$script_dir/list-archive.sh" "$output" "$contents" || \
     php_darwin_die 'archive contents could not be listed'
@@ -609,7 +651,7 @@ verify_cache() {
   ' "$archive_roots" "$contents") || php_darwin_die 'could not validate archive path roots'
   [ -z "$invalid_path" ] || php_darwin_die "archive contains a disallowed path: $invalid_path"
   managed_paths="$work_dir/verify-managed-paths.txt"
-  jq -r '.links[].path, .state_paths[], (.packages[].name | "opt/" + .)' "$metadata" \
+  jq -r '.links[].path, .state_paths[], .extensions[].path, (.packages[].name | "opt/" + .)' "$metadata" \
     > "$managed_paths" || php_darwin_die 'could not create the managed archive path list'
   printf '%s\n' "$(php_darwin_metadata_path "$asset")" >> "$managed_paths" || \
     php_darwin_die 'could not add the managed metadata path'
@@ -622,6 +664,9 @@ verify_cache() {
   ' "$managed_paths" "$contents") || php_darwin_die 'could not validate managed archive paths'
   [ -z "$invalid_managed_path" ] || \
     php_darwin_die "archive contains an unmanaged path: $invalid_managed_path"
+  if grep -Eq '^etc/php/[^/]+/conf\.d/[^/]*(xdebug|pcov)[^/]*\.ini$' "$contents"; then
+    php_darwin_die 'archive enables a cached coverage extension by default'
+  fi
   grep -q '^Cellar/' "$contents" || php_darwin_die 'archive does not contain Homebrew kegs'
   grep -Fxq "opt/$formula" "$contents" || php_darwin_die 'archive does not contain the PHP opt link'
   grep -Fxq "$(php_darwin_metadata_path "$asset")" "$contents" || \
@@ -649,6 +694,10 @@ verify_cache() {
     grep -Fxq "$postinstall_path" "$contents" || \
       php_darwin_die "archive does not contain formula-managed state: $postinstall_path"
   done < <(jq -r '.state_paths[]' "$metadata")
+  while IFS=$'\t' read -r extension extension_type extension_path; do
+    grep -Fxq "$extension_path" "$contents" || \
+      php_darwin_die "archive does not contain cached $extension"
+  done < <(jq -r '.extensions[] | [.name,.type,.path] | @tsv' "$metadata")
   checksum=$(php_darwin_checksum_from_file "$output.sha256" "$asset") || \
     php_darwin_die 'archive checksum record is missing'
   actual_checksum=$(php_darwin_sha256 "$output") || php_darwin_die 'could not hash the archive during verification'
@@ -670,8 +719,27 @@ reset_homebrew() {
   local added_pins=()
   local postinstall_path
   local reset_asset
+  local extension
+  local extension_path
+  local extension_type
 
   brew services stop "$formula" >/dev/null 2>&1 || true
+  if [ -f "$cached_extensions_file" ]; then
+    while IFS=$'\t' read -r extension extension_type extension_path; do
+      case "$extension:$extension_type:$extension_path" in
+        xdebug:zend_extension:*/xdebug.so|pcov:extension:*/pcov.so) ;;
+        *) php_darwin_die 'cached extension reset path is invalid' ;;
+      esac
+      if [ -w "$brew_prefix/${extension_path%/*}" ]; then
+        rm -f "$brew_prefix/$extension_path" || php_darwin_die "could not reset cached $extension"
+      else
+        command -v sudo >/dev/null 2>&1 || \
+          php_darwin_die 'sudo is required to reset a protected cached extension'
+        sudo -n rm -f "$brew_prefix/$extension_path" || \
+          php_darwin_die "could not reset cached $extension in a protected directory"
+      fi
+    done < "$cached_extensions_file"
+  fi
   if brew list --versions "$formula" >/dev/null 2>&1; then
     brew uninstall --force --ignore-dependencies "$formula" || \
       php_darwin_die "could not reset $formula after packaging"
@@ -710,6 +778,7 @@ case "$stage" in
     prepare_homebrew
     clean_homebrew
     install_formula
+    bash "$script_dir/build-extensions.sh"
     package_cache
     verify_cache
     ;;

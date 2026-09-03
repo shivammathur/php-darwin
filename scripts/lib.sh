@@ -627,6 +627,8 @@ php_darwin_validate_release_manifest() {
     ($count / ($platforms | length) * ($manifest_platforms | length)) as $legacy_count |
     select(.schema == 1 and .php_version == $version and
     (.homebrew_php_commit | type == "string" and test("^[0-9a-f]{40}$")) and
+    (((.homebrew_extensions_commit // "") == "") or
+      (.homebrew_extensions_commit | type == "string" and test("^[0-9a-f]{40}$"))) and
     (.source_hash | type == "string" and test("^[0-9a-f]{64}$")) and
     (.php_semver | type == "string" and startswith($version + ".") and
       test("^[0-9]+\\.[0-9]+\\.[0-9]+(alpha[0-9]+|beta[0-9]+|RC[0-9]+)?$")) and
@@ -663,7 +665,8 @@ php_darwin_validate_release_manifest() {
       select($matching | length == 1) |
       [$matching[0].sha256, .homebrew_php_commit,
        (if (.php_src_commit // "") == "" then "-" else .php_src_commit end),
-       .php_semver, .source_hash, ($matching[0].download // $matching[0].name)] |
+       .php_semver, .source_hash, ($matching[0].download // $matching[0].name),
+       (if (.homebrew_extensions_commit // "") == "" then "-" else .homebrew_extensions_commit end)] |
        @tsv
     end
   ' "$manifest") || return 1
@@ -688,6 +691,7 @@ php_darwin_validate_cache_metadata() {
   local configured_tap_snapshot=${11:-}
   local configured_minimum_macos=${12:-}
   local configured_platform_key=${13:-}
+  local expected_extensions_commit=${14:-}
   local asset
   local channel
   local config_id
@@ -719,7 +723,8 @@ php_darwin_validate_cache_metadata() {
 
   jq -er --arg version "$version" --arg channel "$channel" --arg build "$build" --arg ts "$ts" \
     --arg arch "$arch" --arg brew_prefix "$brew_prefix" --arg asset "$asset" --arg formula "$formula" \
-    --arg expected_commit "$expected_commit" --arg expected_php_src_commit "$expected_php_src_commit" \
+    --arg expected_commit "$expected_commit" --arg expected_extensions_commit "$expected_extensions_commit" \
+    --arg expected_php_src_commit "$expected_php_src_commit" \
     --arg pear_path "$pear_path" --arg pear_conf "etc/php/$config_id/pear.conf" \
     --arg platform_key "$platform_key" --arg requested_formula "$requested_formula" \
     --arg tap_snapshot "$tap_snapshot" --argjson macos_major "$macos_major" \
@@ -732,6 +737,10 @@ php_darwin_validate_cache_metadata() {
     (.pecl_extension | type == "string" and test("^[A-Za-z0-9._-]+$")) and
     (.homebrew_php_commit | type == "string" and test("^[0-9a-f]{40}$")) and
     ($expected_commit == "" or .homebrew_php_commit == $expected_commit) and
+    ((.homebrew_extensions_commit // "") as $extensions_commit |
+      (($extensions_commit == "" and $expected_extensions_commit == "") or
+       ($extensions_commit | type == "string" and test("^[0-9a-f]{40}$") and
+        ($expected_extensions_commit == "" or $extensions_commit == $expected_extensions_commit)))) and
     (.formula_sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
     (.source_hash | type == "string" and test("^[0-9a-f]{64}$")) and
     (has("php_src_commit") and if $channel == "nightly" then
@@ -749,6 +758,16 @@ php_darwin_validate_cache_metadata() {
         test("^(Frameworks|bin|etc|include|lib|sbin|share|var/homebrew/linked)/") and
         (test("(^|/)\\.\\.(/|$)") | not) and test("^[^\\r\\n\\t]+$")) and
       (.target | type == "string" and test("^[^\\r\\n\\t]+$"))) and
+    ((.extensions // []) | type == "array") and
+    ([((.extensions // [])[].name)] | unique | length) == ((.extensions // []) | length) and
+    ([((.extensions // [])[].path)] | unique | length) == ((.extensions // []) | length) and
+    all((.extensions // [])[];
+      . as $extension |
+      ($extension.name == "xdebug" or $extension.name == "pcov") and
+      ($extension.type == (if $extension.name == "xdebug" then "zend_extension" else "extension" end)) and
+      ($extension.path | type == "string" and test("^(Cellar|lib)/") and
+        (test("(^|/)\\.\\.(/|$)") | not) and test("^[^\\\\\\r\\n\\t]+$") and
+        endswith("/" + $extension.name + ".so"))) and
     (.state_paths | type == "array" and length > 0) and
     ([.state_paths[]] | unique | length) == (.state_paths | length) and
     any(.state_paths[]; . == $pear_conf) and

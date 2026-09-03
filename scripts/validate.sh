@@ -113,26 +113,42 @@ jq -e '
   }
 ' "$script_dir/../conf/build.json" >/dev/null || php_darwin_die 'invalid build configuration'
 jq -e '
-  keys == ["current_version", "release_repository", "tap", "tap_branch", "tap_repository", "tap_snapshot"] and
+  keys == ["current_version", "extension_tap", "extension_tap_branch", "extension_tap_repository",
+           "release_repository", "tap", "tap_branch", "tap_repository", "tap_snapshot"] and
   .current_version == "8.5" and .release_repository == "shivammathur/php-darwin" and
+  .extension_tap == "shivammathur/extensions" and .extension_tap_branch == "main" and
+  .extension_tap_repository == "https://github.com/shivammathur/homebrew-extensions" and
   .tap == "shivammathur/php" and .tap_branch == "main" and
   .tap_repository == "https://github.com/shivammathur/homebrew-php" and
   .tap_snapshot == "var/php-darwin/homebrew-php"
 ' "$script_dir/../conf/package.json" >/dev/null || php_darwin_die 'invalid package configuration'
 jq -e '
-  keys == ["architecture", "archive", "brew_prefix", "build", "created_at", "formula",
-           "formula_sha256", "homebrew_php_commit", "links", "macos_version", "minimum_macos", "packages",
+  keys == ["architecture", "archive", "brew_prefix", "build", "created_at", "extensions", "formula",
+           "formula_sha256", "homebrew_extensions_commit", "homebrew_php_commit", "links",
+           "macos_version", "minimum_macos", "packages",
            "pear_path", "pecl_extension", "php_semver", "php_src_commit", "php_version", "platform_key", "requested_formula",
            "runner_image", "schema", "source_hash", "state_paths", "tap_snapshot", "thread_safety"] and .schema == 1 and
+  .extensions == [] and .homebrew_extensions_commit == "" and
   .links == [] and .packages == [] and .state_paths == [] and
   .pear_path == "" and .pecl_extension == "" and .php_src_commit == "" and
   .source_hash == "" and .tap_snapshot == ""
 ' "$script_dir/../templates/cache-metadata.json" >/dev/null || php_darwin_die 'invalid cache metadata template'
 jq -e '
-  keys == ["assets", "homebrew_php_commit", "php_semver", "php_src_commit", "php_version", "schema", "source_hash"] and
-  .schema == 1 and .assets == [] and .homebrew_php_commit == "" and .php_semver == "" and
+  keys == ["assets", "homebrew_extensions_commit", "homebrew_php_commit", "php_semver", "php_src_commit",
+           "php_version", "schema", "source_hash"] and
+  .schema == 1 and .assets == [] and .homebrew_extensions_commit == "" and
+  .homebrew_php_commit == "" and .php_semver == "" and
   .php_src_commit == "" and .php_version == "" and .source_hash == ""
 ' "$script_dir/../templates/release-manifest.json" >/dev/null || php_darwin_die 'invalid release manifest template'
+
+[ "$(bash "$script_dir/cached-extensions.sh" 5.6 | tr '\n' ' ')" = 'xdebug ' ] || \
+  php_darwin_die 'PHP 5.6 cached extensions are invalid'
+[ "$(bash "$script_dir/cached-extensions.sh" 7.0 | tr '\n' ' ')" = 'xdebug ' ] || \
+  php_darwin_die 'PHP 7.0 cached extensions are invalid'
+[ "$(bash "$script_dir/cached-extensions.sh" 8.5 | tr '\n' ' ')" = 'xdebug pcov ' ] || \
+  php_darwin_die 'PHP 8.5 cached extensions are invalid'
+[ "$(bash "$script_dir/cached-extensions.sh" 8.6 | tr '\n' ' ')" = 'xdebug pcov ' ] || \
+  php_darwin_die 'PHP 8.6 cached extensions are invalid'
 
 [ "$(php_darwin_pear_path 8.5 php)" = 'share/pear' ] || php_darwin_die 'current PEAR path is invalid'
 [ "$(php_darwin_pear_path 8.4 'php@8.4')" = 'share/pear@8.4' ] || \

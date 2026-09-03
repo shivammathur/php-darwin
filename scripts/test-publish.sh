@@ -16,6 +16,7 @@ gh_installer="$work_dir/install.sh"
 version=7.0
 semver=7.0.33
 source_commit=0123456789abcdef0123456789abcdef01234567
+extension_source_commit=89abcdef0123456789abcdef0123456789abcdef
 mkdir -p "$builds_dir" "$fake_bin" || php_darwin_die 'could not create publish fixtures'
 cp "$script_dir/../templates/publish-gh.sh" "$fake_bin/gh" || php_darwin_die 'could not copy the gh fixture'
 chmod 0755 "$fake_bin/gh" || php_darwin_die 'could not make the gh fixture executable'
@@ -73,6 +74,7 @@ while read -r build ts; do
     printf '%s  %s\n' "$archive_hash" "$asset" > "$archive.sha256"
     jq --arg archive "$asset" --arg architecture "$arch" --arg brew_prefix "$prefix" \
       --arg build "$build" --arg formula "$formula" --arg formula_sha256 "$formula_hash" \
+      --arg homebrew_extensions_commit "$extension_source_commit" \
       --arg homebrew_php_commit "$source_commit" --argjson minimum_macos "$minimum" \
       --arg pear_path "$(php_darwin_pear_path "$version" "$formula")" --arg pecl_extension 20250925 \
       --arg php_semver "$semver" --arg php_src_commit '' --arg php_version "$version" --arg platform_key "$platform" \
@@ -81,6 +83,8 @@ while read -r build ts; do
       --arg tap_snapshot "$(php_darwin_package_config tap_snapshot)" --arg thread_safety "$ts" '
       .archive=$archive | .architecture=$architecture | .brew_prefix=$brew_prefix | .build=$build |
       .created_at="2026-01-01T00:00:00Z" | .formula=$formula | .formula_sha256=$formula_sha256 |
+      .extensions=[{name:"xdebug",type:"zend_extension",path:("lib/php/" + $pecl_extension + "/xdebug.so")}] |
+      .homebrew_extensions_commit=$homebrew_extensions_commit |
       .homebrew_php_commit=$homebrew_php_commit | .macos_version="15.0" | .minimum_macos=$minimum_macos |
       .links=[{path:"bin/php",target:("../Cellar/" + $formula + "/" + $php_semver + "/bin/php")}] |
       .packages=[{name:$formula,opt_target:("../Cellar/" + $formula + "/" + $php_semver),keg_only:false}] |
@@ -105,7 +109,8 @@ export GH_LOG=$gh_log
 export GH_MANIFEST=$gh_manifest
 export GH_INSTALLER=$gh_installer
 : > "$gh_log"
-PHP_VERSION="$version" PATH="$fake_bin:$PATH" bash "$script_dir/publish.sh" "$builds_dir" >/dev/null || \
+HOMEBREW_EXTENSIONS_COMMIT="$extension_source_commit" PHP_VERSION="$version" PATH="$fake_bin:$PATH" \
+  bash "$script_dir/publish.sh" "$builds_dir" >/dev/null || \
   php_darwin_die 'publish fixture validation failed'
 [ "$(awk 'END { print NR+0 }' "$gh_log")" -eq 5 ] || \
   php_darwin_die 'publisher did not view, create, and upload the release in three phases'
@@ -123,6 +128,7 @@ tail -n 1 "$gh_log" | grep -Eq '^release upload php-7\.0 .*/php-7\.0-manifest\.j
 jq -e --arg source_hash "$source_hash" --argjson count "$(php_darwin_expected_asset_count)" '
   .schema == 1 and .php_version == "7.0" and .php_semver == "7.0.33" and
   .php_src_commit == "" and
+  .homebrew_extensions_commit == "89abcdef0123456789abcdef0123456789abcdef" and
   .homebrew_php_commit == "0123456789abcdef0123456789abcdef01234567" and
   .source_hash == $source_hash and (.assets | length == $count) and
   ([.assets[].name] | unique | length == $count) and
@@ -135,14 +141,15 @@ manifest_asset=$(jq -er '.assets[0].name' "$gh_manifest") || \
 manifest_values=$(php_darwin_validate_release_manifest "$gh_manifest" "$version" stable "$manifest_asset") || \
   php_darwin_die 'published stable manifest did not pass shared validation'
 IFS=$'\t' read -r manifest_hash manifest_commit manifest_php_src_commit manifest_semver manifest_source_hash \
-  manifest_download_asset \
+  manifest_download_asset manifest_extensions_commit \
   <<< "$manifest_values" || php_darwin_die 'could not parse the published stable manifest'
 [ "$manifest_hash" = "$(jq -er --arg asset "$manifest_asset" \
   '.assets[] | select(.name == $asset) | .sha256' "$gh_manifest")" ] && \
   [ "$manifest_commit" = "$source_commit" ] && [ "$manifest_php_src_commit" = - ] && \
   [ "$manifest_semver" = "$semver" ] && \
   [ "$manifest_source_hash" = "$source_hash" ] && \
-  [ "$manifest_download_asset" = "$(php_darwin_download_asset "$manifest_asset" "$manifest_hash")" ] || \
+  [ "$manifest_download_asset" = "$(php_darwin_download_asset "$manifest_asset" "$manifest_hash")" ] && \
+  [ "$manifest_extensions_commit" = "$extension_source_commit" ] || \
   php_darwin_die 'stable manifest fields were not preserved across parsing'
 
 legacy_manifest="$work_dir/legacy-stable-manifest.json"
@@ -159,7 +166,9 @@ jq 'del(.assets[].download)' "$gh_manifest" > "$legacy_asset_manifest" || \
 legacy_asset_values=$(php_darwin_validate_release_manifest \
   "$legacy_asset_manifest" "$version" stable "$manifest_asset") || \
   php_darwin_die 'legacy release asset names did not pass compatibility validation'
-[ "${legacy_asset_values##*$'\t'}" = "$manifest_asset" ] || \
+IFS=$'\t' read -r _ _ _ _ _ legacy_asset_download _ <<< "$legacy_asset_values" || \
+  php_darwin_die 'could not parse legacy release asset metadata'
+[ "$legacy_asset_download" = "$manifest_asset" ] || \
   php_darwin_die 'legacy release asset name was not preserved'
 legacy_intel_manifest="$work_dir/legacy-intel-manifest.json"
 jq --argjson minimum_macos "$(php_darwin_legacy_platforms | jq -er '.x86_64.minimum_macos')" '
@@ -173,8 +182,20 @@ jq --argjson minimum_macos "$(php_darwin_legacy_platforms | jq -er '.x86_64.mini
 legacy_intel_values=$(php_darwin_validate_release_manifest \
   "$legacy_intel_manifest" "$version" stable "$manifest_asset") || \
   php_darwin_die 'legacy eight-asset manifest did not pass compatibility validation'
-[ "${legacy_intel_values##*$'\t'}" = "$manifest_asset" ] || \
+IFS=$'\t' read -r _ _ _ _ _ legacy_intel_download _ <<< "$legacy_intel_values" || \
+  php_darwin_die 'could not parse legacy Intel release metadata'
+[ "$legacy_intel_download" = "$manifest_asset" ] || \
   php_darwin_die 'legacy eight-asset manifest did not select the ARM64 archive'
+legacy_extension_manifest="$work_dir/legacy-extension-manifest.json"
+jq 'del(.homebrew_extensions_commit)' "$gh_manifest" > "$legacy_extension_manifest" || \
+  php_darwin_die 'could not create a legacy extension manifest fixture'
+legacy_extension_values=$(php_darwin_validate_release_manifest \
+  "$legacy_extension_manifest" "$version" stable "$manifest_asset") || \
+  php_darwin_die 'legacy manifest without an extension commit was rejected'
+IFS=$'\t' read -r _ _ _ _ _ _ legacy_extensions_commit <<< "$legacy_extension_values" || \
+  php_darwin_die 'could not parse legacy extension manifest metadata'
+[ "$legacy_extensions_commit" = - ] || \
+  php_darwin_die 'legacy extension manifest commit was not normalized'
 missing_commit_manifest="$work_dir/missing-commit-stable-manifest.json"
 jq 'del(.php_src_commit)' "$gh_manifest" > "$missing_commit_manifest" || \
   php_darwin_die 'could not create a missing-commit stable manifest fixture'
@@ -197,11 +218,13 @@ legacy_platform=$(php_darwin_platform_value "$legacy_arch" platform_key) || \
   php_darwin_die 'could not read the configured legacy platform'
 php_darwin_validate_cache_metadata "$legacy_metadata" "$version" "$legacy_build" "$legacy_ts" \
   "$legacy_arch" "$legacy_prefix" 26 "$source_commit" '' "$(php_darwin_package_config current_version)" \
-  "$(php_darwin_package_config tap_snapshot)" "$legacy_minimum" "$legacy_platform" >/dev/null || \
+  "$(php_darwin_package_config tap_snapshot)" "$legacy_minimum" "$legacy_platform" \
+  "$extension_source_commit" >/dev/null || \
   php_darwin_die 'legacy stable cache metadata did not pass compatibility validation'
 if php_darwin_validate_cache_metadata "$legacy_metadata" "$version" "$legacy_build" "$legacy_ts" \
   "$legacy_arch" "$legacy_prefix" 26 "$source_commit" '' "$(php_darwin_package_config current_version)" \
   "$(php_darwin_package_config tap_snapshot)" "$((legacy_minimum + 1))" "$legacy_platform" \
+  "$extension_source_commit" \
   >/dev/null 2>&1; then
   php_darwin_die 'legacy stable cache metadata ignored the configured minimum macOS'
 fi
@@ -210,8 +233,22 @@ jq 'del(.php_src_commit)' "$legacy_metadata" > "$missing_commit_metadata" || \
   php_darwin_die 'could not create a missing-commit stable metadata fixture'
 if php_darwin_validate_cache_metadata "$missing_commit_metadata" "$version" "$legacy_build" "$legacy_ts" \
   "$legacy_arch" "$legacy_prefix" 26 "$source_commit" '' "$(php_darwin_package_config current_version)" \
-  "$(php_darwin_package_config tap_snapshot)" "$legacy_minimum" "$legacy_platform" >/dev/null 2>&1; then
+  "$(php_darwin_package_config tap_snapshot)" "$legacy_minimum" "$legacy_platform" \
+  "$extension_source_commit" >/dev/null 2>&1; then
   php_darwin_die 'stable cache metadata validation accepted a missing PHP source commit field'
+fi
+legacy_extension_metadata="$work_dir/legacy-extension-metadata.json"
+jq 'del(.homebrew_extensions_commit,.extensions)' "$legacy_metadata" > "$legacy_extension_metadata" || \
+  php_darwin_die 'could not create legacy extension metadata'
+php_darwin_validate_cache_metadata "$legacy_extension_metadata" "$version" "$legacy_build" "$legacy_ts" \
+  "$legacy_arch" "$legacy_prefix" 26 "$source_commit" '' "$(php_darwin_package_config current_version)" \
+  "$(php_darwin_package_config tap_snapshot)" "$legacy_minimum" "$legacy_platform" >/dev/null || \
+  php_darwin_die 'legacy cache metadata without extension fields was rejected'
+if php_darwin_validate_cache_metadata "$legacy_extension_metadata" "$version" "$legacy_build" "$legacy_ts" \
+  "$legacy_arch" "$legacy_prefix" 26 "$source_commit" '' "$(php_darwin_package_config current_version)" \
+  "$(php_darwin_package_config tap_snapshot)" "$legacy_minimum" "$legacy_platform" \
+  "$extension_source_commit" >/dev/null 2>&1; then
+  php_darwin_die 'legacy cache metadata satisfied an expected extension commit'
 fi
 grep -Fq '"php_version": "7.0"' "$gh_installer" || \
   php_darwin_die 'published installer did not embed the matching release manifest'

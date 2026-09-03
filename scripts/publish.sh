@@ -7,6 +7,7 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 builds_dir=${1:?}
 expected_version=${PHP_VERSION:-}
 source_commit=${HOMEBREW_PHP_COMMIT:-}
+extension_source_commit=${HOMEBREW_EXTENSIONS_COMMIT:-}
 release_repository=$(php_darwin_package_config release_repository) || exit 1
 work_dir=$(mktemp -d "${RUNNER_TEMP:-/tmp}/php-darwin-publish.XXXXXX") || \
   php_darwin_die 'could not create the release staging directory'
@@ -75,6 +76,13 @@ if [ -z "$source_commit" ]; then
     php_darwin_die 'could not derive the pinned homebrew-php source commit'
 fi
 [[ "$source_commit" =~ ^[0-9a-f]{40}$ ]] || php_darwin_die 'invalid pinned homebrew-php source commit'
+if [ -z "$extension_source_commit" ]; then
+  [ -n "${first_metadata:-}" ] || IFS= read -r first_metadata < "$metadata_list"
+  extension_source_commit=$(jq -er '.homebrew_extensions_commit' "$first_metadata") || \
+    php_darwin_die 'could not derive the pinned homebrew-extensions source commit'
+fi
+[[ "$extension_source_commit" =~ ^[0-9a-f]{40}$ ]] || \
+  php_darwin_die 'invalid pinned homebrew-extensions source commit'
 : > "$matrix_keys"
 : > "$formulae"
 : > "$source_hashes"
@@ -122,7 +130,12 @@ while IFS= read -r metadata; do
 
   php_darwin_validate_cache_metadata "$metadata" "$version" "$metadata_build" "$metadata_ts" \
     "$metadata_arch" "$expected_prefix" "$expected_minimum" "$source_commit" \
-    "$metadata_php_src_commit" >/dev/null || php_darwin_die "metadata validation failed: $metadata"
+    "$metadata_php_src_commit" '' '' '' '' "$extension_source_commit" >/dev/null || \
+    php_darwin_die "metadata validation failed: $metadata"
+  if ! cmp -s <(bash "$script_dir/cached-extensions.sh" "$version" | LC_ALL=C sort -u) \
+    <(jq -r '.extensions[].name' "$metadata" | LC_ALL=C sort -u); then
+    php_darwin_die "cached extension metadata is incomplete: $metadata"
+  fi
   [ "$(basename "$metadata")" = "${expected_archive%.tar.zst}.json" ] || \
     php_darwin_die "metadata filename does not match its archive: $metadata"
 
@@ -199,10 +212,12 @@ esac
 tag="php-$version"
 manifest="$staging/$tag-manifest.json"
 installer="$staging/install.sh"
-jq --slurpfile assets "$assets_jsonl" --arg commit "$source_commit" --arg php_semver "$semver" \
+jq --slurpfile assets "$assets_jsonl" --arg commit "$source_commit" \
+  --arg extensions_commit "$extension_source_commit" --arg php_semver "$semver" \
   --arg php_src_commit "$php_src_commit" --arg php_version "$version" --arg source_hash "$source_hash" '
   .assets=($assets | sort_by(.build,.thread_safety,.architecture)) |
-  .homebrew_php_commit=$commit | .php_semver=$php_semver | .php_src_commit=$php_src_commit |
+  .homebrew_extensions_commit=$extensions_commit | .homebrew_php_commit=$commit |
+  .php_semver=$php_semver | .php_src_commit=$php_src_commit |
   .php_version=$php_version |
   .source_hash=$source_hash
 ' "$script_dir/../templates/release-manifest.json" > "$manifest" || \

@@ -34,6 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       build: ${{ steps.matrix.outputs.build-matrix }}
+      extensions-source-commit: ${{ steps.extensions-source.outputs.commit }}
       source-commit: ${{ steps.source.outputs.commit }}
       test: ${{ steps.matrix.outputs.test-matrix }}
     steps:
@@ -57,6 +58,10 @@ jobs:
         id: source
         run: bash scripts/source-commit.sh
 
+      - name: Pin the homebrew-extensions source commit
+        id: extensions-source
+        run: bash scripts/source-commit.sh extensions
+
   build:
     name: Build PHP ${{ matrix.php }} packages on ${{ matrix.arch }}
     needs: matrix
@@ -64,6 +69,7 @@ jobs:
     timeout-minutes: 180
     env:
       ARCH: ${{ matrix.arch }}
+      HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.matrix.outputs.extensions-source-commit }}
       HOMEBREW_PHP_COMMIT: ${{ needs.matrix.outputs.source-commit }}
       PHP_VERSION: ${{ matrix.php }}
     strategy:
@@ -94,6 +100,11 @@ jobs:
         if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
         env: *release-nts
         run: bash scripts/build.sh install
+
+      - name: Cache release/NTS coverage extensions
+        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
+        env: *release-nts
+        run: bash scripts/build-extensions.sh
 
       - name: Package release/NTS Homebrew cache
         if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
@@ -127,6 +138,11 @@ jobs:
         env: *release-zts
         run: bash scripts/build.sh install
 
+      - name: Cache release/ZTS coverage extensions
+        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') }}
+        env: *release-zts
+        run: bash scripts/build-extensions.sh
+
       - name: Package release/ZTS Homebrew cache
         if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') }}
         env: *release-zts
@@ -158,6 +174,11 @@ jobs:
         if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') }}
         env: *debug-nts
         run: bash scripts/build.sh install
+
+      - name: Cache debug/NTS coverage extensions
+        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') }}
+        env: *debug-nts
+        run: bash scripts/build-extensions.sh
 
       - name: Package debug/NTS Homebrew cache
         if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') }}
@@ -191,6 +212,11 @@ jobs:
         env: *debug-zts
         run: bash scripts/build.sh install
 
+      - name: Cache debug/ZTS coverage extensions
+        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') }}
+        env: *debug-zts
+        run: bash scripts/build-extensions.sh
+
       - name: Package debug/ZTS Homebrew cache
         if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') }}
         env: *debug-zts
@@ -222,6 +248,7 @@ jobs:
     timeout-minutes: 90
     env:
       ARCH: ${{ matrix.arch }}
+      HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.matrix.outputs.extensions-source-commit }}
       HOMEBREW_PHP_COMMIT: ${{ needs.matrix.outputs.source-commit }}
       PHP_VERSION: ${{ matrix.php }}
     strategy:
@@ -367,6 +394,7 @@ jobs:
       - name: Replace versioned release assets
         env:
           GH_TOKEN: ${{ github.token }}
+          HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.matrix.outputs.extensions-source-commit }}
           HOMEBREW_PHP_COMMIT: ${{ needs.matrix.outputs.source-commit }}
           PHP_VERSION: ${{ inputs.php-version }}
         run: bash scripts/publish.sh builds

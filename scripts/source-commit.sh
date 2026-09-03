@@ -4,13 +4,25 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=scripts/lib.sh
 . "$script_dir/lib.sh"
 
-repository=$(php_darwin_package_config tap_repository)
-branch=$(php_darwin_package_config tap_branch)
+source_name=${1:-php}
+case "$source_name" in
+  php)
+    repository=$(php_darwin_package_config tap_repository)
+    branch=$(php_darwin_package_config tap_branch)
+    source_label=homebrew-php
+    ;;
+  extensions)
+    repository=$(php_darwin_package_config extension_tap_repository)
+    branch=$(php_darwin_package_config extension_tap_branch)
+    source_label=homebrew-extensions
+    ;;
+  *) php_darwin_die 'usage: source-commit.sh [php|extensions]' ;;
+esac
 remote_data=$(git ls-remote "$repository" "refs/heads/$branch") || \
   php_darwin_die "could not resolve $repository $branch"
 IFS=$'\t' read -r commit reference <<< "$remote_data"
-[[ "$commit" =~ ^[0-9a-f]{40}$ ]] || php_darwin_die 'homebrew-php returned an invalid source commit'
-[ "$reference" = "refs/heads/$branch" ] || php_darwin_die 'homebrew-php returned an unexpected source reference'
+[[ "$commit" =~ ^[0-9a-f]{40}$ ]] || php_darwin_die "$source_label returned an invalid source commit"
+[ "$reference" = "refs/heads/$branch" ] || php_darwin_die "$source_label returned an unexpected source reference"
 
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
   printf 'commit=%s\n' "$commit" >> "$GITHUB_OUTPUT" || php_darwin_die 'could not write the source commit output'

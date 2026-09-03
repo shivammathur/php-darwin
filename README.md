@@ -28,6 +28,7 @@ checksum-addressed archive. New patch releases update the manifest without repla
 - [actions/runner-images](https://github.com/actions/runner-images "GitHub Actions runner images")
 - [Homebrew/brew](https://github.com/Homebrew/brew "Homebrew")
 - [shivammathur/homebrew-php](https://github.com/shivammathur/homebrew-php "Homebrew PHP tap")
+- [shivammathur/homebrew-extensions](https://github.com/shivammathur/homebrew-extensions "Homebrew PHP extensions tap")
 - [facebook/zstd](https://github.com/facebook/zstd "Zstandard")
 - [jqlang/jq](https://github.com/jqlang/jq "jq")
 
