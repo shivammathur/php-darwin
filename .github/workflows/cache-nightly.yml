@@ -58,10 +58,18 @@ jobs:
           path: homebrew-php
           persist-credentials: false
 
-      - name: Compare the nightly php-src commit with the published manifest
+      - name: Check out homebrew-extensions once
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: shivammathur/homebrew-extensions
+          path: homebrew-extensions
+          persist-credentials: false
+
+      - name: Compare nightly sources with the published manifest
         id: freshness
         env:
           FORCE: ${{ inputs.force || false }}
+          HOMEBREW_EXTENSIONS_PATH: ${{ github.workspace }}/homebrew-extensions
           HOMEBREW_PHP_PATH: ${{ github.workspace }}/homebrew-php
           PHP_VERSION: ${{ inputs.php-version }}
         run: bash scripts/update-nightly.sh

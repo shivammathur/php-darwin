@@ -26,8 +26,11 @@ fi
 for version in "${version_values[@]}"; do
   current=$(bash "$script_dir/source-hash.sh" "$version") || \
     php_darwin_die "could not compute the PHP $version source hash"
+  current_extensions=$(bash "$script_dir/extensions-source-hash.sh" "$version") || \
+    php_darwin_die "could not compute the PHP $version cached extension source hash"
   manifest="$work_dir/php-$version-manifest.json"
   published=
+  published_extensions=
   if ! http_status=$(php_darwin_fetch_release_manifest "$release_repository" "$version" "$manifest"); then
     php_darwin_die "could not request the PHP $version release manifest"
   fi
@@ -36,18 +39,21 @@ for version in "${version_values[@]}"; do
       if php_darwin_validate_release_manifest "$manifest" "$version" stable 2>/dev/null; then
         published=$(jq -er '.source_hash' "$manifest") || \
           php_darwin_die "could not read the PHP $version published source hash"
+        published_extensions=$(bash "$script_dir/manifest-extensions-source-hash.sh" "$manifest" "$version") || \
+          php_darwin_die "could not read the PHP $version published cached extension source hash"
       fi
       ;;
     404) ;;
     *) php_darwin_die "could not fetch the PHP $version release manifest (HTTP $http_status)" ;;
   esac
-  if [ "$published" = "$current" ]; then
-    printf 'PHP %s is current (%s)\n' "$version" "$current"
+  if [ "$published" = "$current" ] && [ "$published_extensions" = "$current_extensions" ]; then
+    printf 'PHP %s is current (PHP %s, extensions %s)\n' "$version" "$current" "$current_extensions"
     continue
   fi
 
   if [ -n "$published" ]; then
-    printf 'Dispatching PHP %s: published source %s, current source %s\n' "$version" "$published" "$current"
+    printf 'Dispatching PHP %s: published PHP source %s, current PHP source %s; published extensions %s, current extensions %s\n' \
+      "$version" "$published" "$current" "${published_extensions:-missing}" "$current_extensions"
   else
     printf 'Dispatching PHP %s: no valid release manifest, current source %s\n' "$version" "$current"
   fi

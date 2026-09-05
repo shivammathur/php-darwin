@@ -17,6 +17,7 @@ version=7.0
 semver=7.0.33
 source_commit=0123456789abcdef0123456789abcdef01234567
 extension_source_commit=89abcdef0123456789abcdef0123456789abcdef
+extensions_source_hash=$(printf '%064d' 9)
 mkdir -p "$builds_dir" "$fake_bin" || php_darwin_die 'could not create publish fixtures'
 cp "$script_dir/../templates/publish-gh.sh" "$fake_bin/gh" || php_darwin_die 'could not copy the gh fixture'
 chmod 0755 "$fake_bin/gh" || php_darwin_die 'could not make the gh fixture executable'
@@ -74,6 +75,7 @@ while read -r build ts; do
     printf '%s  %s\n' "$archive_hash" "$asset" > "$archive.sha256"
     jq --arg archive "$asset" --arg architecture "$arch" --arg brew_prefix "$prefix" \
       --arg build "$build" --arg formula "$formula" --arg formula_sha256 "$formula_hash" \
+      --arg extensions_source_hash "$extensions_source_hash" \
       --arg homebrew_extensions_commit "$extension_source_commit" \
       --arg homebrew_php_commit "$source_commit" --argjson minimum_macos "$minimum" \
       --arg pear_path "$(php_darwin_pear_path "$version" "$formula")" --arg pecl_extension 20250925 \
@@ -82,7 +84,8 @@ while read -r build ts; do
       --arg config_id "$(php_darwin_config_id "$version" "$build" "$ts")" \
       --arg tap_snapshot "$(php_darwin_package_config tap_snapshot)" --arg thread_safety "$ts" '
       .archive=$archive | .architecture=$architecture | .brew_prefix=$brew_prefix | .build=$build |
-      .created_at="2026-01-01T00:00:00Z" | .formula=$formula | .formula_sha256=$formula_sha256 |
+      .created_at="2026-01-01T00:00:00Z" | .extensions_source_hash=$extensions_source_hash |
+      .formula=$formula | .formula_sha256=$formula_sha256 |
       .extensions=[{name:"xdebug",type:"zend_extension",path:("lib/php/" + $pecl_extension + "/xdebug.so")}] |
       .homebrew_extensions_commit=$homebrew_extensions_commit |
       .homebrew_php_commit=$homebrew_php_commit | .macos_version="15.0" | .minimum_macos=$minimum_macos |
@@ -126,10 +129,12 @@ grep -Eq '^release upload php-7\.0 .*\.[0-9a-f]{64}\.tar\.zst\.sha256 .*--repo s
   php_darwin_die 'publisher did not upload archive checksum sidecars'
 tail -n 1 "$gh_log" | grep -Eq '^release upload php-7\.0 .*/php-7\.0-manifest\.json --clobber --repo shivammathur/php-darwin$' || \
   php_darwin_die 'publisher did not upload the release manifest as the commit point'
-jq -e --arg source_hash "$source_hash" --argjson count "$(php_darwin_expected_asset_count)" '
+jq -e --arg extensions_source_hash "$extensions_source_hash" --arg source_hash "$source_hash" \
+  --argjson count "$(php_darwin_expected_asset_count)" '
   .schema == 1 and .php_version == "7.0" and .php_semver == "7.0.33" and
   .php_src_commit == "" and
   .homebrew_extensions_commit == "89abcdef0123456789abcdef0123456789abcdef" and
+  .extensions_source_hash == $extensions_source_hash and
   .homebrew_php_commit == "0123456789abcdef0123456789abcdef01234567" and
   .source_hash == $source_hash and (.assets | length == $count) and
   ([.assets[].name] | unique | length == $count) and
@@ -197,6 +202,12 @@ IFS=$'\t' read -r _ _ _ _ _ _ legacy_extensions_commit <<< "$legacy_extension_va
   php_darwin_die 'could not parse legacy extension manifest metadata'
 [ "$legacy_extensions_commit" = - ] || \
   php_darwin_die 'legacy extension manifest commit was not normalized'
+legacy_extensions_hash_manifest="$work_dir/legacy-extensions-hash-manifest.json"
+jq 'del(.extensions_source_hash)' "$gh_manifest" > "$legacy_extensions_hash_manifest" || \
+  php_darwin_die 'could not create a legacy extension source hash manifest fixture'
+php_darwin_validate_release_manifest "$legacy_extensions_hash_manifest" "$version" stable \
+  "$manifest_asset" >/dev/null || \
+  php_darwin_die 'legacy manifest without an extension source hash was rejected'
 missing_commit_manifest="$work_dir/missing-commit-stable-manifest.json"
 jq 'del(.php_src_commit)' "$gh_manifest" > "$missing_commit_manifest" || \
   php_darwin_die 'could not create a missing-commit stable manifest fixture'

@@ -39,9 +39,17 @@ jobs:
           path: homebrew-php
           persist-credentials: false
 
+      - name: Check out homebrew-extensions once
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: shivammathur/homebrew-extensions
+          path: homebrew-extensions
+          persist-credentials: false
+
       - name: Compare formula sources with published release manifests
         env:
           GH_TOKEN: ${{ github.token }}
+          HOMEBREW_EXTENSIONS_PATH: ${{ github.workspace }}/homebrew-extensions
           HOMEBREW_PHP_PATH: ${{ github.workspace }}/homebrew-php
           ONLY_VERSION: ${{ github.event.client_payload['php-version'] || inputs.php-version }}
         run: bash scripts/update.sh

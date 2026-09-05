@@ -18,7 +18,10 @@ php_darwin_validate_channel "$version" nightly
 case "$force" in true|false) ;; *) php_darwin_die "force must be true or false: $force" ;; esac
 current=$(bash "$script_dir/php-src-commit.sh" "$version") || \
   php_darwin_die "could not resolve the PHP $version source commit"
+current_extensions=$(bash "$script_dir/extensions-source-hash.sh" "$version") || \
+  php_darwin_die "could not resolve the PHP $version cached extension source hash"
 published=
+published_extensions=
 
 if [ -n "$manifest_override" ]; then
   [ -f "$manifest_override" ] || php_darwin_die "nightly manifest not found: $manifest_override"
@@ -35,6 +38,8 @@ case "$http_status" in
     if php_darwin_validate_release_manifest "$manifest" "$version" nightly 2>/dev/null; then
       published=$(jq -er '.php_src_commit' "$manifest") || \
         php_darwin_die "could not read the PHP $version published source commit"
+      published_extensions=$(bash "$script_dir/manifest-extensions-source-hash.sh" "$manifest" "$version") || \
+        php_darwin_die "could not read the PHP $version published cached extension source hash"
     fi
     ;;
   404) ;;
@@ -42,17 +47,20 @@ case "$http_status" in
 esac
 
 build=false
-if [ "$force" = true ] || [ "$published" != "$current" ]; then
+if [ "$force" = true ] || [ "$published" != "$current" ] || \
+  [ "$published_extensions" != "$current_extensions" ]; then
   build=true
 fi
 if [ "$build" = true ]; then
   if [ -n "$published" ]; then
-    printf 'PHP %s nightly changed from %s to %s\n' "$version" "$published" "$current"
+    printf 'PHP %s nightly changed: php-src %s to %s; extensions %s to %s\n' \
+      "$version" "$published" "$current" "${published_extensions:-missing}" "$current_extensions"
   else
     printf 'PHP %s nightly has no valid published source commit; current commit is %s\n' "$version" "$current"
   fi
 else
-  printf 'PHP %s nightly is current (%s)\n' "$version" "$current"
+  printf 'PHP %s nightly is current (php-src %s, extensions %s)\n' \
+    "$version" "$current" "$current_extensions"
 fi
 
 if [ -n "${GITHUB_OUTPUT:-}" ]; then

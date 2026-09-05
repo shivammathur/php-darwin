@@ -23,7 +23,10 @@ extension_dir=
 extensions=()
 extension_formulae=()
 extension_references=()
+extension_types=()
 cached_paths=()
+configured_extensions=$(bash "$script_dir/cached-extensions.sh" "$version" records) || \
+  php_darwin_die "could not read cached extensions for PHP $version"
 
 remove_extension_configs() {
   local config_dir="$brew_prefix/etc/php/$config_id/conf.d"
@@ -90,13 +93,14 @@ php_darwin_validate_ts "$ts"
 mkdir -p "$work_dir" || php_darwin_die 'could not create the extension build directory'
 : > "$paths_file" || php_darwin_die 'could not create the cached extension path list'
 
-while IFS= read -r extension; do
-  if [ -n "$extension" ]; then
+while IFS=$'\t' read -r extension extension_type; do
+  if [ -n "$extension" ] && [ -n "$extension_type" ]; then
     extensions+=("$extension")
     extension_formulae+=("$extension@$version")
     extension_references+=("$extension_tap/$extension@$version")
+    extension_types+=("$extension_type")
   fi
-done < <(bash "$script_dir/cached-extensions.sh" "$version")
+done <<< "$configured_extensions"
 [ "${#extension_formulae[@]}" -gt 0 ] || php_darwin_die "no cached extensions are configured for PHP $version"
 
 brew tap "$extension_tap" || php_darwin_die "could not tap $extension_tap"
@@ -158,8 +162,11 @@ case "$extension_dir" in "$brew_prefix"/*) ;; *)
   ;;
 esac
 
+extension_index=0
 for extension_formula in "${extension_formulae[@]}"; do
   extension=${extension_formula%@*}
+  extension_type=${extension_types[$extension_index]}
+  extension_index=$((extension_index + 1))
   source_module="$brew_prefix/opt/$extension_formula/$extension.so"
   cached_module="$extension_dir/$extension.so"
   [ -f "$source_module" ] && [ ! -L "$source_module" ] || \
@@ -174,11 +181,6 @@ for extension_formula in "${extension_formulae[@]}"; do
       php_darwin_die "could not cache $extension in the protected PHP extension directory"
   fi
   cached_paths+=("$cached_module")
-  if [ "$extension" = xdebug ]; then
-    extension_type=zend_extension
-  else
-    extension_type=extension
-  fi
   printf '%s\t%s\t%s\n' "$extension" "$extension_type" \
     "${cached_module#"$brew_prefix"/}" >> "$paths_file" || \
     php_darwin_die "could not record cached $extension"

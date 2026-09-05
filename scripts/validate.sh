@@ -7,6 +7,8 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 bash -n "$script_dir"/*.sh "$script_dir"/../templates/*.sh || php_darwin_die 'shell syntax validation failed'
 bash "$script_dir/test-job-control.sh" || php_darwin_die 'bounded job cleanup validation failed'
 bash "$script_dir/test-publish-run.sh" || php_darwin_die 'publish workflow-run validation failed'
+bash "$script_dir/test-extensions-source-hash.sh" || \
+  php_darwin_die 'cached extension source hash validation failed'
 
 for json_file in "$script_dir"/../conf/*.json "$script_dir"/../templates/*.json; do
   jq -e . "$json_file" >/dev/null || php_darwin_die "invalid JSON: $json_file"
@@ -119,20 +121,20 @@ jq -e '
   .tap_snapshot == "var/php-darwin/homebrew-php"
 ' "$script_dir/../conf/package.json" >/dev/null || php_darwin_die 'invalid package configuration'
 jq -e '
-  keys == ["architecture", "archive", "brew_prefix", "build", "created_at", "extensions", "formula",
+  keys == ["architecture", "archive", "brew_prefix", "build", "created_at", "extensions", "extensions_source_hash", "formula",
            "formula_sha256", "homebrew_extensions_commit", "homebrew_php_commit", "links",
            "macos_version", "minimum_macos", "packages",
            "pear_path", "pecl_extension", "php_semver", "php_src_commit", "php_version", "platform_key", "requested_formula",
            "runner_image", "schema", "source_hash", "state_paths", "tap_formulae", "tap_snapshot", "thread_safety"] and .schema == 1 and
-  .extensions == [] and .homebrew_extensions_commit == "" and
+  .extensions == [] and .extensions_source_hash == "" and .homebrew_extensions_commit == "" and
   .links == [] and .packages == [] and .state_paths == [] and .tap_formulae == [] and
   .pear_path == "" and .pecl_extension == "" and .php_src_commit == "" and
   .source_hash == "" and .tap_snapshot == ""
 ' "$script_dir/../templates/cache-metadata.json" >/dev/null || php_darwin_die 'invalid cache metadata template'
 jq -e '
-  keys == ["assets", "homebrew_extensions_commit", "homebrew_php_commit", "php_semver", "php_src_commit",
+  keys == ["assets", "extensions_source_hash", "homebrew_extensions_commit", "homebrew_php_commit", "php_semver", "php_src_commit",
            "php_version", "schema", "source_hash"] and
-  .schema == 1 and .assets == [] and .homebrew_extensions_commit == "" and
+  .schema == 1 and .assets == [] and .extensions_source_hash == "" and .homebrew_extensions_commit == "" and
   .homebrew_php_commit == "" and .php_semver == "" and
   .php_src_commit == "" and .php_version == "" and .source_hash == ""
 ' "$script_dir/../templates/release-manifest.json" >/dev/null || php_darwin_die 'invalid release manifest template'
@@ -145,6 +147,9 @@ jq -e '
   php_darwin_die 'PHP 8.5 cached extensions are invalid'
 [ "$(bash "$script_dir/cached-extensions.sh" 8.6 | tr '\n' ' ')" = 'xdebug pcov ' ] || \
   php_darwin_die 'PHP 8.6 cached extensions are invalid'
+[ "$(bash "$script_dir/cached-extensions.sh" 8.5 records | tr '\n' ' ')" = \
+  $'xdebug\tzend_extension pcov\textension ' ] || \
+  php_darwin_die 'PHP 8.5 cached extension types are invalid'
 
 [ "$(php_darwin_pear_path 8.5 php)" = 'share/pear' ] || php_darwin_die 'current PEAR path is invalid'
 [ "$(php_darwin_pear_path 8.4 'php@8.4')" = 'share/pear@8.4' ] || \
@@ -509,6 +514,7 @@ bash "$script_dir/filesystem-manifest.sh" "$fixture_prefix" "$fixture_snapshot_m
   php_darwin_die 'filesystem manifest captured temporary Homebrew pins'
 
 bash "$script_dir/test-publish.sh" || php_darwin_die 'publish validation failed'
+bash "$script_dir/test-update.sh" || php_darwin_die 'stable update validation failed'
 bash "$script_dir/test-update-nightly.sh" || php_darwin_die 'nightly update validation failed'
 bash "$script_dir/test-tap.sh" || php_darwin_die 'Homebrew tap snapshot validation failed'
 bash "$script_dir/test-matrix.sh" || php_darwin_die 'workflow matrix validation failed'

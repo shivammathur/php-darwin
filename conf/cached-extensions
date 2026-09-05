@@ -1,14 +1,14 @@
-# PHP minor followed by coverage modules copied from shivammathur/extensions.
-5.6 xdebug
-7.0 xdebug
-7.1 xdebug pcov
-7.2 xdebug pcov
-7.3 xdebug pcov
-7.4 xdebug pcov
-8.0 xdebug pcov
-8.1 xdebug pcov
-8.2 xdebug pcov
-8.3 xdebug pcov
-8.4 xdebug pcov
-8.5 xdebug pcov
-8.6 xdebug pcov
+# PHP minor followed by name:ini-directive modules copied from shivammathur/extensions.
+5.6 xdebug:zend_extension
+7.0 xdebug:zend_extension
+7.1 xdebug:zend_extension pcov:extension
+7.2 xdebug:zend_extension pcov:extension
+7.3 xdebug:zend_extension pcov:extension
+7.4 xdebug:zend_extension pcov:extension
+8.0 xdebug:zend_extension pcov:extension
+8.1 xdebug:zend_extension pcov:extension
+8.2 xdebug:zend_extension pcov:extension
+8.3 xdebug:zend_extension pcov:extension
+8.4 xdebug:zend_extension pcov:extension
+8.5 xdebug:zend_extension pcov:extension
+8.6 xdebug:zend_extension pcov:extension

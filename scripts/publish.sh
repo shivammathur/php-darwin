@@ -52,6 +52,7 @@ metadata_list="$work_dir/metadata.txt"
 matrix_keys="$work_dir/matrix-keys.txt"
 formulae="$work_dir/formulae.tsv"
 source_hashes="$work_dir/source-hashes.txt"
+extensions_source_hashes="$work_dir/extensions-source-hashes.txt"
 semvers="$work_dir/semvers.txt"
 php_src_commits="$work_dir/php-src-commits.txt"
 assets_jsonl="$work_dir/assets.jsonl"
@@ -86,6 +87,7 @@ fi
 : > "$matrix_keys"
 : > "$formulae"
 : > "$source_hashes"
+: > "$extensions_source_hashes"
 : > "$semvers"
 : > "$php_src_commits"
 : > "$assets_jsonl"
@@ -130,10 +132,12 @@ while IFS= read -r metadata; do
 
   php_darwin_validate_cache_metadata "$metadata" "$version" "$metadata_build" "$metadata_ts" \
     "$metadata_arch" "$expected_prefix" "$expected_minimum" "$source_commit" \
-    "$metadata_php_src_commit" '' '' '' '' "$extension_source_commit" >/dev/null || \
+    "$metadata_php_src_commit" '' '' '' '' "$extension_source_commit" \
+    "$(jq -er '.extensions_source_hash | select(type == "string" and test("^[0-9a-f]{64}$"))' "$metadata")" \
+    >/dev/null || \
     php_darwin_die "metadata validation failed: $metadata"
-  if ! cmp -s <(bash "$script_dir/cached-extensions.sh" "$version" | LC_ALL=C sort -u) \
-    <(jq -r '.extensions[].name' "$metadata" | LC_ALL=C sort -u); then
+  if ! cmp -s <(bash "$script_dir/cached-extensions.sh" "$version" records | LC_ALL=C sort -u) \
+    <(jq -r '.extensions[] | [.name,.type] | @tsv' "$metadata" | LC_ALL=C sort -u); then
     php_darwin_die "cached extension metadata is incomplete: $metadata"
   fi
   [ "$(basename "$metadata")" = "${expected_archive%.tar.zst}.json" ] || \
@@ -164,6 +168,8 @@ while IFS= read -r metadata; do
   jq -r '[.formula,.formula_sha256] | @tsv' "$metadata" >> "$formulae" || \
     php_darwin_die "could not read formula metadata from $metadata"
   jq -er '.source_hash' "$metadata" >> "$source_hashes" || php_darwin_die "could not read source hash from $metadata"
+  jq -er '.extensions_source_hash' "$metadata" >> "$extensions_source_hashes" || \
+    php_darwin_die "could not read extension source hash from $metadata"
   jq -er '.php_semver' "$metadata" >> "$semvers" || php_darwin_die "could not read PHP version from $metadata"
   [ "$metadata_php_src_commit" != - ] || metadata_php_src_commit=
   printf '%s\n' "$metadata_php_src_commit" >> "$php_src_commits" || \
@@ -195,6 +201,12 @@ LC_ALL=C sort -u "$source_hashes" -o "$source_hashes" || php_darwin_die 'could n
   php_darwin_die 'build variants disagree on the formula source hash'
 IFS= read -r source_hash < "$source_hashes"
 [ "$source_hash" = "$computed_source_hash" ] || php_darwin_die 'formula source hash does not match the metadata'
+LC_ALL=C sort -u "$extensions_source_hashes" -o "$extensions_source_hashes" || \
+  php_darwin_die 'could not sort cached extension source hashes'
+[ "$(awk 'END { print NR+0 }' "$extensions_source_hashes")" -eq 1 ] || \
+  php_darwin_die 'build variants disagree on the cached extension source hash'
+IFS= read -r extensions_source_hash < "$extensions_source_hashes" || \
+  php_darwin_die 'could not read the cached extension source hash'
 LC_ALL=C sort -u "$semvers" -o "$semvers" || php_darwin_die 'could not sort PHP semantic versions'
 [ "$(awk 'END { print NR+0 }' "$semvers")" -eq 1 ] || \
   php_darwin_die 'build variants disagree on the PHP semantic version'
@@ -213,9 +225,11 @@ tag="php-$version"
 manifest="$staging/$tag-manifest.json"
 installer="$staging/install.sh"
 jq --slurpfile assets "$assets_jsonl" --arg commit "$source_commit" \
-  --arg extensions_commit "$extension_source_commit" --arg php_semver "$semver" \
+  --arg extensions_commit "$extension_source_commit" --arg extensions_source_hash "$extensions_source_hash" \
+  --arg php_semver "$semver" \
   --arg php_src_commit "$php_src_commit" --arg php_version "$version" --arg source_hash "$source_hash" '
   .assets=($assets | sort_by(.build,.thread_safety,.architecture)) |
+  .extensions_source_hash=$extensions_source_hash |
   .homebrew_extensions_commit=$extensions_commit | .homebrew_php_commit=$commit |
   .php_semver=$php_semver | .php_src_commit=$php_src_commit |
   .php_version=$php_version |

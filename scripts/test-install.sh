@@ -201,10 +201,11 @@ reset_homebrew() {
       php_darwin_die 'could not reset Homebrew PHP after validation'
   fi
   while IFS=$'\t' read -r extension extension_type extension_path; do
-    case "$extension:$extension_type:$extension_path" in
-      xdebug:zend_extension:*/xdebug.so|pcov:extension:*/pcov.so) ;;
-      *) php_darwin_die 'cached extension reset path is invalid' ;;
-    esac
+    [[ "$extension" =~ ^[A-Za-z0-9_]+$ ]] && \
+      [[ "$extension_type" =~ ^(extension|zend_extension)$ ]] && \
+      [[ "$extension_path" =~ ^(Cellar|lib)/ ]] && \
+      [ "${extension_path##*/}" = "$extension.so" ] || \
+      php_darwin_die 'cached extension reset path is invalid'
     [ -e "$brew_prefix/$extension_path" ] || [ -L "$brew_prefix/$extension_path" ] || continue
     if [ -w "$brew_prefix/${extension_path%/*}" ]; then
       rm -f "$brew_prefix/$extension_path" || php_darwin_die "could not reset cached $extension"

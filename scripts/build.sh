@@ -239,6 +239,9 @@ package_cache() {
   local extension
   local extension_parent
   local extension_path
+  local extensions_source_hash
+  local extension_tap
+  local extension_tap_path
   local extension_type
   local formula_file
   local formula_sha256
@@ -319,6 +322,15 @@ package_cache() {
   source_hash=$(HOMEBREW_PHP_PATH="$tap_path" bash "$script_dir/source-hash.sh" "$version") || \
     php_darwin_die 'could not hash the complete PHP formula set'
   [[ "$source_hash" =~ ^[0-9a-f]{64}$ ]] || php_darwin_die 'invalid PHP formula source hash'
+  extension_tap=$(php_darwin_package_config extension_tap) || exit 1
+  extension_tap_path=$(brew --repository "$extension_tap") || \
+    php_darwin_die "could not resolve the $extension_tap repository"
+  extensions_source_hash=$(HOMEBREW_EXTENSIONS_PATH="$extension_tap_path" \
+    HOMEBREW_EXTENSIONS_REF="$extension_source_commit" \
+    bash "$script_dir/extensions-source-hash.sh" "$version") || \
+    php_darwin_die 'could not hash the cached extension sources'
+  [[ "$extensions_source_hash" =~ ^[0-9a-f]{64}$ ]] || \
+    php_darwin_die 'invalid cached extension source hash'
   php_src_commit=
   if [ "$(php_darwin_version_channel "$version")" = nightly ]; then
     php_src_commit=$(HOMEBREW_PHP_PATH="$tap_path" bash "$script_dir/php-src-commit.sh" "$version") || \
@@ -329,9 +341,7 @@ package_cache() {
   : > "$archive_paths"
   [ -s "$cached_extensions_file" ] || php_darwin_die 'cached coverage extensions are missing'
   awk -F '\t' '
-    NF != 3 || $1 !~ /^(xdebug|pcov)$/ ||
-      ($1 == "xdebug" && $2 != "zend_extension") ||
-      ($1 == "pcov" && $2 != "extension") ||
+    NF != 3 || $1 !~ /^[A-Za-z0-9_]+$/ || $2 !~ /^(extension|zend_extension)$/ ||
       $3 !~ /^(Cellar|lib)\// || $3 ~ /(^|\/)\.\.($|\/)/ ||
       $3 !~ ("/" $1 "\\.so$") { exit 1 }
   ' "$cached_extensions_file" || php_darwin_die 'cached extension paths are invalid'
@@ -562,6 +572,7 @@ package_cache() {
     --arg created_at "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
     --arg formula "$formula" \
     --arg formula_sha256 "$formula_sha256" \
+    --arg extensions_source_hash "$extensions_source_hash" \
     --arg homebrew_extensions_commit "$extension_source_commit" \
     --arg homebrew_php_commit "$tap_commit" \
     --slurpfile extensions "$cached_extensions_json" \
@@ -583,7 +594,8 @@ package_cache() {
     --arg tap_snapshot "$tap_snapshot" \
     --arg thread_safety "$ts" \
     '.archive=$archive | .architecture=$architecture | .brew_prefix=$brew_prefix | .build=$build |
-     .created_at=$created_at | .formula=$formula | .formula_sha256=$formula_sha256 |
+     .created_at=$created_at | .extensions_source_hash=$extensions_source_hash |
+     .formula=$formula | .formula_sha256=$formula_sha256 |
      .extensions=$extensions[0] | .homebrew_extensions_commit=$homebrew_extensions_commit |
      .homebrew_php_commit=$homebrew_php_commit | .links=$links[0] | .macos_version=$macos_version |
      .minimum_macos=$minimum_macos | .packages=$packages[0] | .pear_path=$pear_path |
@@ -635,6 +647,9 @@ verify_cache() {
   local checksum
   local contents
   local embedded_metadata
+  local extension_tap
+  local extension_tap_path
+  local expected_extensions_source_hash
   local expected_php_src_commit
   local invalid_path
   local invalid_managed_path
@@ -661,14 +676,21 @@ verify_cache() {
     expected_php_src_commit=$(HOMEBREW_PHP_PATH="$tap_path" bash "$script_dir/php-src-commit.sh" "$version") || \
       php_darwin_die 'could not resolve the expected nightly PHP source commit'
   fi
+  extension_tap=$(php_darwin_package_config extension_tap) || exit 1
+  extension_tap_path=$(brew --repository "$extension_tap") || \
+    php_darwin_die "could not resolve the $extension_tap repository"
+  expected_extensions_source_hash=$(HOMEBREW_EXTENSIONS_PATH="$extension_tap_path" \
+    HOMEBREW_EXTENSIONS_REF="$extension_source_commit" \
+    bash "$script_dir/extensions-source-hash.sh" "$version") || \
+    php_darwin_die 'could not resolve the expected cached extension source hash'
   macos_major=$(sw_vers -productVersion) || php_darwin_die 'could not determine the macOS version'
   macos_major=${macos_major%%.*}
   php_darwin_validate_cache_metadata "$metadata" "$version" "$build" "$ts" "$arch" \
     "$brew_prefix" "$macos_major" "$source_commit" "$expected_php_src_commit" '' '' '' '' \
-    "$extension_source_commit" >/dev/null || \
+    "$extension_source_commit" "$expected_extensions_source_hash" >/dev/null || \
     php_darwin_die 'archive metadata validation failed'
-  if ! cmp -s <(bash "$script_dir/cached-extensions.sh" "$version" | LC_ALL=C sort -u) \
-    <(jq -r '.extensions[].name' "$metadata" | LC_ALL=C sort -u); then
+  if ! cmp -s <(bash "$script_dir/cached-extensions.sh" "$version" records | LC_ALL=C sort -u) \
+    <(jq -r '.extensions[] | [.name,.type] | @tsv' "$metadata" | LC_ALL=C sort -u); then
     php_darwin_die 'archive metadata omitted a configured cached extension'
   fi
   zstd -t "$output" || php_darwin_die 'archive integrity check failed'
@@ -701,9 +723,11 @@ verify_cache() {
   ' "$managed_paths" "$contents") || php_darwin_die 'could not validate managed archive paths'
   [ -z "$invalid_managed_path" ] || \
     php_darwin_die "archive contains an unmanaged path: $invalid_managed_path"
-  if grep -Eq '^etc/php/[^/]+/conf\.d/[^/]*(xdebug|pcov)[^/]*\.ini$' "$contents"; then
-    php_darwin_die 'archive enables a cached coverage extension by default'
-  fi
+  while IFS= read -r extension; do
+    if grep -Eq "^etc/php/[^/]+/conf\\.d/[^/]*${extension}[^/]*\\.ini$" "$contents"; then
+      php_darwin_die "archive enables cached $extension by default"
+    fi
+  done < <(bash "$script_dir/cached-extensions.sh" "$version")
   grep -q '^Cellar/' "$contents" || php_darwin_die 'archive does not contain Homebrew kegs'
   grep -Fxq "opt/$formula" "$contents" || php_darwin_die 'archive does not contain the PHP opt link'
   grep -Fxq "$(php_darwin_metadata_path "$asset")" "$contents" || \
@@ -751,10 +775,11 @@ reset_homebrew() {
   brew services stop "$formula" >/dev/null 2>&1 || true
   if [ -f "$cached_extensions_file" ]; then
     while IFS=$'\t' read -r extension extension_type extension_path; do
-      case "$extension:$extension_type:$extension_path" in
-        xdebug:zend_extension:*/xdebug.so|pcov:extension:*/pcov.so) ;;
-        *) php_darwin_die 'cached extension reset path is invalid' ;;
-      esac
+      [[ "$extension" =~ ^[A-Za-z0-9_]+$ ]] && \
+        [[ "$extension_type" =~ ^(extension|zend_extension)$ ]] && \
+        [[ "$extension_path" =~ ^(Cellar|lib)/ ]] && \
+        [ "${extension_path##*/}" = "$extension.so" ] || \
+        php_darwin_die 'cached extension reset path is invalid'
       if [ -w "$brew_prefix/${extension_path%/*}" ]; then
         rm -f "$brew_prefix/$extension_path" || php_darwin_die "could not reset cached $extension"
       else

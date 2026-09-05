@@ -629,6 +629,8 @@ php_darwin_validate_release_manifest() {
     (.homebrew_php_commit | type == "string" and test("^[0-9a-f]{40}$")) and
     (((.homebrew_extensions_commit // "") == "") or
       (.homebrew_extensions_commit | type == "string" and test("^[0-9a-f]{40}$"))) and
+    (((.extensions_source_hash // "") == "") or
+      (.extensions_source_hash | type == "string" and test("^[0-9a-f]{64}$"))) and
     (.source_hash | type == "string" and test("^[0-9a-f]{64}$")) and
     (.php_semver | type == "string" and startswith($version + ".") and
       test("^[0-9]+\\.[0-9]+\\.[0-9]+(alpha[0-9]+|beta[0-9]+|RC[0-9]+)?$")) and
@@ -692,6 +694,7 @@ php_darwin_validate_cache_metadata() {
   local configured_minimum_macos=${12:-}
   local configured_platform_key=${13:-}
   local expected_extensions_commit=${14:-}
+  local expected_extensions_source_hash=${15:-}
   local asset
   local channel
   local config_id
@@ -724,6 +727,7 @@ php_darwin_validate_cache_metadata() {
   jq -er --arg version "$version" --arg channel "$channel" --arg build "$build" --arg ts "$ts" \
     --arg arch "$arch" --arg brew_prefix "$brew_prefix" --arg asset "$asset" --arg formula "$formula" \
     --arg expected_commit "$expected_commit" --arg expected_extensions_commit "$expected_extensions_commit" \
+    --arg expected_extensions_source_hash "$expected_extensions_source_hash" \
     --arg expected_php_src_commit "$expected_php_src_commit" \
     --arg pear_path "$pear_path" --arg pear_conf "etc/php/$config_id/pear.conf" \
     --arg platform_key "$platform_key" --arg requested_formula "$requested_formula" \
@@ -742,6 +746,10 @@ php_darwin_validate_cache_metadata() {
       (($extensions_commit == "" and $expected_extensions_commit == "") or
        ($extensions_commit | type == "string" and test("^[0-9a-f]{40}$") and
         ($expected_extensions_commit == "" or $extensions_commit == $expected_extensions_commit)))) and
+    ((.extensions_source_hash // "") as $extensions_hash |
+      (($extensions_hash == "" and $expected_extensions_source_hash == "") or
+       ($extensions_hash | type == "string" and test("^[0-9a-f]{64}$") and
+        ($expected_extensions_source_hash == "" or $extensions_hash == $expected_extensions_source_hash)))) and
     (.formula_sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
     (.source_hash | type == "string" and test("^[0-9a-f]{64}$")) and
     (has("php_src_commit") and if $channel == "nightly" then
@@ -764,8 +772,8 @@ php_darwin_validate_cache_metadata() {
     ([((.extensions // [])[].path)] | unique | length) == ((.extensions // []) | length) and
     all((.extensions // [])[];
       . as $extension |
-      ($extension.name == "xdebug" or $extension.name == "pcov") and
-      ($extension.type == (if $extension.name == "xdebug" then "zend_extension" else "extension" end)) and
+      ($extension.name | type == "string" and test("^[A-Za-z0-9_]+$")) and
+      ($extension.type == "extension" or $extension.type == "zend_extension") and
       ($extension.path | type == "string" and test("^(Cellar|lib)/") and
         (test("(^|/)\\.\\.(/|$)") | not) and test("^[^\\\\\\r\\n\\t]+$") and
         endswith("/" + $extension.name + ".so"))) and
