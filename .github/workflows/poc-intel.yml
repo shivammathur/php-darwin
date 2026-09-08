@@ -8,9 +8,6 @@ on:
         description: Existing workflow run whose Intel build artifact should be reused
         required: false
         type: string
-  push:
-    branches:
-      - feature/intel-homebrew
 
 permissions:
   actions: read
@@ -25,7 +22,7 @@ env:
 jobs:
   source:
     name: Pin formula sources
-    if: ${{ inputs.artifact_run_id == '' && github.event_name != 'push' }}
+    if: ${{ inputs.artifact_run_id == '' }}
     runs-on: ubuntu-latest
     outputs:
       extensions: ${{ steps.extensions.outputs.commit }}
@@ -46,7 +43,7 @@ jobs:
   build-intel:
     name: Build and cache PHP 8.5 with Homebrew on Intel
     needs: source
-    if: ${{ inputs.artifact_run_id == '' && github.event_name != 'push' }}
+    if: ${{ inputs.artifact_run_id == '' }}
     runs-on: macos-15-intel
     timeout-minutes: 240
     env:
@@ -113,7 +110,7 @@ jobs:
   install-intel:
     name: Install and validate the Intel Homebrew cache
     needs: build-intel
-    if: ${{ always() && (needs.build-intel.result == 'success' || inputs.artifact_run_id != '' || github.event_name == 'push') }}
+    if: ${{ always() && (needs.build-intel.result == 'success' || inputs.artifact_run_id != '') }}
     runs-on: macos-15-intel
     timeout-minutes: 90
     env:
@@ -131,7 +128,7 @@ jobs:
           github-token: ${{ github.token }}
           name: php-8.5-intel-homebrew-poc
           path: ${{ runner.temp }}/php-darwin-intel
-          run-id: ${{ inputs.artifact_run_id || (github.event_name == 'push' && '34219423931') || github.run_id }}
+          run-id: ${{ inputs.artifact_run_id || github.run_id }}
       - name: Prepare a fresh Homebrew installation state
         env: &intel-test
           ARCHIVE_DIR: ${{ runner.temp }}/php-darwin-intel
@@ -193,7 +190,7 @@ jobs:
           github-token: ${{ github.token }}
           name: php-8.5-intel-homebrew-poc
           path: builds
-          run-id: ${{ inputs.artifact_run_id || (github.event_name == 'push' && '34219423931') || github.run_id }}
+          run-id: ${{ inputs.artifact_run_id || github.run_id }}
       - name: Publish using the GitHub REST API
         env:
           GITHUB_TOKEN: ${{ github.token }}
