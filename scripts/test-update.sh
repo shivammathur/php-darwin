@@ -53,6 +53,10 @@ printf '200'
 EOF
 cat > "$fake_bin/gh" <<'EOF'
 #!/usr/bin/env bash
+if [ "$1" = api ]; then
+  printf '%s\n' "${PHP_DARWIN_TEST_ACTIVE_RUNS:-}"
+  exit 0
+fi
 printf '%s\n' "$*" >> "${PHP_DARWIN_TEST_GH_LOG:?}"
 EOF
 chmod 0755 "$fake_bin/curl" "$fake_bin/gh" || php_darwin_die 'could not prepare stable update fixtures'
@@ -85,10 +89,12 @@ write_manifest() {
 run_gate() {
   local expected_dispatches=$1
   local expected_architectures=${2:-}
+  local active_runs=${3:-}
 
   : > "$gh_log" || php_darwin_die 'could not reset the stable update log'
   HOMEBREW_EXTENSIONS_PATH="$extensions_path" HOMEBREW_PHP_PATH="$php_path" ONLY_VERSION=8.5 \
     PHP_DARWIN_TEST_GH_LOG="$gh_log" PHP_DARWIN_TEST_MANIFEST="$manifest" \
+    PHP_DARWIN_TEST_ACTIVE_RUNS="$active_runs" \
     GITHUB_REF_NAME=main GITHUB_REPOSITORY=shivammathur/php-darwin PATH="$fake_bin:$PATH" \
     bash "$script_dir/update.sh" >/dev/null || php_darwin_die 'stable update gate failed'
   [ "$(awk 'END { print NR+0 }' "$gh_log")" -eq "$expected_dispatches" ] || \
@@ -110,6 +116,7 @@ run_gate 0
 jq '.assets |= map(select(.architecture == "arm64"))' "$manifest" > "$manifest.arm" || \
   php_darwin_die 'could not write the ARM64-only stable manifest fixture'
 mv "$manifest.arm" "$manifest" || php_darwin_die 'could not install the ARM64-only stable manifest fixture'
+run_gate 0 '' $'in_progress\tCache stable PHP 8.5'
 run_gate 1 x86_64
 grep -Fq -- '-f homebrew-php-commit=89abcdef0123456789abcdef0123456789abcdef' "$gh_log" || \
   php_darwin_die 'stable platform completion did not pin the published homebrew-php commit'

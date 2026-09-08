@@ -17,6 +17,7 @@ brew_prefix=$(brew --prefix) || php_darwin_die 'could not resolve the Homebrew p
 work_dir="${RUNNER_TEMP:-/tmp}/php-darwin-build"
 paths_file="$work_dir/cached-extension-paths.txt"
 abstract_backup="$work_dir/abstract-php-extension.rb"
+abstract_patched="$work_dir/abstract-php-extension.patched.rb"
 abstract_file=
 extension_tap_path=
 extension_dir=
@@ -125,6 +126,23 @@ if [ -n "$suffix" ]; then
     -e "s|php@#{@php_version}\"|php@#{@php_version}$suffix\"|" \
     -e "s|etc / \"php\" / php_version / \"conf.d\"|etc / \"php\" / \"#{php_version}$suffix\" / \"conf.d\"|" \
     "$abstract_file" || php_darwin_die 'could not select the PHP build variant for extensions'
+  case "$version" in
+    5.6|7.*)
+      if ! grep -Fq 'ENV["ac_cv_prog_cc_c23"] = "no"' "$abstract_file"; then
+        awk '
+          { print }
+          /^[[:space:]]*def safe_phpize$/ {
+            print "    ENV[\"ac_cv_prog_cc_c23\"] = \"no\""
+            patched=1
+          }
+          END { if (!patched) exit 1 }
+        ' "$abstract_file" > "$abstract_patched" || \
+          php_darwin_die 'could not select a pre-C23 compiler mode for legacy extensions'
+        mv "$abstract_patched" "$abstract_file" || \
+          php_darwin_die 'could not apply the legacy extension compiler mode'
+      fi
+      ;;
+  esac
   if ! grep -Fq "php@#{php_version}$suffix\"" "$abstract_file" || \
     ! grep -Fq "php@#{@php_version}$suffix\"" "$abstract_file" || \
     ! grep -Fq "\"#{php_version}$suffix\" / \"conf.d\"" "$abstract_file"; then

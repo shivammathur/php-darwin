@@ -6,9 +6,17 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 only_version=${ONLY_VERSION:-}
 release_repository=$(php_darwin_package_config release_repository)
+workflow_repository=${GITHUB_REPOSITORY:-shivammathur/php-darwin}
+workflow_ref=${GITHUB_REF_NAME:-main}
 work_dir=$(mktemp -d "${RUNNER_TEMP:-/tmp}/php-darwin-update.XXXXXX") || \
   php_darwin_die 'could not create the release update directory'
 trap 'rm -rf "$work_dir"' EXIT
+
+active_runs=$(gh api --method GET \
+  "repos/$workflow_repository/actions/workflows/cache-stable.yml/runs" \
+  -f branch="$workflow_ref" -F per_page=100 \
+  --jq '.workflow_runs[] | [.status,.display_title] | @tsv') || \
+  php_darwin_die 'could not inspect active stable cache workflows'
 
 if [ -n "$only_version" ]; then
   php_darwin_validate_channel "$only_version" stable
@@ -79,7 +87,12 @@ for version in "${version_values[@]}"; do
   else
     printf 'Dispatching PHP %s: no valid release manifest, current source %s\n' "$version" "$current"
   fi
-  gh workflow run cache-stable.yml --repo "${GITHUB_REPOSITORY:-shivammathur/php-darwin}" \
-    --ref "${GITHUB_REF_NAME:-main}" -f php-version="$version" -f builds='debug release' \
+  if awk -F '\t' -v title="Cache stable PHP $version" \
+    '$1 != "completed" && $2 == title { found=1 } END { exit !found }' <<< "$active_runs"; then
+    printf 'PHP %s already has an active cache workflow; skipping duplicate dispatch\n' "$version"
+    continue
+  fi
+  gh workflow run cache-stable.yml --repo "$workflow_repository" \
+    --ref "$workflow_ref" -f php-version="$version" -f builds='debug release' \
     -f ts='nts zts' -f architectures="$architectures" "${pinned_arguments[@]}" -f publish=true || exit 1
 done
