@@ -8,9 +8,7 @@ version=${PHP_VERSION:-${1:-}}
 php_darwin_validate_version "$version"
 arch=$(php_darwin_normalize_arch "$(uname -m)") || exit 1
 asset=$(php_darwin_asset "$version" release nts "$arch") || exit 1
-brew_prefix=$(brew --prefix) || php_darwin_die 'could not resolve the Homebrew prefix'
 formula=$(php_darwin_formula "$version" release nts) || exit 1
-metadata="$brew_prefix/$(php_darwin_metadata_path "$asset")"
 
 # shellcheck disable=SC2016
 php -r '
@@ -57,49 +55,52 @@ fi
 
 if [ "${PHP_DARWIN_REQUIRE_CACHE:-false}" = true ]; then
   baseline=${PHP_DARWIN_E2E_BASELINE:-${RUNNER_TEMP:?}/php-darwin-e2e-formulae.txt}
+  started_at=${PHP_DARWIN_E2E_STARTED_AT:-${RUNNER_TEMP:?}/php-darwin-e2e-started-at.txt}
   installed_after=${RUNNER_TEMP:?}/php-darwin-e2e-formulae-after.txt
-  cache_packages=${RUNNER_TEMP:?}/php-darwin-e2e-cache-packages.txt
   new_formulae=${RUNNER_TEMP:?}/php-darwin-e2e-new-formulae.txt
-  extra_formulae=${RUNNER_TEMP:?}/php-darwin-e2e-extra-formulae.txt
-  extra_info=${RUNNER_TEMP:?}/php-darwin-e2e-extra-formulae.json
+  new_info=${RUNNER_TEMP:?}/php-darwin-e2e-new-formulae.json
   pecl_packages=${RUNNER_TEMP:?}/php-darwin-e2e-pecl-packages.txt
+  release_manifest=${RUNNER_TEMP:?}/php-darwin-e2e-release-manifest.json
+  tap_path=$(brew --repository "$tap") || php_darwin_die "could not resolve the installed $tap repository"
+  snapshot_commit=$(git -C "$tap_path" config --get php-darwin.snapshot-commit 2>/dev/null) || \
+    php_darwin_die 'setup-php did not install a php-darwin tap snapshot'
+  tap_commit=$(git -C "$tap_path" rev-parse HEAD) || \
+    php_darwin_die 'could not resolve the installed php-darwin tap snapshot'
 
   [ -s "$baseline" ] || php_darwin_die 'the E2E Homebrew baseline is missing'
-  [ -f "$metadata" ] && [ ! -L "$metadata" ] || \
-    php_darwin_die 'setup-php did not install php-darwin cache metadata'
+  [[ "$snapshot_commit" =~ ^[0-9a-f]{40}$ ]] && [ "$snapshot_commit" = "$tap_commit" ] || \
+    php_darwin_die 'the installed Homebrew tap is not the php-darwin cache snapshot'
+  [[ "$(cat "$started_at")" =~ ^[0-9]+$ ]] || php_darwin_die 'the E2E start time is invalid'
+  release_repository=$(php_darwin_package_config release_repository) || \
+    php_darwin_die 'could not read the release repository configuration'
+  manifest_status=$(php_darwin_fetch_release_manifest "$release_repository" "$version" "$release_manifest") || \
+    php_darwin_die 'could not request the published release manifest'
+  [ "$manifest_status" = 200 ] || php_darwin_die "could not fetch the published release manifest (HTTP $manifest_status)"
+  manifest_values=$(php_darwin_validate_release_manifest "$release_manifest" "$version" stable "$asset") || \
+    php_darwin_die 'the published release manifest does not match the E2E cache'
+  IFS=$'\t' read -r _ manifest_commit _ expected_semver _ _ _ <<< "$manifest_values" || \
+    php_darwin_die 'could not read the published release manifest'
+  [ "$tap_commit" = "$manifest_commit" ] || \
+    php_darwin_die 'the installed tap snapshot does not match the published cache'
   actual_semver=$(php -r 'echo PHP_VERSION;') || php_darwin_die 'PHP could not report its version'
-  metadata_values=$(jq -er --arg version "$version" --arg arch "$arch" --arg asset "$asset" \
-    --arg formula "$formula" '
-      select(.schema == 1 and .php_version == $version and .architecture == $arch and
-        .archive == $asset and .build == "release" and .thread_safety == "nts" and
-        .formula == $formula and (.php_semver | type == "string")) |
-      [.php_semver, (.packages[] | select(.name == $formula) | .opt_target)] | @tsv
-    ' "$metadata") || php_darwin_die 'installed php-darwin metadata does not match the E2E request'
-  IFS=$'\t' read -r metadata_semver metadata_opt_target <<< "$metadata_values" || \
-    php_darwin_die 'could not read installed php-darwin metadata'
-  [ "$actual_semver" = "$metadata_semver" ] || \
-    php_darwin_die "setup-php used PHP $actual_semver instead of cached PHP $metadata_semver"
-  [ "$(readlink "$brew_prefix/opt/$formula")" = "$metadata_opt_target" ] || \
-    php_darwin_die 'the active PHP keg does not match the installed cache metadata'
+  [ "$actual_semver" = "$expected_semver" ] || \
+    php_darwin_die "setup-php used PHP $actual_semver instead of cached PHP $expected_semver"
 
   brew list --formula | LC_ALL=C sort -u > "$installed_after" || \
     php_darwin_die 'could not list Homebrew formulae after setup-php'
   LC_ALL=C comm -13 "$baseline" "$installed_after" > "$new_formulae" || \
     php_darwin_die 'could not identify formulae added during the E2E install'
-  jq -er '.packages[].name' "$metadata" | LC_ALL=C sort -u > "$cache_packages" || \
-    php_darwin_die 'could not read the cached Homebrew package list'
-  LC_ALL=C comm -23 "$new_formulae" "$cache_packages" > "$extra_formulae" || \
-    php_darwin_die 'could not identify formulae installed outside the PHP cache'
-  if [ -s "$extra_formulae" ]; then
-    extra_formula_names=()
-    while IFS= read -r extra_formula; do
-      [ -n "$extra_formula" ] && extra_formula_names+=("$extra_formula")
-    done < "$extra_formulae"
-    brew info --installed --json=v2 "${extra_formula_names[@]}" > "$extra_info" || \
-      php_darwin_die 'could not inspect formulae installed outside the PHP cache'
-    jq -e 'all(.formulae[]; (.installed | length) > 0 and all(.installed[]; .poured_from_bottle == true))' \
-      "$extra_info" >/dev/null || \
-      php_darwin_die 'setup-php built a formula from source outside the PHP cache'
+  if [ -s "$new_formulae" ]; then
+    new_formula_names=()
+    while IFS= read -r new_formula; do
+      [ -n "$new_formula" ] && new_formula_names+=("$new_formula")
+    done < "$new_formulae"
+    brew info --installed --json=v2 "${new_formula_names[@]}" > "$new_info" || \
+      php_darwin_die 'could not inspect formulae added during the E2E install'
+    jq -e --argjson started_at "$(cat "$started_at")" '
+      all(.formulae[].installed[] | select(.time >= $started_at); .poured_from_bottle == true)
+    ' "$new_info" >/dev/null || \
+      php_darwin_die 'setup-php built a formula from source outside the PHP cache build'
   fi
 
   pecl list > "$pecl_packages" || php_darwin_die 'PECL could not list installed packages'
@@ -109,7 +110,7 @@ if [ "${PHP_DARWIN_REQUIRE_CACHE:-false}" = true ]; then
       "$pecl_packages"; then
       php_darwin_die "setup-php rebuilt cached $cached_extension with PECL"
     fi
-  done < <(jq -r '(.extensions // [])[].name' "$metadata")
+  done < <(bash "$script_dir/cached-extensions.sh" "$version")
 fi
 
 printf 'Verified php-darwin cache installation for PHP %s' "$version"
