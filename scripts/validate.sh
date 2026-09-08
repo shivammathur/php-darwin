@@ -524,7 +524,8 @@ bash "$script_dir/filesystem-manifest.sh" "$fixture_prefix" "$fixture_snapshot_m
 ! grep -Fq 'var/homebrew/pinned' "$fixture_snapshot_manifest" || \
   php_darwin_die 'filesystem manifest captured temporary Homebrew pins'
 
-bash "$script_dir/test-publish.sh" || php_darwin_die 'publish validation failed'
+HOMEBREW_EXTENSIONS_COMMIT='' HOMEBREW_PHP_COMMIT='' \
+  bash "$script_dir/test-publish.sh" || php_darwin_die 'publish validation failed'
 bash "$script_dir/test-update.sh" || php_darwin_die 'stable update validation failed'
 bash "$script_dir/test-update-nightly.sh" || php_darwin_die 'nightly update validation failed'
 bash "$script_dir/test-tap.sh" || php_darwin_die 'Homebrew tap snapshot validation failed'

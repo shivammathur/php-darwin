@@ -55,7 +55,8 @@ HOMEBREW_PHP_COMMIT=0123456789abcdef0123456789abcdef01234567 \
 partial_build=$(sed -n 's/^build-matrix=//p' "$partial_output")
 jq -e '.include == [{php:"8.5",arch:"x86_64",runner:"macos-15-intel"}]' \
   <<< "$partial_build" >/dev/null || php_darwin_die 'partial-platform publish build matrix is invalid'
-if GITHUB_OUTPUT="$work_dir/invalid-partial.txt" PHP_VERSION=8.5 CHANNEL=stable \
+if HOMEBREW_PHP_COMMIT='' HOMEBREW_EXTENSIONS_COMMIT='' \
+  GITHUB_OUTPUT="$work_dir/invalid-partial.txt" PHP_VERSION=8.5 CHANNEL=stable \
   BUILDS='debug release' TS='nts zts' ARCHITECTURES=x86_64 PUBLISH=true \
   bash "$script_dir/get-matrix.sh" >/dev/null 2>&1; then
   php_darwin_die 'partial-platform publishing was accepted without pinned release commits'
