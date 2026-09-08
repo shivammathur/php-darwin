@@ -21,6 +21,14 @@ on:
         default: arm64 x86_64
         required: false
         type: string
+      homebrew-php-commit:
+        default: ''
+        required: false
+        type: string
+      homebrew-extensions-commit:
+        default: ''
+        required: false
+        type: string
       publish:
         default: true
         required: false
@@ -52,6 +60,8 @@ jobs:
           ARCHITECTURES: ${{ inputs.architectures }}
           BUILDS: ${{ inputs.builds }}
           CHANNEL: ${{ inputs.channel }}
+          HOMEBREW_EXTENSIONS_COMMIT: ${{ inputs.homebrew-extensions-commit }}
+          HOMEBREW_PHP_COMMIT: ${{ inputs.homebrew-php-commit }}
           PHP_VERSION: ${{ inputs.php-version }}
           PUBLISH: ${{ inputs.publish }}
           TS: ${{ inputs.ts }}
@@ -61,10 +71,14 @@ jobs:
 
       - name: Pin the homebrew-php source commit
         id: source
+        env:
+          PINNED_COMMIT: ${{ inputs.homebrew-php-commit }}
         run: bash scripts/source-commit.sh
 
       - name: Pin the homebrew-extensions source commit
         id: extensions-source
+        env:
+          PINNED_COMMIT: ${{ inputs.homebrew-extensions-commit }}
         run: bash scripts/source-commit.sh extensions
 
   build:
@@ -393,6 +407,24 @@ jobs:
         with:
           pattern: php-${{ inputs.php-version }}-*
           path: builds
+
+      - name: Restore published ARM caches not rebuilt in this run
+        if: ${{ !contains(inputs.architectures, 'arm64') }}
+        env:
+          ARCH: arm64
+          HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.matrix.outputs.extensions-source-commit }}
+          HOMEBREW_PHP_COMMIT: ${{ needs.matrix.outputs.source-commit }}
+          PHP_VERSION: ${{ inputs.php-version }}
+        run: bash scripts/restore-published-architecture.sh builds
+
+      - name: Restore published Intel caches not rebuilt in this run
+        if: ${{ !contains(inputs.architectures, 'x86_64') }}
+        env:
+          ARCH: x86_64
+          HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.matrix.outputs.extensions-source-commit }}
+          HOMEBREW_PHP_COMMIT: ${{ needs.matrix.outputs.source-commit }}
+          PHP_VERSION: ${{ inputs.php-version }}
+        run: bash scripts/restore-published-architecture.sh builds
 
       - name: Replace versioned release assets
         env:

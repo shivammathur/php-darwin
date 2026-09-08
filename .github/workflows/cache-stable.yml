@@ -24,6 +24,14 @@ on:
         default: arm64 x86_64
         required: false
         type: string
+      homebrew-php-commit:
+        description: Existing release commit used only when completing a platform
+        required: false
+        type: string
+      homebrew-extensions-commit:
+        description: Existing extension release commit used only when completing a platform
+        required: false
+        type: string
       publish:
         description: Publish validated caches to the PHP release
         default: true
@@ -49,4 +57,6 @@ jobs:
       builds: ${{ inputs.builds || 'debug release' }}
       ts: ${{ inputs.ts || 'nts zts' }}
       architectures: ${{ inputs.architectures || 'arm64 x86_64' }}
+      homebrew-php-commit: ${{ inputs.homebrew-php-commit || '' }}
+      homebrew-extensions-commit: ${{ inputs.homebrew-extensions-commit || '' }}
       publish: ${{ inputs.publish }}

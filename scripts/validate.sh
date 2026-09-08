@@ -9,6 +9,15 @@ bash "$script_dir/test-job-control.sh" || php_darwin_die 'bounded job cleanup va
 bash "$script_dir/test-publish-run.sh" || php_darwin_die 'publish workflow-run validation failed'
 bash "$script_dir/test-extensions-source-hash.sh" || \
   php_darwin_die 'cached extension source hash validation failed'
+bash "$script_dir/test-restore-published.sh" || \
+  php_darwin_die 'published architecture restore validation failed'
+pinned_source_output=$(PINNED_COMMIT=0123456789abcdef0123456789abcdef01234567 \
+  bash "$script_dir/source-commit.sh") || php_darwin_die 'pinned source commit validation failed'
+[ "$pinned_source_output" = 0123456789abcdef0123456789abcdef01234567 ] || \
+  php_darwin_die 'pinned source commit was not preserved'
+if PINNED_COMMIT=invalid bash "$script_dir/source-commit.sh" >/dev/null 2>&1; then
+  php_darwin_die 'invalid pinned source commit was accepted'
+fi
 
 for json_file in "$script_dir"/../conf/*.json "$script_dir"/../templates/*.json; do
   jq -e . "$json_file" >/dev/null || php_darwin_die "invalid JSON: $json_file"

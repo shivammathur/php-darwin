@@ -31,27 +31,48 @@ for version in "${version_values[@]}"; do
   manifest="$work_dir/php-$version-manifest.json"
   published=
   published_extensions=
+  manifest_current_platforms=false
+  manifest_source_commit=
+  manifest_extension_commit=
   if ! http_status=$(php_darwin_fetch_release_manifest "$release_repository" "$version" "$manifest"); then
     php_darwin_die "could not request the PHP $version release manifest"
   fi
   case "$http_status" in
     200)
-      if php_darwin_validate_release_manifest "$manifest" "$version" stable 2>/dev/null && \
-        php_darwin_release_manifest_has_current_platforms "$manifest"; then
+      if php_darwin_validate_release_manifest "$manifest" "$version" stable 2>/dev/null; then
         published=$(jq -er '.source_hash' "$manifest") || \
           php_darwin_die "could not read the PHP $version published source hash"
         published_extensions=$(bash "$script_dir/manifest-extensions-source-hash.sh" "$manifest" "$version") || \
           php_darwin_die "could not read the PHP $version published cached extension source hash"
+        if php_darwin_release_manifest_has_current_platforms "$manifest"; then
+          manifest_current_platforms=true
+        else
+          manifest_source_commit=$(jq -er '.homebrew_php_commit | select(type == "string" and test("^[0-9a-f]{40}$"))' \
+            "$manifest") || php_darwin_die "could not read the PHP $version published homebrew-php commit"
+          manifest_extension_commit=$(jq -er '.homebrew_extensions_commit | select(type == "string" and test("^[0-9a-f]{40}$"))' \
+            "$manifest") || php_darwin_die "could not read the PHP $version published homebrew-extensions commit"
+        fi
       fi
       ;;
     404) ;;
     *) php_darwin_die "could not fetch the PHP $version release manifest (HTTP $http_status)" ;;
   esac
-  if [ "$published" = "$current" ] && [ "$published_extensions" = "$current_extensions" ]; then
+  if [ "$published" = "$current" ] && [ "$published_extensions" = "$current_extensions" ] && \
+    [ "$manifest_current_platforms" = true ]; then
     printf 'PHP %s is current (PHP %s, extensions %s)\n' "$version" "$current" "$current_extensions"
     continue
   fi
 
+  architectures='arm64 x86_64'
+  pinned_arguments=()
+  if [ "$published" = "$current" ] && [ "$published_extensions" = "$current_extensions" ] && \
+    [ "$manifest_current_platforms" = false ] && [ -n "$manifest_source_commit" ] && \
+    [ -n "$manifest_extension_commit" ]; then
+    architectures=x86_64
+    pinned_arguments=(-f "homebrew-php-commit=$manifest_source_commit" \
+      -f "homebrew-extensions-commit=$manifest_extension_commit")
+    printf 'Completing PHP %s with Intel caches while retaining current ARM caches\n' "$version"
+  fi
   if [ -n "$published" ]; then
     printf 'Dispatching PHP %s: published PHP source %s, current PHP source %s; published extensions %s, current extensions %s\n' \
       "$version" "$published" "$current" "${published_extensions:-missing}" "$current_extensions"
@@ -60,5 +81,5 @@ for version in "${version_values[@]}"; do
   fi
   gh workflow run cache-stable.yml --repo "${GITHUB_REPOSITORY:-shivammathur/php-darwin}" \
     --ref "${GITHUB_REF_NAME:-main}" -f php-version="$version" -f builds='debug release' \
-    -f ts='nts zts' -f architectures='arm64 x86_64' -f publish=true || exit 1
+    -f ts='nts zts' -f architectures="$architectures" "${pinned_arguments[@]}" -f publish=true || exit 1
 done

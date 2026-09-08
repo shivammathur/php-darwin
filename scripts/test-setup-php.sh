@@ -54,11 +54,9 @@ if ! php_darwin_tap_trusted "$tap" "$trust_json" && \
 fi
 
 if [ "${PHP_DARWIN_REQUIRE_CACHE:-false}" = true ]; then
-  baseline=${PHP_DARWIN_E2E_BASELINE:-${RUNNER_TEMP:?}/php-darwin-e2e-formulae.txt}
   started_at=${PHP_DARWIN_E2E_STARTED_AT:-${RUNNER_TEMP:?}/php-darwin-e2e-started-at.txt}
-  installed_after=${RUNNER_TEMP:?}/php-darwin-e2e-formulae-after.txt
-  new_formulae=${RUNNER_TEMP:?}/php-darwin-e2e-new-formulae.txt
-  new_info=${RUNNER_TEMP:?}/php-darwin-e2e-new-formulae.json
+  installed_info=${RUNNER_TEMP:?}/php-darwin-e2e-installed-formulae.json
+  source_built_formulae=${RUNNER_TEMP:?}/php-darwin-e2e-source-built-formulae.txt
   pecl_packages=${RUNNER_TEMP:?}/php-darwin-e2e-pecl-packages.txt
   release_manifest=${RUNNER_TEMP:?}/php-darwin-e2e-release-manifest.json
   tap_path=$(brew --repository "$tap") || php_darwin_die "could not resolve the installed $tap repository"
@@ -67,7 +65,6 @@ if [ "${PHP_DARWIN_REQUIRE_CACHE:-false}" = true ]; then
   tap_commit=$(git -C "$tap_path" rev-parse HEAD) || \
     php_darwin_die 'could not resolve the installed php-darwin tap snapshot'
 
-  [ -s "$baseline" ] || php_darwin_die 'the E2E Homebrew baseline is missing'
   [[ "$snapshot_commit" =~ ^[0-9a-f]{40}$ ]] && [ "$snapshot_commit" = "$tap_commit" ] || \
     php_darwin_die 'the installed Homebrew tap is not the php-darwin cache snapshot'
   [[ "$(cat "$started_at")" =~ ^[0-9]+$ ]] || php_darwin_die 'the E2E start time is invalid'
@@ -86,22 +83,15 @@ if [ "${PHP_DARWIN_REQUIRE_CACHE:-false}" = true ]; then
   [ "$actual_semver" = "$expected_semver" ] || \
     php_darwin_die "setup-php used PHP $actual_semver instead of cached PHP $expected_semver"
 
-  brew list --formula | LC_ALL=C sort -u > "$installed_after" || \
-    php_darwin_die 'could not list Homebrew formulae after setup-php'
-  LC_ALL=C comm -13 "$baseline" "$installed_after" > "$new_formulae" || \
-    php_darwin_die 'could not identify formulae added during the E2E install'
-  if [ -s "$new_formulae" ]; then
-    new_formula_names=()
-    while IFS= read -r new_formula; do
-      [ -n "$new_formula" ] && new_formula_names+=("$new_formula")
-    done < "$new_formulae"
-    brew info --installed --json=v2 "${new_formula_names[@]}" > "$new_info" || \
-      php_darwin_die 'could not inspect formulae added during the E2E install'
-    jq -e --argjson started_at "$(cat "$started_at")" '
-      all(.formulae[].installed[] | select(.time >= $started_at); .poured_from_bottle == true)
-    ' "$new_info" >/dev/null || \
-      php_darwin_die 'setup-php built a formula from source outside the PHP cache build'
-  fi
+  brew info --installed --json=v2 > "$installed_info" || \
+    php_darwin_die 'could not inspect installed Homebrew formulae after setup-php'
+  jq -r --argjson started_at "$(cat "$started_at")" '
+    .formulae[] | .name as $name | .installed[] |
+    select((.time // 0) >= $started_at and .poured_from_bottle != true) | $name
+  ' "$installed_info" > "$source_built_formulae" || \
+    php_darwin_die 'could not inspect Homebrew installation receipts for source builds'
+  [ ! -s "$source_built_formulae" ] || \
+    php_darwin_die "setup-php built formulae from source outside the cache build: $(tr '\n' ' ' < "$source_built_formulae")"
 
   pecl list > "$pecl_packages" || php_darwin_die 'PECL could not list installed packages'
   while IFS= read -r cached_extension; do

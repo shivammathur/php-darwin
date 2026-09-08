@@ -22,6 +22,9 @@ current_extensions=$(bash "$script_dir/extensions-source-hash.sh" "$version") ||
   php_darwin_die "could not resolve the PHP $version cached extension source hash"
 published=
 published_extensions=
+manifest_current_platforms=false
+manifest_source_commit=
+manifest_extension_commit=
 
 if [ -n "$manifest_override" ]; then
   [ -f "$manifest_override" ] || php_darwin_die "nightly manifest not found: $manifest_override"
@@ -35,12 +38,19 @@ fi
 
 case "$http_status" in
   200)
-    if php_darwin_validate_release_manifest "$manifest" "$version" nightly 2>/dev/null && \
-      php_darwin_release_manifest_has_current_platforms "$manifest"; then
+    if php_darwin_validate_release_manifest "$manifest" "$version" nightly 2>/dev/null; then
       published=$(jq -er '.php_src_commit' "$manifest") || \
         php_darwin_die "could not read the PHP $version published source commit"
       published_extensions=$(bash "$script_dir/manifest-extensions-source-hash.sh" "$manifest" "$version") || \
         php_darwin_die "could not read the PHP $version published cached extension source hash"
+      if php_darwin_release_manifest_has_current_platforms "$manifest"; then
+        manifest_current_platforms=true
+      else
+        manifest_source_commit=$(jq -er '.homebrew_php_commit | select(type == "string" and test("^[0-9a-f]{40}$"))' \
+          "$manifest") || php_darwin_die "could not read the PHP $version published homebrew-php commit"
+        manifest_extension_commit=$(jq -er '.homebrew_extensions_commit | select(type == "string" and test("^[0-9a-f]{40}$"))' \
+          "$manifest") || php_darwin_die "could not read the PHP $version published homebrew-extensions commit"
+      fi
     fi
     ;;
   404) ;;
@@ -49,8 +59,15 @@ esac
 
 build=false
 if [ "$force" = true ] || [ "$published" != "$current" ] || \
-  [ "$published_extensions" != "$current_extensions" ]; then
+  [ "$published_extensions" != "$current_extensions" ] || [ "$manifest_current_platforms" = false ]; then
   build=true
+fi
+architectures='arm64 x86_64'
+if [ "$force" = false ] && [ "$published" = "$current" ] && \
+  [ "$published_extensions" = "$current_extensions" ] && [ "$manifest_current_platforms" = false ] && \
+  [ -n "$manifest_source_commit" ] && [ -n "$manifest_extension_commit" ]; then
+  architectures=x86_64
+  printf 'Completing PHP %s nightly with Intel caches while retaining current ARM caches\n' "$version"
 fi
 if [ "$build" = true ]; then
   if [ -n "$published" ]; then
@@ -65,6 +82,8 @@ else
 fi
 
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
-  printf 'build=%s\nphp-src-commit=%s\nphp-version=%s\n' "$build" "$current" "$version" >> "$GITHUB_OUTPUT" || \
+  printf 'architectures=%s\nbuild=%s\nhomebrew-extensions-commit=%s\nhomebrew-php-commit=%s\nphp-src-commit=%s\nphp-version=%s\n' \
+    "$architectures" "$build" "$manifest_extension_commit" "$manifest_source_commit" "$current" "$version" \
+    >> "$GITHUB_OUTPUT" || \
     php_darwin_die 'could not write nightly freshness outputs'
 fi

@@ -10,6 +10,8 @@ builds=${BUILDS:-debug release}
 thread_safety=${TS:-nts zts}
 architectures=${ARCHITECTURES:-arm64 x86_64}
 publish=${PUBLISH:-false}
+source_commit=${HOMEBREW_PHP_COMMIT:-}
+extension_source_commit=${HOMEBREW_EXTENSIONS_COMMIT:-}
 
 php_darwin_validate_channel "$php_version" "$channel"
 read -r -a build_values <<< "$builds"
@@ -39,8 +41,13 @@ for requested_arch in "${arch_values[@]}"; do
 done
 case "$publish" in
   true)
-    [ "${#build_values[@]}" -eq 2 ] && [ "${#ts_values[@]}" -eq 2 ] && [ "${#arch_values[@]}" -eq 2 ] || \
-      php_darwin_die 'publishing requires the complete build, thread-safety, and architecture matrix'
+    [ "${#build_values[@]}" -eq 2 ] && [ "${#ts_values[@]}" -eq 2 ] || \
+      php_darwin_die 'publishing requires the complete build and thread-safety matrix'
+    if [ "${#arch_values[@]}" -lt "$(php_darwin_platform_arches | awk 'END { print NR+0 }')" ]; then
+      [[ "$source_commit" =~ ^[0-9a-f]{40}$ ]] && \
+        [[ "$extension_source_commit" =~ ^[0-9a-f]{40}$ ]] || \
+        php_darwin_die 'partial-platform publishing requires both existing release source commits'
+    fi
     ;;
   false) ;;
   *) php_darwin_die "publish must be true or false: $publish" ;;

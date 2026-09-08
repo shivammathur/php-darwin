@@ -84,6 +84,7 @@ write_manifest() {
 
 run_gate() {
   local expected_dispatches=$1
+  local expected_architectures=${2:-}
 
   : > "$gh_log" || php_darwin_die 'could not reset the stable update log'
   HOMEBREW_EXTENSIONS_PATH="$extensions_path" HOMEBREW_PHP_PATH="$php_path" ONLY_VERSION=8.5 \
@@ -92,6 +93,10 @@ run_gate() {
     bash "$script_dir/update.sh" >/dev/null || php_darwin_die 'stable update gate failed'
   [ "$(awk 'END { print NR+0 }' "$gh_log")" -eq "$expected_dispatches" ] || \
     php_darwin_die "stable update gate dispatched $expected_dispatches workflows unexpectedly"
+  if [ -n "$expected_architectures" ]; then
+    grep -Fq -- "-f architectures=$expected_architectures" "$gh_log" || \
+      php_darwin_die "stable update gate did not request $expected_architectures"
+  fi
 }
 
 php_hash=$(HOMEBREW_PHP_PATH="$php_path" bash "$script_dir/source-hash.sh" 8.5) || \
@@ -105,7 +110,11 @@ run_gate 0
 jq '.assets |= map(select(.architecture == "arm64"))' "$manifest" > "$manifest.arm" || \
   php_darwin_die 'could not write the ARM64-only stable manifest fixture'
 mv "$manifest.arm" "$manifest" || php_darwin_die 'could not install the ARM64-only stable manifest fixture'
-run_gate 1
+run_gate 1 x86_64
+grep -Fq -- '-f homebrew-php-commit=89abcdef0123456789abcdef0123456789abcdef' "$gh_log" || \
+  php_darwin_die 'stable platform completion did not pin the published homebrew-php commit'
+grep -Fq -- '-f homebrew-extensions-commit=0123456789abcdef0123456789abcdef01234567' "$gh_log" || \
+  php_darwin_die 'stable platform completion did not pin the published extension commit'
 write_manifest "$php_hash" "$extensions_hash" || php_darwin_die 'could not restore the current stable manifest'
 
 printf 'changed unrelated source\n' > "$extensions_path/Formula/unrelated@8.5.rb" || \
@@ -114,7 +123,7 @@ run_gate 0
 
 printf 'changed xdebug source\n' > "$extensions_path/Formula/xdebug@8.5.rb" || \
   php_darwin_die 'could not change the configured stable extension fixture'
-run_gate 1
+run_gate 1 'arm64 x86_64'
 
 extensions_hash=$(HOMEBREW_EXTENSIONS_PATH="$extensions_path" \
   bash "$script_dir/extensions-source-hash.sh" 8.5) || \
@@ -122,6 +131,6 @@ extensions_hash=$(HOMEBREW_EXTENSIONS_PATH="$extensions_path" \
 write_manifest "$php_hash" "$extensions_hash" || php_darwin_die 'could not refresh the stable manifest fixture'
 printf 'changed php source\n' >> "$php_path/Formula/php.rb" || \
   php_darwin_die 'could not change the stable PHP formula fixture'
-run_gate 1
+run_gate 1 'arm64 x86_64'
 
 printf 'Stable update validation passed\n'

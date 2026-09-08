@@ -58,10 +58,12 @@ write_manifest() {
     done < <(php_darwin_platform_arches)
   done < <(php_darwin_configured_variants)
   jq -s --arg commit "$commit" --arg extensions_hash "$extensions_hash" \
+    --arg extensions_commit 89abcdef0123456789abcdef0123456789abcdef \
     --arg homebrew_commit 0123456789abcdef0123456789abcdef01234567 \
     --arg source_hash "$(printf '%064d' 1)" '
     {schema:1,php_version:"8.6",php_semver:"8.6.0",php_src_commit:$commit,
      extensions_source_hash:$extensions_hash,homebrew_php_commit:$homebrew_commit,
+     homebrew_extensions_commit:$extensions_commit,
      source_hash:$source_hash,assets:.}
   ' "$assets_jsonl" > "$manifest" || php_darwin_die 'could not write the nightly manifest fixture'
 }
@@ -69,6 +71,7 @@ write_manifest() {
 run_gate() {
   local expected=$1
   local force=${2:-false}
+  local expected_architectures=${3:-arm64 x86_64}
 
   : > "$output" || php_darwin_die 'could not reset the nightly output fixture'
   FORCE="$force" GITHUB_OUTPUT="$output" HOMEBREW_EXTENSIONS_PATH="$extensions_path" \
@@ -81,6 +84,8 @@ run_gate() {
     php_darwin_die 'nightly update gate returned the wrong PHP source commit'
   grep -Fxq 'php-version=8.6' "$output" || \
     php_darwin_die 'nightly update gate returned the wrong configured version'
+  grep -Fxq "architectures=$expected_architectures" "$output" || \
+    php_darwin_die "nightly update gate did not return architectures=$expected_architectures"
 }
 
 write_formulae "$current"
@@ -91,7 +96,11 @@ run_gate false
 jq '.assets |= map(select(.architecture == "arm64"))' "$manifest" > "$manifest.arm" || \
   php_darwin_die 'could not write the ARM64-only nightly manifest fixture'
 mv "$manifest.arm" "$manifest" || php_darwin_die 'could not install the ARM64-only nightly manifest fixture'
-run_gate true
+run_gate true false x86_64
+grep -Fxq 'homebrew-php-commit=0123456789abcdef0123456789abcdef01234567' "$output" || \
+  php_darwin_die 'nightly platform completion did not pin the published homebrew-php commit'
+grep -Fxq 'homebrew-extensions-commit=89abcdef0123456789abcdef0123456789abcdef' "$output" || \
+  php_darwin_die 'nightly platform completion did not pin the published extension commit'
 write_manifest "$current"
 write_manifest "$previous"
 run_gate true

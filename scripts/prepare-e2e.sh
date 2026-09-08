@@ -8,7 +8,6 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
   php_darwin_die 'prepare-e2e.sh may only modify a GitHub Actions runner'
 
 brew_prefix=$(brew --prefix) || php_darwin_die 'could not resolve the Homebrew prefix'
-baseline=${PHP_DARWIN_E2E_BASELINE:-${RUNNER_TEMP:?}/php-darwin-e2e-formulae.txt}
 installed_formulae=${RUNNER_TEMP:?}/php-darwin-e2e-installed.txt
 started_at=${PHP_DARWIN_E2E_STARTED_AT:-${RUNNER_TEMP:?}/php-darwin-e2e-started-at.txt}
 installed_php=
@@ -51,8 +50,5 @@ if [ -d "$metadata_dir" ] && [ ! -L "$metadata_dir" ]; then
   done
 fi
 
-brew list --formula | LC_ALL=C sort -u > "$baseline" || \
-  php_darwin_die 'could not record the E2E Homebrew baseline'
 date +%s > "$started_at" || php_darwin_die 'could not record the E2E start time'
-printf 'Prepared a PHP-free Homebrew fixture with %s preinstalled formulae\n' \
-  "$(wc -l < "$baseline" | tr -d ' ')"
+printf 'Prepared a PHP-free Homebrew fixture\n'

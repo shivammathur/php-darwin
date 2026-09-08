@@ -48,7 +48,10 @@ jobs:
     name: Check nightly php-src commit
     runs-on: ubuntu-latest
     outputs:
+      architectures: ${{ steps.freshness.outputs.architectures }}
       build: ${{ steps.freshness.outputs.build }}
+      homebrew-extensions-commit: ${{ steps.freshness.outputs.homebrew-extensions-commit }}
+      homebrew-php-commit: ${{ steps.freshness.outputs.homebrew-php-commit }}
       php-src-commit: ${{ steps.freshness.outputs.php-src-commit }}
       php-version: ${{ steps.freshness.outputs.php-version }}
     steps:
@@ -91,5 +94,7 @@ jobs:
       php-version: ${{ needs.freshness.outputs.php-version }}
       builds: ${{ inputs.builds || 'debug release' }}
       ts: ${{ inputs.ts || 'nts zts' }}
-      architectures: ${{ inputs.architectures || 'arm64 x86_64' }}
+      architectures: ${{ inputs.architectures || needs.freshness.outputs.architectures }}
+      homebrew-php-commit: ${{ inputs.architectures == '' && needs.freshness.outputs.homebrew-php-commit || '' }}
+      homebrew-extensions-commit: ${{ inputs.architectures == '' && needs.freshness.outputs.homebrew-extensions-commit || '' }}
       publish: ${{ github.event_name == 'schedule' || inputs.publish }}
