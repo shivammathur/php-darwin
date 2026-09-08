@@ -77,7 +77,7 @@ jobs:
 
       - name: Install PHP and extensions through setup-php
         # Switch to the verbose tag after its next setup-php release.
-        uses: shivammathur/setup-php@test-cache-install-logs
+        uses: shivammathur/setup-php@develop
         with:
           php-version: ${{ inputs.php-version }}
           extensions: ${{ env.EXTENSIONS }}
