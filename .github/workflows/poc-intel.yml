@@ -8,6 +8,9 @@ on:
         description: Existing workflow run whose Intel build artifact should be reused
         required: false
         type: string
+  push:
+    branches:
+      - feature/intel-homebrew
 
 permissions:
   actions: read
@@ -22,7 +25,7 @@ env:
 jobs:
   source:
     name: Pin formula sources
-    if: ${{ inputs.artifact_run_id == '' }}
+    if: ${{ inputs.artifact_run_id == '' && github.event_name != 'push' }}
     runs-on: ubuntu-latest
     outputs:
       extensions: ${{ steps.extensions.outputs.commit }}
@@ -43,7 +46,7 @@ jobs:
   build-intel:
     name: Build and cache PHP 8.5 with Homebrew on Intel
     needs: source
-    if: ${{ inputs.artifact_run_id == '' }}
+    if: ${{ inputs.artifact_run_id == '' && github.event_name != 'push' }}
     runs-on: macos-15-intel
     timeout-minutes: 240
     env:
@@ -110,7 +113,7 @@ jobs:
   install-intel:
     name: Install and validate the Intel Homebrew cache
     needs: build-intel
-    if: ${{ always() && (needs.build-intel.result == 'success' || inputs.artifact_run_id != '') }}
+    if: ${{ always() && (needs.build-intel.result == 'success' || inputs.artifact_run_id != '' || github.event_name == 'push') }}
     runs-on: macos-15-intel
     timeout-minutes: 90
     env:
@@ -128,7 +131,7 @@ jobs:
           github-token: ${{ github.token }}
           name: php-8.5-intel-homebrew-poc
           path: ${{ runner.temp }}/php-darwin-intel
-          run-id: ${{ inputs.artifact_run_id || github.run_id }}
+          run-id: ${{ inputs.artifact_run_id || (github.event_name == 'push' && '34219423931') || github.run_id }}
       - name: Prepare a fresh Homebrew installation state
         env: &intel-test
           ARCHIVE_DIR: ${{ runner.temp }}/php-darwin-intel
@@ -157,6 +160,7 @@ jobs:
   compare:
     name: Compare ARM and Intel Homebrew functionality
     needs: [profile-arm, install-intel]
+    if: ${{ always() && needs.profile-arm.result == 'success' && needs.install-intel.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -176,6 +180,7 @@ jobs:
   publish-poc:
     name: Publish the validated Intel POC release
     needs: compare
+    if: ${{ always() && needs.compare.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -190,7 +195,7 @@ jobs:
           github-token: ${{ github.token }}
           name: php-8.5-intel-homebrew-poc
           path: builds
-          run-id: ${{ inputs.artifact_run_id || github.run_id }}
+          run-id: ${{ inputs.artifact_run_id || (github.event_name == 'push' && '34219423931') || github.run_id }}
       - name: Publish using the GitHub REST API
         env:
           GITHUB_TOKEN: ${{ github.token }}
