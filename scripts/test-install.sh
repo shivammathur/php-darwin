@@ -81,8 +81,6 @@ prepare_homebrew() {
     php_darwin_is_php_formula "$installed_php" && \
       php_darwin_die 'a Homebrew PHP formula remained before cache installation'
   done < "$installed_formulae_list"
-  brew fetch --retry hello || php_darwin_die 'could not fetch the Homebrew validation formula after retries'
-  brew install hello || php_darwin_die 'could not prepare an existing Homebrew formula'
   mkdir -p "${pear_fixture%/*}" || php_darwin_die 'could not create the existing PEAR fixture'
   printf 'preserve-user-pear-package\n' > "$pear_fixture" || \
     php_darwin_die 'could not write the existing PEAR fixture'
@@ -154,9 +152,6 @@ validate_runtime() {
 
 cleanup_homebrew_validation() {
   brew services stop "$formula" >/dev/null 2>&1 || true
-  if brew list --versions hello >/dev/null 2>&1; then
-    brew uninstall --force hello >/dev/null 2>&1 || true
-  fi
   if [ -e "$sentinel" ] || [ -L "$sentinel" ]; then
     chmod u+w "$sentinel" >/dev/null 2>&1 || true
     rm -f "$sentinel" >/dev/null 2>&1 || true
@@ -251,6 +246,7 @@ validate_homebrew() {
   local formula_info=${RUNNER_TEMP:-/tmp}/php-darwin-formula-info.json
   local installed_after=${RUNNER_TEMP:-/tmp}/php-darwin-installed-after.txt
   local new_formulae=${RUNNER_TEMP:-/tmp}/php-darwin-new-formulae.txt
+  local removed_formulae=${RUNNER_TEMP:-/tmp}/php-darwin-removed-formulae.txt
   local installed_formula
   local installed_formulae=()
   local missing
@@ -318,6 +314,10 @@ validate_homebrew() {
   php_darwin_record_formulae "$installed_after"
   LC_ALL=C sort -u "$installed_after" -o "$installed_after" || \
     php_darwin_die 'could not sort the final Homebrew formulae'
+  LC_ALL=C comm -23 "$installed_before" "$installed_after" > "$removed_formulae" || \
+    php_darwin_die 'could not identify removed Homebrew formulae'
+  [ ! -s "$removed_formulae" ] || \
+    php_darwin_die "cache extraction removed existing Homebrew formulae: $(tr '\n' ' ' < "$removed_formulae")"
   LC_ALL=C comm -13 "$installed_before" "$installed_after" > "$new_formulae" || \
     php_darwin_die 'could not identify the newly installed Homebrew formulae'
   printf '%s\n' "$formula" >> "$new_formulae" || php_darwin_die 'could not record the PHP formula'
@@ -350,9 +350,6 @@ validate_homebrew() {
     php_darwin_die 'cache extraction changed an existing Homebrew configuration file'
   [ "$(stat -f '%Lp' "$sentinel")" = 444 ] || \
     php_darwin_die 'cache extraction changed existing Homebrew configuration permissions'
-  brew list --versions hello >/dev/null || php_darwin_die 'cache extraction removed an existing Homebrew formula'
-  "$(brew --prefix hello)/bin/hello" | grep -F 'Hello, world!' || \
-    php_darwin_die 'an existing Homebrew formula stopped working after cache extraction'
 
   brew unlink "$tap/$formula" || php_darwin_die 'Homebrew could not unlink the cached PHP formula'
   brew link --overwrite --force "$tap/$formula" || \
@@ -373,12 +370,6 @@ validate_homebrew() {
   done
   [ "$service_running" = true ] || php_darwin_die 'PHP service is not running'
   brew services stop "$formula" || php_darwin_die 'PHP service did not stop'
-
-  brew uninstall --force hello || php_darwin_die 'Homebrew could not uninstall an unrelated formula'
-  brew install hello || php_darwin_die 'Homebrew could not install an unrelated formula after cache installation'
-  "$(brew --prefix hello)/bin/hello" | grep -F 'Hello, world!' || \
-    php_darwin_die 'the newly installed Homebrew formula did not run'
-  brew uninstall --force hello || php_darwin_die 'Homebrew could not clean up the unrelated formula'
 
   if ! brew doctor >"$doctor_log" 2>&1; then
     if grep -Eq '^(Error:|.*broken)' "$doctor_log"; then

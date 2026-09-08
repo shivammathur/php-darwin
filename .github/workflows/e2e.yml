@@ -42,6 +42,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Remove unused Homebrew taps
+        run: bash scripts/cleanup-taps.sh
+
       - name: Run the published installer with visible output
         run: bash scripts/test-release.sh
 
@@ -67,6 +70,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Remove unused Homebrew taps
+        run: bash scripts/cleanup-taps.sh
+
+      - name: Remove preinstalled PHP from the E2E fixture
+        run: bash scripts/prepare-e2e.sh
 
       - name: Configure the extension cache
         id: cache-env
