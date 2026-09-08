@@ -1,0 +1,9 @@
+# Unsuffixed commands created by php_select inside the private prefix.
+pear
+peardev
+pecl
+phar
+phar.phar
+php
+php-config
+phpize

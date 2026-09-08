@@ -1,0 +1,11 @@
+{
+  "base_sha256": "a63be50fc453d261752d4e82deb28c9f3bd26517385a93892fee24bc8da9d661",
+  "base_version": "2.12.5",
+  "minimum_macos": 15,
+  "pilot_version": "8.5",
+  "ports_commit": "805cd49bd46eeac6495dfe78bdb55690d7fde0bc",
+  "ports_sha256": "004442b58f3494ec840e86a0a126015dfe9e0229abee8fe8d667874060254b0c",
+  "ports_repository": "https://github.com/macports/macports-ports",
+  "prefix_root": "/usr/local/php-darwin/macports",
+  "release_tag_suffix": "intel-poc"
+}

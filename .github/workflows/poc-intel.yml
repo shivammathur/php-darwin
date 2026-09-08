@@ -1,0 +1,176 @@
+name: POC Intel PHP cache
+run-name: POC PHP 8.5 Intel/MacPorts cache
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  BUILD: release
+  PHP_VERSION: '8.5'
+  TS: nts
+
+jobs:
+  build-intel:
+    name: Build PHP 8.5 with private MacPorts
+    runs-on: macos-15-intel
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Verify Intel build prerequisites
+        run: |
+          test "$(uname -m)" = x86_64
+          command -v jq >/dev/null
+          command -v zstd >/dev/null || brew install zstd
+
+      - name: Download and verify MacPorts sources
+        run: bash scripts/macports/build.sh prepare
+
+      - name: Bootstrap private MacPorts prefix
+        run: bash scripts/macports/build.sh bootstrap
+
+      - name: Configure private ports tree
+        run: bash scripts/macports/build.sh configure
+
+      - name: Build PHP and matching extension ports
+        run: bash scripts/macports/build.sh install
+
+      - name: Configure PHP, PEAR, and PECL
+        run: bash scripts/macports/build.sh php-config
+
+      - name: Remove MacPorts build state and documentation
+        run: bash scripts/macports/build.sh cleanup
+
+      - name: Package the complete runtime closure
+        run: bash scripts/macports/build.sh package
+
+      - name: Verify archive, metadata, and standalone installer
+        run: bash scripts/macports/build.sh verify
+
+      - name: Upload Intel cache POC
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: php-8.5-intel-macports-poc
+          path: builds/intel
+          if-no-files-found: error
+          retention-days: 2
+          overwrite: true
+
+  profile-homebrew:
+    name: Profile the ARM/Homebrew PHP 8.5 cache
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install the published ARM/Homebrew cache
+        run: |
+          curl --fail --location --silent --show-error \
+            --output "$RUNNER_TEMP/install.sh" \
+            https://github.com/shivammathur/php-darwin/releases/download/php-8.5/install.sh
+          bash "$RUNNER_TEMP/install.sh" 8.5 release nts
+
+      - name: Capture normalized PHP and PECL capability profile
+        env:
+          PROFILE_NAME: homebrew-arm64
+        run: bash scripts/macports/runtime-profile.sh "$RUNNER_TEMP/profile-homebrew"
+
+      - name: Upload Homebrew capability profile
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: profile-homebrew-arm64
+          path: ${{ runner.temp }}/profile-homebrew
+          if-no-files-found: error
+          retention-days: 2
+
+  install-intel:
+    name: Install the Intel cache on a fresh runner
+    needs: build-intel
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download the Intel cache POC
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: php-8.5-intel-macports-poc
+          path: ${{ runner.temp }}/php-darwin-intel
+
+      - name: Install the archive directly into its final prefix
+        env:
+          PHP_DARWIN_MACPORTS_ARCHIVE: ${{ runner.temp }}/php-darwin-intel/php_8.5-nts-release+darwin_x86_64-macports.tar.zst
+        run: bash "$RUNNER_TEMP/php-darwin-intel/install.sh" 8.5 release nts
+
+      - name: Validate PHP, extensions, PEAR, and PECL
+        run: bash scripts/macports/test-install.sh
+
+      - name: Capture normalized PHP and PECL capability profile
+        env:
+          PROFILE_NAME: macports-x86_64
+        run: bash scripts/macports/runtime-profile.sh "$RUNNER_TEMP/profile-macports"
+
+      - name: Verify Homebrew remains functional
+        run: |
+          brew config >/dev/null
+          brew doctor || true
+
+      - name: Upload MacPorts capability profile
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: profile-macports-x86-64
+          path: ${{ runner.temp }}/profile-macports
+          if-no-files-found: error
+          retention-days: 2
+
+  compare:
+    name: Compare Homebrew and MacPorts PHP functionality
+    needs: [profile-homebrew, install-intel]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download capability profiles
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: profile-*
+          path: ${{ runner.temp }}/profiles
+
+      - name: Compare normalized extension, PECL, and phpinfo profiles
+        run: |
+          bash scripts/macports/compare-profiles.sh \
+            "$RUNNER_TEMP/profiles/profile-homebrew-arm64" \
+            "$RUNNER_TEMP/profiles/profile-macports-x86-64"
+
+  publish-poc:
+    name: Publish the validated Intel POC release
+    needs: compare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download validated Intel cache
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: php-8.5-intel-macports-poc
+          path: builds/intel
+
+      - name: Publish release-specific installer and cache
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash scripts/macports/publish-poc.sh builds/intel
