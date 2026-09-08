@@ -28,9 +28,13 @@ env:
 
 jobs:
   direct:
-    name: Install PHP ${{ inputs.php-version }} with the release installer
-    runs-on: macos-15
+    name: Install PHP ${{ inputs.php-version }} with the release installer on ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
     env:
       PHP_VERSION: ${{ inputs.php-version }}
     steps:
@@ -45,9 +49,13 @@ jobs:
         run: bash scripts/test-setup-php.sh
 
   setup-php:
-    name: Install PHP ${{ inputs.php-version }} through setup-php
-    runs-on: macos-15
+    name: Install PHP ${{ inputs.php-version }} through setup-php on ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
     env:
       EXTENSIONS: ${{ (inputs.php-version == '5.6' || inputs.php-version == '7.0') && 'xdebug' || 'xdebug, pcov' }}
       PHP_DARWIN_REQUIRE_PCOV: ${{ (inputs.php-version == '5.6' || inputs.php-version == '7.0') && 'false' || 'true' }}
@@ -87,6 +95,3 @@ jobs:
 
       - name: Update Homebrew after the cache installation
         run: brew update
-
-      - name: Upgrade Homebrew packages after the cache installation
-        run: brew upgrade

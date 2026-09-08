@@ -102,6 +102,12 @@ extensions_hash=$(HOMEBREW_EXTENSIONS_PATH="$extensions_path" \
 write_manifest "$php_hash" "$extensions_hash" || php_darwin_die 'could not write the current stable manifest'
 run_gate 0
 
+jq '.assets |= map(select(.architecture == "arm64"))' "$manifest" > "$manifest.arm" || \
+  php_darwin_die 'could not write the ARM64-only stable manifest fixture'
+mv "$manifest.arm" "$manifest" || php_darwin_die 'could not install the ARM64-only stable manifest fixture'
+run_gate 1
+write_manifest "$php_hash" "$extensions_hash" || php_darwin_die 'could not restore the current stable manifest'
+
 printf 'changed unrelated source\n' > "$extensions_path/Formula/unrelated@8.5.rb" || \
   php_darwin_die 'could not change the unrelated stable extension fixture'
 run_gate 0

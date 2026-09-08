@@ -17,6 +17,10 @@ on:
         default: nts zts
         required: false
         type: string
+      architectures:
+        default: arm64 x86_64
+        required: false
+        type: string
       publish:
         default: true
         required: false
@@ -45,6 +49,7 @@ jobs:
       - name: Create build and compatibility-test matrices
         id: matrix
         env:
+          ARCHITECTURES: ${{ inputs.architectures }}
           BUILDS: ${{ inputs.builds }}
           CHANNEL: ${{ inputs.channel }}
           PHP_VERSION: ${{ inputs.php-version }}

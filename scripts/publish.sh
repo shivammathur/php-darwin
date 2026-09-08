@@ -277,7 +277,7 @@ if gh release view "$tag" --repo "$release_repository" --json assets > "$release
   done
 else
   gh release create "$tag" --repo "$release_repository" --title "PHP $version" \
-    --notes "ARM64 Homebrew PHP $version caches for macOS runners." --latest=false || \
+    --notes "Architecture-specific Homebrew PHP $version caches for macOS runners." --latest=false || \
     php_darwin_die "could not create release $tag"
   release_created=true
   printf '{"assets":[]}\n' > "$release_assets_json" || \
@@ -301,10 +301,10 @@ LC_ALL=C sort -u "$retained_assets" -o "$retained_assets" || \
 : > "$stale_assets" || php_darwin_die 'could not initialize stale release assets'
 : > "$retired_assets" || php_darwin_die 'could not initialize retired release assets'
 while IFS= read -r previous_name; do
-  if [[ "$previous_name" =~ ^php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_arm64\.[0-9a-f]{64}\.tar\.zst(\.sha256)?\.invalid\.[0-9]+$ ]]; then
+  if [[ "$previous_name" =~ ^php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_(arm64|x86_64)\.[0-9a-f]{64}\.tar\.zst(\.sha256)?\.invalid\.[0-9]+$ ]]; then
     printf '%s\n' "$previous_name" >> "$retired_assets" || \
       php_darwin_die 'could not record a quarantined release asset'
-  elif [[ "$previous_name" =~ ^php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_arm64\.[0-9a-f]{64}\.tar\.zst(\.sha256)?$ ]]; then
+  elif [[ "$previous_name" =~ ^php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_(arm64|x86_64)\.[0-9a-f]{64}\.tar\.zst(\.sha256)?$ ]]; then
     if [ "$previous_manifest_valid" = true ] && ! grep -Fxq "$previous_name" "$retained_assets"; then
       printf '%s\n' "$previous_name" >> "$stale_assets" || \
         php_darwin_die 'could not record a stale immutable release asset'

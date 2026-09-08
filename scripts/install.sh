@@ -344,6 +344,7 @@ php_darwin_validate_ts() {
 php_darwin_normalize_arch() {
   case "${1:-$(uname -m)}" in
     arm64|aarch64) printf 'arm64\n' ;;
+    x86_64|amd64) printf 'x86_64\n' ;;
     *) php_darwin_die "unsupported architecture: ${1:-<empty>}" ;;
   esac
 }
@@ -491,9 +492,13 @@ php_darwin_config_id() {
 
 php_darwin_metadata_path() {
   local asset=$1
+  local asset_arch
 
-  [[ "$asset" =~ ^php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_arm64\.tar\.zst$ ]] || \
+  [[ "$asset" =~ ^php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_(arm64|x86_64)\.tar\.zst$ ]] || \
     php_darwin_die "invalid cache archive name: $asset"
+  asset_arch=${asset##*+darwin_}
+  asset_arch=${asset_arch%.tar.zst}
+  php_darwin_normalize_arch "$asset_arch" >/dev/null || return 1
   printf 'var/php-darwin/%s.json\n' "${asset%.tar.zst}"
 }
 
@@ -542,9 +547,13 @@ php_darwin_asset() {
 
 php_darwin_download_asset() {
   local asset=$1
+  local asset_arch
   local sha256=$2
 
-  [[ "$asset" =~ ^php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_arm64\.tar\.zst$ ]] || return 1
+  [[ "$asset" =~ ^php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_(arm64|x86_64)\.tar\.zst$ ]] || return 1
+  asset_arch=${asset##*+darwin_}
+  asset_arch=${asset_arch%.tar.zst}
+  php_darwin_normalize_arch "$asset_arch" >/dev/null 2>&1 || return 1
   [[ "$sha256" =~ ^[0-9a-f]{64}$ ]] || return 1
   printf '%s.%s.tar.zst\n' "${asset%.tar.zst}" "$sha256"
 }
@@ -603,6 +612,19 @@ php_darwin_fetch_release_manifest() {
   printf '%s\n' "$request_status"
 }
 
+php_darwin_release_manifest_has_current_platforms() {
+  local expected_count
+  local manifest=$1
+  local platforms
+
+  expected_count=$(php_darwin_expected_asset_count) || return 1
+  platforms=$(php_darwin_read_config platforms.json) || return 1
+  jq -e --argjson count "$expected_count" --argjson platforms "$platforms" '
+    (.assets | type == "array") and (.assets | length == $count) and
+    ([.assets[].architecture] | unique) == ($platforms | keys)
+  ' "$manifest" >/dev/null
+}
+
 php_darwin_validate_release_manifest() {
   local manifest=$1
   local version=$2
@@ -622,10 +644,18 @@ php_darwin_validate_release_manifest() {
   manifest_result=$(jq -er --arg channel "$channel" --arg version "$version" \
     --arg asset "$asset" --argjson count "$expected_count" --argjson platforms "$platforms" \
     --argjson legacy_platforms "$legacy_platforms" '
-    ($platforms + $legacy_platforms) as $manifest_platforms |
     ($platforms | keys) as $current_architectures |
-    ($manifest_platforms | keys) as $legacy_architectures |
-    ($count / ($platforms | length) * ($manifest_platforms | length)) as $legacy_count |
+    ($legacy_platforms | keys) as $legacy_architectures |
+    ($count / ($platforms | length) * ($legacy_platforms | length)) as $legacy_count |
+    (.assets // []) as $assets |
+    ([$assets[].architecture] | unique) as $architectures |
+    (if (($assets | length) == $count and $architectures == $current_architectures) then
+       $platforms
+     elif (($assets | length) == $legacy_count and $architectures == $legacy_architectures) then
+       $legacy_platforms
+     else
+       null
+     end) as $manifest_platforms |
     select(.schema == 1 and .php_version == $version and
     (.homebrew_php_commit | type == "string" and test("^[0-9a-f]{40}$")) and
     (((.homebrew_extensions_commit // "") == "") or
@@ -640,10 +670,7 @@ php_darwin_validate_release_manifest() {
      else
        (.php_src_commit == "" or .php_src_commit == null)
      end) and
-    (.assets | type == "array") and
-    (([.assets[].architecture] | unique) as $architectures |
-      ((.assets | length == $count) and $architectures == $current_architectures) or
-      ((.assets | length == $legacy_count) and $architectures == $legacy_architectures)) and
+    (.assets | type == "array") and ($manifest_platforms != null) and
     ([.assets[].name] | unique | length) == (.assets | length) and
     ([.assets[] | (.download // .name)] | unique | length) == (.assets | length) and
     all(.assets[];
@@ -927,6 +954,13 @@ PHP_DARWIN_CONFIG_PACKAGE_JSON
     "minimum_macos": 14,
     "platform_key": "arm64_sonoma",
     "test_runners": ["macos-14", "macos-15", "macos-26", "macos-latest"]
+  },
+  "x86_64": {
+    "build_runner": "macos-15-intel",
+    "brew_prefix": "/usr/local",
+    "minimum_macos": 15,
+    "platform_key": "sequoia",
+    "test_runners": ["macos-15-intel", "macos-26-intel"]
   }
 }
 PHP_DARWIN_CONFIG_PLATFORMS_JSON
@@ -935,10 +969,10 @@ PHP_DARWIN_CONFIG_PLATFORMS_JSON
       cat <<'PHP_DARWIN_CONFIG_LEGACY_PLATFORMS_JSON'
 {
   "schema": 1,
-  "purpose": "Validate pre-ARM64-only release manifests",
+  "purpose": "Validate ARM64-only release manifests",
   "platforms": {
-    "x86_64": {
-      "minimum_macos": 15
+    "arm64": {
+      "minimum_macos": 14
     }
   }
 }
@@ -1000,11 +1034,10 @@ output=${3:?}
   printf 'Archive not found: %s\n' "$archive" >&2
   exit 1
 }
-[[ "$member" =~ ^var/php-darwin/php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_arm64\.json$ ]] || {
+[[ "$member" =~ ^var/php-darwin/php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_(arm64|x86_64)\.json$ ]] || {
   printf 'Unsafe metadata member: %s\n' "$member" >&2
   exit 1
 }
-
 if ! tar --ignore-zeros -xOf "$archive" "$member" > "$output"; then
   rm -f "$output"
   exit 1

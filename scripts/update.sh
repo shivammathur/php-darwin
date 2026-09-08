@@ -36,7 +36,8 @@ for version in "${version_values[@]}"; do
   fi
   case "$http_status" in
     200)
-      if php_darwin_validate_release_manifest "$manifest" "$version" stable 2>/dev/null; then
+      if php_darwin_validate_release_manifest "$manifest" "$version" stable 2>/dev/null && \
+        php_darwin_release_manifest_has_current_platforms "$manifest"; then
         published=$(jq -er '.source_hash' "$manifest") || \
           php_darwin_die "could not read the PHP $version published source hash"
         published_extensions=$(bash "$script_dir/manifest-extensions-source-hash.sh" "$manifest" "$version") || \
@@ -59,5 +60,5 @@ for version in "${version_values[@]}"; do
   fi
   gh workflow run cache-stable.yml --repo "${GITHUB_REPOSITORY:-shivammathur/php-darwin}" \
     --ref "${GITHUB_REF_NAME:-main}" -f php-version="$version" -f builds='debug release' \
-    -f ts='nts zts' -f publish=true || exit 1
+    -f ts='nts zts' -f architectures='arm64 x86_64' -f publish=true || exit 1
 done

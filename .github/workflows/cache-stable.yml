@@ -19,6 +19,11 @@ on:
         default: nts zts
         required: false
         type: string
+      architectures:
+        description: Space-separated CPU architectures
+        default: arm64 x86_64
+        required: false
+        type: string
       publish:
         description: Publish validated caches to the PHP release
         default: true
@@ -43,4 +48,5 @@ jobs:
       php-version: ${{ inputs.php-version }}
       builds: ${{ inputs.builds || 'debug release' }}
       ts: ${{ inputs.ts || 'nts zts' }}
+      architectures: ${{ inputs.architectures || 'arm64 x86_64' }}
       publish: ${{ inputs.publish }}

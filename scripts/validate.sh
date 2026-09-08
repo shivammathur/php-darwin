@@ -45,6 +45,7 @@ while read -r channel version; do
     php_darwin_formula "$version" "$build" "$ts" >/dev/null
     php_darwin_requested_formula "$version" "$build" "$ts" >/dev/null
     php_darwin_asset "$version" "$build" "$ts" arm64 >/dev/null
+    php_darwin_asset "$version" "$build" "$ts" x86_64 >/dev/null
   done < <(php_darwin_configured_variants)
 done < <(php_darwin_configured_versions)
 [ "$version_count" -eq 13 ] || php_darwin_die "expected 13 configured PHP versions, found $version_count"
@@ -62,23 +63,24 @@ for required_variant in release/nts release/zts debug/nts debug/zts; do
 done
 
 jq -e '
-  keys == ["arm64"] and
-  .arm64.brew_prefix == "/opt/homebrew" and
+  (keys | sort) == ["arm64", "x86_64"] and
+  .arm64.brew_prefix == "/opt/homebrew" and .x86_64.brew_prefix == "/usr/local" and
   .arm64.build_runner == "macos-14" and .arm64.minimum_macos == 14 and
   .arm64.platform_key == "arm64_sonoma" and
-  .arm64.test_runners == ["macos-14", "macos-15", "macos-26", "macos-latest"]
+  .arm64.test_runners == ["macos-14", "macos-15", "macos-26", "macos-latest"] and
+  .x86_64.build_runner == "macos-15-intel" and .x86_64.minimum_macos == 15 and
+  .x86_64.platform_key == "sequoia" and
+  .x86_64.test_runners == ["macos-15-intel", "macos-26-intel"]
 ' "$script_dir/../conf/platforms.json" >/dev/null || php_darwin_die 'invalid platform configuration'
 jq -e '
   keys == ["platforms", "purpose", "schema"] and .schema == 1 and
-  .purpose == "Validate pre-ARM64-only release manifests" and
-  .platforms == {"x86_64": {"minimum_macos": 15}}
+  .purpose == "Validate ARM64-only release manifests" and
+  .platforms == {"arm64": {"minimum_macos": 14}}
 ' "$script_dir/../conf/legacy-platforms.json" >/dev/null || \
   php_darwin_die 'invalid legacy manifest platform configuration'
-[ "$(php_darwin_expected_asset_count)" -eq 4 ] || php_darwin_die 'expected four ARM64 release assets'
-if (php_darwin_normalize_arch x86_64) >/dev/null 2>&1 || \
-  (php_darwin_normalize_arch amd64) >/dev/null 2>&1; then
-  php_darwin_die 'Intel architecture aliases are still supported'
-fi
+[ "$(php_darwin_expected_asset_count)" -eq 8 ] || php_darwin_die 'expected eight architecture-specific release assets'
+[ "$(php_darwin_normalize_arch x86_64)" = x86_64 ] || php_darwin_die 'x86_64 normalization failed'
+[ "$(php_darwin_normalize_arch amd64)" = x86_64 ] || php_darwin_die 'amd64 normalization failed'
 
 archive_roots=
 while IFS= read -r root extra; do

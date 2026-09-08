@@ -88,6 +88,11 @@ write_formulae "$current"
   php_darwin_die 'PHP source commit resolver returned the wrong commit'
 write_manifest "$current"
 run_gate false
+jq '.assets |= map(select(.architecture == "arm64"))' "$manifest" > "$manifest.arm" || \
+  php_darwin_die 'could not write the ARM64-only nightly manifest fixture'
+mv "$manifest.arm" "$manifest" || php_darwin_die 'could not install the ARM64-only nightly manifest fixture'
+run_gate true
+write_manifest "$current"
 write_manifest "$previous"
 run_gate true
 write_manifest "$current" "$(printf '%064d' 2)"

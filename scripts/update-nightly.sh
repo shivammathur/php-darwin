@@ -35,7 +35,8 @@ fi
 
 case "$http_status" in
   200)
-    if php_darwin_validate_release_manifest "$manifest" "$version" nightly 2>/dev/null; then
+    if php_darwin_validate_release_manifest "$manifest" "$version" nightly 2>/dev/null && \
+      php_darwin_release_manifest_has_current_platforms "$manifest"; then
       published=$(jq -er '.php_src_commit' "$manifest") || \
         php_darwin_die "could not read the PHP $version published source commit"
       published_extensions=$(bash "$script_dir/manifest-extensions-source-hash.sh" "$manifest" "$version") || \

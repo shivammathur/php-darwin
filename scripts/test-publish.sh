@@ -140,7 +140,7 @@ jq -e --arg extensions_source_hash "$extensions_source_hash" --arg source_hash "
   ([.assets[].name] | unique | length == $count) and
   all(.assets[]; . as $item |
     .download == ($item.name | sub("\\.tar\\.zst$"; "." + $item.sha256 + ".tar.zst"))) and
-  ([.assets[].architecture] | unique) == ["arm64"]
+  ([.assets[].architecture] | unique | sort) == ["arm64","x86_64"]
 ' "$gh_manifest" >/dev/null || php_darwin_die 'publisher created an invalid release manifest'
 manifest_asset=$(jq -er '.assets[0].name' "$gh_manifest") || \
   php_darwin_die 'could not select a published manifest asset'
@@ -176,22 +176,22 @@ IFS=$'\t' read -r _ _ _ _ _ legacy_asset_download _ <<< "$legacy_asset_values" |
   php_darwin_die 'could not parse legacy release asset metadata'
 [ "$legacy_asset_download" = "$manifest_asset" ] || \
   php_darwin_die 'legacy release asset name was not preserved'
-legacy_intel_manifest="$work_dir/legacy-intel-manifest.json"
-jq --argjson minimum_macos "$(php_darwin_legacy_platforms | jq -er '.x86_64.minimum_macos')" '
-  .assets += [.assets[] |
-    .architecture="x86_64" |
-    .minimum_macos=$minimum_macos |
-    .name=(.name | sub("arm64\\.tar\\.zst$"; "x86_64.tar.zst")) |
-    del(.download)]
-' "$legacy_asset_manifest" > "$legacy_intel_manifest" || \
-  php_darwin_die 'could not create a legacy Intel manifest fixture'
-legacy_intel_values=$(php_darwin_validate_release_manifest \
-  "$legacy_intel_manifest" "$version" stable "$manifest_asset") || \
-  php_darwin_die 'legacy eight-asset manifest did not pass compatibility validation'
-IFS=$'\t' read -r _ _ _ _ _ legacy_intel_download _ <<< "$legacy_intel_values" || \
-  php_darwin_die 'could not parse legacy Intel release metadata'
-[ "$legacy_intel_download" = "$manifest_asset" ] || \
-  php_darwin_die 'legacy eight-asset manifest did not select the ARM64 archive'
+legacy_arm_manifest="$work_dir/legacy-arm-manifest.json"
+jq '.assets |= map(select(.architecture == "arm64"))' "$legacy_asset_manifest" > "$legacy_arm_manifest" || \
+  php_darwin_die 'could not create an ARM64-only manifest fixture'
+legacy_arm_values=$(php_darwin_validate_release_manifest \
+  "$legacy_arm_manifest" "$version" stable "$manifest_asset") || \
+  php_darwin_die 'ARM64-only manifest did not pass compatibility validation'
+IFS=$'\t' read -r _ _ _ _ _ legacy_arm_download _ <<< "$legacy_arm_values" || \
+  php_darwin_die 'could not parse ARM64-only release metadata'
+[ "$legacy_arm_download" = "$manifest_asset" ] || \
+  php_darwin_die 'ARM64-only manifest did not select the ARM64 archive'
+legacy_intel_asset=$(jq -er '[.assets[] | select(.architecture == "x86_64")][0].name' \
+  "$gh_manifest") || php_darwin_die 'could not select an Intel fixture asset'
+if php_darwin_validate_release_manifest \
+  "$legacy_arm_manifest" "$version" stable "$legacy_intel_asset" >/dev/null 2>&1; then
+  php_darwin_die 'ARM64-only manifest selected a missing Intel archive'
+fi
 legacy_extension_manifest="$work_dir/legacy-extension-manifest.json"
 jq 'del(.homebrew_extensions_commit)' "$gh_manifest" > "$legacy_extension_manifest" || \
   php_darwin_die 'could not create a legacy extension manifest fixture'
@@ -327,7 +327,7 @@ grep -Fxq "release delete-asset php-7.0 $stale_asset.sha256 --yes --repo shivamm
 grep -Fxq "release delete-asset php-7.0 $plain_asset --yes --repo shivammathur/php-darwin" "$gh_log" || \
   php_darwin_die 'publisher did not retire the mutable archive name'
 grep -Fxq "release delete-asset php-7.0 $intel_asset --yes --repo shivammathur/php-darwin" "$gh_log" || \
-  php_darwin_die 'publisher did not remove the unsupported Intel archive'
+  php_darwin_die 'publisher did not retire the mutable Intel archive name'
 while IFS= read -r previous_download; do
   ! grep -Fq "release delete-asset php-7.0 $previous_download " "$gh_log" || \
     php_darwin_die 'publisher removed the previous installer generation'
