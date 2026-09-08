@@ -344,6 +344,11 @@ php_darwin_validate_ts() {
 php_darwin_normalize_arch() {
   case "${1:-$(uname -m)}" in
     arm64|aarch64) printf 'arm64\n' ;;
+    x86_64|amd64)
+      [ "${PHP_DARWIN_BACKEND:-homebrew}" = intel ] || \
+        php_darwin_die "unsupported architecture: ${1:-<empty>}"
+      printf 'x86_64\n'
+      ;;
     *) php_darwin_die "unsupported architecture: ${1:-<empty>}" ;;
   esac
 }
@@ -491,9 +496,13 @@ php_darwin_config_id() {
 
 php_darwin_metadata_path() {
   local asset=$1
+  local asset_arch
 
-  [[ "$asset" =~ ^php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_arm64\.tar\.zst$ ]] || \
+  [[ "$asset" =~ ^php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_(arm64|x86_64)\.tar\.zst$ ]] || \
     php_darwin_die "invalid cache archive name: $asset"
+  asset_arch=${asset##*+darwin_}
+  asset_arch=${asset_arch%.tar.zst}
+  php_darwin_normalize_arch "$asset_arch" >/dev/null || return 1
   printf 'var/php-darwin/%s.json\n' "${asset%.tar.zst}"
 }
 
@@ -542,9 +551,13 @@ php_darwin_asset() {
 
 php_darwin_download_asset() {
   local asset=$1
+  local asset_arch
   local sha256=$2
 
-  [[ "$asset" =~ ^php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_arm64\.tar\.zst$ ]] || return 1
+  [[ "$asset" =~ ^php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_(arm64|x86_64)\.tar\.zst$ ]] || return 1
+  asset_arch=${asset##*+darwin_}
+  asset_arch=${asset_arch%.tar.zst}
+  php_darwin_normalize_arch "$asset_arch" >/dev/null 2>&1 || return 1
   [[ "$sha256" =~ ^[0-9a-f]{64}$ ]] || return 1
   printf '%s.%s.tar.zst\n' "${asset%.tar.zst}" "$sha256"
 }
@@ -581,12 +594,14 @@ php_darwin_checksum_from_file() {
 
 php_darwin_release_manifest_url() {
   local release_repository=$1
+  local release_tag
   local version=$2
 
   [[ "$release_repository" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || return 1
   php_darwin_validate_version "$version"
-  printf 'https://github.com/%s/releases/download/php-%s/php-%s-manifest.json?cache=%s\n' \
-    "$release_repository" "$version" "$version" "$(date +%s)"
+  release_tag="php-$version${PHP_DARWIN_RELEASE_TAG_SUFFIX:-}"
+  printf 'https://github.com/%s/releases/download/%s/php-%s-manifest.json?cache=%s\n' \
+    "$release_repository" "$release_tag" "$version" "$(date +%s)"
 }
 
 php_darwin_fetch_release_manifest() {
@@ -887,7 +902,14 @@ php_darwin_reap_job() {
 }
 
 php_darwin_read_config() {
-  case "${1:-}" in
+  local config=${1:-}
+  if [ "${PHP_DARWIN_BACKEND:-homebrew}" = intel ]; then
+    case "$config" in
+      platforms.json) config=intel-platforms.json ;;
+      variants) config=intel-variants ;;
+    esac
+  fi
+  case "$config" in
     archive-paths)
       cat <<'PHP_DARWIN_CONFIG_ARCHIVE_PATHS'
 # Homebrew prefix roots permitted in an archive and merged during installation.
@@ -931,6 +953,22 @@ PHP_DARWIN_CONFIG_PACKAGE_JSON
 }
 PHP_DARWIN_CONFIG_PLATFORMS_JSON
       ;;
+    intel-platforms.json)
+      cat <<'PHP_DARWIN_CONFIG_INTEL_PLATFORMS_JSON'
+{
+  "x86_64": {
+    "build_runner": "macos-15-intel",
+    "brew_prefix": "/usr/local",
+    "minimum_macos": 15,
+    "platform_key": "x86_64_sequoia",
+    "test_runners": [
+      "macos-15-intel",
+      "macos-26-intel"
+    ]
+  }
+}
+PHP_DARWIN_CONFIG_INTEL_PLATFORMS_JSON
+      ;;
     legacy-platforms.json)
       cat <<'PHP_DARWIN_CONFIG_LEGACY_PLATFORMS_JSON'
 {
@@ -960,6 +998,12 @@ release zts
 debug nts
 debug zts
 PHP_DARWIN_CONFIG_VARIANTS
+      ;;
+    intel-variants)
+      cat <<'PHP_DARWIN_CONFIG_INTEL_VARIANTS'
+# Intel is an isolated POC. Expand only after the source-build cache is proven.
+release nts
+PHP_DARWIN_CONFIG_INTEL_VARIANTS
       ;;
     versions)
       cat <<'PHP_DARWIN_CONFIG_VERSIONS'
@@ -2188,7 +2232,8 @@ php_darwin_download_release_archive() {
   local archive_http_status
 
   release_archive_error=
-  release_url=${PHP_DARWIN_RELEASE_URL:-https://github.com/$release_repository/releases/download/php-$version/$manifest_download_asset}
+  release_tag="php-$version${PHP_DARWIN_RELEASE_TAG_SUFFIX:-}"
+  release_url=${PHP_DARWIN_RELEASE_URL:-https://github.com/$release_repository/releases/download/$release_tag/$manifest_download_asset}
   # Do not retry a retired immutable name: a single 404 should immediately
   # fall through to the current manifest instead of consuming the fetch budget.
   archive_http_status=$(curl --retry 3 -fsSL -w '%{http_code}' "$release_url" -o "$archive")

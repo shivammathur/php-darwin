@@ -4,7 +4,15 @@ php_darwin_root=${PHP_DARWIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && p
 unset php_darwin_configured_versions_data php_darwin_configured_variants_data
 
 php_darwin_read_config() {
-  cat "$php_darwin_root/conf/$1"
+  local config=${1:-}
+
+  if [ "${PHP_DARWIN_BACKEND:-homebrew}" = intel ]; then
+    case "$config" in
+      platforms.json) config=intel-platforms.json ;;
+      variants) config=intel-variants ;;
+    esac
+  fi
+  cat "$php_darwin_root/conf/$config"
 }
 
 php_darwin_die() {
@@ -343,6 +351,11 @@ php_darwin_validate_ts() {
 php_darwin_normalize_arch() {
   case "${1:-$(uname -m)}" in
     arm64|aarch64) printf 'arm64\n' ;;
+    x86_64|amd64)
+      [ "${PHP_DARWIN_BACKEND:-homebrew}" = intel ] || \
+        php_darwin_die "unsupported architecture: ${1:-<empty>}"
+      printf 'x86_64\n'
+      ;;
     *) php_darwin_die "unsupported architecture: ${1:-<empty>}" ;;
   esac
 }
@@ -490,9 +503,13 @@ php_darwin_config_id() {
 
 php_darwin_metadata_path() {
   local asset=$1
+  local asset_arch
 
-  [[ "$asset" =~ ^php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_arm64\.tar\.zst$ ]] || \
+  [[ "$asset" =~ ^php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_(arm64|x86_64)\.tar\.zst$ ]] || \
     php_darwin_die "invalid cache archive name: $asset"
+  asset_arch=${asset##*+darwin_}
+  asset_arch=${asset_arch%.tar.zst}
+  php_darwin_normalize_arch "$asset_arch" >/dev/null || return 1
   printf 'var/php-darwin/%s.json\n' "${asset%.tar.zst}"
 }
 
@@ -541,9 +558,13 @@ php_darwin_asset() {
 
 php_darwin_download_asset() {
   local asset=$1
+  local asset_arch
   local sha256=$2
 
-  [[ "$asset" =~ ^php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_arm64\.tar\.zst$ ]] || return 1
+  [[ "$asset" =~ ^php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_(arm64|x86_64)\.tar\.zst$ ]] || return 1
+  asset_arch=${asset##*+darwin_}
+  asset_arch=${asset_arch%.tar.zst}
+  php_darwin_normalize_arch "$asset_arch" >/dev/null 2>&1 || return 1
   [[ "$sha256" =~ ^[0-9a-f]{64}$ ]] || return 1
   printf '%s.%s.tar.zst\n' "${asset%.tar.zst}" "$sha256"
 }
@@ -580,12 +601,14 @@ php_darwin_checksum_from_file() {
 
 php_darwin_release_manifest_url() {
   local release_repository=$1
+  local release_tag
   local version=$2
 
   [[ "$release_repository" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || return 1
   php_darwin_validate_version "$version"
-  printf 'https://github.com/%s/releases/download/php-%s/php-%s-manifest.json?cache=%s\n' \
-    "$release_repository" "$version" "$version" "$(date +%s)"
+  release_tag="php-$version${PHP_DARWIN_RELEASE_TAG_SUFFIX:-}"
+  printf 'https://github.com/%s/releases/download/%s/php-%s-manifest.json?cache=%s\n' \
+    "$release_repository" "$release_tag" "$version" "$(date +%s)"
 }
 
 php_darwin_fetch_release_manifest() {

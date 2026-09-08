@@ -62,7 +62,14 @@ fi
 
 {
   printf 'php_darwin_read_config() {\n'
-  printf "  case \"\${1:-}\" in\n"
+  printf '  local config=${1:-}\n'
+  printf '  if [ "${PHP_DARWIN_BACKEND:-homebrew}" = intel ]; then\n'
+  printf '    case "$config" in\n'
+  printf '      platforms.json) config=intel-platforms.json ;;\n'
+  printf '      variants) config=intel-variants ;;\n'
+  printf '    esac\n'
+  printf '  fi\n'
+  printf "  case \"\$config\" in\n"
   while IFS= read -r relative; do
     case "$relative" in conf/*)
       name=${relative#conf/}

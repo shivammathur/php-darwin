@@ -10,7 +10,9 @@ scripts/extract.sh
 conf/archive-paths
 conf/package.json
 conf/platforms.json
+conf/intel-platforms.json
 conf/legacy-platforms.json
 conf/postinstall-paths
 conf/variants
+conf/intel-variants
 conf/versions

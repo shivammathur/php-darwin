@@ -591,7 +591,8 @@ php_darwin_download_release_archive() {
   local archive_http_status
 
   release_archive_error=
-  release_url=${PHP_DARWIN_RELEASE_URL:-https://github.com/$release_repository/releases/download/php-$version/$manifest_download_asset}
+  release_tag="php-$version${PHP_DARWIN_RELEASE_TAG_SUFFIX:-}"
+  release_url=${PHP_DARWIN_RELEASE_URL:-https://github.com/$release_repository/releases/download/$release_tag/$manifest_download_asset}
   # Do not retry a retired immutable name: a single 404 should immediately
   # fall through to the current manifest instead of consuming the fetch budget.
   archive_http_status=$(curl --retry 3 -fsSL -w '%{http_code}' "$release_url" -o "$archive")

@@ -182,6 +182,11 @@ clean_homebrew() {
 install_formula_from_bottle_or_source() {
   local install_log="$work_dir/formula-install.log"
 
+  if [ "${PHP_DARWIN_FORCE_SOURCE:-false}" = true ]; then
+    printf 'Building %s from source; dependencies may use Homebrew bottles\n' "$requested_formula"
+    brew install --build-from-source "$tap/$requested_formula"
+    return
+  fi
   if brew install --force-bottle "$tap/$requested_formula" > "$install_log" 2>&1; then
     cat "$install_log" || return 1
     return 0
