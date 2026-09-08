@@ -11,11 +11,11 @@ bash "$script_dir/test-extensions-source-hash.sh" || \
   php_darwin_die 'cached extension source hash validation failed'
 bash "$script_dir/test-restore-published.sh" || \
   php_darwin_die 'published architecture restore validation failed'
-pinned_source_output=$(PINNED_COMMIT=0123456789abcdef0123456789abcdef01234567 \
+pinned_source_output=$(GITHUB_OUTPUT='' PINNED_COMMIT=0123456789abcdef0123456789abcdef01234567 \
   bash "$script_dir/source-commit.sh") || php_darwin_die 'pinned source commit validation failed'
 [ "$pinned_source_output" = 0123456789abcdef0123456789abcdef01234567 ] || \
   php_darwin_die 'pinned source commit was not preserved'
-if PINNED_COMMIT=invalid bash "$script_dir/source-commit.sh" >/dev/null 2>&1; then
+if GITHUB_OUTPUT='' PINNED_COMMIT=invalid bash "$script_dir/source-commit.sh" >/dev/null 2>&1; then
   php_darwin_die 'invalid pinned source commit was accepted'
 fi
 
