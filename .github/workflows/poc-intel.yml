@@ -3,6 +3,9 @@ run-name: POC PHP 8.5 Intel/MacPorts cache
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feature/macports-intel
 
 permissions:
   contents: read
