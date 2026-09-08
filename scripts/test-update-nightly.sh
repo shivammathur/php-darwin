@@ -101,9 +101,16 @@ grep -Fxq 'homebrew-php-commit=0123456789abcdef0123456789abcdef01234567' "$outpu
   php_darwin_die 'nightly platform completion did not pin the published homebrew-php commit'
 grep -Fxq 'homebrew-extensions-commit=89abcdef0123456789abcdef0123456789abcdef' "$output" || \
   php_darwin_die 'nightly platform completion did not pin the published extension commit'
-write_manifest "$current"
 write_manifest "$previous"
+jq '.assets |= map(select(.architecture == "arm64"))' "$manifest" > "$manifest.arm" || \
+  php_darwin_die 'could not write the stale ARM64-only nightly manifest fixture'
+mv "$manifest.arm" "$manifest" || \
+  php_darwin_die 'could not install the stale ARM64-only nightly manifest fixture'
 run_gate true
+grep -Fxq 'homebrew-php-commit=' "$output" || \
+  php_darwin_die 'changed nightly source retained a stale homebrew-php commit'
+grep -Fxq 'homebrew-extensions-commit=' "$output" || \
+  php_darwin_die 'changed nightly source retained a stale extension commit'
 write_manifest "$current" "$(printf '%064d' 2)"
 run_gate true
 write_manifest "$current"

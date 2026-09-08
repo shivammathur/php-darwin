@@ -21,8 +21,8 @@ on:
         required: false
         type: string
       architectures:
-        description: Space-separated CPU architectures
-        default: arm64 x86_64
+        description: Space-separated CPU architectures; leave empty to use the freshness gate
+        default: ''
         required: false
         type: string
       publish:
@@ -95,6 +95,6 @@ jobs:
       builds: ${{ inputs.builds || 'debug release' }}
       ts: ${{ inputs.ts || 'nts zts' }}
       architectures: ${{ inputs.architectures || needs.freshness.outputs.architectures }}
-      homebrew-php-commit: ${{ inputs.architectures == '' && needs.freshness.outputs.homebrew-php-commit || '' }}
-      homebrew-extensions-commit: ${{ inputs.architectures == '' && needs.freshness.outputs.homebrew-extensions-commit || '' }}
+      homebrew-php-commit: ${{ (inputs.architectures == '' || inputs.architectures == needs.freshness.outputs.architectures) && needs.freshness.outputs.homebrew-php-commit || '' }}
+      homebrew-extensions-commit: ${{ (inputs.architectures == '' || inputs.architectures == needs.freshness.outputs.architectures) && needs.freshness.outputs.homebrew-extensions-commit || '' }}
       publish: ${{ github.event_name == 'schedule' || inputs.publish }}

@@ -63,10 +63,14 @@ if [ "$force" = true ] || [ "$published" != "$current" ] || \
   build=true
 fi
 architectures='arm64 x86_64'
+pinned_extension_commit=
+pinned_source_commit=
 if [ "$force" = false ] && [ "$published" = "$current" ] && \
   [ "$published_extensions" = "$current_extensions" ] && [ "$manifest_current_platforms" = false ] && \
   [ -n "$manifest_source_commit" ] && [ -n "$manifest_extension_commit" ]; then
   architectures=x86_64
+  pinned_extension_commit=$manifest_extension_commit
+  pinned_source_commit=$manifest_source_commit
   printf 'Completing PHP %s nightly with Intel caches while retaining current ARM caches\n' "$version"
 fi
 if [ "$build" = true ]; then
@@ -83,7 +87,7 @@ fi
 
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
   printf 'architectures=%s\nbuild=%s\nhomebrew-extensions-commit=%s\nhomebrew-php-commit=%s\nphp-src-commit=%s\nphp-version=%s\n' \
-    "$architectures" "$build" "$manifest_extension_commit" "$manifest_source_commit" "$current" "$version" \
+    "$architectures" "$build" "$pinned_extension_commit" "$pinned_source_commit" "$current" "$version" \
     >> "$GITHUB_OUTPUT" || \
     php_darwin_die 'could not write nightly freshness outputs'
 fi
