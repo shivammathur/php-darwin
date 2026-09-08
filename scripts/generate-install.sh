@@ -20,6 +20,13 @@ next="$work_dir/next.sh"
 input_count=0
 seen_inputs="$work_dir/inputs.txt"
 release_manifest=${PHP_DARWIN_RELEASE_MANIFEST:-}
+generated_backend=${PHP_DARWIN_GENERATED_BACKEND:-}
+generated_tag_suffix=${PHP_DARWIN_GENERATED_RELEASE_TAG_SUFFIX:-}
+
+case "$generated_backend" in ''|intel) ;; *) php_darwin_die 'invalid generated installer backend' ;; esac
+case "$generated_tag_suffix" in ''|-intel-poc) ;; *) php_darwin_die 'invalid generated installer release suffix' ;; esac
+[ -z "$generated_backend" ] || [ -n "$generated_tag_suffix" ] || \
+  php_darwin_die 'generated Intel installer requires a release suffix'
 
 if [ -n "$release_manifest" ]; then
   [ -f "$release_manifest" ] || php_darwin_die "release manifest is missing: $release_manifest"
@@ -166,6 +173,19 @@ replace_marker __PHP_DARWIN_LIBRARY__ "$library"
 replace_marker __PHP_DARWIN_CONFIG__ "$config"
 replace_marker __PHP_DARWIN_HELPERS__ "$helpers"
 replace_marker __PHP_DARWIN_INSTALL__ "$install"
+
+if [ -n "$generated_backend" ]; then
+  awk -v backend="$generated_backend" -v suffix="$generated_tag_suffix" '
+    NR == 1 {
+      print
+      printf "export PHP_DARWIN_BACKEND=%s\n", backend
+      printf "export PHP_DARWIN_RELEASE_TAG_SUFFIX=%s\n", suffix
+      next
+    }
+    { print }
+  ' "$generated" > "$next" || php_darwin_die 'could not configure the generated installer backend'
+  mv "$next" "$generated" || php_darwin_die 'could not update the generated installer backend'
+fi
 
 if grep -Eq '__PHP_DARWIN_[A-Z_]+__|base64|gzip -d|\$\$' "$generated"; then
   php_darwin_die 'standalone installer contains an encoded payload or an unresolved marker'

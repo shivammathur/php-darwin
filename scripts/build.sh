@@ -179,26 +179,6 @@ clean_homebrew() {
   fi
 }
 
-install_formula_from_bottle_or_source() {
-  local install_log="$work_dir/formula-install.log"
-
-  if [ "${PHP_DARWIN_FORCE_SOURCE:-false}" = true ]; then
-    printf 'Building %s from source; dependencies may use Homebrew bottles\n' "$requested_formula"
-    brew install --build-from-source "$tap/$requested_formula"
-    return
-  fi
-  if brew install --force-bottle "$tap/$requested_formula" > "$install_log" 2>&1; then
-    cat "$install_log" || return 1
-    return 0
-  fi
-  if ! grep -Eq 'has no bottle|no bottle available' "$install_log"; then
-    cat "$install_log" >&2
-    return 1
-  fi
-  printf 'No compatible bottle for %s; building from source\n' "$requested_formula"
-  brew install --build-from-source "$tap/$requested_formula"
-}
-
 install_formula() {
   local current_formulae="$work_dir/current-formulae.txt"
   local current_preserved_versions="$work_dir/current-preserved-versions.txt"
@@ -209,7 +189,7 @@ install_formula() {
   local semver_output
 
   [ -s "$before_manifest" ] || php_darwin_die 'the clean Homebrew snapshot is missing'
-  install_formula_from_bottle_or_source || php_darwin_die "could not install $requested_formula"
+  brew install "$tap/$requested_formula" || php_darwin_die "could not install $requested_formula"
   brew unlink "$formula" >/dev/null 2>&1 || true
   brew link --overwrite --force "$formula" || php_darwin_die "could not link $formula after building"
 

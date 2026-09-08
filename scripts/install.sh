@@ -1001,7 +1001,7 @@ PHP_DARWIN_CONFIG_VARIANTS
       ;;
     intel-variants)
       cat <<'PHP_DARWIN_CONFIG_INTEL_VARIANTS'
-# Intel is an isolated POC. Expand only after the source-build cache is proven.
+# Intel is an isolated POC. Expand only after the Homebrew cache is proven.
 release nts
 PHP_DARWIN_CONFIG_INTEL_VARIANTS
       ;;

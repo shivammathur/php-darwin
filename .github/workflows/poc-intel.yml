@@ -1,5 +1,5 @@
 name: POC Intel PHP cache
-run-name: POC PHP 8.5 Intel/Homebrew source-build cache
+run-name: POC PHP 8.5 Intel/Homebrew cache
 
 on:
   workflow_dispatch:
@@ -28,7 +28,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Validate the isolated Intel configuration
-        run: bash scripts/intel/validate.sh
+        run: bash scripts/intel-poc.sh validate
       - name: Pin homebrew-php
         id: php
         run: bash scripts/source-commit.sh
@@ -37,7 +37,7 @@ jobs:
         run: bash scripts/source-commit.sh extensions
 
   build-intel:
-    name: Build and cache PHP 8.5 from source on Intel
+    name: Build and cache PHP 8.5 with Homebrew on Intel
     needs: source
     runs-on: macos-15-intel
     timeout-minutes: 240
@@ -53,27 +53,20 @@ jobs:
       - name: Remove unused Homebrew taps
         run: bash scripts/cleanup-taps.sh
       - name: Prepare the pinned homebrew-php tap
-        run: bash scripts/intel/build.sh prepare
+        run: bash scripts/build.sh prepare
       - name: Clean the runner while preserving PHP dependencies
-        run: bash scripts/intel/build.sh cleanup
-      - name: Build PHP from source using bottled dependencies
-        run: bash scripts/intel/build.sh install
-      - name: Build and cache xdebug and pcov
-        run: bash scripts/intel/build.sh extensions
+        run: bash scripts/build.sh cleanup
+      - name: Install PHP with Homebrew
+        run: bash scripts/build.sh install
+      - name: Install xdebug and pcov with Homebrew
+        run: bash scripts/build-extensions.sh
       - name: Package the complete Homebrew runtime closure
-        run: bash scripts/intel/build.sh package
+        run: bash scripts/build.sh package
       - name: Verify the archive and metadata
-        run: bash scripts/intel/build.sh verify
-      - name: Generate the POC manifest and standalone installer
-        run: |
-          bash scripts/intel/generate-manifest.sh \
-            builds/php_8.5-nts-release+darwin_x86_64.json \
-            builds/php-8.5-manifest.json
-          bash scripts/intel/generate-install.sh \
-            builds/php-8.5-manifest.json builds/install.sh
+        run: bash scripts/build.sh verify
       - name: Reset the build runner
         if: ${{ always() }}
-        run: bash scripts/intel/build.sh reset
+        run: bash scripts/build.sh reset
       - name: Upload the Intel cache POC
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -100,7 +93,7 @@ jobs:
       - name: Capture the ARM PHP and PECL profile
         env:
           PROFILE_NAME: homebrew-arm64
-        run: bash scripts/intel/profile.sh "$RUNNER_TEMP/profile-arm"
+        run: bash scripts/intel-poc.sh profile "$RUNNER_TEMP/profile-arm"
       - name: Upload the ARM profile
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -134,7 +127,7 @@ jobs:
         run: bash scripts/test-install.sh prepare
       - name: Install the cache directly into the Homebrew prefix
         env: *intel-test
-        run: bash scripts/intel/install.sh 8.5 release nts "$ARCHIVE_DIR/php_8.5-nts-release+darwin_x86_64.tar.zst"
+        run: bash scripts/install-package.sh 8.5 release nts "$ARCHIVE_DIR/php_8.5-nts-release+darwin_x86_64.tar.zst"
       - name: Validate PHP, extensions, PEAR, and PECL
         env: *intel-test
         run: bash scripts/test-install.sh runtime
@@ -144,7 +137,7 @@ jobs:
       - name: Capture the Intel PHP and PECL profile
         env:
           PROFILE_NAME: homebrew-x86_64
-        run: bash scripts/intel/profile.sh "$RUNNER_TEMP/profile-intel"
+        run: bash scripts/intel-poc.sh profile "$RUNNER_TEMP/profile-intel"
       - name: Verify Homebrew update and upgrade after cache installation
         run: |
           brew update
@@ -159,7 +152,7 @@ jobs:
           retention-days: 2
 
   compare:
-    name: Compare ARM bottle and Intel source-build functionality
+    name: Compare ARM and Intel Homebrew functionality
     needs: [profile-arm, install-intel]
     runs-on: ubuntu-latest
     steps:
@@ -173,7 +166,7 @@ jobs:
           path: ${{ runner.temp }}/profiles
       - name: Compare extensions, PECL configuration, and phpinfo capabilities
         run: |
-          bash scripts/intel/compare-profiles.sh \
+          bash scripts/intel-poc.sh compare \
             "$RUNNER_TEMP/profiles/profile-homebrew-arm64" \
             "$RUNNER_TEMP/profiles/profile-homebrew-x86-64"
 
@@ -195,4 +188,4 @@ jobs:
       - name: Publish using the GitHub REST API
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: bash scripts/intel/publish-poc.sh builds
+        run: bash scripts/intel-poc.sh publish builds

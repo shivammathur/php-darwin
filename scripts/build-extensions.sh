@@ -133,16 +133,11 @@ if [ -n "$suffix" ]; then
   brew install --build-from-source --skip-link \
     "${extension_references[@]}" || \
     php_darwin_die "could not build cached PHP $version extensions"
-elif [ "${PHP_DARWIN_FORCE_SOURCE:-false}" = true ]; then
-  brew install --build-from-source --skip-link \
-    "${extension_references[@]}" || \
-    php_darwin_die "could not build cached PHP $version extensions"
 else
-  # Release/NTS bottles are built against the same unmodified PHP formula.
-  # Requiring a bottle keeps this lane fast and fails clearly if one is absent.
-  brew install --force-bottle --skip-link \
+  # Homebrew pours compatible bottles and builds only unavailable formulae.
+  brew install --skip-link \
     "${extension_references[@]}" || \
-    php_darwin_die "could not install cached PHP $version extension bottles"
+    php_darwin_die "could not install cached PHP $version extensions"
 fi
 
 extension_dir=$("$brew_prefix/opt/$formula/bin/php-config" --extension-dir) || \
