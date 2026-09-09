@@ -94,7 +94,7 @@ trap 'exit 143' TERM
 # Check each shared file and each distinct ancestor once in native stat. A
 # shell lstat/regex loop over thousands of links dominates installs on Intel.
 awk -v prefix="$prefix" -v allowed=" $allowed_roots " '
-  NF {
+  $0 != "" {
     path=$0
     if (path ~ /[\t\r]/ || path ~ /^\// || path ~ /(^|\/)\.\.($|\/)/ || path ~ /\/\//) {
       print "Unsafe managed archive path: " path > "/dev/stderr"; exit 1
@@ -115,7 +115,7 @@ case "$(uname -s)" in
   Darwin) stat_options=(-f $'%HT\t%N') ;;
   *) stat_options=(-c $'%F\t%n') ;;
 esac
-xargs -0 stat "${stat_options[@]}" < "$inventory_dir/paths" \
+LC_ALL=C xargs -0 stat "${stat_options[@]}" < "$inventory_dir/paths" \
   > "$inventory_dir/existing" 2>/dev/null
 stat_status=$?
 # Missing files are expected. Other xargs failures (including a missing stat
