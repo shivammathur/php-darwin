@@ -1840,6 +1840,8 @@ tap_pid=
 tap_action_file="$tmp_dir/homebrew-tap-action.txt"
 homebrew_prepare_log="$tmp_dir/homebrew-prepare.log"
 homebrew_prepare_pid=
+homebrew_trust_pid=
+homebrew_trust_log="$tmp_dir/homebrew-trust.log"
 homebrew_prepare_phase_file="$tmp_dir/homebrew-prepare-phase.txt"
 tap_path_file="$tmp_dir/homebrew-tap-path.txt"
 tap_trust_file="$tmp_dir/homebrew-tap-trust.txt"
@@ -2006,6 +2008,13 @@ php_darwin_wait_for_homebrew_prepare() {
       *) php_darwin_die 'could not prepare Homebrew for cache installation' ;;
     esac
   fi
+  if ! wait "$homebrew_trust_pid"; then
+    homebrew_trust_pid=
+    php_darwin_set_phase homebrew.trust-state
+    cat "$homebrew_trust_log" >&2
+    php_darwin_die "could not read the $tap trust state"
+  fi
+  homebrew_trust_pid=
   tap_path=$(cat "$tap_path_file") || php_darwin_die "could not read the $tap repository path"
   tap_was_trusted=$(cat "$tap_trust_file") || \
     php_darwin_die "could not read the $tap trust state"
@@ -2073,6 +2082,7 @@ php_darwin_install_cleanup() {
   # Give the potentially mutating Homebrew preparation a bounded opportunity
   # to finish. Read-only validation jobs can be stopped immediately.
   php_darwin_reap_job "$homebrew_prepare_pid" 20
+  php_darwin_reap_job "$homebrew_trust_pid" 0
   php_darwin_reap_job "$tap_pid" 0
   php_darwin_reap_job "$missing_pid" 0
   php_darwin_reap_job "$archive_hash_pid" 0
@@ -2234,9 +2244,9 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-# Homebrew preparation and reading the cache are independent. Keep Homebrew
-# operations serial within one worker while overlapping them with the archive
-# download, checksum, and metadata validation.
+# Reading Homebrew trust, unlinking PHP, and downloading the cache are
+# independent. Track the read-only and mutating workers separately so cleanup
+# can stop trust queries while safely completing or rolling back unlinking.
 for linked_php_path in "$brew_prefix/var/homebrew/linked"/php*; do
   [ -L "$linked_php_path" ] || continue
   linked_php_formula=${linked_php_path##*/}
@@ -2254,7 +2264,6 @@ for linked_php_path in "$brew_prefix/var/homebrew/linked"/php*; do
 done
 : > "$homebrew_prepare_phase_file" || php_darwin_die 'could not create the Homebrew preparation phase file'
 (
-  printf 'homebrew.trust-state\n' > "$homebrew_prepare_phase_file" || exit 1
   trust_json=$(brew trust --json=v1) || exit 1
   if php_darwin_tap_trusted "$tap" "$trust_json"; then
     printf 'true\n' > "$tap_trust_file" || exit 1
@@ -2275,6 +2284,9 @@ done
     else error("invalid Homebrew formula trust response")
     end
   ' <<< "$formula_trust_json" > "$initial_formula_trust_file" || exit 1
+) > "$homebrew_trust_log" 2>&1 &
+homebrew_trust_pid=$!
+(
   printf 'homebrew.tap-path\n' > "$homebrew_prepare_phase_file" || exit 1
   brew --repository "$tap" > "$tap_path_file" || exit 1
   if [ "${#linked_php_references[@]}" -gt 0 ]; then
@@ -2752,9 +2764,6 @@ php_darwin_set_phase homebrew.link
 php_darwin_verify_links "$brew_prefix" "$installed_links_file" || \
   php_darwin_die 'cached Homebrew links did not match the archive metadata'
 
-php_darwin_set_phase homebrew.dependencies
-php_darwin_resolve_tap_and_dependencies
-
 php_darwin_set_phase runtime.verify
 php_bin="$brew_prefix/opt/$formula/bin/php"
 [ -x "$php_bin" ] || php_darwin_die "PHP binary missing after cache extraction: $php_bin"
@@ -2768,6 +2777,8 @@ while IFS=$'\t' read -r extension extension_type extension_path; do
     "if (!extension_loaded('$extension')) { exit(1); }" || \
     php_darwin_die "cached $extension module does not load"
 done < "$extension_paths_inventory"
+php_darwin_set_phase homebrew.dependencies
+php_darwin_resolve_tap_and_dependencies
 runtime_verified=true
 php_darwin_set_phase complete
 
