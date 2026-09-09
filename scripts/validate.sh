@@ -426,7 +426,8 @@ grep -Fxq 'Cellar/dependency/1' "$fixture_excludes" || \
   php_darwin_die 'existing package keg was not excluded as one subtree'
 grep -Fxq 'Cellar/dependency/1' "$fixture_kegs" || php_darwin_die 'existing package keg inventory is incomplete'
 ! grep -Fq 'Cellar/hello/1' "$fixture_excludes" || php_darwin_die 'unrelated keg was unnecessarily scanned'
-bash "$script_dir/extract.sh" "$fixture_archive" "$fixture_prefix" "$fixture_excludes" || \
+bash "$script_dir/extract.sh" "$fixture_archive" "$fixture_prefix" "$fixture_excludes" \
+  "$fixture_managed_paths" "$fixture_package_kegs" || \
   php_darwin_die 'direct compressed extraction fixture failed'
 bash "$script_dir/list-archive.sh" "$fixture_archive" "$fixture_contents" || \
   php_darwin_die 'direct compressed archive listing fixture failed'

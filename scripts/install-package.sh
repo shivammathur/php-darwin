@@ -527,14 +527,18 @@ done
     [ "$trust_status" -eq 1 ] || exit 1
     printf 'false\n' > "$tap_trust_file" || exit 1
   fi
-  # Ask Homebrew for the selected collection so this remains compatible with
-  # changes to plural keys in the combined JSON response. Resolve it before
-  # extraction, while the runner's Homebrew tools are untouched.
-  brew trust --formula --json=v1 | jq -r '
+  # Reuse the combined snapshot. Older Homebrew revisions pluralized this key
+  # differently; an unknown schema can still use the selected collection.
+  formula_trust_json=$(jq -c '
+    if has("formulae") then .formulae elif has("formulas") then .formulas else empty end
+  ' <<< "$trust_json") || exit 1
+  [ -n "$formula_trust_json" ] || \
+    formula_trust_json=$(brew trust --formula --json=v1) || exit 1
+  jq -r '
     if type == "array" and all(.[]; type == "string") then .[]
     else error("invalid Homebrew formula trust response")
     end
-  ' > "$initial_formula_trust_file" || exit 1
+  ' <<< "$formula_trust_json" > "$initial_formula_trust_file" || exit 1
   printf 'homebrew.tap-path\n' > "$homebrew_prepare_phase_file" || exit 1
   brew --repository "$tap" > "$tap_path_file" || exit 1
   if [ "${#linked_php_references[@]}" -gt 0 ]; then
@@ -895,7 +899,8 @@ fi
 php_darwin_set_phase archive.extract
 archive_mutation_started=true
 tap_snapshot_extracted=true
-bash "$script_dir/extract.sh" "$archive" "$brew_prefix" "$exclude_file" || \
+bash "$script_dir/extract.sh" "$archive" "$brew_prefix" "$exclude_file" \
+  "$managed_paths_file" "$package_kegs_file" || \
   php_darwin_die "could not extract $asset into Homebrew"
 
 php_darwin_set_phase homebrew.tap

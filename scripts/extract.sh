@@ -101,10 +101,19 @@ case "$(uname -s)" in
   *) stat_style=gnu ;;
 esac
 
-tar --ignore-zeros -tf "$archive" > "$archive_members" || {
-  printf 'Could not list archive members: %s\n' "$archive" >&2
-  exit 1
-}
+tar_version=$(tar --version) || exit 1
+if [[ "$tar_version" == *bsdtar* ]] && [ -n "${4:-}" ] && [ -n "${5:-}" ]; then
+  # The installer has authenticated the archive and validated its metadata.
+  # Shared files are enumerated individually; kegs and the staged tap/PEAR tree
+  # are whole subtrees. Existing kegs are excluded and replacement kegs have
+  # been moved aside, so only these roots can have pre-existing parents.
+  cat "$4" "$5" > "$archive_members" || exit 1
+else
+  tar --ignore-zeros -tf "$archive" > "$archive_members" || {
+    printf 'Could not list archive members: %s\n' "$archive" >&2
+    exit 1
+  }
+fi
 extract_exclusions=$(mktemp "${RUNNER_TEMP:-/tmp}/php-darwin-exclusions.XXXXXX") || exit 1
 # Collapse excluded members into the largest wholly excluded subtrees. Passing
 # every included file to tar makes its pattern matcher quadratic on large kegs.
@@ -198,7 +207,7 @@ done < "$archive_members"
 
 [ ! -s "$permission_records" ] || \
   printf 'Temporarily granting access to protected Homebrew directories\n'
-case "$(tar --version)" in
+case "$tar_version" in
   *bsdtar*) extract_options=(-X "$extract_exclusions") ;;
   *) extract_options=(-T "$extract_members") ;;
 esac

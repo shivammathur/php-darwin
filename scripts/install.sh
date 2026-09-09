@@ -1448,38 +1448,50 @@ while IFS= read -r package_keg extra; do
   fi
 done < "$package_kegs_file"
 
-checked_ancestors=$'\n'
-while IFS= read -r managed_path; do
-  [ -n "$managed_path" ] || continue
-  case "$managed_path" in /*|*'/../'*|../*|*/..|*'//'*)
-    printf 'Unsafe managed archive path: %s\n' "$managed_path" >&2
-    exit 1
-    ;;
-  esac
-  managed_root=${managed_path%%/*}
-  [[ "$managed_root" =~ ^[A-Za-z0-9._+-]+$ ]] || {
-    printf 'Unsafe managed archive root: %s\n' "$managed_root" >&2
-    exit 1
+inventory_dir=$(mktemp -d "${RUNNER_TEMP:-/tmp}/php-darwin-existing.XXXXXX") || exit 1
+trap 'rm -rf "$inventory_dir"' EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+# Check each shared file and each distinct ancestor once in native stat. A
+# shell lstat/regex loop over thousands of links dominates installs on Intel.
+awk -v prefix="$prefix" -v allowed=" $allowed_roots " '
+  NF {
+    path=$0
+    if (path ~ /[\t\r]/ || path ~ /^\// || path ~ /(^|\/)\.\.($|\/)/ || path ~ /\/\//) {
+      print "Unsafe managed archive path: " path > "/dev/stderr"; exit 1
+    }
+    root=path; sub("/.*", "", root)
+    if (root !~ /^[A-Za-z0-9._+-]+$/) {
+      print "Unsafe managed archive root: " root > "/dev/stderr"; exit 1
+    }
+    if (!index(allowed, " " root " ")) {
+      print "Managed archive path has a disallowed root: " path > "/dev/stderr"; exit 1
+    }
+    paths[path]=1
+    while (sub("/[^/]+$", "", path)) paths[path]=1
   }
-  case " $allowed_roots " in *" $managed_root "*) ;; *)
-    printf 'Managed archive path has a disallowed root: %s\n' "$managed_path" >&2
-    exit 1
-    ;;
-  esac
-  managed_ancestor=$managed_path
-  while [[ "$managed_ancestor" == */* ]]; do
-    managed_ancestor=${managed_ancestor%/*}
-    case "$checked_ancestors" in *$'\n'"$managed_ancestor"$'\n'*) break ;; esac
-    checked_ancestors="$checked_ancestors$managed_ancestor"$'\n'
-    if [ -L "$prefix/$managed_ancestor" ]; then
-      append_exclusion "$managed_ancestor"
-      break
-    fi
-  done
-  if [ -e "$prefix/$managed_path" ] || [ -L "$prefix/$managed_path" ]; then
-    append_exclusion "$managed_path"
-  fi
-done < "$managed_paths_file"
+  END { for (path in paths) printf "%s/%s%c", prefix, path, 0 }
+' "$managed_paths_file" > "$inventory_dir/paths" || exit 1
+case "$(uname -s)" in
+  Darwin) stat_options=(-f $'%HT\t%N') ;;
+  *) stat_options=(-c $'%F\t%n') ;;
+esac
+xargs -0 stat "${stat_options[@]}" < "$inventory_dir/paths" \
+  > "$inventory_dir/existing" 2>/dev/null
+stat_status=$?
+# Missing files are expected. Other xargs failures (including a missing stat
+# executable or a signal) must not turn into an empty successful inventory.
+case "$stat_status" in 0|1|123) ;; *) exit 1 ;; esac
+awk -F '\t' -v prefix="$prefix/" '
+  FILENAME == ARGV[1] { managed[$0]=1; next }
+  NF == 2 && index($2, prefix) == 1 {
+    path=substr($2, length(prefix)+1)
+    if ((path in managed) || tolower($1) == "symbolic link") print path
+    next
+  }
+  { exit 1 }
+' "$managed_paths_file" "$inventory_dir/existing" >> "$output" || exit 1
 
 LC_ALL=C sort -u "$output" -o "$output" || exit 1
 LC_ALL=C sort -u "$kegs_output" -o "$kegs_output" || exit 1
@@ -1589,10 +1601,19 @@ case "$(uname -s)" in
   *) stat_style=gnu ;;
 esac
 
-tar --ignore-zeros -tf "$archive" > "$archive_members" || {
-  printf 'Could not list archive members: %s\n' "$archive" >&2
-  exit 1
-}
+tar_version=$(tar --version) || exit 1
+if [[ "$tar_version" == *bsdtar* ]] && [ -n "${4:-}" ] && [ -n "${5:-}" ]; then
+  # The installer has authenticated the archive and validated its metadata.
+  # Shared files are enumerated individually; kegs and the staged tap/PEAR tree
+  # are whole subtrees. Existing kegs are excluded and replacement kegs have
+  # been moved aside, so only these roots can have pre-existing parents.
+  cat "$4" "$5" > "$archive_members" || exit 1
+else
+  tar --ignore-zeros -tf "$archive" > "$archive_members" || {
+    printf 'Could not list archive members: %s\n' "$archive" >&2
+    exit 1
+  }
+fi
 extract_exclusions=$(mktemp "${RUNNER_TEMP:-/tmp}/php-darwin-exclusions.XXXXXX") || exit 1
 # Collapse excluded members into the largest wholly excluded subtrees. Passing
 # every included file to tar makes its pattern matcher quadratic on large kegs.
@@ -1686,7 +1707,7 @@ done < "$archive_members"
 
 [ ! -s "$permission_records" ] || \
   printf 'Temporarily granting access to protected Homebrew directories\n'
-case "$(tar --version)" in
+case "$tar_version" in
   *bsdtar*) extract_options=(-X "$extract_exclusions") ;;
   *) extract_options=(-T "$extract_members") ;;
 esac
@@ -2222,14 +2243,18 @@ done
     [ "$trust_status" -eq 1 ] || exit 1
     printf 'false\n' > "$tap_trust_file" || exit 1
   fi
-  # Ask Homebrew for the selected collection so this remains compatible with
-  # changes to plural keys in the combined JSON response. Resolve it before
-  # extraction, while the runner's Homebrew tools are untouched.
-  brew trust --formula --json=v1 | jq -r '
+  # Reuse the combined snapshot. Older Homebrew revisions pluralized this key
+  # differently; an unknown schema can still use the selected collection.
+  formula_trust_json=$(jq -c '
+    if has("formulae") then .formulae elif has("formulas") then .formulas else empty end
+  ' <<< "$trust_json") || exit 1
+  [ -n "$formula_trust_json" ] || \
+    formula_trust_json=$(brew trust --formula --json=v1) || exit 1
+  jq -r '
     if type == "array" and all(.[]; type == "string") then .[]
     else error("invalid Homebrew formula trust response")
     end
-  ' > "$initial_formula_trust_file" || exit 1
+  ' <<< "$formula_trust_json" > "$initial_formula_trust_file" || exit 1
   printf 'homebrew.tap-path\n' > "$homebrew_prepare_phase_file" || exit 1
   brew --repository "$tap" > "$tap_path_file" || exit 1
   if [ "${#linked_php_references[@]}" -gt 0 ]; then
@@ -2590,7 +2615,8 @@ fi
 php_darwin_set_phase archive.extract
 archive_mutation_started=true
 tap_snapshot_extracted=true
-php_darwin_extract "$archive" "$brew_prefix" "$exclude_file" || \
+php_darwin_extract "$archive" "$brew_prefix" "$exclude_file" \
+  "$managed_paths_file" "$package_kegs_file" || \
   php_darwin_die "could not extract $asset into Homebrew"
 
 php_darwin_set_phase homebrew.tap

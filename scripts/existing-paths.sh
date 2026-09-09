@@ -86,38 +86,50 @@ while IFS= read -r package_keg extra; do
   fi
 done < "$package_kegs_file"
 
-checked_ancestors=$'\n'
-while IFS= read -r managed_path; do
-  [ -n "$managed_path" ] || continue
-  case "$managed_path" in /*|*'/../'*|../*|*/..|*'//'*)
-    printf 'Unsafe managed archive path: %s\n' "$managed_path" >&2
-    exit 1
-    ;;
-  esac
-  managed_root=${managed_path%%/*}
-  [[ "$managed_root" =~ ^[A-Za-z0-9._+-]+$ ]] || {
-    printf 'Unsafe managed archive root: %s\n' "$managed_root" >&2
-    exit 1
+inventory_dir=$(mktemp -d "${RUNNER_TEMP:-/tmp}/php-darwin-existing.XXXXXX") || exit 1
+trap 'rm -rf "$inventory_dir"' EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+# Check each shared file and each distinct ancestor once in native stat. A
+# shell lstat/regex loop over thousands of links dominates installs on Intel.
+awk -v prefix="$prefix" -v allowed=" $allowed_roots " '
+  NF {
+    path=$0
+    if (path ~ /[\t\r]/ || path ~ /^\// || path ~ /(^|\/)\.\.($|\/)/ || path ~ /\/\//) {
+      print "Unsafe managed archive path: " path > "/dev/stderr"; exit 1
+    }
+    root=path; sub("/.*", "", root)
+    if (root !~ /^[A-Za-z0-9._+-]+$/) {
+      print "Unsafe managed archive root: " root > "/dev/stderr"; exit 1
+    }
+    if (!index(allowed, " " root " ")) {
+      print "Managed archive path has a disallowed root: " path > "/dev/stderr"; exit 1
+    }
+    paths[path]=1
+    while (sub("/[^/]+$", "", path)) paths[path]=1
   }
-  case " $allowed_roots " in *" $managed_root "*) ;; *)
-    printf 'Managed archive path has a disallowed root: %s\n' "$managed_path" >&2
-    exit 1
-    ;;
-  esac
-  managed_ancestor=$managed_path
-  while [[ "$managed_ancestor" == */* ]]; do
-    managed_ancestor=${managed_ancestor%/*}
-    case "$checked_ancestors" in *$'\n'"$managed_ancestor"$'\n'*) break ;; esac
-    checked_ancestors="$checked_ancestors$managed_ancestor"$'\n'
-    if [ -L "$prefix/$managed_ancestor" ]; then
-      append_exclusion "$managed_ancestor"
-      break
-    fi
-  done
-  if [ -e "$prefix/$managed_path" ] || [ -L "$prefix/$managed_path" ]; then
-    append_exclusion "$managed_path"
-  fi
-done < "$managed_paths_file"
+  END { for (path in paths) printf "%s/%s%c", prefix, path, 0 }
+' "$managed_paths_file" > "$inventory_dir/paths" || exit 1
+case "$(uname -s)" in
+  Darwin) stat_options=(-f $'%HT\t%N') ;;
+  *) stat_options=(-c $'%F\t%n') ;;
+esac
+xargs -0 stat "${stat_options[@]}" < "$inventory_dir/paths" \
+  > "$inventory_dir/existing" 2>/dev/null
+stat_status=$?
+# Missing files are expected. Other xargs failures (including a missing stat
+# executable or a signal) must not turn into an empty successful inventory.
+case "$stat_status" in 0|1|123) ;; *) exit 1 ;; esac
+awk -F '\t' -v prefix="$prefix/" '
+  FILENAME == ARGV[1] { managed[$0]=1; next }
+  NF == 2 && index($2, prefix) == 1 {
+    path=substr($2, length(prefix)+1)
+    if ((path in managed) || tolower($1) == "symbolic link") print path
+    next
+  }
+  { exit 1 }
+' "$managed_paths_file" "$inventory_dir/existing" >> "$output" || exit 1
 
 LC_ALL=C sort -u "$output" -o "$output" || exit 1
 LC_ALL=C sort -u "$kegs_output" -o "$kegs_output" || exit 1
