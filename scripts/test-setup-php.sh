@@ -81,8 +81,10 @@ if [ "${PHP_DARWIN_REQUIRE_CACHE:-false}" = true ]; then
   [ "$tap_commit" = "$manifest_commit" ] || \
     php_darwin_die 'the installed tap snapshot does not match the published cache'
   actual_semver=$(php -r 'echo PHP_VERSION;') || php_darwin_die 'PHP could not report its version'
-  [ "$actual_semver" = "$expected_semver" ] || \
-    php_darwin_die "setup-php used PHP $actual_semver instead of cached PHP $expected_semver"
+  expected_runtime_semver=$expected_semver
+  [ "$channel" != nightly ] || expected_runtime_semver="$expected_semver-dev"
+  [ "$actual_semver" = "$expected_runtime_semver" ] || \
+    php_darwin_die "setup-php used PHP $actual_semver instead of cached PHP $expected_runtime_semver"
 
   brew info --installed --json=v2 > "$installed_info" || \
     php_darwin_die 'could not inspect installed Homebrew formulae after setup-php'
