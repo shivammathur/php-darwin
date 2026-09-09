@@ -561,7 +561,10 @@ php_darwin_download_asset() {
 php_darwin_sha256() {
   local hash_output
 
-  if command -v sha256sum >/dev/null 2>&1; then
+  if [ -x /usr/bin/openssl ]; then
+    hash_output=$(/usr/bin/openssl dgst -sha256 "$1") || return 1
+    hash_output=${hash_output##* }
+  elif command -v sha256sum >/dev/null 2>&1; then
     hash_output=$(sha256sum "$1") || return 1
   else
     hash_output=$(shasum -a 256 "$1") || return 1
@@ -608,7 +611,8 @@ php_darwin_fetch_release_manifest() {
   else
     manifest_url=$(php_darwin_release_manifest_url "$1" "$2") || return 1
   fi
-  request_status=$(curl --retry 3 -sSL -w '%{http_code}' "$manifest_url" -o "$destination") || return 1
+  request_status=$(curl --config <(php_darwin_read_config download.conf) \
+    -sSL -w '%{http_code}' "$manifest_url" -o "$destination") || return 1
   printf '%s\n' "$request_status"
 }
 
@@ -930,6 +934,16 @@ share
 var
 PHP_DARWIN_CONFIG_ARCHIVE_PATHS
       ;;
+    download.conf)
+      cat <<'PHP_DARWIN_CONFIG_DOWNLOAD_CONF'
+connect-timeout = 5
+max-time = 30
+retry = 2
+retry-all-errors
+retry-delay = 1
+retry-max-time = 60
+PHP_DARWIN_CONFIG_DOWNLOAD_CONF
+      ;;
     package.json)
       cat <<'PHP_DARWIN_CONFIG_PACKAGE_JSON'
 {
@@ -1038,14 +1052,27 @@ output=${3:?}
   printf 'Unsafe metadata member: %s\n' "$member" >&2
   exit 1
 }
-if ! tar --ignore-zeros -xOf "$archive" "$member" > "$output"; then
+# Metadata is the first member. Stop as soon as tar has read it instead of
+# decompressing every keg. The caller authenticates the entire archive first.
+# zstd -f also passes through plain tar input used by validation fixtures.
+case "$(tar --version)" in
+  *bsdtar*) metadata_options=(-q) ;;
+  *) metadata_options=(--occurrence=1) ;;
+esac
+zstd -qdcf "$archive" 2> "$output.zstd.log" | \
+  tar --ignore-zeros -xOf - "${metadata_options[@]}" "$member" > "$output"
+metadata_status=("${PIPESTATUS[@]}")
+if [ "${metadata_status[1]}" -ne 0 ] || \
+  { [ "${metadata_status[0]}" -ne 0 ] && [ "${metadata_status[0]}" -ne 141 ]; }; then
+  cat "$output.zstd.log" >&2
+  rm -f "$output.zstd.log" "$output"
+  exit 1
+fi
+rm -f "$output.zstd.log"
+if [ ! -s "$output" ]; then
   rm -f "$output"
   exit 1
 fi
-[ -s "$output" ] || {
-  rm -f "$output"
-  exit 1
-}
 )
 
 # Source: scripts/source-hash.sh
@@ -1415,6 +1442,7 @@ while IFS= read -r package_keg extra; do
   fi
 done < "$package_kegs_file"
 
+checked_ancestors=$'\n'
 while IFS= read -r managed_path; do
   [ -n "$managed_path" ] || continue
   case "$managed_path" in /*|*'/../'*|../*|*/..|*'//'*)
@@ -1435,6 +1463,8 @@ while IFS= read -r managed_path; do
   managed_ancestor=$managed_path
   while [[ "$managed_ancestor" == */* ]]; do
     managed_ancestor=${managed_ancestor%/*}
+    case "$checked_ancestors" in *$'\n'"$managed_ancestor"$'\n'*) break ;; esac
+    checked_ancestors="$checked_ancestors$managed_ancestor"$'\n'
     if [ -L "$prefix/$managed_ancestor" ]; then
       append_exclusion "$managed_ancestor"
       break
@@ -1461,6 +1491,7 @@ extract_members=$(mktemp "${RUNNER_TEMP:-/tmp}/php-darwin-extract-members.XXXXXX
   exit 1
 }
 permission_records=
+extract_exclusions=
 stat_style=
 
 path_uid() {
@@ -1526,7 +1557,7 @@ cleanup() {
 
   trap '' HUP INT TERM
   restore_permissions || true
-  for temporary_file in "$archive_members" "$extract_members" "$permission_records"; do
+  for temporary_file in "$archive_members" "$extract_members" "$permission_records" "$extract_exclusions"; do
     [ -z "$temporary_file" ] || rm -f "$temporary_file"
   done
 }
@@ -1556,7 +1587,22 @@ tar --ignore-zeros -tf "$archive" > "$archive_members" || {
   printf 'Could not list archive members: %s\n' "$archive" >&2
   exit 1
 }
-awk '
+extract_exclusions=$(mktemp "${RUNNER_TEMP:-/tmp}/php-darwin-exclusions.XXXXXX") || exit 1
+# Collapse excluded members into the largest wholly excluded subtrees. Passing
+# every included file to tar makes its pattern matcher quadratic on large kegs.
+# Anchor and escape each exclusion so a prefix link never excludes a same-named
+# library inside a newly installed keg.
+awk -v exclusions="$extract_exclusions" '
+  function parent(path) { sub("/[^/]+$", "", path); return path }
+  function literal(path, result, i, c) {
+    result="^"
+    for (i=1; i<=length(path); i++) {
+      c=substr(path, i, 1)
+      if (index("\\[]*?$", c)) result=result "\\"
+      result=result c
+    }
+    return result
+  }
   FILENAME == ARGV[1] {
     if ($0 == "" || $0 ~ /[\t\r]/ || $0 ~ /^\// || $0 ~ /(^|\/)\.\.($|\/)/ ||
         $0 ~ /(^|\/)\.($|\/)/ || $0 ~ /\/\// || $0 ~ /\/$/) exit 2
@@ -1569,10 +1615,19 @@ awk '
         path ~ /(^|\/)\.($|\/)/ || path ~ /\/\// || path ~ /\/$/) exit 3
     candidate=path
     while (1) {
-      if (candidate in excluded) next
+      if (candidate in excluded) { omitted[path]=1; next }
       if (!sub("/[^/]+$", "", candidate)) break
     }
     print path
+    retained[path]=1
+    while (index(path, "/")) { path=parent(path); retained[path]=1 }
+  }
+  END {
+    for (path in omitted) {
+      while (index(path, "/") && !(parent(path) in retained)) path=parent(path)
+      compact[path]=1
+    }
+    for (path in compact) print literal(path) > exclusions
   }
 ' "$exclude_file" "$archive_members" > "$extract_members"
 filter_status=$?
@@ -1625,7 +1680,11 @@ done < "$archive_members"
 
 [ ! -s "$permission_records" ] || \
   printf 'Temporarily granting access to protected Homebrew directories\n'
-tar --ignore-zeros -xkmpf "$archive" --no-same-owner -C "$prefix" -T "$extract_members"
+case "$(tar --version)" in
+  *bsdtar*) extract_options=(-X "$extract_exclusions") ;;
+  *) extract_options=(-T "$extract_members") ;;
+esac
+tar --ignore-zeros -xkmpf "$archive" --no-same-owner -C "$prefix" "${extract_options[@]}"
 extract_status=$?
 restore_permissions || exit 1
 exit "$extract_status"
@@ -2224,7 +2283,10 @@ php_darwin_download_release_archive() {
   release_url=${PHP_DARWIN_RELEASE_URL:-https://github.com/$release_repository/releases/download/php-$version/$manifest_download_asset}
   # Do not retry a retired immutable name: a single 404 should immediately
   # fall through to the current manifest instead of consuming the fetch budget.
-  archive_http_status=$(curl --retry 3 -fsSL -w '%{http_code}' "$release_url" -o "$archive")
+  # Leave HTTP errors to the status check. curl can then retry every transport
+  # failure (including truncated transfers) without retrying a retired 404.
+  archive_http_status=$(curl --config <(php_darwin_read_config download.conf) \
+    -sSL -w '%{http_code}' "$release_url" -o "$archive")
   archive_curl_status=$?
   if [ "$archive_curl_status" -ne 0 ]; then
     if [ "$archive_http_status" = 404 ]; then
@@ -2235,7 +2297,11 @@ php_darwin_download_release_archive() {
     return 1
   fi
   [ "$archive_http_status" = 200 ] || {
-    release_archive_error=download
+    if [ "$archive_http_status" = 404 ]; then
+      release_archive_error=not-found
+    else
+      release_archive_error=download
+    fi
     return 1
   }
   php_darwin_start_archive_hash "$archive"

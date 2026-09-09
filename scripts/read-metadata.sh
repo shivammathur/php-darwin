@@ -12,11 +12,24 @@ output=${3:?}
   printf 'Unsafe metadata member: %s\n' "$member" >&2
   exit 1
 }
-if ! tar --ignore-zeros -xOf "$archive" "$member" > "$output"; then
+# Metadata is the first member. Stop as soon as tar has read it instead of
+# decompressing every keg. The caller authenticates the entire archive first.
+# zstd -f also passes through plain tar input used by validation fixtures.
+case "$(tar --version)" in
+  *bsdtar*) metadata_options=(-q) ;;
+  *) metadata_options=(--occurrence=1) ;;
+esac
+zstd -qdcf "$archive" 2> "$output.zstd.log" | \
+  tar --ignore-zeros -xOf - "${metadata_options[@]}" "$member" > "$output"
+metadata_status=("${PIPESTATUS[@]}")
+if [ "${metadata_status[1]}" -ne 0 ] || \
+  { [ "${metadata_status[0]}" -ne 0 ] && [ "${metadata_status[0]}" -ne 141 ]; }; then
+  cat "$output.zstd.log" >&2
+  rm -f "$output.zstd.log" "$output"
+  exit 1
+fi
+rm -f "$output.zstd.log"
+if [ ! -s "$output" ]; then
   rm -f "$output"
   exit 1
 fi
-[ -s "$output" ] || {
-  rm -f "$output"
-  exit 1
-}

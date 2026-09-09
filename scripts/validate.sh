@@ -6,6 +6,7 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 bash -n "$script_dir"/*.sh "$script_dir"/../templates/*.sh || php_darwin_die 'shell syntax validation failed'
 bash "$script_dir/test-job-control.sh" || php_darwin_die 'bounded job cleanup validation failed'
+bash "$script_dir/test-download.sh" || php_darwin_die 'cache download retry validation failed'
 bash "$script_dir/test-publish-run.sh" || php_darwin_die 'publish workflow-run validation failed'
 bash "$script_dir/test-extensions-source-hash.sh" || \
   php_darwin_die 'cached extension source hash validation failed'
@@ -387,6 +388,7 @@ printf 'cached-extension\n' > "$fixture_source/lib/php/20200930/cache.so"
 printf 'existing-dependency\n' > "$fixture_prefix/Cellar/dependency/1/bin/dependency"
 printf 'existing-oniguruma\n' > "$fixture_prefix/lib/libonig.5.dylib"
 printf 'archive-value\n' > "$fixture_source/etc/existing[1].conf"
+printf 'retained-value\n' > "$fixture_source/etc/existing1.conf"
 printf 'must-not-escape\n' > "$fixture_source/etc/existing-link/new.conf"
 ln -s ../Cellar/php/1 "$fixture_source/opt/php"
 ln -s ../../../Cellar/php/1 "$fixture_source/var/homebrew/linked/php"
@@ -403,7 +405,7 @@ chmod 0755 "$fixture_prefix/Cellar/hello/1/bin/hello"
 printf '%s\n' var/php-darwin/php_8.5-nts-release+darwin_arm64.json \
   Cellar/dependency/1/bin/dependency Cellar/php/1/bin/php \
   Cellar/php/1/lib/libonig.5.dylib \
-  'etc/existing[1].conf' etc/existing-link/new.conf lib/php/20200930/cache.so \
+  'etc/existing[1].conf' etc/existing1.conf etc/existing-link/new.conf lib/php/20200930/cache.so \
   opt/php share/pear/new.php \
   var/homebrew/linked/php > "$fixture_paths"
 awk '$0 !~ /^Cellar\//' "$fixture_paths" > "$fixture_managed_paths" || \
@@ -445,6 +447,8 @@ fi
 [ ! -e "$fixture_metadata" ] || php_darwin_die 'metadata reader kept partial output from a truncated archive'
 [ "$(cat "$fixture_prefix/etc/existing[1].conf")" = user-value ] || \
   php_darwin_die 'direct extraction replaced an existing file'
+[ "$(cat "$fixture_prefix/etc/existing1.conf")" = retained-value ] || \
+  php_darwin_die 'extraction interpreted a literal exclusion path as a wildcard'
 fixture_mode=$(stat -f '%Lp' "$fixture_prefix/etc/existing[1].conf" 2>/dev/null || true)
 case "$fixture_mode" in 444) ;; *) fixture_mode=$(stat -c '%a' "$fixture_prefix/etc/existing[1].conf") || \
   php_darwin_die 'could not inspect fixture permissions' ;; esac

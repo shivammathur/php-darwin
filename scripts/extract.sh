@@ -9,6 +9,7 @@ extract_members=$(mktemp "${RUNNER_TEMP:-/tmp}/php-darwin-extract-members.XXXXXX
   exit 1
 }
 permission_records=
+extract_exclusions=
 stat_style=
 
 path_uid() {
@@ -74,7 +75,7 @@ cleanup() {
 
   trap '' HUP INT TERM
   restore_permissions || true
-  for temporary_file in "$archive_members" "$extract_members" "$permission_records"; do
+  for temporary_file in "$archive_members" "$extract_members" "$permission_records" "$extract_exclusions"; do
     [ -z "$temporary_file" ] || rm -f "$temporary_file"
   done
 }
@@ -104,7 +105,22 @@ tar --ignore-zeros -tf "$archive" > "$archive_members" || {
   printf 'Could not list archive members: %s\n' "$archive" >&2
   exit 1
 }
-awk '
+extract_exclusions=$(mktemp "${RUNNER_TEMP:-/tmp}/php-darwin-exclusions.XXXXXX") || exit 1
+# Collapse excluded members into the largest wholly excluded subtrees. Passing
+# every included file to tar makes its pattern matcher quadratic on large kegs.
+# Anchor and escape each exclusion so a prefix link never excludes a same-named
+# library inside a newly installed keg.
+awk -v exclusions="$extract_exclusions" '
+  function parent(path) { sub("/[^/]+$", "", path); return path }
+  function literal(path, result, i, c) {
+    result="^"
+    for (i=1; i<=length(path); i++) {
+      c=substr(path, i, 1)
+      if (index("\\[]*?$", c)) result=result "\\"
+      result=result c
+    }
+    return result
+  }
   FILENAME == ARGV[1] {
     if ($0 == "" || $0 ~ /[\t\r]/ || $0 ~ /^\// || $0 ~ /(^|\/)\.\.($|\/)/ ||
         $0 ~ /(^|\/)\.($|\/)/ || $0 ~ /\/\// || $0 ~ /\/$/) exit 2
@@ -117,10 +133,19 @@ awk '
         path ~ /(^|\/)\.($|\/)/ || path ~ /\/\// || path ~ /\/$/) exit 3
     candidate=path
     while (1) {
-      if (candidate in excluded) next
+      if (candidate in excluded) { omitted[path]=1; next }
       if (!sub("/[^/]+$", "", candidate)) break
     }
     print path
+    retained[path]=1
+    while (index(path, "/")) { path=parent(path); retained[path]=1 }
+  }
+  END {
+    for (path in omitted) {
+      while (index(path, "/") && !(parent(path) in retained)) path=parent(path)
+      compact[path]=1
+    }
+    for (path in compact) print literal(path) > exclusions
   }
 ' "$exclude_file" "$archive_members" > "$extract_members"
 filter_status=$?
@@ -173,7 +198,11 @@ done < "$archive_members"
 
 [ ! -s "$permission_records" ] || \
   printf 'Temporarily granting access to protected Homebrew directories\n'
-tar --ignore-zeros -xkmpf "$archive" --no-same-owner -C "$prefix" -T "$extract_members"
+case "$(tar --version)" in
+  *bsdtar*) extract_options=(-X "$extract_exclusions") ;;
+  *) extract_options=(-T "$extract_members") ;;
+esac
+tar --ignore-zeros -xkmpf "$archive" --no-same-owner -C "$prefix" "${extract_options[@]}"
 extract_status=$?
 restore_permissions || exit 1
 exit "$extract_status"

@@ -86,6 +86,7 @@ while IFS= read -r package_keg extra; do
   fi
 done < "$package_kegs_file"
 
+checked_ancestors=$'\n'
 while IFS= read -r managed_path; do
   [ -n "$managed_path" ] || continue
   case "$managed_path" in /*|*'/../'*|../*|*/..|*'//'*)
@@ -106,6 +107,8 @@ while IFS= read -r managed_path; do
   managed_ancestor=$managed_path
   while [[ "$managed_ancestor" == */* ]]; do
     managed_ancestor=${managed_ancestor%/*}
+    case "$checked_ancestors" in *$'\n'"$managed_ancestor"$'\n'*) break ;; esac
+    checked_ancestors="$checked_ancestors$managed_ancestor"$'\n'
     if [ -L "$prefix/$managed_ancestor" ]; then
       append_exclusion "$managed_ancestor"
       break

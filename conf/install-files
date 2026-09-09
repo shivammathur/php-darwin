@@ -8,6 +8,7 @@ scripts/verify-links.sh
 scripts/existing-paths.sh
 scripts/extract.sh
 conf/archive-paths
+conf/download.conf
 conf/package.json
 conf/platforms.json
 conf/legacy-platforms.json

@@ -560,7 +560,10 @@ php_darwin_download_asset() {
 php_darwin_sha256() {
   local hash_output
 
-  if command -v sha256sum >/dev/null 2>&1; then
+  if [ -x /usr/bin/openssl ]; then
+    hash_output=$(/usr/bin/openssl dgst -sha256 "$1") || return 1
+    hash_output=${hash_output##* }
+  elif command -v sha256sum >/dev/null 2>&1; then
     hash_output=$(sha256sum "$1") || return 1
   else
     hash_output=$(shasum -a 256 "$1") || return 1
@@ -607,7 +610,8 @@ php_darwin_fetch_release_manifest() {
   else
     manifest_url=$(php_darwin_release_manifest_url "$1" "$2") || return 1
   fi
-  request_status=$(curl --retry 3 -sSL -w '%{http_code}' "$manifest_url" -o "$destination") || return 1
+  request_status=$(curl --config <(php_darwin_read_config download.conf) \
+    -sSL -w '%{http_code}' "$manifest_url" -o "$destination") || return 1
   printf '%s\n' "$request_status"
 }
 

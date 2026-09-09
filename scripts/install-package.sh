@@ -594,7 +594,10 @@ php_darwin_download_release_archive() {
   release_url=${PHP_DARWIN_RELEASE_URL:-https://github.com/$release_repository/releases/download/php-$version/$manifest_download_asset}
   # Do not retry a retired immutable name: a single 404 should immediately
   # fall through to the current manifest instead of consuming the fetch budget.
-  archive_http_status=$(curl --retry 3 -fsSL -w '%{http_code}' "$release_url" -o "$archive")
+  # Leave HTTP errors to the status check. curl can then retry every transport
+  # failure (including truncated transfers) without retrying a retired 404.
+  archive_http_status=$(curl --config <(php_darwin_read_config download.conf) \
+    -sSL -w '%{http_code}' "$release_url" -o "$archive")
   archive_curl_status=$?
   if [ "$archive_curl_status" -ne 0 ]; then
     if [ "$archive_http_status" = 404 ]; then
@@ -605,7 +608,11 @@ php_darwin_download_release_archive() {
     return 1
   fi
   [ "$archive_http_status" = 200 ] || {
-    release_archive_error=download
+    if [ "$archive_http_status" = 404 ]; then
+      release_archive_error=not-found
+    else
+      release_archive_error=download
+    fi
     return 1
   }
   php_darwin_start_archive_hash "$archive"
