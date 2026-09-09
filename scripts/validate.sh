@@ -435,6 +435,26 @@ bash "$script_dir/read-metadata.sh" "$fixture_archive" \
   php_darwin_die 'embedded metadata read fixture failed'
 [ "$(cat "$fixture_metadata")" = '{"fixture":true}' ] || \
   php_darwin_die 'embedded metadata read fixture returned the wrong content'
+for write_error in 'Broken pipe' 'No space left on device'; do
+  (
+    # Exported for the metadata reader subprocess.
+    # shellcheck disable=SC2329
+    zstd() {
+      command zstd "$@" || return $?
+      printf 'zstd: error 70 : Write error : cannot write block : %s \n' "$write_error" >&2
+      return 70
+    }
+    export -f zstd
+    export write_error
+    bash "$script_dir/read-metadata.sh" "$fixture_archive" \
+      var/php-darwin/php_8.5-nts-release+darwin_arm64.json "$fixture_metadata" 2>/dev/null
+  )
+  metadata_status=$?
+  case "$write_error" in
+    'Broken pipe') [ "$metadata_status" -eq 0 ] || php_darwin_die 'zstd EPIPE was treated as corrupt metadata' ;;
+    *) [ "$metadata_status" -ne 0 ] || php_darwin_die 'metadata reader ignored an unexpected zstd write error' ;;
+  esac
+done
 tar -cf "$fixture_plain_archive" -C "$fixture_source" \
   var/php-darwin/php_8.5-nts-release+darwin_arm64.json || \
   php_darwin_die 'could not create the metadata truncation fixture'

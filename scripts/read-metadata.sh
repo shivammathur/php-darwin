@@ -22,6 +22,12 @@ esac
 zstd -qdcf "$archive" 2> "$output.zstd.log" | \
   tar --ignore-zeros -xOf - "${metadata_options[@]}" "$member" > "$output"
 metadata_status=("${PIPESTATUS[@]}")
+# Some zstd versions handle EPIPE themselves and return their write-error code
+# instead of SIGPIPE. Accept only that diagnostic after tar read the full member.
+if [ "${metadata_status[0]}" -eq 70 ] && \
+  grep -Eq '^zstd: error 70 : Write error : .*Broken pipe *$' "$output.zstd.log"; then
+  metadata_status[0]=141
+fi
 if [ "${metadata_status[1]}" -ne 0 ] || \
   { [ "${metadata_status[0]}" -ne 0 ] && [ "${metadata_status[0]}" -ne 141 ]; }; then
   cat "$output.zstd.log" >&2
