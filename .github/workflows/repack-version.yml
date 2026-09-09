@@ -1,0 +1,136 @@
+name: Repack and validate one PHP release
+on:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+permissions:
+  contents: read
+env:
+  PHP_VERSION: ${{ inputs.version }}
+  HOMEBREW_DEVELOPER: '1'
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      assets: ${{ steps.plan.outputs.assets }}
+      tests: ${{ steps.plan.outputs.tests }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - id: plan
+        run: bash scripts/repack-release.sh plan
+      - uses: actions/upload-artifact@v4
+        with:
+          name: repack-source-${{ inputs.version }}
+          path: ${{ runner.temp }}/migration/source.json
+          overwrite: true
+  repack:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.assets) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Download the trusted release manifest
+        uses: actions/download-artifact@v4
+        with:
+          name: repack-source-${{ inputs.version }}
+          path: ${{ runner.temp }}/migration
+      - name: Repack existing binaries and verify retained bytes, modes and links
+        env:
+          ASSET: ${{ matrix.name }}
+        run: bash scripts/repack-release.sh repack
+      - name: Stage checksum-addressed archives without changing the live manifest
+        env:
+          ASSET: ${{ matrix.name }}
+          REPACK_TOKEN: ${{ github.token }}
+        run: bash scripts/repack-release.sh stage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: repack-${{ inputs.version }}-${{ matrix.architecture }}-${{ matrix.build }}-${{ matrix.thread_safety }}
+          path: ${{ runner.temp }}/migration/records
+          overwrite: true
+  assemble:
+    needs: [plan, repack]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: repack-${{ inputs.version }}-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/migration/records
+      - uses: actions/download-artifact@v4
+        with:
+          name: repack-source-${{ inputs.version }}
+          path: ${{ runner.temp }}/migration
+      - name: Validate the complete candidate manifest
+        run: bash scripts/repack-release.sh assemble
+      - uses: actions/upload-artifact@v4
+        with:
+          name: repack-candidate-${{ inputs.version }}
+          path: ${{ runner.temp }}/migration
+          overwrite: true
+  test:
+    needs: [plan, assemble]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.tests) }}
+    env:
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: repack-candidate-${{ inputs.version }}
+          path: ${{ runner.temp }}/migration
+      - name: Remove unused Homebrew taps
+        run: bash scripts/cleanup-taps.sh
+      - name: Download candidate archives
+        run: bash scripts/test-repacked.sh download
+      - name: Install, validate and reset each configured variant
+        run: bash scripts/test-repacked.sh variants
+      - name: Check Homebrew update and upgrade planning without source builds
+        run: bash scripts/test-repacked.sh update
+  publish:
+    needs: [assemble, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: php-darwin-release-publish-${{ inputs.version }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: repack-candidate-${{ inputs.version }}
+          path: ${{ runner.temp }}/migration
+      - name: Update only the tested release manifest and installer
+        env:
+          REPACK_TOKEN: ${{ github.token }}
+        run: bash scripts/repack-release.sh publish
+      - name: Preserve publication recovery records
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: repack-publication-${{ inputs.version }}
+          path: ${{ runner.temp }}/migration
+          overwrite: true

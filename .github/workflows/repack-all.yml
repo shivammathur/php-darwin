@@ -1,0 +1,33 @@
+name: Repack all published PHP archives
+on:
+  push:
+    branches: [repack/all-runtime-archives]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      versions: ${{ steps.plan.outputs.versions }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - run: bash scripts/validate.sh
+      - id: plan
+        run: |
+          . scripts/lib.sh
+          versions=$(php_darwin_configured_versions) || exit 1
+          matrix=$(printf '%s\n' "$versions" | jq -Rsc '{include:[split("\n")[] | select(length>0) | split(" ") | {version:.[1]}]}') || exit 1
+          echo "versions=$matrix" >> "$GITHUB_OUTPUT"
+  migrate:
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.versions) }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/repack-version.yml
+    with:
+      version: ${{ matrix.version }}
