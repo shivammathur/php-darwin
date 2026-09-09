@@ -6,6 +6,7 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 version=${PHP_VERSION:-${1:-}}
 php_darwin_validate_version "$version"
+channel=$(php_darwin_version_channel "$version") || exit 1
 arch=$(php_darwin_normalize_arch "$(uname -m)") || exit 1
 asset=$(php_darwin_asset "$version" release nts "$arch") || exit 1
 formula=$(php_darwin_formula "$version" release nts) || exit 1
@@ -73,7 +74,7 @@ if [ "${PHP_DARWIN_REQUIRE_CACHE:-false}" = true ]; then
   manifest_status=$(php_darwin_fetch_release_manifest "$release_repository" "$version" "$release_manifest") || \
     php_darwin_die 'could not request the published release manifest'
   [ "$manifest_status" = 200 ] || php_darwin_die "could not fetch the published release manifest (HTTP $manifest_status)"
-  manifest_values=$(php_darwin_validate_release_manifest "$release_manifest" "$version" stable "$asset") || \
+  manifest_values=$(php_darwin_validate_release_manifest "$release_manifest" "$version" "$channel" "$asset") || \
     php_darwin_die 'the published release manifest does not match the E2E cache'
   IFS=$'\t' read -r _ manifest_commit _ expected_semver _ _ _ <<< "$manifest_values" || \
     php_darwin_die 'could not read the published release manifest'
