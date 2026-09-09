@@ -10,6 +10,7 @@ extract_members=$(mktemp "${RUNNER_TEMP:-/tmp}/php-darwin-extract-members.XXXXXX
 }
 permission_records=
 extract_exclusions=
+extract_inclusions=
 stat_style=
 
 path_uid() {
@@ -75,7 +76,8 @@ cleanup() {
 
   trap '' HUP INT TERM
   restore_permissions || true
-  for temporary_file in "$archive_members" "$extract_members" "$permission_records" "$extract_exclusions"; do
+  for temporary_file in "$archive_members" "$extract_members" "$permission_records" \
+    "$extract_exclusions" "$extract_inclusions"; do
     [ -z "$temporary_file" ] || rm -f "$temporary_file"
   done
 }
@@ -115,14 +117,14 @@ else
   }
 fi
 extract_exclusions=$(mktemp "${RUNNER_TEMP:-/tmp}/php-darwin-exclusions.XXXXXX") || exit 1
+extract_inclusions=$(mktemp "${RUNNER_TEMP:-/tmp}/php-darwin-inclusions.XXXXXX") || exit 1
 # Collapse excluded members into the largest wholly excluded subtrees. Passing
 # every included file to tar makes its pattern matcher quadratic on large kegs.
 # Anchor and escape each exclusion so a prefix link never excludes a same-named
 # library inside a newly installed keg.
-awk -v exclusions="$extract_exclusions" '
+awk -v exclusions="$extract_exclusions" -v inclusions="$extract_inclusions" '
   function parent(path) { sub("/[^/]+$", "", path); return path }
   function literal(path, result, i, c) {
-    result="^"
     for (i=1; i<=length(path); i++) {
       c=substr(path, i, 1)
       if (index("\\[]*?$", c)) result=result "\\"
@@ -142,10 +144,15 @@ awk -v exclusions="$extract_exclusions" '
         path ~ /(^|\/)\.($|\/)/ || path ~ /\/\// || path ~ /\/$/) exit 3
     candidate=path
     while (1) {
-      if (candidate in excluded) { omitted[path]=1; next }
+      if (candidate in excluded) {
+        omitted[path]=1
+        while (index(path, "/")) { path=parent(path); omitted_parents[path]=1 }
+        next
+      }
       if (!sub("/[^/]+$", "", candidate)) break
     }
     print path
+    included[path]=1
     retained[path]=1
     while (index(path, "/")) { path=parent(path); retained[path]=1 }
   }
@@ -154,7 +161,12 @@ awk -v exclusions="$extract_exclusions" '
       while (index(path, "/") && !(parent(path) in retained)) path=parent(path)
       compact[path]=1
     }
-    for (path in compact) print literal(path) > exclusions
+    for (path in compact) print literal(path, "^") > exclusions
+    for (path in included) {
+      while (index(path, "/") && !(parent(path) in omitted_parents)) path=parent(path)
+      compact_included[path]=1
+    }
+    for (path in compact_included) print literal(path, "") > inclusions
   }
 ' "$exclude_file" "$archive_members" > "$extract_members"
 filter_status=$?
@@ -208,7 +220,15 @@ done < "$archive_members"
 [ ! -s "$permission_records" ] || \
   printf 'Temporarily granting access to protected Homebrew directories\n'
 case "$tar_version" in
-  *bsdtar*) extract_options=(-X "$extract_exclusions") ;;
+  *bsdtar*)
+    # libarchive scans its patterns for each member. Choose the smaller set of
+    # complete subtrees, keeping both forms literal and rooted at the prefix.
+    if [ "$(wc -l < "$extract_inclusions")" -lt "$(wc -l < "$extract_exclusions")" ]; then
+      extract_options=(-T "$extract_inclusions")
+    else
+      extract_options=(-X "$extract_exclusions")
+    fi
+    ;;
   *) extract_options=(-T "$extract_members") ;;
 esac
 tar --ignore-zeros -xkmpf "$archive" --no-same-owner -C "$prefix" "${extract_options[@]}"
