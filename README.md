@@ -6,6 +6,8 @@
 
 > Cache Homebrew PHP packages for fast installation on GitHub Actions macOS runners.
 
+Archives retain runtime/development files and licenses; general documentation, man pages, and info pages are omitted.
+
 ## PHP versions
 
 - Stable: PHP 5.6 through PHP 8.5

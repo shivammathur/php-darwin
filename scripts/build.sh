@@ -531,6 +531,13 @@ package_cache() {
   done < "$tap_members"
   LC_ALL=C sort -u "$archive_paths" -o "$archive_paths" || php_darwin_die 'could not sort the archive path list'
   [ -s "$archive_paths" ] || php_darwin_die 'filesystem snapshot did not capture any installed files'
+  bash "$script_dir/filter-archive.sh" "$brew_prefix" "$archive_paths" "$work_dir/runtime-paths.txt" || \
+    php_darwin_die 'could not filter cache documentation'
+  mv "$work_dir/runtime-paths.txt" "$archive_paths" || php_darwin_die 'could not update the runtime archive paths'
+  awk -F '\t' 'FILENAME == ARGV[1] { kept[$0]=1; next } $1 in kept' \
+    "$archive_paths" "$links_file" > "$work_dir/runtime-links.tsv" || \
+    php_darwin_die 'could not filter documentation links from the cache metadata'
+  mv "$work_dir/runtime-links.tsv" "$links_file" || php_darwin_die 'could not update the cache link metadata'
 
   asset=$(php_darwin_asset "$version" "$build" "$ts" "$arch") || exit 1
   metadata_path="$work_dir/${asset%.tar.zst}.json"

@@ -7,6 +7,8 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 bash -n "$script_dir"/*.sh "$script_dir"/../templates/*.sh || php_darwin_die 'shell syntax validation failed'
 bash "$script_dir/test-job-control.sh" || php_darwin_die 'bounded job cleanup validation failed'
 bash "$script_dir/test-download.sh" || php_darwin_die 'cache download retry validation failed'
+bash "$script_dir/test-archive-policy.sh" || php_darwin_die 'archive documentation policy validation failed'
+bash "$script_dir/test-repack.sh" || php_darwin_die 'archive repack validation failed'
 bash "$script_dir/test-publish-run.sh" || php_darwin_die 'publish workflow-run validation failed'
 bash "$script_dir/test-extensions-source-hash.sh" || \
   php_darwin_die 'cached extension source hash validation failed'
