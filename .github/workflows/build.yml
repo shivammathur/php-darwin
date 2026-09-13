@@ -99,6 +99,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Install source bottle cache client
+        run: npm ci --prefix .github/actions/source-cache --ignore-scripts --no-audit --no-fund
+
       - name: Remove unused Homebrew taps
         run: bash scripts/cleanup-taps.sh
 
@@ -117,7 +120,7 @@ jobs:
       - name: Install release/NTS PHP formula
         if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
         env: *release-nts
-        run: bash scripts/build.sh install
+        uses: ./.github/actions/source-cache
 
       - name: Cache release/NTS coverage extensions
         if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
@@ -154,7 +157,7 @@ jobs:
       - name: Install release/ZTS PHP formula
         if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') }}
         env: *release-zts
-        run: bash scripts/build.sh install
+        uses: ./.github/actions/source-cache
 
       - name: Cache release/ZTS coverage extensions
         if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') }}
@@ -191,7 +194,7 @@ jobs:
       - name: Install debug/NTS PHP formula
         if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') }}
         env: *debug-nts
-        run: bash scripts/build.sh install
+        uses: ./.github/actions/source-cache
 
       - name: Cache debug/NTS coverage extensions
         if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') }}
@@ -228,7 +231,7 @@ jobs:
       - name: Install debug/ZTS PHP formula
         if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') }}
         env: *debug-zts
-        run: bash scripts/build.sh install
+        uses: ./.github/actions/source-cache
 
       - name: Cache debug/ZTS coverage extensions
         if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') }}

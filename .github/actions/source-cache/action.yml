@@ -1,0 +1,14 @@
+name: Install PHP with reusable source bottles
+description: Reuse individually cached Homebrew source builds and build only missing packages
+inputs:
+  formula:
+    description: Optional formula override for the native bottle smoke test
+    required: false
+outputs:
+  built:
+    description: Number of packages built from source
+  restored:
+    description: Number of source bottles restored
+runs:
+  using: node24
+  main: main.cjs

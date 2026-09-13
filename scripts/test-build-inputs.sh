@@ -76,6 +76,14 @@ expect_same 'bottle updates after ARM/Intel source fallback'
 printf '  depends_on "new-dependency"\n' >> "$formula"
 expect_changed 'a dependency change during source fallback'
 
+# Saved source bottles do not depend on any upstream bottle checksums.
+write_formula
+bash "$script_dir/formula-build-inputs.sh" "$formula" source > "$work_dir/source-inputs" || exit 1
+ARM_BOTTLE=40 INTEL_BOTTLE=50 REBUILD=3 write_formula
+bash "$script_dir/formula-build-inputs.sh" "$formula" source > "$work_dir/new-source-inputs" || exit 1
+cmp -s "$work_dir/source-inputs" "$work_dir/new-source-inputs" || \
+  php_darwin_die 'upstream bottle metadata invalidated a reusable source bottle'
+
 # An exact Intel bottle takes precedence over an older compatible bottle.
 write_formula
 sed '/    rebuild 0/a\

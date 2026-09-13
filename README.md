@@ -33,6 +33,21 @@ metadata for integrity validation. When no compatible bottle exists, Homebrew
 builds from source on the same runner; macOS 14 ARM64 remains the cache minimum
 even after its bottles stop being published.
 
+During cache builds, missing PHP and library bottles are built once with
+`brew install --build-bottle` and saved individually in GitHub Actions Cache.
+Later runs restore them with Homebrew, including its normal linking and
+post-install configuration. Library bottles are shared across PHP versions;
+the four PHP variants have separate entries. For example, a PHP update reuses
+an unchanged libxml2, while a libxml2 update rebuilds both libxml2 and PHP.
+
+Keys cover package version/revision, formula source, installed dependency
+versions/recipes/options, architecture, macOS major, Homebrew major, compiler,
+and SDK. Unrelated bottle updates do not invalidate source builds. Existing
+runner dependencies and usable upstream bottles retain priority. Cache misses,
+eviction, and service outages fall back to source builds. Run
+`test-source-cache.yml` to verify native compilation, remote restoration, linkage,
+and consumer updates on both cache build platforms.
+
 ## Dependencies
 
 - [actions/runner-images](https://github.com/actions/runner-images "GitHub Actions runner images")

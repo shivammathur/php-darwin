@@ -5,6 +5,8 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 . "$script_dir/lib.sh"
 
 formula=${1:?}
+mode=${2:-platforms}
+case "$mode" in platforms|source) ;; *) php_darwin_die "invalid formula input mode: $mode" ;; esac
 platforms=$(php_darwin_read_config platforms.json | jq -er '
   to_entries | map([.key,.value.platform_key,(.value.minimum_macos | tostring)] | join(":")) | join(" ")
 ') || php_darwin_die 'could not read cache build platforms'
@@ -12,7 +14,7 @@ platforms=$(php_darwin_read_config platforms.json | jq -er '
 # Project only the simple bottle DSL emitted by brew bottle. Unknown syntax is
 # retained verbatim, so it can cause a rebuild but can never hide a source edit.
 # Everything outside the bottle block remains byte-for-byte line content.
-LC_ALL=C awk -v platforms="$platforms" '
+LC_ALL=C awk -v platforms="$platforms" -v mode="$mode" '
   BEGIN {
     count=split(platforms, targets, " ")
     split("tiger leopard snow_leopard lion mountain_lion mavericks yosemite el_capitan sierra high_sierra mojave catalina", old, " ")
@@ -24,7 +26,7 @@ LC_ALL=C awk -v platforms="$platforms" '
   function flush(    i,j,target,tag,os_name,arch,selected,fallback,all_tag) {
     if (unknown) {
       printf "%s", block
-    } else {
+    } else if (mode != "source") {
       for (i=1; i<=count; i++) {
         split(targets[i], target, ":")
         selected=""; fallback=""; all_tag=""

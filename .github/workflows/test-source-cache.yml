@@ -1,0 +1,80 @@
+name: Test reusable source bottles
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/actions/source-cache/**
+      - .github/workflows/test-source-cache.yml
+      - scripts/source-bottle-*
+      - scripts/test-source-bottle-*
+      - scripts/formula-build-inputs.sh
+
+permissions:
+  contents: read
+
+jobs:
+  source-cache:
+    name: Source bottles on ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-14, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    env:
+      HOMEBREW_DEVELOPER: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install cache client
+        run: npm ci --prefix .github/actions/source-cache --ignore-scripts --no-audit --no-fund
+      - name: Prepare source-only library and consumer
+        run: bash scripts/test-source-bottle-native.sh prepare
+      - name: Build or restore source bottles
+        uses: ./.github/actions/source-cache
+        with:
+          formula: php-darwin/source-cache-test/php-darwin-cache-app
+      - name: Verify first installation and clear local packages
+        run: |
+          bash scripts/test-source-bottle-native.sh verify
+          bash scripts/test-source-bottle-native.sh reset
+      - name: Restore both packages from the remote cache
+        id: warm
+        uses: ./.github/actions/source-cache
+        with:
+          formula: php-darwin/source-cache-test/php-darwin-cache-app
+      - name: Verify both builds were reused
+        env:
+          BUILT: ${{ steps.warm.outputs.built }}
+          RESTORED: ${{ steps.warm.outputs.restored }}
+        run: |
+          test "$BUILT" = 0
+          test "$RESTORED" = 2
+          bash scripts/test-source-bottle-native.sh verify
+          bash scripts/test-source-bottle-native.sh reset
+          bash scripts/test-source-bottle-native.sh bump
+      - name: Build a new consumer with the cached library
+        id: changed
+        uses: ./.github/actions/source-cache
+        with:
+          formula: php-darwin/source-cache-test/php-darwin-cache-app
+      - name: Verify unchanged library reuse and native packages
+        env:
+          RESTORED: ${{ steps.changed.outputs.restored }}
+        run: |
+          test "$RESTORED" -ge 1
+          bash scripts/test-source-bottle-native.sh verify
+      - name: Upload native bottles and build inputs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: source-bottles-${{ matrix.runner }}
+          path: .source-bottle-cache
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 2
+      - name: Remove source bottle fixtures
+        if: ${{ always() }}
+        run: bash scripts/test-source-bottle-native.sh cleanup
