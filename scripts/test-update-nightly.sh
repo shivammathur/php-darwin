@@ -23,6 +23,11 @@ printf 'xdebug fixture\n' > "$extensions_path/Formula/xdebug@8.6.rb" || \
   php_darwin_die 'could not write the Xdebug fixture'
 printf 'pcov fixture\n' > "$extensions_path/Formula/pcov@8.6.rb" || \
   php_darwin_die 'could not write the PCOV fixture'
+git -C "$extensions_path" init -q || exit 1
+git -C "$extensions_path" add . || exit 1
+git -C "$extensions_path" -c user.name=fixture -c user.email=fixture@example.invalid \
+  -c commit.gpgsign=false commit -qm fixture || exit 1
+extensions_commit=$(git -C "$extensions_path" rev-parse HEAD) || exit 1
 current_extensions=$(HOMEBREW_EXTENSIONS_PATH="$extensions_path" \
   bash "$script_dir/extensions-source-hash.sh" 8.6) || \
   php_darwin_die 'could not hash the nightly extension fixtures'
@@ -58,7 +63,7 @@ write_manifest() {
     done < <(php_darwin_platform_arches)
   done < <(php_darwin_configured_variants)
   jq -s --arg commit "$commit" --arg extensions_hash "$extensions_hash" \
-    --arg extensions_commit 89abcdef0123456789abcdef0123456789abcdef \
+    --arg extensions_commit "$extensions_commit" \
     --arg homebrew_commit 0123456789abcdef0123456789abcdef01234567 \
     --arg source_hash "$(printf '%064d' 1)" '
     {schema:1,php_version:"8.6",php_semver:"8.6.0",php_src_commit:$commit,
@@ -99,7 +104,7 @@ mv "$manifest.arm" "$manifest" || php_darwin_die 'could not install the ARM64-on
 run_gate true false x86_64
 grep -Fxq 'homebrew-php-commit=0123456789abcdef0123456789abcdef01234567' "$output" || \
   php_darwin_die 'nightly platform completion did not pin the published homebrew-php commit'
-grep -Fxq 'homebrew-extensions-commit=89abcdef0123456789abcdef0123456789abcdef' "$output" || \
+grep -Fxq "homebrew-extensions-commit=$extensions_commit" "$output" || \
   php_darwin_die 'nightly platform completion did not pin the published extension commit'
 write_manifest "$previous"
 jq '.assets |= map(select(.architecture == "arm64"))' "$manifest" > "$manifest.arm" || \

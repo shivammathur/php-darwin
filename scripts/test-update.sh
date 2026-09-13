@@ -27,6 +27,8 @@ while read -r build ts; do
   formula=$(php_darwin_formula 8.5 "$build" "$ts") || exit 1
   printf 'formula %s\n' "$formula" > "$php_path/Formula/$formula.rb" || \
     php_darwin_die "could not write the $formula fixture"
+  printf '  bottle do\n    root_url "https://example.invalid/bottles"\n    sha256 arm64_sonoma: "%064d"\n  end\n' 1 \
+    >> "$php_path/Formula/$formula.rb" || php_darwin_die 'could not write bottle fixtures'
 done < <(php_darwin_configured_variants)
 printf 'shared source\n' > "$extensions_path/Abstract/abstract-php-extension.rb" || \
   php_darwin_die 'could not write the shared extension fixture'
@@ -36,6 +38,18 @@ printf 'pcov source\n' > "$extensions_path/Formula/pcov@8.5.rb" || \
   php_darwin_die 'could not write the PCOV fixture'
 printf 'unrelated source\n' > "$extensions_path/Formula/unrelated@8.5.rb" || \
   php_darwin_die 'could not write the unrelated extension fixture'
+for extension in xdebug pcov; do
+  printf '  bottle do\n    root_url "https://example.invalid/bottles"\n    sha256 arm64_sonoma: "%064d"\n  end\n' 1 \
+    >> "$extensions_path/Formula/$extension@8.5.rb" || exit 1
+done
+for tap_path in "$php_path" "$extensions_path"; do
+  git -C "$tap_path" init -q || exit 1
+  git -C "$tap_path" add . || exit 1
+  git -C "$tap_path" -c user.name=fixture -c user.email=fixture@example.invalid \
+    -c commit.gpgsign=false commit -qm fixture || exit 1
+done
+php_commit=$(git -C "$php_path" rev-parse HEAD) || exit 1
+extensions_commit=$(git -C "$extensions_path" rev-parse HEAD) || exit 1
 
 cat > "$fake_bin/curl" <<'EOF'
 #!/usr/bin/env bash
@@ -77,8 +91,8 @@ write_manifest() {
     done < <(php_darwin_platform_arches)
   done < <(php_darwin_configured_variants)
   jq -s --arg extensions_hash "$extensions_hash" \
-    --arg extensions_commit 0123456789abcdef0123456789abcdef01234567 \
-    --arg homebrew_commit 89abcdef0123456789abcdef0123456789abcdef \
+    --arg extensions_commit "$extensions_commit" \
+    --arg homebrew_commit "$php_commit" \
     --arg source_hash "$php_hash" '
     {schema:1,php_version:"8.5",php_semver:"8.5.1",php_src_commit:"",
      extensions_source_hash:$extensions_hash,homebrew_extensions_commit:$extensions_commit,
@@ -113,14 +127,28 @@ extensions_hash=$(HOMEBREW_EXTENSIONS_PATH="$extensions_path" \
 write_manifest "$php_hash" "$extensions_hash" || php_darwin_die 'could not write the current stable manifest'
 run_gate 0
 
+# Reproduce macOS 27 bottle additions and brew bottle alignment changes against
+# an existing release with raw formula hashes. No republish/migration is needed.
+for formula_file in "$php_path"/Formula/*.rb "$extensions_path"/Formula/*.rb; do
+  awk '
+    /sha256 arm64_sonoma:/ {
+      print "    sha256 arm64_golden_gate: \"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\""
+      sub(/arm64_sonoma: /, "arm64_sonoma:      ")
+    }
+    { print }
+  ' "$formula_file" > "$formula_file.new" || exit 1
+  mv "$formula_file.new" "$formula_file" || exit 1
+done
+run_gate 0
+
 jq '.assets |= map(select(.architecture == "arm64"))' "$manifest" > "$manifest.arm" || \
   php_darwin_die 'could not write the ARM64-only stable manifest fixture'
 mv "$manifest.arm" "$manifest" || php_darwin_die 'could not install the ARM64-only stable manifest fixture'
 run_gate 0 '' $'in_progress\tCache stable PHP 8.5'
 run_gate 1 x86_64
-grep -Fq -- '-f homebrew-php-commit=89abcdef0123456789abcdef0123456789abcdef' "$gh_log" || \
+grep -Fq -- "-f homebrew-php-commit=$php_commit" "$gh_log" || \
   php_darwin_die 'stable platform completion did not pin the published homebrew-php commit'
-grep -Fq -- '-f homebrew-extensions-commit=0123456789abcdef0123456789abcdef01234567' "$gh_log" || \
+grep -Fq -- "-f homebrew-extensions-commit=$extensions_commit" "$gh_log" || \
   php_darwin_die 'stable platform completion did not pin the published extension commit'
 write_manifest "$php_hash" "$extensions_hash" || php_darwin_die 'could not restore the current stable manifest'
 

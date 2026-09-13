@@ -26,6 +26,13 @@ Each PHP minor uses a release tag such as `php-8.5`. The release manifest maps a
 logical name such as `php_8.5-nts-release+darwin_arm64.tar.zst` to an immutable,
 checksum-addressed archive. New patch releases update the manifest without replacing archives in place.
 
+Update checks compare formula source and the bottles usable on the cache build
+platforms. Adding bottles for newer macOS versions (including macOS 27) does not
+rebuild the shared architecture caches. Full formula hashes remain in the cache
+metadata for integrity validation. When no compatible bottle exists, Homebrew
+builds from source on the same runner; macOS 14 ARM64 remains the cache minimum
+even after its bottles stop being published.
+
 ## Dependencies
 
 - [actions/runner-images](https://github.com/actions/runner-images "GitHub Actions runner images")

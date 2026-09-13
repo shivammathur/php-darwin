@@ -11,6 +11,7 @@ bash "$script_dir/test-archive-policy.sh" || php_darwin_die 'archive documentati
 bash "$script_dir/test-publish-run.sh" || php_darwin_die 'publish workflow-run validation failed'
 bash "$script_dir/test-extensions-source-hash.sh" || \
   php_darwin_die 'cached extension source hash validation failed'
+bash "$script_dir/test-build-inputs.sh" || php_darwin_die 'cache build input validation failed'
 bash "$script_dir/test-restore-published.sh" || \
   php_darwin_die 'published architecture restore validation failed'
 pinned_source_output=$(GITHUB_OUTPUT='' PINNED_COMMIT=0123456789abcdef0123456789abcdef01234567 \

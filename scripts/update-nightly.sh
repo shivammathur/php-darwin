@@ -25,6 +25,7 @@ published_extensions=
 manifest_current_platforms=false
 manifest_source_commit=
 manifest_extension_commit=
+extensions_current=false
 
 if [ -n "$manifest_override" ]; then
   [ -f "$manifest_override" ] || php_darwin_die "nightly manifest not found: $manifest_override"
@@ -43,6 +44,11 @@ case "$http_status" in
         php_darwin_die "could not read the PHP $version published source commit"
       published_extensions=$(bash "$script_dir/manifest-extensions-source-hash.sh" "$manifest" "$version") || \
         php_darwin_die "could not read the PHP $version published cached extension source hash"
+      if [ "$force" = false ] && [ "$published" = "$current" ]; then
+        extensions_current=$(bash "$script_dir/build-inputs-current.sh" "$manifest" "$version" extensions \
+          "$current_extensions" "$published_extensions") || \
+          php_darwin_die "could not compare PHP $version extension build inputs"
+      fi
       if php_darwin_release_manifest_has_current_platforms "$manifest"; then
         manifest_current_platforms=true
       else
@@ -59,14 +65,14 @@ esac
 
 build=false
 if [ "$force" = true ] || [ "$published" != "$current" ] || \
-  [ "$published_extensions" != "$current_extensions" ] || [ "$manifest_current_platforms" = false ]; then
+  [ "$extensions_current" != true ] || [ "$manifest_current_platforms" = false ]; then
   build=true
 fi
 architectures='arm64 x86_64'
 pinned_extension_commit=
 pinned_source_commit=
 if [ "$force" = false ] && [ "$published" = "$current" ] && \
-  [ "$published_extensions" = "$current_extensions" ] && [ "$manifest_current_platforms" = false ] && \
+  [ "$extensions_current" = true ] && [ "$manifest_current_platforms" = false ] && \
   [ -n "$manifest_source_commit" ] && [ -n "$manifest_extension_commit" ]; then
   architectures=x86_64
   pinned_extension_commit=$manifest_extension_commit

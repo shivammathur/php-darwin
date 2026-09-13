@@ -42,6 +42,8 @@ for version in "${version_values[@]}"; do
   manifest_current_platforms=false
   manifest_source_commit=
   manifest_extension_commit=
+  php_current=false
+  extensions_current=false
   if ! http_status=$(php_darwin_fetch_release_manifest "$release_repository" "$version" "$manifest"); then
     php_darwin_die "could not request the PHP $version release manifest"
   fi
@@ -52,6 +54,11 @@ for version in "${version_values[@]}"; do
           php_darwin_die "could not read the PHP $version published source hash"
         published_extensions=$(bash "$script_dir/manifest-extensions-source-hash.sh" "$manifest" "$version") || \
           php_darwin_die "could not read the PHP $version published cached extension source hash"
+        php_current=$(bash "$script_dir/build-inputs-current.sh" "$manifest" "$version" php "$current" "$published") || \
+          php_darwin_die "could not compare PHP $version build inputs"
+        extensions_current=$(bash "$script_dir/build-inputs-current.sh" "$manifest" "$version" extensions \
+          "$current_extensions" "$published_extensions") || \
+          php_darwin_die "could not compare PHP $version extension build inputs"
         if php_darwin_release_manifest_has_current_platforms "$manifest"; then
           manifest_current_platforms=true
         else
@@ -65,15 +72,15 @@ for version in "${version_values[@]}"; do
     404) ;;
     *) php_darwin_die "could not fetch the PHP $version release manifest (HTTP $http_status)" ;;
   esac
-  if [ "$published" = "$current" ] && [ "$published_extensions" = "$current_extensions" ] && \
+  if [ "$php_current" = true ] && [ "$extensions_current" = true ] && \
     [ "$manifest_current_platforms" = true ]; then
-    printf 'PHP %s is current (PHP %s, extensions %s)\n' "$version" "$current" "$current_extensions"
+    printf 'PHP %s cache build inputs are current (PHP %s, extensions %s)\n' "$version" "$current" "$current_extensions"
     continue
   fi
 
   architectures='arm64 x86_64'
   pinned_arguments=()
-  if [ "$published" = "$current" ] && [ "$published_extensions" = "$current_extensions" ] && \
+  if [ "$php_current" = true ] && [ "$extensions_current" = true ] && \
     [ "$manifest_current_platforms" = false ] && [ -n "$manifest_source_commit" ] && \
     [ -n "$manifest_extension_commit" ]; then
     architectures=x86_64
