@@ -1,5 +1,8 @@
 scripts/install-package.sh
 scripts/lib.sh
+scripts/trust-store.sh
+scripts/check-dependencies.sh
+scripts/unlink-kegs.sh
 scripts/read-metadata.sh
 scripts/source-hash.sh
 scripts/validate-tap.sh

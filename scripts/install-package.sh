@@ -107,6 +107,9 @@ homebrew_prepare_pid=
 homebrew_trust_pid=
 homebrew_trust_log="$tmp_dir/homebrew-trust.log"
 homebrew_prepare_phase_file="$tmp_dir/homebrew-prepare-phase.txt"
+php_unlink_mode_file="$tmp_dir/php-unlink-mode"
+dependency_unlink_mode_file="$tmp_dir/dependency-unlink-mode"
+unlink_journal_dir="$tmp_dir/unlinked"
 tap_path_file="$tmp_dir/homebrew-tap-path.txt"
 tap_trust_file="$tmp_dir/homebrew-tap-trust.txt"
 initial_formula_trust_file="$tmp_dir/homebrew-formula-trust.txt"
@@ -150,6 +153,32 @@ tap_snapshot_path="$brew_prefix/$tap_snapshot"
 archive_mutation_started=false
 runtime_verified=false
 preserve_tmp_dir=false
+php_darwin_unlink_formulae() {
+  local mode_file=$1
+  local unlink_status=0
+  shift
+
+  printf 'fast\n' > "$mode_file" || return 1
+  bash "$script_dir/unlink-kegs.sh" unlink "$brew_prefix" "$unlink_journal_dir" "$@" || unlink_status=$?
+  if [ "$unlink_status" -eq 78 ]; then
+    printf 'brew\n' > "$mode_file" || return 1
+    brew unlink "$@"
+  else
+    return "$unlink_status"
+  fi
+}
+
+php_darwin_check_installed_dependencies() {
+  local dependency_status=0
+
+  bash "$script_dir/check-dependencies.sh" "$brew_prefix" "$packages_file" || dependency_status=$?
+  if [ "$dependency_status" -eq 78 ]; then
+    brew missing "$tap/$formula"
+  else
+    return "$dependency_status"
+  fi
+}
+
 php_darwin_collect_dependencies() {
   [ -n "$missing_pid" ] || return 0
   if wait "$missing_pid"; then
@@ -187,7 +216,7 @@ php_darwin_resolve_tap_and_dependencies() {
       missing_status=
       missing_output=
       php_darwin_set_phase homebrew.dependencies
-      brew missing "$tap/$formula" > "$missing_log" 2>&1 &
+      php_darwin_check_installed_dependencies > "$missing_log" 2>&1 &
       missing_pid=$!
     fi
   else
@@ -315,19 +344,29 @@ php_darwin_restore_formula_trust() {
   local added_formula
   local added_formulae=()
   local trust_entries_file
+  local trust_restore_status
 
   [ -f "$formula_trust_marker" ] || [ -f "$formula_trust_pending" ] || return 0
   trust_entries_file=$formula_trust_marker
-  [ -s "$trust_entries_file" ] || trust_entries_file=$formula_trust_pending
+  [ -f "$trust_entries_file" ] || trust_entries_file=$formula_trust_pending
   while IFS= read -r added_formula; do
     case "$added_formula" in "$tap/"*) added_formulae+=("$added_formula") ;; *) return 1 ;; esac
   done < "$trust_entries_file"
-  [ "${#added_formulae[@]}" -gt 0 ] || return 1
+  if [ "${#added_formulae[@]}" -eq 0 ]; then
+    rm -f "$formula_trust_marker" "$formula_trust_pending"
+    return 0
+  fi
   # Homebrew's untrust command is idempotent. The marker contains only
   # formulae absent from the initial trust snapshot, so querying trust again
   # after archive extraction is unnecessary and would depend on the mutated
   # Homebrew prefix during rollback.
-  brew untrust --formula "${added_formulae[@]}" || {
+  trust_restore_status=0
+  bash "$script_dir/trust-store.sh" remove "$brew_prefix" "$tap" '' "${added_formulae[@]}" || trust_restore_status=$?
+  if [ "$trust_restore_status" -eq 78 ]; then
+    trust_restore_status=0
+    brew untrust --formula "${added_formulae[@]}" || trust_restore_status=$?
+  fi
+  [ "$trust_restore_status" -eq 0 ] || {
     printf 'Run brew untrust --formula %s to remove trust added by the failed cache install\n' \
       "${added_formulae[*]}" >&2
     return 1
@@ -472,11 +511,15 @@ php_darwin_install_cleanup() {
     if [ "$archive_mutation_started" = true ]; then
       rm -f "$brew_prefix/$internal_metadata_path" >> "$rollback_log" 2>&1 || rollback_status=failed
     fi
-    if [ "${#linked_php_references[@]}" -gt 0 ]; then
+    if [ -d "$unlink_journal_dir" ]; then
+      bash "$script_dir/unlink-kegs.sh" restore "$brew_prefix" "$unlink_journal_dir" >> "$rollback_log" 2>&1 || \
+        rollback_status=failed
+    fi
+    if [ "${#linked_php_references[@]}" -gt 0 ] && [ "$(cat "$php_unlink_mode_file" 2>/dev/null)" = brew ]; then
       brew link --overwrite --force "${linked_php_references[@]}" >> "$rollback_log" 2>&1 || \
         rollback_status=failed
     fi
-    if [ "${#linked_dependency_references[@]}" -gt 0 ]; then
+    if [ "${#linked_dependency_references[@]}" -gt 0 ] && [ "$(cat "$dependency_unlink_mode_file" 2>/dev/null)" = brew ]; then
       brew link --overwrite "${linked_dependency_references[@]}" >> "$rollback_log" 2>&1 || \
         rollback_status=failed
     fi
@@ -528,7 +571,13 @@ for linked_php_path in "$brew_prefix/var/homebrew/linked"/php*; do
 done
 : > "$homebrew_prepare_phase_file" || php_darwin_die 'could not create the Homebrew preparation phase file'
 (
-  trust_json=$(brew trust --json=v1) || exit 1
+  trust_status=0
+  trust_json=$(bash "$script_dir/trust-store.sh" snapshot "$brew_prefix") || trust_status=$?
+  if [ "$trust_status" -eq 78 ]; then
+    trust_json=$(brew trust --json=v1) || exit 1
+  elif [ "$trust_status" -ne 0 ]; then
+    exit "$trust_status"
+  fi
   if php_darwin_tap_trusted "$tap" "$trust_json"; then
     printf 'true\n' > "$tap_trust_file" || exit 1
   else
@@ -555,7 +604,7 @@ homebrew_trust_pid=$!
   brew --repository "$tap" > "$tap_path_file" || exit 1
   if [ "${#linked_php_references[@]}" -gt 0 ]; then
     printf 'homebrew.unlink\n' > "$homebrew_prepare_phase_file" || exit 1
-    brew unlink "${linked_php_references[@]}" || exit 1
+    php_darwin_unlink_formulae "$php_unlink_mode_file" "${linked_php_references[@]}" || exit 1
   fi
 ) > "$homebrew_prepare_log" 2>&1 &
 homebrew_prepare_pid=$!
@@ -906,7 +955,7 @@ done < "$packages_file"
 grep -Fxq "$formula" "$changed_formulae_file" || php_darwin_die "cache extraction would not add $formula"
 if [ "${#linked_dependency_references[@]}" -gt 0 ]; then
   php_darwin_set_phase homebrew.unlink
-  brew unlink "${linked_dependency_references[@]}" >/dev/null || \
+  php_darwin_unlink_formulae "$dependency_unlink_mode_file" "${linked_dependency_references[@]}" >/dev/null || \
     php_darwin_die 'could not unlink the existing Homebrew dependencies'
 fi
 
@@ -976,19 +1025,26 @@ if [ "$tap_was_trusted" = false ]; then
   php_darwin_wait_for_tap
   php_darwin_set_phase homebrew.trust
   if [ "${#formula_trust_references[@]}" -gt 0 ]; then
-    printf '%s\n' "${formula_trust_references[@]}" > "$formula_trust_pending" || \
-      php_darwin_die 'could not record formula trust added by the cache installation'
     printf 'Trusting %s installed Homebrew formula(s) from %s\n' \
       "${#formula_trust_references[@]}" "$tap"
-    brew trust --formula "${formula_trust_references[@]}" || \
-      php_darwin_die "could not trust installed Homebrew formulae from $tap"
+    trust_status=0
+    bash "$script_dir/trust-store.sh" add "$brew_prefix" "$tap" "$formula_trust_pending" \
+      "${formula_trust_references[@]}" || trust_status=$?
+    if [ "$trust_status" -eq 78 ]; then
+      printf '%s\n' "${formula_trust_references[@]}" > "$formula_trust_pending" || \
+        php_darwin_die 'could not record formula trust added by the cache installation'
+      brew trust --formula "${formula_trust_references[@]}" || \
+        php_darwin_die "could not trust installed Homebrew formulae from $tap"
+    elif [ "$trust_status" -ne 0 ]; then
+      php_darwin_die "could not merge installed Homebrew formula trust for $tap"
+    fi
     mv "$formula_trust_pending" "$formula_trust_marker" || \
       php_darwin_die 'could not commit formula trust added by the cache installation'
   fi
 fi
 php_darwin_set_phase homebrew.dependencies
 [ -z "$tap_pid" ] || dependencies_started_with_pending_tap=true
-brew missing "$tap/$formula" > "$missing_log" 2>&1 &
+php_darwin_check_installed_dependencies > "$missing_log" 2>&1 &
 missing_pid=$!
 
 php_darwin_set_phase homebrew.configure

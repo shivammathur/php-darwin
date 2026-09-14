@@ -1086,6 +1086,364 @@ PHP_DARWIN_RELEASE_MANIFEST
 }
 
 
+# Source: scripts/trust-store.sh
+php_darwin_trust_store() (
+
+# Exit 78 means that Homebrew must handle this layout/configuration itself.
+# Keep the helper on the system Ruby: invoking `brew ruby` loads Homebrew first.
+[ -x /usr/bin/ruby ] || exit 78
+/usr/bin/ruby - "$@" <<'PHP_DARWIN_TRUST_RUBY'
+require 'json'
+require 'fileutils'
+require 'tempfile'
+
+def unsupported
+  exit 78
+end
+
+def secure_stat(path, directory: false)
+  stat = File.lstat(path)
+  unsupported if stat.symlink?
+  raise "insecure trust path: #{path}" unless stat.uid == Process.euid && (stat.mode & 0022).zero?
+  raise "invalid trust path: #{path}" unless directory ? stat.directory? : stat.file? && stat.nlink == 1
+  stat
+end
+
+def atomic_write(path, contents)
+  Tempfile.create(['.php-darwin-trust-', '.tmp'], File.dirname(path)) do |file|
+    file.chmod(0600)
+    file.write(contents)
+    file.flush
+    file.fsync
+    File.rename(file.path, path)
+  end
+end
+
+def read_store(path)
+  return {} unless File.exist?(path) || File.symlink?(path)
+  secure_stat(path)
+  store = JSON.parse(File.read(path))
+  # Unknown schemas belong to Homebrew. Never repair or replace malformed JSON.
+  unsupported unless store.is_a?(Hash) && (store.keys - %w[trustedtaps trustedformulae trustedcasks trustedcommands]).empty?
+  unsupported unless store.values.all? { |entries| entries.is_a?(Array) && entries.all? { |entry| entry.is_a?(String) } }
+  store
+end
+
+journal_written = false
+store_written = false
+begin
+  mode, prefix, tap, journal, *references = ARGV
+  raise 'invalid trust operation' unless %w[snapshot add remove].include?(mode)
+  unsupported if Process.euid.zero? || ENV['HOMEBREW_FORCE_BREW_WRAPPER'] || ENV['HOMEBREW_SYSTEM_ENV_TAKES_PRIORITY']
+  repository = File.dirname(File.dirname(File.realpath(File.join(prefix, 'bin/brew'))))
+  source_path = File.join(repository, 'Library/Homebrew/trust.rb')
+  unsupported unless File.file?(source_path)
+  source = File.read(source_path)
+  # Only the JSON storage protocol with Homebrew's flock/atomic-write contract
+  # is supported. Unrecognized storage implementations use the CLI instead.
+  protocol = {
+    'trust_file' => ['HOMEBREW_USER_CONFIG_HOME', '.homebrew/trust.json', 'user_config_home/"trust.json"'],
+    'setting_key' => ['SETTING_KEYS.fetch(type).to_s'],
+    'normalise_name' => ['name.downcase'],
+    'trust_store' => ['JSON.parse(trust_path.read)', 'parsed_store.transform_values'],
+    'write_trust_store' => ['write_path.atomic_write', 'write_path.chmod(0600)'],
+    'with_trust_store_lock' => ['"#{trust_file}.lock"', 'File::RDWR | File::CREAT, 0600', 'lock_file.flock(File::LOCK_EX)']
+  }
+  protocol.each do |name, markers|
+    method = source[/^    def self\.#{name}\b.*?^    end$/m]
+    unsupported unless method && markers.all? { |marker| method.include?(marker) }
+  end
+  %w[tap:trustedtaps formula:trustedformulae cask:trustedcasks command:trustedcommands].each do |mapping|
+    type, key = mapping.split(':')
+    unsupported unless source.match?(/#{type}:\s+:#{key}\b/)
+  end
+  config_base = [ENV['XDG_CONFIG_HOME'], ENV['HOMEBREW_XDG_CONFIG_HOME']].find { |value| value && !value.empty? }
+  config = config_base ? File.join(config_base, 'homebrew') : File.join(ENV.fetch('HOME'), '.homebrew')
+  unsupported unless config.start_with?('/')
+  # brew.env may redirect Homebrew or its config. Let brew resolve those files.
+  ['/etc/homebrew/brew.env', File.join(prefix, 'etc/homebrew/brew.env'), File.join(config, 'brew.env')].each do |path|
+    unsupported if File.exist?(path) || File.symlink?(path)
+  end
+  path = File.join(config, 'trust.json')
+  secure_stat(config, directory: true) if File.exist?(config) || File.symlink?(config)
+  if mode == 'snapshot'
+    store = read_store(path)
+    puts JSON.generate({ 'taps' => store.fetch('trustedtaps', []).map(&:downcase),
+                         'formulae' => store.fetch('trustedformulae', []).map(&:downcase) })
+    exit 0
+  end
+  raise 'invalid formula trust references' unless tap.match?(/\A[a-z0-9_.-]+\/[a-z0-9_.-]+\z/) &&
+    references.all? { |name| name.start_with?(tap + '/') && name.match?(/\A[a-z0-9_.-]+\/[a-z0-9_.-]+\/[a-z0-9@+_.-]+\z/) }
+  if mode == 'add'
+    user, name = tap.split('/')
+    tap_path = File.join(repository, 'Library/Taps', user, 'homebrew-' + name)
+    origin = IO.popen(['git', '-C', tap_path, 'remote', 'get-url', 'origin'], &:read).strip.delete_suffix('.git')
+    unsupported unless $?.success? && origin == "https://github.com/#{user}/homebrew-#{name}"
+    references.each do |reference|
+      formula = File.join(tap_path, 'Formula', reference.split('/').last + '.rb')
+      unsupported unless File.file?(formula) && !File.symlink?(formula)
+    end
+  end
+  FileUtils.mkdir_p(config, mode: 0700) unless File.exist?(config)
+  secure_stat(config, directory: true)
+  lock_path = path + '.lock'
+  secure_stat(lock_path) if File.exist?(lock_path) || File.symlink?(lock_path)
+  File.open(lock_path, File::RDWR | File::CREAT, 0600) do |lock|
+    stat = secure_stat(lock_path)
+    raise 'trust lock changed' unless stat.ino == lock.stat.ino && stat.dev == lock.stat.dev
+    lock.flock(File::LOCK_EX)
+    store = read_store(path)
+    entries = store.fetch('trustedformulae', [])
+    if mode == 'add'
+      delta = references.uniq - entries.map(&:downcase)
+      delta = [] if store.fetch('trustedtaps', []).map(&:downcase).include?(tap)
+      # Record the delta under the same lock as the merge, including additions
+      # by another process since the installer's initial trust snapshot.
+      atomic_write(journal, delta.map { |entry| entry + "\n" }.join)
+      journal_written = true
+      unless delta.empty?
+        store['trustedformulae'] = (entries + delta).sort
+        atomic_write(path, JSON.pretty_generate(store) + "\n")
+        store_written = true
+      end
+    else
+      remaining = entries.reject { |entry| references.include?(entry.downcase) }
+      unless entries == remaining
+        remaining.empty? ? store.delete('trustedformulae') : store['trustedformulae'] = remaining
+        if store.empty?
+          File.unlink(path)
+        else
+          atomic_write(path, JSON.pretty_generate(store) + "\n")
+        end
+      end
+    end
+  end
+rescue SystemCallError, JSON::ParserError, RuntimeError, ArgumentError, KeyError => error
+  File.unlink(journal) if journal_written && !store_written && File.file?(journal)
+  warn "php-darwin: trust store: #{error.message}"
+  exit 1
+end
+PHP_DARWIN_TRUST_RUBY
+)
+
+# Source: scripts/check-dependencies.sh
+php_darwin_check_dependencies() (
+
+[ -x /usr/bin/ruby ] || exit 78
+/usr/bin/ruby - "$@" <<'PHP_DARWIN_DEPENDENCIES_RUBY'
+require 'json'
+begin
+  prefix, packages = ARGV
+  dependencies = []
+  File.foreach(packages) do |line|
+    name, target, keg_only, extra = line.strip.split("\t")
+    raise 'invalid package receipt path' unless extra.nil? && %w[true false].include?(keg_only) &&
+      name.match?(/\A[a-zA-Z0-9@+_.-]+\z/) && target.match?(%r{\A\.\./Cellar/#{Regexp.escape(name)}/[^/\s]+\z})
+    receipt = File.join(prefix, target.delete_prefix('../'), 'INSTALL_RECEIPT.json')
+    exit 78 unless File.file?(receipt)
+    data = JSON.parse(File.read(receipt))
+    entries = data['runtime_dependencies']
+    exit 78 unless entries.is_a?(Array)
+    entries.each do |entry|
+      exit 78 unless entry.is_a?(Hash) && entry['full_name'].is_a?(String)
+      dependency = entry['full_name'].split('/').last
+      raise 'invalid runtime dependency name' unless dependency && !%w[. ..].include?(dependency) && dependency.match?(/\A[a-zA-Z0-9@+_.-]+\z/)
+      dependencies << dependency
+    end
+  end
+  # Homebrew's missing_dependencies uses installed receipt data, not current
+  # formula definitions. Check every cached package, including transitive deps.
+  missing = dependencies.uniq.sort.reject do |name|
+    File.directory?(File.join(prefix, 'Cellar', name)) || File.directory?(File.join(prefix, 'opt', name))
+  end
+  unless missing.empty?
+    puts missing.join(' ')
+    exit 1
+  end
+rescue SystemCallError, JSON::ParserError, RuntimeError, ArgumentError => error
+  warn "php-darwin: dependency receipts: #{error.message}"
+  exit 1
+end
+PHP_DARWIN_DEPENDENCIES_RUBY
+)
+
+# Source: scripts/unlink-kegs.sh
+php_darwin_unlink_kegs() (
+
+[ -x /usr/bin/ruby ] || exit 78
+/usr/bin/ruby - "$@" <<'PHP_DARWIN_UNLINK_RUBY'
+require 'json'
+require 'find'
+require 'fileutils'
+require 'tempfile'
+
+def unsupported
+  exit 78
+end
+
+def resolved(path)
+  File.symlink?(path) ? File.expand_path(File.readlink(path), File.dirname(path)) : path
+end
+
+def parents_safe(prefix, path)
+  parent = File.dirname(path)
+  until parent == prefix
+    raise "unsafe unlink parent: #{parent}" if File.symlink?(parent)
+    raise 'unlink path outside Homebrew' unless parent.start_with?(prefix + '/')
+    parent = File.dirname(parent)
+  end
+end
+
+def acquire_lock(prefix, name, locks)
+  raise 'invalid formula lock name' unless !%w[. ..].include?(name) && name.match?(/\A[a-zA-Z0-9@+_.-]+\z/)
+  lock_path = File.join(prefix, 'var/homebrew/locks', name + '.formula.lock')
+  parents_safe(prefix, lock_path)
+  FileUtils.mkdir_p(File.dirname(lock_path))
+  unsupported if File.symlink?(lock_path)
+  file = File.open(lock_path, File::RDWR | File::CREAT, 0644)
+  locks << file
+  raise "Homebrew formula is busy: #{name}" unless file.flock(File::LOCK_EX | File::LOCK_NB)
+  raise 'Homebrew formula lock changed' unless file.stat.ino == File.stat(lock_path).ino
+end
+
+locks = []
+begin
+  mode, prefix, journal_dir, *names = ARGV
+  raise 'invalid unlink operation' unless %w[unlink restore].include?(mode)
+  unsupported unless File.realpath(prefix) == prefix
+  if mode == 'restore'
+    journals = Dir.glob(File.join(journal_dir, '*.json')).sort.reverse
+    restored_names = journals.flat_map do |journal|
+      JSON.parse(File.read(journal)).map do |entry|
+        path = File.join(prefix, entry.fetch('path'))
+        target = File.expand_path(entry.fetch('target'), File.dirname(path))
+        match = target.match(%r{\A#{Regexp.escape(prefix)}/Cellar/([^/]+)/})
+        raise 'invalid unlink journal target' unless match
+        match[1]
+      end
+    end
+    restored_names.uniq.sort.each { |name| acquire_lock(prefix, name, locks) }
+    journals.each do |journal|
+      JSON.parse(File.read(journal)).reverse_each do |entry|
+        relative, target = entry.values_at('path', 'target')
+        raise 'invalid unlink journal' unless relative.is_a?(String) && target.is_a?(String) &&
+          relative.match?(%r{\A(?:bin|etc|include|lib|sbin|share|var)/}) &&
+          !relative.match?(%r{(?:\A|/)\.\.?(/|\z)|//|[\r\n\t]}) &&
+          File.expand_path(target, File.dirname(File.join(prefix, relative))).start_with?(prefix + '/Cellar/')
+        path = File.join(prefix, relative)
+        parents_safe(prefix, path)
+        if File.symlink?(path)
+          raise "unlink rollback conflict: #{path}" unless File.readlink(path) == target
+          next
+        end
+        if File.directory?(path)
+          # Cache extraction may have replaced an old directory symlink with
+          # real directories. Remove only empty directories, never user files.
+          directories = []
+          Find.find(path) do |child|
+            raise "unlink rollback conflict: #{child}" unless File.directory?(child) && !File.symlink?(child)
+            directories << child
+          end
+          directories.reverse_each { |directory| Dir.rmdir(directory) }
+        end
+        raise "unlink rollback conflict: #{path}" if File.exist?(path)
+        FileUtils.mkdir_p(File.dirname(path))
+        File.symlink(target, path)
+      end
+      File.unlink(journal)
+    end
+    exit 0
+  end
+  names = names.map { |name| name.split('/').last }.uniq
+  unsupported if names.empty?
+  raise 'invalid formula name' unless names.all? { |name| !%w[. ..].include?(name) && name.match?(/\A[a-zA-Z0-9@+_.-]+\z/) }
+  begin
+    acquire = lambda { |name| acquire_lock(prefix, name, locks) }
+    names.sort.each { |name| acquire.call(name) }
+    plans = []
+    additional_locks = []
+    names.each do |name|
+      record = File.join(prefix, 'var/homebrew/linked', name)
+      parents_safe(prefix, record)
+      unsupported unless File.symlink?(record)
+      keg = resolved(record)
+      unsupported unless keg.match?(%r{\A#{Regexp.escape(prefix)}/Cellar/#{Regexp.escape(name)}/[^/]+\z}) &&
+        File.directory?(keg) && !File.symlink?(keg)
+      parents_safe(prefix, keg)
+      opt = File.join(prefix, 'opt', name)
+      parents_safe(prefix, opt)
+      unsupported if File.exist?(opt) && resolved(opt) != keg
+      receipt = JSON.parse(File.read(File.join(keg, 'INSTALL_RECEIPT.json')))
+      aliases = receipt['aliases'] || []
+      unsupported unless aliases.is_a?(Array) && aliases.all? { |value| value.is_a?(String) && !%w[. ..].include?(value) && value.match?(/\A[a-zA-Z0-9@+_.-]+\z/) }
+      # Alias cleanup and info-index updates remain Homebrew operations. The
+      # common case needs only owned symlinks and the linked-keg record removed.
+      aliases.reject { |value| value.include?('@') }.each do |value|
+        unsupported if File.exist?(File.join(prefix, 'opt', value)) || File.symlink?(File.join(prefix, 'opt', value))
+        unsupported if File.exist?(File.join(prefix, 'var/homebrew/linked', value)) || File.symlink?(File.join(prefix, 'var/homebrew/linked', value))
+      end
+      Dir.glob(opt + '@*').each do |alias_path|
+        next if aliases.include?(File.basename(alias_path))
+        unsupported unless File.symlink?(alias_path)
+        unsupported if File.symlink?(alias_path) && (!File.exist?(alias_path) || File.dirname(File.realpath(alias_path)) == File.dirname(keg))
+      end
+      tap = receipt.dig('source', 'tap')
+      if tap.is_a?(String)
+        old_tap_opt = File.join(prefix, 'opt', tap.split('/').first)
+        unsupported if File.directory?(old_tap_opt) && !File.symlink?(old_tap_opt)
+      end
+      Dir.glob(File.join(prefix, 'opt', '*')).each do |alias_path|
+        next unless File.symlink?(alias_path) && File.directory?(alias_path)
+        if File.dirname(resolved(alias_path)) == File.dirname(keg)
+          additional_locks << File.basename(alias_path)
+        end
+      end
+      %w[bin etc include lib sbin share var].each do |directory|
+        root = File.join(keg, directory)
+        next unless File.exist?(root)
+        Find.find(root) do |source|
+          destination = File.join(prefix, source.delete_prefix(keg + '/'))
+          if File.symlink?(destination)
+            if resolved(destination) == source
+              unsupported if destination.match?(%r{info/(?:[^.].*?\.info(?:\.gz)?|dir)\z})
+              plans << {'path' => destination.delete_prefix(prefix + '/'), 'target' => File.readlink(destination)}
+              Find.prune if File.directory?(source)
+            elsif File.directory?(source)
+              unsupported
+            end
+          elsif !File.directory?(destination) && File.directory?(source)
+            Find.prune
+          end
+        end
+      end
+      plans << {'path' => record.delete_prefix(prefix + '/'), 'target' => File.readlink(record)}
+    end
+    (additional_locks.uniq - names).sort.each { |name| acquire.call(name) }
+    plans.uniq!
+    plans.each do |entry|
+      path = File.join(prefix, entry['path'])
+      parents_safe(prefix, path)
+      raise "Homebrew link changed: #{path}" unless File.symlink?(path) && File.readlink(path) == entry['target']
+    end
+    FileUtils.mkdir_p(journal_dir, mode: 0700)
+    stamp = format('%020d-%d', Process.clock_gettime(Process::CLOCK_MONOTONIC, :nanosecond), Process.pid)
+    Tempfile.create(['unlink-', '.tmp'], journal_dir) do |file|
+      file.write(JSON.generate(plans))
+      file.flush
+      file.fsync
+      File.rename(file.path, File.join(journal_dir, stamp + '.json'))
+    end
+    plans.each { |entry| File.unlink(File.join(prefix, entry['path'])) }
+  end
+rescue SystemCallError, JSON::ParserError, RuntimeError, ArgumentError, TypeError, KeyError => error
+  warn "php-darwin: Homebrew links: #{error.message}"
+  exit 1
+ensure
+  locks.reverse_each(&:close)
+end
+PHP_DARWIN_UNLINK_RUBY
+)
+
 # Source: scripts/read-metadata.sh
 php_darwin_read_metadata() (
 
@@ -1892,6 +2250,9 @@ homebrew_prepare_pid=
 homebrew_trust_pid=
 homebrew_trust_log="$tmp_dir/homebrew-trust.log"
 homebrew_prepare_phase_file="$tmp_dir/homebrew-prepare-phase.txt"
+php_unlink_mode_file="$tmp_dir/php-unlink-mode"
+dependency_unlink_mode_file="$tmp_dir/dependency-unlink-mode"
+unlink_journal_dir="$tmp_dir/unlinked"
 tap_path_file="$tmp_dir/homebrew-tap-path.txt"
 tap_trust_file="$tmp_dir/homebrew-tap-trust.txt"
 initial_formula_trust_file="$tmp_dir/homebrew-formula-trust.txt"
@@ -1935,6 +2296,32 @@ tap_snapshot_path="$brew_prefix/$tap_snapshot"
 archive_mutation_started=false
 runtime_verified=false
 preserve_tmp_dir=false
+php_darwin_unlink_formulae() {
+  local mode_file=$1
+  local unlink_status=0
+  shift
+
+  printf 'fast\n' > "$mode_file" || return 1
+  php_darwin_unlink_kegs unlink "$brew_prefix" "$unlink_journal_dir" "$@" || unlink_status=$?
+  if [ "$unlink_status" -eq 78 ]; then
+    printf 'brew\n' > "$mode_file" || return 1
+    brew unlink "$@"
+  else
+    return "$unlink_status"
+  fi
+}
+
+php_darwin_check_installed_dependencies() {
+  local dependency_status=0
+
+  php_darwin_check_dependencies "$brew_prefix" "$packages_file" || dependency_status=$?
+  if [ "$dependency_status" -eq 78 ]; then
+    brew missing "$tap/$formula"
+  else
+    return "$dependency_status"
+  fi
+}
+
 php_darwin_collect_dependencies() {
   [ -n "$missing_pid" ] || return 0
   if wait "$missing_pid"; then
@@ -1972,7 +2359,7 @@ php_darwin_resolve_tap_and_dependencies() {
       missing_status=
       missing_output=
       php_darwin_set_phase homebrew.dependencies
-      brew missing "$tap/$formula" > "$missing_log" 2>&1 &
+      php_darwin_check_installed_dependencies > "$missing_log" 2>&1 &
       missing_pid=$!
     fi
   else
@@ -2100,19 +2487,29 @@ php_darwin_restore_formula_trust() {
   local added_formula
   local added_formulae=()
   local trust_entries_file
+  local trust_restore_status
 
   [ -f "$formula_trust_marker" ] || [ -f "$formula_trust_pending" ] || return 0
   trust_entries_file=$formula_trust_marker
-  [ -s "$trust_entries_file" ] || trust_entries_file=$formula_trust_pending
+  [ -f "$trust_entries_file" ] || trust_entries_file=$formula_trust_pending
   while IFS= read -r added_formula; do
     case "$added_formula" in "$tap/"*) added_formulae+=("$added_formula") ;; *) return 1 ;; esac
   done < "$trust_entries_file"
-  [ "${#added_formulae[@]}" -gt 0 ] || return 1
+  if [ "${#added_formulae[@]}" -eq 0 ]; then
+    rm -f "$formula_trust_marker" "$formula_trust_pending"
+    return 0
+  fi
   # Homebrew's untrust command is idempotent. The marker contains only
   # formulae absent from the initial trust snapshot, so querying trust again
   # after archive extraction is unnecessary and would depend on the mutated
   # Homebrew prefix during rollback.
-  brew untrust --formula "${added_formulae[@]}" || {
+  trust_restore_status=0
+  php_darwin_trust_store remove "$brew_prefix" "$tap" '' "${added_formulae[@]}" || trust_restore_status=$?
+  if [ "$trust_restore_status" -eq 78 ]; then
+    trust_restore_status=0
+    brew untrust --formula "${added_formulae[@]}" || trust_restore_status=$?
+  fi
+  [ "$trust_restore_status" -eq 0 ] || {
     printf 'Run brew untrust --formula %s to remove trust added by the failed cache install\n' \
       "${added_formulae[*]}" >&2
     return 1
@@ -2257,11 +2654,15 @@ php_darwin_install_cleanup() {
     if [ "$archive_mutation_started" = true ]; then
       rm -f "$brew_prefix/$internal_metadata_path" >> "$rollback_log" 2>&1 || rollback_status=failed
     fi
-    if [ "${#linked_php_references[@]}" -gt 0 ]; then
+    if [ -d "$unlink_journal_dir" ]; then
+      php_darwin_unlink_kegs restore "$brew_prefix" "$unlink_journal_dir" >> "$rollback_log" 2>&1 || \
+        rollback_status=failed
+    fi
+    if [ "${#linked_php_references[@]}" -gt 0 ] && [ "$(cat "$php_unlink_mode_file" 2>/dev/null)" = brew ]; then
       brew link --overwrite --force "${linked_php_references[@]}" >> "$rollback_log" 2>&1 || \
         rollback_status=failed
     fi
-    if [ "${#linked_dependency_references[@]}" -gt 0 ]; then
+    if [ "${#linked_dependency_references[@]}" -gt 0 ] && [ "$(cat "$dependency_unlink_mode_file" 2>/dev/null)" = brew ]; then
       brew link --overwrite "${linked_dependency_references[@]}" >> "$rollback_log" 2>&1 || \
         rollback_status=failed
     fi
@@ -2313,7 +2714,13 @@ for linked_php_path in "$brew_prefix/var/homebrew/linked"/php*; do
 done
 : > "$homebrew_prepare_phase_file" || php_darwin_die 'could not create the Homebrew preparation phase file'
 (
-  trust_json=$(brew trust --json=v1) || exit 1
+  trust_status=0
+  trust_json=$(php_darwin_trust_store snapshot "$brew_prefix") || trust_status=$?
+  if [ "$trust_status" -eq 78 ]; then
+    trust_json=$(brew trust --json=v1) || exit 1
+  elif [ "$trust_status" -ne 0 ]; then
+    exit "$trust_status"
+  fi
   if php_darwin_tap_trusted "$tap" "$trust_json"; then
     printf 'true\n' > "$tap_trust_file" || exit 1
   else
@@ -2340,7 +2747,7 @@ homebrew_trust_pid=$!
   brew --repository "$tap" > "$tap_path_file" || exit 1
   if [ "${#linked_php_references[@]}" -gt 0 ]; then
     printf 'homebrew.unlink\n' > "$homebrew_prepare_phase_file" || exit 1
-    brew unlink "${linked_php_references[@]}" || exit 1
+    php_darwin_unlink_formulae "$php_unlink_mode_file" "${linked_php_references[@]}" || exit 1
   fi
 ) > "$homebrew_prepare_log" 2>&1 &
 homebrew_prepare_pid=$!
@@ -2691,7 +3098,7 @@ done < "$packages_file"
 grep -Fxq "$formula" "$changed_formulae_file" || php_darwin_die "cache extraction would not add $formula"
 if [ "${#linked_dependency_references[@]}" -gt 0 ]; then
   php_darwin_set_phase homebrew.unlink
-  brew unlink "${linked_dependency_references[@]}" >/dev/null || \
+  php_darwin_unlink_formulae "$dependency_unlink_mode_file" "${linked_dependency_references[@]}" >/dev/null || \
     php_darwin_die 'could not unlink the existing Homebrew dependencies'
 fi
 
@@ -2761,19 +3168,26 @@ if [ "$tap_was_trusted" = false ]; then
   php_darwin_wait_for_tap
   php_darwin_set_phase homebrew.trust
   if [ "${#formula_trust_references[@]}" -gt 0 ]; then
-    printf '%s\n' "${formula_trust_references[@]}" > "$formula_trust_pending" || \
-      php_darwin_die 'could not record formula trust added by the cache installation'
     printf 'Trusting %s installed Homebrew formula(s) from %s\n' \
       "${#formula_trust_references[@]}" "$tap"
-    brew trust --formula "${formula_trust_references[@]}" || \
-      php_darwin_die "could not trust installed Homebrew formulae from $tap"
+    trust_status=0
+    php_darwin_trust_store add "$brew_prefix" "$tap" "$formula_trust_pending" \
+      "${formula_trust_references[@]}" || trust_status=$?
+    if [ "$trust_status" -eq 78 ]; then
+      printf '%s\n' "${formula_trust_references[@]}" > "$formula_trust_pending" || \
+        php_darwin_die 'could not record formula trust added by the cache installation'
+      brew trust --formula "${formula_trust_references[@]}" || \
+        php_darwin_die "could not trust installed Homebrew formulae from $tap"
+    elif [ "$trust_status" -ne 0 ]; then
+      php_darwin_die "could not merge installed Homebrew formula trust for $tap"
+    fi
     mv "$formula_trust_pending" "$formula_trust_marker" || \
       php_darwin_die 'could not commit formula trust added by the cache installation'
   fi
 fi
 php_darwin_set_phase homebrew.dependencies
 [ -z "$tap_pid" ] || dependencies_started_with_pending_tap=true
-brew missing "$tap/$formula" > "$missing_log" 2>&1 &
+php_darwin_check_installed_dependencies > "$missing_log" 2>&1 &
 missing_pid=$!
 
 php_darwin_set_phase homebrew.configure

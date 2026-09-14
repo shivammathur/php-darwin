@@ -33,6 +33,21 @@ Each directory also has `install.sh` and `php-8.5-manifest.json`. Archives are
 cached for one year; installers and manifests require revalidation on every
 request. The installer verifies bytes from either origin before extraction.
 
+The verified archive's formula list supplies Homebrew trust entries. On supported
+Homebrew installations, the installer merges those entries into the current
+user's `trust.json` under Homebrew's file lock, without starting `brew trust`.
+It preserves existing taps, formulae, casks, and commands, writes atomically with
+private permissions, and records only newly added entries for rollback.
+Unrecognized storage formats, custom tap remotes, symlinks, and `brew.env`
+configuration use Homebrew's command instead. No build machine trust file is
+included in the cache, and installing a formula does not trust its entire tap.
+The installer also avoids repeated Homebrew startup when unlinking ordinary
+kegs and checking installed dependency receipts. It locks the affected formulae,
+records removed symlinks for rollback, and preserves unrelated files and links.
+Alias cleanup and info-index maintenance still use Homebrew. Dependency checks
+cover the runtime receipts of every cached package; unfamiliar receipt formats
+fall back to `brew missing`.
+
 Publishing verifies the R2 copies before updating the GitHub installer and
 manifest. The repository secrets `CF_R2_AWS_ACCESS_KEY_ID`,
 `CF_R2_AWS_SECRET_ACCESS_KEY`, and `CF_R2_AWS_S3_ENDPOINT` provide an R2 token

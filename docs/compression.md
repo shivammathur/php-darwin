@@ -43,3 +43,35 @@ python3 scripts/benchmark-compression.py \
 
 The benchmark verifies the downloaded archive checksums before measuring and
 uses temporary files; it does not install packages or modify Homebrew.
+
+## Extraction on GitHub runners
+
+The [native extraction comparison](https://github.com/shivammathur/test-setup-php/actions/runs/34869425325)
+recompressed identical PHP 8.6 release/NTS tar contents at levels 4, 19, and 22,
+then extracted each output three times on macOS 15 ARM64 and Intel. Every input
+archive and decompressed payload was checked with SHA-256. Times below are the
+median raw `bsdtar` extraction time; they exclude downloads, Homebrew state
+changes, validation, and Composer.
+
+| Runner | Level 4 | Level 19 | Level 22 |
+|---|---:|---:|---:|
+| macOS 15 ARM64 | 0.98 s | 1.27 s | 1.38 s |
+| macOS 15 Intel | 4.40 s | 3.80 s | 4.30 s |
+
+Level 19 did not slow extraction relative to level 22 in these measurements.
+Level 4 grew the archives from 57.64 to 78.00 MB on ARM64 and from 56.63 to
+78.02 MB on Intel, without a consistent extraction improvement across both
+architectures. Keep production compression at level 19 and artifact upload at
+level 0. The external `zstd | tar` path also showed no consistent advantage.
+
+Raw repetitions, input checksums, and job links are preserved in
+[extraction-results.json](extraction-results.json). Reproduce with:
+
+```sh
+python3 scripts/benchmark-extraction.py /path/to/php.tar.zst SHA256 \
+  --levels 4 19 22 --repeats 3 --output /tmp/extraction.json
+```
+
+Only the compression jobs and direct recovery tests from that workflow are
+relevant here. Its action timing jobs accidentally used the published installer
+for both labels and must not be treated as a before/after speed comparison.

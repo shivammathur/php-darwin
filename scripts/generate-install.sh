@@ -133,6 +133,9 @@ done < "$seen_inputs"
       gsub(/bash "\$script_dir\/validate-tap\.sh"/, "php_darwin_validate_tap")
       gsub(/bash "\$script_dir\/tap-action\.sh"/, "php_darwin_tap_action")
       gsub(/bash "\$script_dir\/verify-links\.sh"/, "php_darwin_verify_links")
+      gsub(/bash "\$script_dir\/trust-store\.sh"/, "php_darwin_trust_store")
+      gsub(/bash "\$script_dir\/check-dependencies\.sh"/, "php_darwin_check_dependencies")
+      gsub(/bash "\$script_dir\/unlink-kegs\.sh"/, "php_darwin_unlink_kegs")
       print
     }
   ' "$root/scripts/install-package.sh"
