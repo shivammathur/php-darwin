@@ -48,6 +48,21 @@ Unusual alias layouts and info-index maintenance still use Homebrew. Dependency 
 cover the runtime receipts of every cached package; unfamiliar receipt formats
 fall back to `brew missing`.
 
+Normal installation reads the literal version in `php-config` and checks it
+against the authenticated archive metadata without executing PHP or sourcing
+the configuration script. It also checks the PHP executable, cached module
+files, dependency receipts and installed links. Release QA executes PHP and
+loads each extension on the supported runners before publication. Set
+`PHP_DARWIN_VERIFY_RUNTIME=true` to repeat those load probes during installation
+when diagnosing a runner-specific failure.
+
+Package planning and opt-link updates are batched, with previous link targets
+journaled for rollback. Existing PEAR files and managed configuration that will
+be preserved are excluded from extraction. Tap commit comparisons use local
+Git history; incomplete history preserves the installed tap transactionally
+without an additional GitHub API request. Downloads stop at HTTP error headers
+and try the next origin without waiting for an error response body.
+
 Set the setup-php step's environment to `verbose: vvv` to include installer
 timings, or set `PHP_DARWIN_TIMING=true` when invoking `install.sh` directly.
 Each record contains its scope, logical name, monotonic start time, elapsed

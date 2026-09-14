@@ -20,7 +20,7 @@ branch=$(php_darwin_package_config tap_branch)
 mkdir -p "$fake_bin" || php_darwin_die 'could not create the tap comparison fixture directory'
 # shellcheck disable=SC2016
 printf '%s\n' '#!/usr/bin/env bash' \
-  'printf '\''{"status":"%s"}\n'\'' "${TAP_COMPARE_STATUS:-diverged}"' \
+  'echo Unexpected network request >&2; exit 99' \
   > "$fake_bin/curl" || php_darwin_die 'could not create the tap comparison fixture'
 chmod 0755 "$fake_bin/curl" || php_darwin_die 'could not make the tap comparison fixture executable'
 
@@ -77,14 +77,21 @@ new_source_hash=$(HOMEBREW_PHP_PATH="$source_tap" bash "$script_dir/source-hash.
   php_darwin_die 'could not hash the newer tap source fixture'
 bash "$script_dir/create-tap-snapshot.sh" "$source_tap" "$new_source_commit" "$repository" \
   "$branch" "$new_cached_tap" || php_darwin_die 'could not create the newer cached tap fixture'
-[ "$(TAP_COMPARE_STATUS=ahead PATH="$fake_bin:$PATH" \
+[ "$(PATH="$fake_bin:$PATH" \
   bash "$script_dir/tap-action.sh" "$cached_tap" "$new_cached_tap" 8.5 \
-  "$new_source_hash" "$repository" "$new_source_commit" "$branch")" = replace ] || \
-  php_darwin_die 'an older cache snapshot was not advanced to the newer cache snapshot'
-[ "$(TAP_COMPARE_STATUS=behind PATH="$fake_bin:$PATH" \
+  "$new_source_hash" "$repository" "$new_source_commit" "$branch")" = temporary ] || \
+  php_darwin_die 'incomplete tap history was not handled without a network request'
+[ "$(PATH="$fake_bin:$PATH" \
   bash "$script_dir/tap-action.sh" "$new_cached_tap" "$cached_tap" 8.5 \
   "$source_hash" "$repository" "$source_commit" "$branch")" = temporary ] || \
   php_darwin_die 'tap selection would have persistently downgraded a newer cache snapshot'
+git clone -q "$source_tap" "$fixture_dir/full-cache" || exit 1
+git -C "$fixture_dir/full-cache" remote set-url origin "$repository" || exit 1
+git -C "$fixture_dir/full-cache" checkout -q -B "$branch" "$source_commit" || exit 1
+git -C "$fixture_dir/full-cache" config php-darwin.snapshot-commit "$source_commit" || exit 1
+[ "$(PATH="$fake_bin:$PATH" bash "$script_dir/tap-action.sh" "$fixture_dir/full-cache" "$new_cached_tap" 8.5 \
+  "$new_source_hash" "$repository" "$new_source_commit" "$branch")" = replace ] || \
+  php_darwin_die 'locally proven newer tap was not selected'
 cp -R "$cached_tap" "$legacy_tap" || php_darwin_die 'could not create a legacy tap fixture'
 git -C "$legacy_tap" config --unset php-darwin.snapshot-commit || \
   php_darwin_die 'could not remove the legacy tap snapshot provenance fixture'

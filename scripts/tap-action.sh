@@ -96,19 +96,12 @@ fi
   exit 1
 }
 
-comparison_status=
-repository_slug=${repository#https://github.com/}
-repository_slug=${repository_slug%.git}
-if [[ "$repository_slug" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
-  comparison_status=$(curl --retry 2 -fsSL \
-    "https://api.github.com/repos/$repository_slug/compare/$existing_commit...$cached_commit" 2>/dev/null | \
-    jq -er '.status | select(. == "ahead" or . == "behind" or . == "identical" or . == "diverged")' \
-      2>/dev/null) || comparison_status=
-fi
-if [ "$comparison_status" = ahead ]; then
+# Both snapshots are already present locally. Never make a network request to
+# order them: shallow histories may be incomplete, in which case preserve the
+# installed tap and use the requested snapshot only for this transaction.
+if git -C "$cached_tap_path" merge-base --is-ancestor "$existing_commit" "$cached_commit" 2>/dev/null || \
+  git -C "$tap_path" merge-base --is-ancestor "$existing_commit" "$cached_commit" 2>/dev/null; then
   printf 'replace\n'
 else
-  # Use an older, rebased, or unorderable cache snapshot only for this install.
-  # Restoring the existing cache-owned tap avoids a persistent downgrade.
   printf 'temporary\n'
 fi

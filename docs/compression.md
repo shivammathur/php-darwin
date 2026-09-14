@@ -1,5 +1,9 @@
 # Compression measurements
 
+The [follow-up network and extraction measurements](install-io.md#level-19-versus-22-including-network)
+compare explicit level-19/22 encodings on six runner types, including real
+downloads. They retain level 19 and native extraction.
+
 Measured on 2026-09-14 with Zstandard 1.5.7 on an Apple M3 Max running macOS 27.
 Two repetitions per level, two compression threads, `--long=27`, using identical
 uncompressed tar payloads from actual PHP 8.6 and 7.4 ARM64 debug/ZTS artifacts.

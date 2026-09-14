@@ -101,8 +101,8 @@ grep -Fq "\"\$exclude_file\" \"\$links_file\" > \"\$installed_links_file\"" "$in
   php_darwin_die 'standalone installer does not preserve pre-existing Homebrew links'
 grep -Fq "php_darwin_verify_links \"\$brew_prefix\" \"\$installed_links_file\"" "$installer" || \
   php_darwin_die 'standalone installer verifies links excluded from cache extraction'
-grep -Fq "\$php_bin -n -r" "$installer" || \
-  php_darwin_die 'standalone installer allows user configuration warnings to corrupt its version probe'
+grep -Fq 'php_darwin_verify_runtime "$brew_prefix" "$formula" "$expected_runtime_version"' "$installer" || \
+  php_darwin_die 'standalone installer does not verify php-config against authenticated version metadata'
 if ! awk '
   /if ! php_darwin_download_release_archive/ { failed=1 }
   failed && /\$release_archive_error" = not-found/ { not_found=NR }

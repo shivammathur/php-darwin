@@ -136,6 +136,8 @@ done < "$seen_inputs"
       gsub(/bash "\$script_dir\/trust-store\.sh"/, "php_darwin_trust_store")
       gsub(/bash "\$script_dir\/check-dependencies\.sh"/, "php_darwin_check_dependencies")
       gsub(/bash "\$script_dir\/unlink-kegs\.sh"/, "php_darwin_unlink_kegs")
+      gsub(/bash "\$script_dir\/install-state\.sh"/, "php_darwin_install_state")
+      gsub(/bash "\$script_dir\/verify-runtime\.sh"/, "php_darwin_verify_runtime")
       print
     }
   ' "$root/scripts/install-package.sh"

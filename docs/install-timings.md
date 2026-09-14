@@ -1,5 +1,9 @@
 # Installer timing measurements
 
+The [follow-up I/O measurements](install-io.md) cover static `php-config`
+validation, reduced filesystem/network work, repeated installs without Composer,
+and controlled level-19/22 downloads. This page records the earlier comparison.
+
 Measured on 2026-09-14 UTC using `shivammathur/setup-php@develop`. Every job
 resolved develop to `9af3b52286fbc7a3f8e1fdcc34643ab10bcc7e0f`.
 
@@ -58,7 +62,7 @@ prevent a consistent sub-10-second full action on every run.
   locks as other removed links. Unusual aliases and info-index maintenance
   still use Homebrew.
 - Archive extraction and downloads remain the largest costs for older PHP
-  versions. The comparison uses unchanged level-19 archives; see
+  versions. The comparison uses unchanged published archives; see
   [compression measurements](compression.md) for the separate level comparison.
 
 ## Complete action times with verbosity disabled
