@@ -1,0 +1,42 @@
+name: Validate workflows and cache scripts
+
+on:
+  push:
+    paths: ['.github/**', 'scripts/**', 'conf/**', 'templates/**', 'install.sh']
+  pull_request:
+    paths: ['.github/**', 'scripts/**', 'conf/**', 'templates/**', 'install.sh']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate cache inputs, recovery, publishing, and generated installer
+        run: bash scripts/validate.sh
+      - name: Upload an artifact transfer fixture
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: workflow-validation
+          path: conf/platforms.json
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
+      - name: Verify the shared artifact downloader
+        uses: ./.github/actions/download-artifacts
+        timeout-minutes: 5
+        with:
+          name: workflow-validation
+          path: ${{ runner.temp }}/workflow-validation
+      - name: Verify artifact contents
+        run: cmp conf/platforms.json "$RUNNER_TEMP/workflow-validation/platforms.json"

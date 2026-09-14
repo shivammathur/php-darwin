@@ -5,6 +5,7 @@ const crypto = require('node:crypto');
 const { Readable } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
 const { spawnSync } = require('node:child_process');
+const { setTimeout: pause } = require('node:timers/promises');
 const { command, readBottle } = require('./source-bottle-cache.cjs');
 
 const sha256 = value => crypto.createHash('sha256').update(value).digest('hex');
@@ -20,15 +21,19 @@ function releaseAsset(metadata) {
   const { inputs, key } = metadata;
   const hash = key.match(/^php-darwin-source-v1-([0-9a-f]{64})$/)?.[1];
   const variant = inputs.context ? `.${inputs.context.build}-${inputs.context.ts}` : '';
-  const stem = `${inputs.formula.split('/').at(-1)}--${inputs.version}` +
+  const stem = `${inputs.formula.split('/').at(-1)}-${inputs.version}` +
     `.macos-${inputs.environment.macos}.${inputs.environment.arch}${variant}`;
   if (!hash || !/^[A-Za-z0-9@+_.-]+$/.test(stem)) throw new Error('Invalid source bottle asset name');
-  // Keep the full input key and cleanup family in the filename. GitHub displays
-  // the shorter, readable label; neither hash needs to be recovered from it.
-  return { name: `${stem}.source-v1-${family(inputs)}.${hash}.tar`, label: `${stem}.${hash.slice(0, 12)}.tar` };
+  // The index keeps versions unambiguous even when package names and versions
+  // contain hyphens. GitHub displays the shorter, readable label.
+  return { name: `${stem}.source-v2-${family(inputs)}.${inputs.version}.${hash}.tar`,
+    label: `${stem}.${hash.slice(0, 12)}.tar` };
 }
 
 function assetIdentity(asset) {
+  const indexed = asset.name.match(/^[A-Za-z0-9@+_.-]+\.source-v2-([0-9a-f]{64})\.([A-Za-z0-9+_.-]+)\.([0-9a-f]{64})\.tar$/);
+  if (indexed) return { version: indexed[2], group: indexed[1], key: `php-darwin-source-v1-${indexed[3]}` };
+  // Accept the previous double-hyphen filenames during migration.
   const match = asset.name.match(/^[A-Za-z0-9@+_.-]+--([A-Za-z0-9+_.-]+)\.macos-[0-9]+\.[A-Za-z0-9_.-]+\.source-v1-([0-9a-f]{64})\.([0-9a-f]{64})\.tar$/);
   if (match) return { version: match[1], group: match[2], key: `php-darwin-source-v1-${match[3]}` };
   // Read caches created before readable filenames were introduced.
@@ -63,7 +68,7 @@ function unpack(archive, directory, key) {
 
 class ReleaseCache {
   constructor({ repository = process.env.GITHUB_REPOSITORY, token = process.env.GH_TOKEN,
-    tag = 'cache', request = fetch, versionsToPrune = olderVersions } = {}) {
+    tag = 'cache', request = fetch, versionsToPrune = olderVersions, wait = pause, warn = console.warn } = {}) {
     if (!/^shivammathur\/[A-Za-z0-9_.-]+$/.test(repository || '') || !token) {
       throw new Error('Release source cache requires a shivammathur repository and GH_TOKEN');
     }
@@ -72,19 +77,56 @@ class ReleaseCache {
     this.tag = tag;
     this.request = request;
     this.versionsToPrune = versionsToPrune;
+    this.wait = wait;
+    this.warn = warn;
   }
 
-  async api(endpoint, { method = 'GET', body, binary = false, allow = [] } = {}) {
-    const response = await this.request(`https://api.github.com/repos/${this.repository}/${endpoint}`, {
+  async transfer(url, optionsForAttempt, consume, timeout = 30000) {
+    for (let attempt = 1; ; attempt++) {
+      const options = optionsForAttempt();
+      let response;
+      let delay;
+      try {
+        response = await this.request(url, { ...options, signal: AbortSignal.timeout(timeout) });
+        if ([408, 429, 500, 502, 503, 504].includes(response.status) ||
+          (response.status === 403 && (response.headers.has('retry-after') ||
+            response.headers.get('x-ratelimit-remaining') === '0'))) {
+          const error = new Error(`Release cache request: HTTP ${response.status}`);
+          error.retryable = true;
+          throw error;
+        }
+        return await consume(response);
+      } catch (error) {
+        const transient = error.retryable || ['TypeError', 'SyntaxError', 'AbortError', 'TimeoutError'].includes(error.name) ||
+          ['ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'ERR_STREAM_PREMATURE_CLOSE'].includes(error.code);
+        if (!transient || attempt === 4) throw error;
+        const retryAfter = response?.headers.get('retry-after');
+        const reset = response?.headers.get('x-ratelimit-reset');
+        const serverDelay = retryAfter ? (Number.isFinite(Number(retryAfter)) ? Number(retryAfter) * 1000 : Date.parse(retryAfter) - Date.now()) :
+          (response?.headers.get('x-ratelimit-remaining') === '0' && reset ? Number(reset) * 1000 - Date.now() : 0);
+        delay = Math.min(60000, Math.max(1000 * 2 ** (attempt - 1), serverDelay || 0));
+        this.warn(`Retrying release cache request (${attempt}/3) in ${delay / 1000}s: ${error.message}`);
+      } finally {
+        // Recreate upload streams on retry and release unused error bodies.
+        options.body?.destroy?.();
+        if (response?.body && !response.bodyUsed) await response.body.cancel().catch(() => {});
+      }
+      await this.wait(delay);
+    }
+  }
+
+  async api(endpoint, { method = 'GET', body, binary = false, allow = [], consume } = {}) {
+    return this.transfer(`https://api.github.com/repos/${this.repository}/${endpoint}`, () => ({
       method, headers: { Authorization: `Bearer ${this.token}`,
         Accept: binary ? 'application/octet-stream' : 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28', ...(body ? { 'Content-Type': 'application/json' } : {}) },
       body: body ? JSON.stringify(body) : undefined,
-    });
-    if (allow.includes(response.status)) return null;
-    if (!response.ok) throw new Error(`Release cache ${method} ${endpoint}: HTTP ${response.status}`);
-    if (binary) return response;
-    return response.status === 204 ? null : response.json();
+    }), response => {
+      if (allow.includes(response.status)) return null;
+      if (!response.ok) throw new Error(`Release cache ${method} ${endpoint}: HTTP ${response.status}`);
+      if (binary) return consume(response);
+      return response.status === 204 ? null : response.json();
+    }, binary ? 300000 : 30000);
   }
 
   async release(create = false) {
@@ -113,8 +155,8 @@ class ReleaseCache {
     const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'source-bottle-download-'));
     try {
       const archive = path.join(temporary, 'bundle.tar');
-      const response = await this.api(`releases/assets/${asset.id}`, { binary: true });
-      await pipeline(Readable.fromWeb(response.body), fs.createWriteStream(archive));
+      await this.api(`releases/assets/${asset.id}`, { binary: true, consume: response =>
+        pipeline(Readable.fromWeb(response.body), fs.createWriteStream(archive)) });
       if (asset.digest && asset.digest !== `sha256:${sha256(fs.readFileSync(archive))}`) {
         throw new Error('Release source cache archive checksum mismatch');
       }
@@ -143,14 +185,15 @@ class ReleaseCache {
       command('tar', ['-cf', archive, '-C', path.resolve(directory), 'metadata.json', metadata.file]);
       // GitHub creates the whole bundle atomically. A concurrent upload may
       // win this exact key; never clobber it or expose a partial pair of files.
-      const response = await this.request(
+      await this.transfer(
         `https://uploads.github.com/repos/${this.repository}/releases/${release.id}/assets?` +
-        new URLSearchParams({ name, label }), {
+        new URLSearchParams({ name, label }), () => ({
           method: 'POST', headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/x-tar',
             'Content-Length': String(fs.statSync(archive).size) },
           body: fs.createReadStream(archive), duplex: 'half',
-        });
-      if (!response.ok && response.status !== 422) throw new Error(`Source bottle upload: HTTP ${response.status}`);
+        }), response => {
+          if (!response.ok && response.status !== 422) throw new Error(`Source bottle upload: HTTP ${response.status}`);
+        }, 300000);
       const assets = await this.assets(release);
       const saved = assets.find(asset => asset.name === name);
       if (!saved) throw new Error('Uploaded source bottle is missing');

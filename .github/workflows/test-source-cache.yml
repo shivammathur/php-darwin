@@ -31,6 +31,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Remove unused Homebrew taps
+        run: bash scripts/cleanup-taps.sh
       - name: Prepare source-only library and consumer
         run: bash scripts/test-source-bottle-native.sh prepare
       - name: Build or restore source bottles
@@ -80,6 +82,7 @@ jobs:
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 2
+          overwrite: true
       - name: Remove source bottle fixtures
         if: ${{ always() }}
         run: bash scripts/test-source-bottle-native.sh cleanup
@@ -104,6 +107,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Remove unused Homebrew taps
+        run: bash scripts/cleanup-taps.sh
       - name: Install published PHP and prepare extension source
         run: bash scripts/test-source-bottle-extensions.sh prepare
       - name: Build source extension bottles
@@ -141,12 +146,14 @@ jobs:
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 2
+          overwrite: true
 
   cleanup:
     name: Remove the isolated test release
     if: ${{ always() }}
     needs: [source-cache, extensions]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}

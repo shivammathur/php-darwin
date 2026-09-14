@@ -37,7 +37,7 @@ During cache builds, missing PHP, library, Xdebug, and PCOV bottles are built wi
 `brew install --build-bottle` and saved individually in the `cache`
 stable GitHub Release. Asset labels show the package, version, macOS major,
 architecture, PHP variant when applicable, and a short build key, for example
-`xdebug@8.4--3.5.3.macos-14.arm64.release-nts.dc8af3b8dbdf.tar`.
+`xdebug@8.4-3.5.3.macos-14.arm64.release-nts.dc8af3b8dbdf.tar`.
 Download filenames retain the readable package information plus the full family
 and build hashes for exact matching and cleanup. Each asset contains the native
 Homebrew bottle and `metadata.json` with its SHA-256 and complete build inputs.
@@ -62,6 +62,11 @@ Build jobs need `contents: write` to maintain this release. Run
 `test-source-cache.yml` to verify compilation, release storage, remote restoration,
 linkage, consumer updates, and real Xdebug/PCOV modules for all four PHP variants
 on both cache build platforms. Tests use a separate release that is removed afterward.
+Release-cache requests have bounded timeouts and retries for transient network,
+server, and rate-limit errors. Artifact downloads retry up to three times while
+requiring valid digests. Workflow and script changes run the local validation
+suite automatically in CI; publication still requires successful builds and
+compatibility tests for every selected platform.
 
 ## Dependencies
 

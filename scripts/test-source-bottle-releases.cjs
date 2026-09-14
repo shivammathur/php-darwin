@@ -11,11 +11,14 @@ const digest = value => crypto.createHash('sha256').update(value).digest('hex');
 function fixture(t, tag = 'cache') {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'release-bottle-test-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const state = { release: null, assets: [], deleted: [], failDownload: false, uploadRace: false, next: 0 };
+  const state = { release: null, assets: [], deleted: [], failDownload: false, uploadRace: false, next: 0, delays: [] };
   const request = async (url, options) => {
     const parsed = new URL(url);
     const endpoint = parsed.pathname.replace('/repos/shivammathur/php-darwin/', '');
     const json = (body, status = 200) => Response.json(body, { status });
+    assert.ok(options.signal instanceof AbortSignal);
+    const intercepted = await state.intercept?.(endpoint, options);
+    if (intercepted) return intercepted;
     if (endpoint.startsWith('releases/tags/')) return json(state.release, state.release ? 200 : 404);
     if (endpoint === 'releases' && options.method === 'POST') {
       const body = JSON.parse(options.body);
@@ -33,6 +36,10 @@ function fixture(t, tag = 'cache') {
         id: ++state.next, name, label: parsed.searchParams.get('label'),
         digest: `sha256:${digest(data)}`, data,
       });
+      if (state.loseUploadReply) {
+        state.loseUploadReply = false;
+        throw new TypeError('fetch failed after upload');
+      }
       return json({}, state.uploadRace ? 422 : 201);
     }
     if (endpoint === 'releases/1/assets') return json(state.assets.map(({ data, ...asset }) => asset));
@@ -47,6 +54,7 @@ function fixture(t, tag = 'cache') {
     return new Response(asset.data);
   };
   const cache = new ReleaseCache({ repository: 'shivammathur/php-darwin', token: 'fixture', tag, request,
+    wait: async delay => state.delays.push(delay), warn: () => {},
     versionsToPrune: versions => versions.filter(version => Number(version) < Math.max(...versions.map(Number))) });
   function bottle(version, overrides = {}) {
     const inputs = { formula: 'libxml2', version, environment: { arch: 'arm64', macos: '14', prefix: '/opt/homebrew' }, ...overrides };
@@ -83,6 +91,60 @@ test('persistent release round-trip and pruning only older versions in the same 
   await f.cache.saveCache([old.directory], old.key);
   assert.ok(f.state.assets.some(asset => asset.name === current.name));
   assert.ok(!f.state.assets.some(asset => asset.name === old.name));
+});
+
+test('release requests retry transient responses and respect rate-limit backoff', async t => {
+  const f = fixture(t);
+  const responses = [new Response('temporarily unavailable', { status: 503 }),
+    new Response('rate limited', { status: 429, headers: { 'retry-after': '7' } })];
+  f.state.intercept = () => responses.shift();
+  assert.equal(await f.cache.release(), null);
+  assert.deepEqual(f.state.delays, [1000, 7000]);
+});
+
+test('release requests stop after bounded retries and do not retry permission failures', async t => {
+  const f = fixture(t);
+  let attempts = 0;
+  f.state.intercept = () => { attempts++; return new Response('unavailable', { status: 503 }); };
+  await assert.rejects(f.cache.release(), /503/);
+  assert.equal(attempts, 4);
+  assert.deepEqual(f.state.delays, [1000, 2000, 4000]);
+  f.state.delays = [];
+  attempts = 0;
+  f.state.intercept = () => { attempts++; return new Response('forbidden', { status: 403 }); };
+  await assert.rejects(f.cache.release(), /403/);
+  assert.equal(attempts, 1);
+  assert.deepEqual(f.state.delays, []);
+});
+
+test('a lost upload response recreates the stream and verifies the existing winner', async t => {
+  const f = fixture(t);
+  const current = f.bottle('2');
+  f.state.loseUploadReply = true;
+  await f.cache.saveCache([current.directory], current.key);
+  assert.equal(f.state.assets.length, 1);
+  assert.deepEqual(f.state.delays, [1000]);
+  assert.equal(await f.cache.restoreCache([path.join(f.root, 'restored-upload')], current.key), current.key);
+});
+
+test('interrupted downloads restart the archive before checksum verification', async t => {
+  const f = fixture(t);
+  const current = f.bottle('2');
+  await f.cache.saveCache([current.directory], current.key);
+  let interrupted = false;
+  f.state.intercept = endpoint => {
+    if (endpoint.startsWith('releases/assets/') && !interrupted) {
+      interrupted = true;
+      return new Response(new ReadableStream({
+        start(controller) { controller.enqueue(new Uint8Array([1, 2, 3])); },
+        pull(controller) { controller.error(new TypeError('terminated')); },
+      }));
+    }
+  };
+  const restored = path.join(f.root, 'resumed-download');
+  assert.equal(await f.cache.restoreCache([restored], current.key), current.key);
+  assert.ok(readBottle(restored, current.key));
+  assert.deepEqual(f.state.delays, [1000]);
 });
 
 test('temporary test releases remain prereleases', async t => {
@@ -149,11 +211,37 @@ test('readable names preserve full cache identity independently of display label
     context: { build: 'debug', ts: 'zts' } };
   const key = keyFor(inputs);
   const asset = releaseAsset({ inputs, key });
-  assert.equal(asset.label, `xdebug@8.4--3.5.3_1.macos-14.arm64.debug-zts.${key.slice(-64, -52)}.tar`);
-  assert.ok(asset.name.startsWith('xdebug@8.4--3.5.3_1.macos-14.arm64.debug-zts.'));
+  assert.equal(asset.label, `xdebug@8.4-3.5.3_1.macos-14.arm64.debug-zts.${key.slice(-64, -52)}.tar`);
+  assert.ok(asset.name.startsWith('xdebug@8.4-3.5.3_1.macos-14.arm64.debug-zts.'));
   assert.deepEqual(assetIdentity({ ...asset, label: 'Edited in GitHub' }),
     { version: inputs.version, group: family(inputs), key });
   assert.equal(assetIdentity({ name: asset.label }), undefined);
+});
+
+test('single-hyphen filenames preserve hyphenated package names and versions', () => {
+  for (const version of ['2026-09-14', '1.2.3-rc-2', '3.5.3_1']) {
+    const inputs = { formula: 'vendor/tap/lib-2-tools', version,
+      environment: { arch: 'arm64', macos: '14', prefix: '/opt/homebrew' } };
+    const key = keyFor(inputs);
+    const asset = releaseAsset({ inputs, key });
+    assert.ok(asset.label.startsWith(`lib-2-tools-${version}.macos-14.arm64.`));
+    assert.deepEqual(assetIdentity(asset), { version, group: family(inputs), key });
+  }
+});
+
+test('double-hyphen assets restore and are pruned after a single-hyphen replacement', async t => {
+  const f = fixture(t);
+  const old = f.bottle('1');
+  await f.cache.saveCache([old.directory], old.key);
+  const legacy = f.state.assets[0];
+  const { group } = assetIdentity(legacy);
+  legacy.name = `libxml2--1.macos-14.arm64.source-v1-${group}.${old.key.slice(-64)}.tar`;
+  legacy.label = `libxml2--1.macos-14.arm64.${old.key.slice(-64, -52)}.tar`;
+  assert.equal(await f.cache.restoreCache([path.join(f.root, 'double-hyphen')], old.key), old.key);
+  const current = f.bottle('2');
+  await f.cache.saveCache([current.directory], current.key);
+  assert.deepEqual(f.state.deleted, [legacy.name]);
+  assert.deepEqual(f.state.assets.map(asset => asset.name), [current.name]);
 });
 
 test('legacy assets restore and are pruned when a readable replacement is verified', async t => {

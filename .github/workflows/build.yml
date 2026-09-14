@@ -44,6 +44,7 @@ jobs:
   matrix:
     name: Create build and test matrices
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       build: ${{ steps.matrix.outputs.build-matrix }}
       extensions-source-commit: ${{ steps.extensions-source.outputs.commit }}
@@ -293,7 +294,8 @@ jobs:
         run: bash scripts/cleanup-taps.sh
 
       - name: Download architecture caches built on the minimum macOS version
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: ./.github/actions/download-artifacts
+        timeout-minutes: 10
         with:
           name: php-${{ matrix.php }}-${{ matrix.arch }}
           path: ${{ runner.temp }}/php-darwin
@@ -403,6 +405,7 @@ jobs:
     if: ${{ inputs.publish }}
     needs: [matrix, build, test]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     concurrency:
       group: php-darwin-release-publish-${{ inputs.php-version }}
       cancel-in-progress: false
@@ -415,7 +418,8 @@ jobs:
           persist-credentials: false
 
       - name: Download validated caches
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: ./.github/actions/download-artifacts
+        timeout-minutes: 10
         with:
           pattern: php-${{ inputs.php-version }}-*
           path: builds

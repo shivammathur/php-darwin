@@ -47,6 +47,7 @@ jobs:
   freshness:
     name: Check nightly php-src commit
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       architectures: ${{ steps.freshness.outputs.architectures }}
       build: ${{ steps.freshness.outputs.build }}
