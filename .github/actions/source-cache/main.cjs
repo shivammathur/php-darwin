@@ -14,7 +14,7 @@ async function main() {
     const result = { built: 0, restored: 0 };
     for (const formula of formulae) {
       const installed = await install({ formula, cache, context, skipLink: true,
-        forceSource: process.env.BUILD !== 'release' || process.env.TS !== 'nts' || process.env.INPUT_FORCE_SOURCE === 'true' });
+        forceSource: process.env.BUILD !== 'release' || process.env.TS !== 'nts' || process.env['INPUT_FORCE-SOURCE'] === 'true' });
       result.built += installed.built;
       result.restored += installed.restored;
     }
@@ -32,7 +32,7 @@ async function main() {
   const formula = override || command('bash', ['-c',
     '. scripts/lib.sh; requested=$(php_darwin_requested_formula "$PHP_VERSION" "$BUILD" "$TS") || exit 1; printf "%s/%s" "$(php_darwin_package_config tap)" "$requested"'
   ]).trim();
-  const result = await install({ formula, cache, forceSource: process.env.INPUT_FORCE_SOURCE === 'true' });
+  const result = await install({ formula, cache, forceSource: process.env['INPUT_FORCE-SOURCE'] === 'true' });
   if (!override) command('bash', ['scripts/build.sh', 'install'], { inherit: true });
   writeOutputs(result);
 }

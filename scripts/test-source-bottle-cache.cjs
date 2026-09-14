@@ -163,11 +163,16 @@ test('extension keys include the patched base recipe and actual PHP ABI/configur
   const abstract = path.join(f.cacheRoot, 'abstract.rb');
   fs.mkdirSync(f.cacheRoot);
   fs.writeFileSync(abstract, 'original recipe');
+  for (const [file, name] of [['main/php.h', 'PHP_API_VERSION'],
+    ['Zend/zend_modules.h', 'ZEND_MODULE_API_NO'], ['Zend/zend_extensions.h', 'ZEND_EXTENSION_API_NO']]) {
+    fs.mkdirSync(path.dirname(path.join(f.cacheRoot, file)), { recursive: true });
+    fs.writeFileSync(path.join(f.cacheRoot, file), `#define ${name} 20240924\n`);
+  }
   const calls = [];
-  const run = (program, args) => { calls.push([program, args]); return args.join(' '); };
+  const run = (program, args) => { calls.push([program, args]); return args[0] === '--include-dir' ? f.cacheRoot : args.join(' '); };
   const first = extensionInputs(abstract, '/opt/php', 'release', 'nts', run);
   assert.equal(calls.length, 4);
-  assert.ok(calls.some(([program, args]) => program === '/opt/php/bin/php-config' && args[0] === '--phpapi'));
+  assert.equal(first.php.api.ZEND_MODULE_API_NO, '20240924');
   fs.writeFileSync(abstract, 'patched recipe');
   assert.notEqual(keyFor(first), keyFor(extensionInputs(abstract, '/opt/php', 'release', 'nts', run)));
 });

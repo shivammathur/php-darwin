@@ -147,11 +147,19 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
 }
 
 function extensionInputs(abstract, phpPrefix, build, ts, run = command) {
+  const include = run(path.join(phpPrefix, 'bin/php-config'), ['--include-dir']).trim();
+  const api = {};
+  for (const [header, name] of [['main/php.h', 'PHP_API_VERSION'],
+    ['Zend/zend_modules.h', 'ZEND_MODULE_API_NO'], ['Zend/zend_extensions.h', 'ZEND_EXTENSION_API_NO']]) {
+    const match = fs.readFileSync(path.join(include, header), 'utf8').match(new RegExp(`^#define\\s+${name}\\s+(\\d+)`, 'm'));
+    if (!match) throw new Error(`Missing ${name} in installed PHP headers`);
+    api[name] = match[1];
+  }
   return {
     build, ts, abstract: digest(fs.readFileSync(abstract)),
     php: {
       version: run(path.join(phpPrefix, 'bin/php'), ['-n', '-r', 'echo PHP_VERSION;']).trim(),
-      api: run(path.join(phpPrefix, 'bin/php-config'), ['--phpapi']).trim(),
+      api,
       configure: run(path.join(phpPrefix, 'bin/php-config'), ['--configure-options']).trim(),
       extensionDirectory: run(path.join(phpPrefix, 'bin/php-config'), ['--extension-dir']).trim(),
     },
