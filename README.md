@@ -1,5 +1,11 @@
 # PHP Darwin
 
+This is the `debug/install-timing` branch. It preserves installer phase and
+operation instrumentation for profiling; production installers are generated
+from `main`. Use `PHP_DARWIN_TIMING=true` with this branch's standalone
+`scripts/install.sh`, or `verbose: vvv` when testing it through setup-php.
+Do not publish this branch's installer to the production PHP releases.
+
 <a href="https://github.com/shivammathur/php-darwin/actions/workflows/cache-stable.yml" title="PHP Package Cache"><img alt="Build status" src="https://github.com/shivammathur/php-darwin/actions/workflows/cache-stable.yml/badge.svg"></a>
 <a href="https://github.com/shivammathur/php-darwin/blob/main/LICENSE" title="license"><img alt="LICENSE" src="https://img.shields.io/badge/license-MIT-428f7e.svg?logo=open%20source%20initiative&logoColor=white&labelColor=555555"></a>
 <a href="https://github.com/shivammathur/php-darwin/releases" title="builds"><img alt="PHP Versions Supported" src="https://img.shields.io/badge/php-5.6%20to%208.6-777bb3.svg?logo=php&logoColor=white&labelColor=555555"></a>
