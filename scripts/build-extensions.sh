@@ -3,6 +3,7 @@
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=scripts/lib.sh
 . "$script_dir/lib.sh"
+php_darwin_configure_homebrew_environment
 
 version=${PHP_VERSION:?}
 build=${BUILD:?}
