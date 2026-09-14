@@ -16,8 +16,8 @@ full_build=$(sed -n 's/^build-matrix=//p' "$full_output")
 full_test=$(sed -n 's/^test-matrix=//p' "$full_output")
 jq -e '
   .include == [
-    {php:"8.5",arch:"arm64",runner:"macos-14"},
-    {php:"8.5",arch:"x86_64",runner:"macos-15-intel"}
+    {php:"8.5",arch:"arm64",runner:"macos-14",test_runners:["macos-14","macos-15","macos-26","macos-latest"]},
+    {php:"8.5",arch:"x86_64",runner:"macos-15-intel",test_runners:["macos-15-intel","macos-26-intel"]}
   ]
 ' <<< "$full_build" >/dev/null || php_darwin_die 'full build matrix does not reuse one runner per architecture'
 jq -e '
@@ -37,7 +37,7 @@ GITHUB_OUTPUT="$target_output" PHP_VERSION=5.6 CHANNEL=stable BUILDS=debug TS=nt
   php_darwin_die 'targeted workflow matrix generation failed'
 target_build=$(sed -n 's/^build-matrix=//p' "$target_output")
 target_test=$(sed -n 's/^test-matrix=//p' "$target_output")
-jq -e '.include == [{php:"5.6",arch:"x86_64",runner:"macos-15-intel"}]' \
+jq -e '.include == [{php:"5.6",arch:"x86_64",runner:"macos-15-intel",test_runners:["macos-15-intel","macos-26-intel"]}]' \
   <<< "$target_build" >/dev/null || php_darwin_die 'targeted build matrix is invalid'
 jq -e '
   .include == [
@@ -53,7 +53,7 @@ HOMEBREW_PHP_COMMIT=0123456789abcdef0123456789abcdef01234567 \
   TS='nts zts' ARCHITECTURES=x86_64 PUBLISH=true bash "$script_dir/get-matrix.sh" || \
   php_darwin_die 'partial-platform publish matrix generation failed'
 partial_build=$(sed -n 's/^build-matrix=//p' "$partial_output")
-jq -e '.include == [{php:"8.5",arch:"x86_64",runner:"macos-15-intel"}]' \
+jq -e '.include == [{php:"8.5",arch:"x86_64",runner:"macos-15-intel",test_runners:["macos-15-intel","macos-26-intel"]}]' \
   <<< "$partial_build" >/dev/null || php_darwin_die 'partial-platform publish build matrix is invalid'
 if HOMEBREW_PHP_COMMIT='' HOMEBREW_EXTENSIONS_COMMIT='' \
   GITHUB_OUTPUT="$work_dir/invalid-partial.txt" PHP_VERSION=8.5 CHANNEL=stable \

@@ -70,7 +70,8 @@ jobs:
         timeout-minutes: 10
         with:
           github-token: ${{ github.token }}
-          name: php-${{ inputs.php-version }}-${{ needs.target.outputs.arch }}
+          pattern: php-${{ inputs.php-version }}-${{ needs.target.outputs.arch }}*
+          merge-multiple: true
           path: ${{ runner.temp }}/php-darwin
           repository: ${{ github.repository }}
           run-id: ${{ inputs.run-id }}

@@ -20,12 +20,15 @@ current=$(bash "$script_dir/php-src-commit.sh" "$version") || \
   php_darwin_die "could not resolve the PHP $version source commit"
 current_extensions=$(bash "$script_dir/extensions-source-hash.sh" "$version") || \
   php_darwin_die "could not resolve the PHP $version cached extension source hash"
+current_formula=$(bash "$script_dir/source-hash.sh" "$version") || \
+  php_darwin_die "could not resolve the PHP $version formula source hash"
 published=
 published_extensions=
 manifest_current_platforms=false
 manifest_source_commit=
 manifest_extension_commit=
 extensions_current=false
+formula_current=false
 
 if [ -n "$manifest_override" ]; then
   [ -f "$manifest_override" ] || php_darwin_die "nightly manifest not found: $manifest_override"
@@ -45,6 +48,10 @@ case "$http_status" in
       published_extensions=$(bash "$script_dir/manifest-extensions-source-hash.sh" "$manifest" "$version") || \
         php_darwin_die "could not read the PHP $version published cached extension source hash"
       if [ "$force" = false ] && [ "$published" = "$current" ]; then
+        published_formula=$(jq -er '.source_hash' "$manifest") || exit 1
+        formula_current=$(bash "$script_dir/build-inputs-current.sh" "$manifest" "$version" php \
+          "$current_formula" "$published_formula") || \
+          php_darwin_die "could not compare PHP $version formula build inputs"
         extensions_current=$(bash "$script_dir/build-inputs-current.sh" "$manifest" "$version" extensions \
           "$current_extensions" "$published_extensions") || \
           php_darwin_die "could not compare PHP $version extension build inputs"
@@ -65,14 +72,14 @@ esac
 
 build=false
 if [ "$force" = true ] || [ "$published" != "$current" ] || \
-  [ "$extensions_current" != true ] || [ "$manifest_current_platforms" = false ]; then
+  [ "$formula_current" != true ] || [ "$extensions_current" != true ] || [ "$manifest_current_platforms" = false ]; then
   build=true
 fi
 architectures='arm64 x86_64'
 pinned_extension_commit=
 pinned_source_commit=
 if [ "$force" = false ] && [ "$published" = "$current" ] && \
-  [ "$extensions_current" = true ] && [ "$manifest_current_platforms" = false ] && \
+  [ "$formula_current" = true ] && [ "$extensions_current" = true ] && [ "$manifest_current_platforms" = false ] && \
   [ -n "$manifest_source_commit" ] && [ -n "$manifest_extension_commit" ]; then
   architectures=x86_64
   pinned_extension_commit=$manifest_extension_commit

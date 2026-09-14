@@ -113,6 +113,17 @@ run_gate() {
     bash "$script_dir/update.sh" >/dev/null || php_darwin_die 'stable update gate failed'
   [ "$(awk 'END { print NR+0 }' "$gh_log")" -eq "$expected_dispatches" ] || \
     php_darwin_die "stable update gate dispatched $expected_dispatches workflows unexpectedly"
+  if [ -z "$active_runs" ]; then
+    local required=true
+    [ "$expected_dispatches" -ne 0 ] || required=false
+    : > "$work_dir/freshness-output"
+    HOMEBREW_EXTENSIONS_PATH="$extensions_path" HOMEBREW_PHP_PATH="$php_path" \
+      PHP_DARWIN_MANIFEST_PATH="$manifest" PHP_VERSION=8.5 CHANNEL=stable PUBLISH=true FORCE=false \
+      GITHUB_OUTPUT="$work_dir/freshness-output" bash "$script_dir/check-build-freshness.sh" >/dev/null || \
+      php_darwin_die 'queued stable build freshness check failed'
+    grep -Fxq "build-required=$required" "$work_dir/freshness-output" || \
+      php_darwin_die 'queued stable freshness did not match the published inputs'
+  fi
   if [ -n "$expected_architectures" ]; then
     grep -Fq -- "-f architectures=$expected_architectures" "$gh_log" || \
       php_darwin_die "stable update gate did not request $expected_architectures"
@@ -126,6 +137,15 @@ extensions_hash=$(HOMEBREW_EXTENSIONS_PATH="$extensions_path" \
   php_darwin_die 'could not hash the stable extension fixtures'
 write_manifest "$php_hash" "$extensions_hash" || php_darwin_die 'could not write the current stable manifest'
 run_gate 0
+
+for controls in 'true true' 'false false'; do
+  read -r force publish <<< "$controls"
+  : > "$work_dir/freshness-output"
+  PHP_VERSION=8.5 CHANNEL=stable FORCE="$force" PUBLISH="$publish" \
+    GITHUB_OUTPUT="$work_dir/freshness-output" bash "$script_dir/check-build-freshness.sh" >/dev/null || exit 1
+  grep -Fxq 'build-required=true' "$work_dir/freshness-output" || \
+    php_darwin_die 'an explicit build was incorrectly skipped'
+done
 
 # Reproduce macOS 27 bottle additions and brew bottle alignment changes against
 # an existing release with raw formula hashes. No republish/migration is needed.

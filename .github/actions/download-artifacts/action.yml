@@ -10,6 +10,9 @@ inputs:
   path:
     description: Destination directory
     required: true
+  merge-multiple:
+    description: Merge distinct variant artifacts into one directory
+    default: 'false'
   github-token:
     description: Token for downloads from another workflow run
     required: false
@@ -30,6 +33,7 @@ runs:
         name: ${{ inputs.name }}
         pattern: ${{ inputs.pattern }}
         path: ${{ inputs.path }}
+        merge-multiple: ${{ inputs.merge-multiple }}
         github-token: ${{ inputs.github-token }}
         repository: ${{ inputs.repository }}
         run-id: ${{ inputs.run-id }}
@@ -47,6 +51,7 @@ runs:
         name: ${{ inputs.name }}
         pattern: ${{ inputs.pattern }}
         path: ${{ inputs.path }}
+        merge-multiple: ${{ inputs.merge-multiple }}
         github-token: ${{ inputs.github-token }}
         repository: ${{ inputs.repository }}
         run-id: ${{ inputs.run-id }}
@@ -62,6 +67,7 @@ runs:
         name: ${{ inputs.name }}
         pattern: ${{ inputs.pattern }}
         path: ${{ inputs.path }}
+        merge-multiple: ${{ inputs.merge-multiple }}
         github-token: ${{ inputs.github-token }}
         repository: ${{ inputs.repository }}
         run-id: ${{ inputs.run-id }}

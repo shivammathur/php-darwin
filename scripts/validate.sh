@@ -13,7 +13,9 @@ bash "$script_dir/test-extensions-source-hash.sh" || \
   php_darwin_die 'cached extension source hash validation failed'
 bash "$script_dir/test-build-inputs.sh" || php_darwin_die 'cache build input validation failed'
 node --test "$script_dir/test-source-bottle-cache.cjs" || php_darwin_die 'source bottle cache validation failed'
-node --test "$script_dir/test-source-bottle-releases.cjs" || php_darwin_die 'release source cache validation failed'
+node --test "$script_dir/test-source-bottle-releases.cjs" "$script_dir/test-release-http.cjs" || php_darwin_die 'release source cache validation failed'
+node --test "$script_dir/test-archive-checkpoint.cjs" "$script_dir/test-workflow-report.cjs" || \
+  php_darwin_die 'archive checkpoint and performance report validation failed'
 bash "$script_dir/test-restore-published.sh" || \
   php_darwin_die 'published architecture restore validation failed'
 pinned_source_output=$(GITHUB_OUTPUT='' PINNED_COMMIT=0123456789abcdef0123456789abcdef01234567 \
@@ -122,7 +124,7 @@ fi
 jq -e '
   keys == ["compression_level", "compression_long", "max_archive_bytes"] and
   (.compression_level | type == "number" and . >= 1 and . <= 22 and . == floor) and
-  .compression_level == 22 and .compression_long == 27 and
+  .compression_level == 19 and .compression_long == 27 and
   (.max_archive_bytes | length) == 13 and
   all(.max_archive_bytes[]; . == 180000000)
 ' "$script_dir/../conf/build.json" >/dev/null || php_darwin_die 'invalid build configuration'

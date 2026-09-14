@@ -3,6 +3,7 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { Readable } = require('node:stream');
+const { curlRequest, errorDetails } = require('./release-http.cjs');
 const { pipeline } = require('node:stream/promises');
 const { spawnSync } = require('node:child_process');
 const { setTimeout: pause } = require('node:timers/promises');
@@ -67,7 +68,8 @@ function unpack(archive, directory, key) {
 
 class ReleaseCache {
   constructor({ repository = process.env.GITHUB_REPOSITORY, token = process.env.GH_TOKEN,
-    tag = 'cache', request = fetch, versionsToPrune = olderVersions, wait = pause, warn = console.warn } = {}) {
+    tag = 'cache', request = fetch, fallbackRequest = request === fetch ? curlRequest : undefined,
+    versionsToPrune = olderVersions, wait = pause, warn = console.warn } = {}) {
     if (!/^shivammathur\/[A-Za-z0-9_.-]+$/.test(repository || '') || !token) {
       throw new Error('Release source cache requires a shivammathur repository and GH_TOKEN');
     }
@@ -75,9 +77,11 @@ class ReleaseCache {
     this.token = token;
     this.tag = tag;
     this.request = request;
+    this.fallbackRequest = fallbackRequest;
     this.versionsToPrune = versionsToPrune;
     this.wait = wait;
     this.warn = warn;
+    this.responses = new Map();
   }
 
   async transfer(url, optionsForAttempt, consume, timeout = 30000) {
@@ -86,7 +90,8 @@ class ReleaseCache {
       let response;
       let delay;
       try {
-        response = await this.request(url, { ...options, signal: AbortSignal.timeout(timeout) });
+        const request = this.useFallback ? this.fallbackRequest : this.request;
+        response = await request(url, { ...options, signal: AbortSignal.timeout(timeout) });
         if ([408, 429, 500, 502, 503, 504].includes(response.status) ||
           (response.status === 403 && (response.headers.has('retry-after') ||
             response.headers.get('x-ratelimit-remaining') === '0'))) {
@@ -98,13 +103,21 @@ class ReleaseCache {
       } catch (error) {
         const transient = error.retryable || ['TypeError', 'SyntaxError', 'AbortError', 'TimeoutError'].includes(error.name) ||
           ['ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'ERR_STREAM_PREMATURE_CLOSE'].includes(error.code);
-        if (!transient || attempt === 4) throw error;
+        if (!transient || attempt === 4) {
+          error.message = errorDetails(error);
+          throw error;
+        }
+        if (this.fallbackRequest && !this.useFallback &&
+            (!response || ['TypeError', 'AbortError', 'TimeoutError'].includes(error.name))) {
+          this.useFallback = true;
+          this.warn(`Switching release requests to curl after Node HTTP failed: ${errorDetails(error)}`);
+        }
         const retryAfter = response?.headers.get('retry-after');
         const reset = response?.headers.get('x-ratelimit-reset');
         const serverDelay = retryAfter ? (Number.isFinite(Number(retryAfter)) ? Number(retryAfter) * 1000 : Date.parse(retryAfter) - Date.now()) :
           (response?.headers.get('x-ratelimit-remaining') === '0' && reset ? Number(reset) * 1000 - Date.now() : 0);
         delay = Math.min(60000, Math.max(1000 * 2 ** (attempt - 1), serverDelay || 0));
-        this.warn(`Retrying release cache request (${attempt}/3) in ${delay / 1000}s: ${error.message}`);
+        this.warn(`Retrying release cache request (${attempt}/3) in ${delay / 1000}s: ${errorDetails(error)}`);
       } finally {
         // Recreate upload streams on retry and release unused error bodies.
         options.body?.destroy?.();
@@ -114,17 +127,29 @@ class ReleaseCache {
     }
   }
 
-  async api(endpoint, { method = 'GET', body, binary = false, allow = [], consume } = {}) {
+  async api(endpoint, { method = 'GET', body, binary = false, accept, allow = [], consume } = {}) {
+    const cached = method === 'GET' && !binary ? this.responses.get(endpoint) : undefined;
     return this.transfer(`https://api.github.com/repos/${this.repository}/${endpoint}`, () => ({
       method, headers: { Authorization: `Bearer ${this.token}`,
-        Accept: binary ? 'application/octet-stream' : 'application/vnd.github+json',
+        Accept: accept || (binary ? 'application/octet-stream' : 'application/vnd.github+json'),
+        ...(cached ? { 'If-None-Match': cached.etag } : {}),
         'X-GitHub-Api-Version': '2022-11-28', ...(body ? { 'Content-Type': 'application/json' } : {}) },
       body: body ? JSON.stringify(body) : undefined,
-    }), response => {
-      if (allow.includes(response.status)) return null;
+    }), async response => {
+      // GitHub revalidates the state; a 304 does not consume the primary API
+      // quota. Ownership polling must never substitute a time-based local cache.
+      if (response.status === 304 && cached) return cached.value;
+      if (allow.includes(response.status)) {
+        this.responses.delete(endpoint);
+        return null;
+      }
       if (!response.ok) throw new Error(`Release cache ${method} ${endpoint}: HTTP ${response.status}`);
       if (binary) return consume(response);
-      return response.status === 204 ? null : response.json();
+      const value = response.status === 204 ? null : await response.json();
+      if (method === 'GET' && response.headers.has('etag')) {
+        this.responses.set(endpoint, { etag: response.headers.get('etag'), value });
+      } else if (method === 'GET') this.responses.delete(endpoint);
+      return value;
     }, binary ? 300000 : 30000);
   }
 
@@ -180,11 +205,26 @@ class ReleaseCache {
   async restoreCache([directory], key) {
     const release = await this.release();
     if (!release) return;
-    const asset = (await this.assets(release)).find(asset =>
+    const assets = await this.assets(release);
+    this.lastLookup = { key, assets };
+    const asset = assets.find(asset =>
       asset.state !== 'starter' && assetIdentity(asset)?.key === key);
     if (!asset) return;
     await this.download(asset, directory, key);
     return key;
+  }
+
+  missReason(key, inputs) {
+    if (this.lastLookup?.key !== key) return 'first-build';
+    const related = this.lastLookup.assets.map(assetIdentity).filter(item => item?.group === family(inputs));
+    if (!related.length) return 'first-build';
+    return related.some(item => item.version === inputs.version) ? 'build-inputs-changed' : 'new-package-version';
+  }
+
+  async withBuildLock(key, build) {
+    const { SourceBuildLock } = require('./source-build-lock.cjs');
+    this.buildLock ||= new SourceBuildLock(this);
+    return this.buildLock.run(key, build);
   }
 
   async saveCache([directory], key) {
@@ -207,7 +247,13 @@ class ReleaseCache {
             'Content-Length': String(fs.statSync(archive).size) },
           body: fs.createReadStream(archive), duplex: 'half',
         }), response => {
-          if (!response.ok && response.status !== 422) throw new Error(`Source bottle upload: HTTP ${response.status}`);
+          if (!response.ok && response.status !== 422) {
+            const error = new Error(`Source bottle upload: HTTP ${response.status}`);
+            // GitHub can also return 404 when concurrent uploads race with
+            // deletion, or before a new release reaches uploads.github.com.
+            error.retryable = response.status === 404;
+            throw error;
+          }
         }, 300000);
       const assets = await this.assets(release);
       const saved = assets.find(asset => asset.name === name);

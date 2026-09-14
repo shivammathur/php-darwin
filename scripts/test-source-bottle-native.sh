@@ -141,8 +141,10 @@ const { ReleaseCache, family, assetIdentity } = require('./scripts/source-bottle
 JS
     ;;
   cleanup)
-    brew uninstall --force --ignore-dependencies "$app" "$library" || true
-    brew untap --force "$tap" || true
+    if brew tap | grep -Fxq "$tap"; then
+      brew uninstall --force --ignore-dependencies "$app" "$library" || true
+      brew untap --force "$tap" || true
+    fi
     rm -rf "$(brew --prefix)/var/php-darwin-source-cache-test"
     ;;
   *) exit 1 ;;

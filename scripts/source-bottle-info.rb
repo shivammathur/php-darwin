@@ -8,14 +8,15 @@ Formulary.enable_factory_cache!
 mode = ARGV.fetch(0)
 formulae = JSON.parse(ARGV.fetch(1))
 force_source = ARGV[2] == "true"
-raise "Invalid source bottle mode" unless %w[plan inputs].include?(mode)
+raise "Invalid source bottle mode" unless %w[plan inputs archive].include?(mode)
 
-def source_dependencies(formula, planning:, force_source: false)
+def source_dependencies(formula, planning:, force_source: false, runtime_only: false)
   Dependency.expand(formula) do |dependent, dep|
     next Dependable::PRUNE if dep.optional? || (dep.test? && !dep.build?) ||
                              (dep.uses_from_macos? && dep.use_macos_install?)
 
     if dep.build?
+      next Dependable::PRUNE if runtime_only
       building = if planning
         !dependent.any_version_installed? &&
           ((dependent == formula && force_source) || !FormulaInstaller.new(dependent).pour_bottle?)
@@ -28,6 +29,19 @@ def source_dependencies(formula, planning:, force_source: false)
       next Dependable::PRUNE unless building
     end
   end
+end
+
+def installed_inputs(dependency)
+  keg = dependency.any_installed_keg
+  raise "Missing build dependency #{dependency.full_name}" unless keg
+
+  tab = Tab.for_keg(keg)
+  recipe = keg/".brew/#{dependency.name}.rb"
+  raise "Missing installed dependency recipe #{recipe}" unless recipe.file?
+
+  { name: dependency.full_name, version: keg.version.to_s, recipe: recipe.to_s,
+    options: tab.used_options.as_flags.sort, compiler: tab.compiler.to_s,
+    runtime_dependencies: tab.runtime_dependencies }
 end
 
 resolved = formulae.map { |name| Formulary.factory(name) }
@@ -48,24 +62,15 @@ records = resolved.map do |formula|
     bottled: FormulaInstaller.new(formula).pour_bottle?,
     post_install: formula.post_install_defined? || formula.post_install_steps_defined?,
   }
-  if mode == "inputs"
+  if mode == "archive"
+    record[:packages] = (source_dependencies(formula, planning: false, runtime_only: true)
+      .map(&:to_formula) + [formula]).uniq(&:full_name).map do |dependency|
+        installed_inputs(dependency).merge(prefix: dependency.any_installed_keg.to_s)
+      end
+      .sort_by { |dependency| dependency[:name] }
+  elsif mode == "inputs"
     record[:dependencies] = source_dependencies(formula, planning: false).map do |dep|
-      dependency = dep.to_formula
-      keg = dependency.any_installed_keg
-      raise "Missing build dependency #{dependency.full_name}" unless keg
-
-      tab = Tab.for_keg(keg)
-      recipe = keg/".brew/#{dependency.name}.rb"
-      raise "Missing installed dependency recipe #{recipe}" unless recipe.file?
-
-      {
-        name: dependency.full_name,
-        version: keg.version.to_s,
-        recipe: recipe.to_s,
-        options: tab.used_options.as_flags.sort,
-        compiler: tab.compiler.to_s,
-        runtime_dependencies: tab.runtime_dependencies,
-      }
+      installed_inputs(dep.to_formula)
     end.sort_by { |dep| dep[:name] }
   end
   record

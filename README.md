@@ -57,8 +57,16 @@ extensions use their own source bottles. Assets do not expire. After uploading
 and downloading a replacement to verify its checksum, the builder deletes older
 package versions for the same architecture, macOS, and PHP variant. It preserves
 newer versions uploaded by concurrent runs and different build inputs for the
-current version. Cache misses and service outages fall back to source builds.
-Build jobs need `contents: write` to maintain this release. Run
+current version. Missing or invalid bottle data falls back to source builds.
+Before compiling a missing key, a builder claims a small `source-build-lock-*.json`
+asset in the same release. Concurrent jobs wait, then recheck for the completed
+bottle. Claims are removed on completion; interrupted claims are reclaimed only
+after the owning Actions job has ended. If ownership cannot be established after
+bounded API retries, the job fails instead of starting a duplicate build.
+Polling backs off and uses GitHub's ETags to revalidate unchanged state without
+consuming the primary API quota.
+Build jobs need `contents: write` to maintain this release and `actions: read`
+to check ownership. Run
 `test-source-cache.yml` to verify compilation, release storage, remote restoration,
 linkage, consumer updates, and real Xdebug/PCOV modules for all four PHP variants
 on both cache build platforms. Tests use a separate release that is removed afterward.
@@ -69,6 +77,44 @@ check to preserve uploads that have completed. Artifact downloads retry up to th
 requiring valid digests. Workflow and script changes run the local validation
 suite automatically in CI; publication still requires successful builds and
 compatibility tests for every selected platform.
+
+## Avoiding repeated work
+
+Queued cache workflows recheck the published inputs before allocating macOS
+runners. `force` bypasses this check; an unpublished test matrix is also allowed
+to run explicitly. Nightly checks include both php-src and normalized formula
+inputs, so recipe changes rebuild while unrelated macOS bottle additions do not.
+
+Each PHP variant is verified and uploaded immediately as a separate Actions
+artifact. Retries can reuse these archive checkpoints for seven days when the
+workflow revision, pinned taps, compiler/SDK, installed dependency recipes and
+bytes, PHP variant, and extension bytes all match. Homebrew-generated installation
+receipts and SBOM timestamps do not invalidate identical package payloads. GitHub's artifact digest,
+archive checksum, metadata, and native archive checks are verified again on
+restore. Only then can packaging be skipped. Source bottles remain permanent
+in the `cache` release; the seven-day retention applies only to these completed
+archive checkpoints. Build jobs need `actions: write` to remove superseded
+checkpoints from a retry after their replacement has been uploaded.
+
+ARM and Intel compatibility tests start independently as soon as their own
+architecture finishes. Publication still waits for all required tests. Archives
+use Zstd level 19 and artifact uploads use compression level 0; already compressed
+packages are not compressed again. See [compression measurements](docs/compression.md).
+
+Job summaries and the `workflow-performance` artifact report source-cache
+hits/misses, miss reasons, compilation, bottling, uploads, packaging, and runner
+queue times. Accumulated work is kept separate from workflow elapsed time.
+Partial reruns report only their current attempt's work and elapsed time.
+Node HTTP connection failures switch to an independent curl process within the
+same bounded retry policy. Upload failures are reported separately from successful
+compilation, so a valid PHP archive does not conceal an incomplete source cache.
+For a matched cold/warm comparison, pin both tap commits and the workflow ref,
+choose an unused `source-bottles-test-*` release, and run twice with `force=true`,
+`force-source=true`, `reuse-archives=false`, and `publish=false`. Both runs must
+complete the same architecture/variant/test matrix; verify the warm run's cache
+hits and runner inputs before comparing timings. Check for unsaved source bottles
+and disclose any recovery performed between the runs. A subsequent run with
+`reuse-archives=true` checks archive reuse separately.
 
 ## Dependencies
 

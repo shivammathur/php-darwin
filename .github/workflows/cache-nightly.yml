@@ -25,6 +25,24 @@ on:
         default: ''
         required: false
         type: string
+      homebrew-php-commit:
+        description: Optional pinned PHP tap commit for reproducible runs
+        type: string
+      homebrew-extensions-commit:
+        description: Optional pinned extension tap commit for reproducible runs
+        type: string
+      source-cache-release:
+        description: Source bottle release (use an isolated test release for benchmarks)
+        default: cache
+        type: string
+      reuse-archives:
+        description: Reuse verified archive checkpoints with matching inputs
+        default: true
+        type: boolean
+      force-source:
+        description: Build PHP from source even when an upstream bottle exists
+        default: false
+        type: boolean
       publish:
         description: Publish validated caches to the PHP release
         default: true
@@ -64,6 +82,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: shivammathur/homebrew-php
+          ref: ${{ inputs.homebrew-php-commit || '' }}
           path: homebrew-php
           persist-credentials: false
 
@@ -71,6 +90,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: shivammathur/homebrew-extensions
+          ref: ${{ inputs.homebrew-extensions-commit || '' }}
           path: homebrew-extensions
           persist-credentials: false
 
@@ -89,6 +109,7 @@ jobs:
     permissions:
       # Required by the called publish job to replace GitHub Release assets.
       contents: write
+      actions: write
     uses: ./.github/workflows/build.yml
     with:
       channel: nightly
@@ -96,6 +117,10 @@ jobs:
       builds: ${{ inputs.builds || 'debug release' }}
       ts: ${{ inputs.ts || 'nts zts' }}
       architectures: ${{ inputs.architectures || needs.freshness.outputs.architectures }}
-      homebrew-php-commit: ${{ (inputs.architectures == '' || inputs.architectures == needs.freshness.outputs.architectures) && needs.freshness.outputs.homebrew-php-commit || '' }}
-      homebrew-extensions-commit: ${{ (inputs.architectures == '' || inputs.architectures == needs.freshness.outputs.architectures) && needs.freshness.outputs.homebrew-extensions-commit || '' }}
+      homebrew-php-commit: ${{ inputs.homebrew-php-commit || (inputs.architectures == '' || inputs.architectures == needs.freshness.outputs.architectures) && needs.freshness.outputs.homebrew-php-commit || '' }}
+      homebrew-extensions-commit: ${{ inputs.homebrew-extensions-commit || (inputs.architectures == '' || inputs.architectures == needs.freshness.outputs.architectures) && needs.freshness.outputs.homebrew-extensions-commit || '' }}
       publish: ${{ github.event_name == 'schedule' || inputs.publish }}
+      source-cache-release: ${{ inputs.source-cache-release || 'cache' }}
+      reuse-archives: ${{ github.event_name == 'schedule' || inputs.reuse-archives }}
+      force-source: ${{ inputs.force-source || false }}
+      force: ${{ inputs.force || false }}

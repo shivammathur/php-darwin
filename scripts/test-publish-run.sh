@@ -9,9 +9,9 @@ trap 'rm -rf "$work_dir"' EXIT
 run_json="$work_dir/run.json"
 
 jq -n '{status:"completed",conclusion:"success",workflowName:"Cache stable PHP",jobs:[
-  {name:"cache / Build PHP 8.5 packages on arm64",status:"completed",conclusion:"success"},
-  {name:"cache / Test PHP 8.5 packages on macos-14",status:"completed",conclusion:"success"},
-  {name:"cache / Test PHP 8.5 packages on macos-15",status:"completed",conclusion:"success"}
+  {name:"cache / arm64 / Build PHP 8.5 packages on arm64",status:"completed",conclusion:"success"},
+  {name:"cache / arm64 / Test PHP 8.5 packages on macos-14",status:"completed",conclusion:"success"},
+  {name:"cache / arm64 / Test PHP 8.5 packages on macos-15",status:"completed",conclusion:"success"}
 ]}' > "$run_json" || exit 1
 PHP_DARWIN_RUN_JSON="$run_json" bash "$script_dir/validate-publish-run.sh" 123 >/dev/null || \
   php_darwin_die 'publisher rejected a successful build and test workflow run'

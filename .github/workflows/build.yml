@@ -29,6 +29,18 @@ on:
         default: ''
         required: false
         type: string
+      source-cache-release:
+        default: cache
+        type: string
+      reuse-archives:
+        default: true
+        type: boolean
+      force-source:
+        default: false
+        type: boolean
+      force:
+        default: false
+        type: boolean
       publish:
         default: true
         required: false
@@ -47,9 +59,9 @@ jobs:
     timeout-minutes: 10
     outputs:
       build: ${{ steps.matrix.outputs.build-matrix }}
+      build-required: ${{ steps.freshness.outputs.build-required }}
       extensions-source-commit: ${{ steps.extensions-source.outputs.commit }}
       source-commit: ${{ steps.source.outputs.commit }}
-      test: ${{ steps.matrix.outputs.test-matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -82,328 +94,61 @@ jobs:
           PINNED_COMMIT: ${{ inputs.homebrew-extensions-commit }}
         run: bash scripts/source-commit.sh extensions
 
-  build:
-    name: Build PHP ${{ matrix.php }} packages on ${{ matrix.arch }}
+      - name: Check out the pinned PHP formulae for freshness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: shivammathur/homebrew-php
+          ref: ${{ steps.source.outputs.commit }}
+          path: homebrew-php
+          persist-credentials: false
+
+      - name: Check out the pinned extension formulae for freshness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: shivammathur/homebrew-extensions
+          ref: ${{ steps.extensions-source.outputs.commit }}
+          path: homebrew-extensions
+          persist-credentials: false
+
+      - name: Recheck published inputs after queueing
+        id: freshness
+        env:
+          PHP_VERSION: ${{ inputs.php-version }}
+          CHANNEL: ${{ inputs.channel }}
+          FORCE: ${{ inputs.force }}
+          PUBLISH: ${{ inputs.publish }}
+          HOMEBREW_PHP_PATH: ${{ github.workspace }}/homebrew-php
+          HOMEBREW_EXTENSIONS_PATH: ${{ github.workspace }}/homebrew-extensions
+        run: bash scripts/check-build-freshness.sh
+
+  architecture:
+    name: ${{ matrix.arch }}
     needs: matrix
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 180
+    if: ${{ needs.matrix.outputs.build-required == 'true' }}
     permissions:
-      # Source bottles are persisted as GitHub Release assets.
       contents: write
-    env:
-      ARCH: ${{ matrix.arch }}
-      GH_TOKEN: ${{ github.token }}
-      HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.matrix.outputs.extensions-source-commit }}
-      HOMEBREW_PHP_COMMIT: ${{ needs.matrix.outputs.source-commit }}
-      PHP_VERSION: ${{ matrix.php }}
+      actions: write
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.matrix.outputs.build) }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Remove unused Homebrew taps
-        run: bash scripts/cleanup-taps.sh
-
-      - name: Prepare release/NTS Homebrew tap
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
-        env: &release-nts
-          BUILD: release
-          TS: nts
-        run: bash scripts/build.sh prepare
-
-      - name: Clean runner for release/NTS
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
-        env: *release-nts
-        run: bash scripts/build.sh cleanup
-
-      - name: Install release/NTS PHP formula
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
-        env: *release-nts
-        uses: ./.github/actions/source-cache
-
-      - name: Cache release/NTS coverage extensions
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
-        env: *release-nts
-        uses: ./.github/actions/source-cache
-        with:
-          stage: extensions
-
-      - name: Package release/NTS Homebrew cache
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
-        env: *release-nts
-        run: bash scripts/build.sh package
-
-      - name: Verify release/NTS archive
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
-        env: *release-nts
-        run: bash scripts/build.sh verify
-
-      - name: Reset runner after release/NTS
-        if: ${{ always() && contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
-        env: *release-nts
-        run: bash scripts/build.sh reset
-
-      - name: Prepare release/ZTS Homebrew tap
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') }}
-        env: &release-zts
-          BUILD: release
-          TS: zts
-        run: bash scripts/build.sh prepare
-
-      - name: Clean runner for release/ZTS
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') }}
-        env: *release-zts
-        run: bash scripts/build.sh cleanup
-
-      - name: Install release/ZTS PHP formula
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') }}
-        env: *release-zts
-        uses: ./.github/actions/source-cache
-
-      - name: Cache release/ZTS coverage extensions
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') }}
-        env: *release-zts
-        uses: ./.github/actions/source-cache
-        with:
-          stage: extensions
-
-      - name: Package release/ZTS Homebrew cache
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') }}
-        env: *release-zts
-        run: bash scripts/build.sh package
-
-      - name: Verify release/ZTS archive
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') }}
-        env: *release-zts
-        run: bash scripts/build.sh verify
-
-      - name: Reset runner after release/ZTS
-        if: ${{ always() && contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') }}
-        env: *release-zts
-        run: bash scripts/build.sh reset
-
-      - name: Prepare debug/NTS Homebrew tap
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') }}
-        env: &debug-nts
-          BUILD: debug
-          TS: nts
-        run: bash scripts/build.sh prepare
-
-      - name: Clean runner for debug/NTS
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') }}
-        env: *debug-nts
-        run: bash scripts/build.sh cleanup
-
-      - name: Install debug/NTS PHP formula
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') }}
-        env: *debug-nts
-        uses: ./.github/actions/source-cache
-
-      - name: Cache debug/NTS coverage extensions
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') }}
-        env: *debug-nts
-        uses: ./.github/actions/source-cache
-        with:
-          stage: extensions
-
-      - name: Package debug/NTS Homebrew cache
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') }}
-        env: *debug-nts
-        run: bash scripts/build.sh package
-
-      - name: Verify debug/NTS archive
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') }}
-        env: *debug-nts
-        run: bash scripts/build.sh verify
-
-      - name: Reset runner after debug/NTS
-        if: ${{ always() && contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') }}
-        env: *debug-nts
-        run: bash scripts/build.sh reset
-
-      - name: Prepare debug/ZTS Homebrew tap
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') }}
-        env: &debug-zts
-          BUILD: debug
-          TS: zts
-        run: bash scripts/build.sh prepare
-
-      - name: Clean runner for debug/ZTS
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') }}
-        env: *debug-zts
-        run: bash scripts/build.sh cleanup
-
-      - name: Install debug/ZTS PHP formula
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') }}
-        env: *debug-zts
-        uses: ./.github/actions/source-cache
-
-      - name: Cache debug/ZTS coverage extensions
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') }}
-        env: *debug-zts
-        uses: ./.github/actions/source-cache
-        with:
-          stage: extensions
-
-      - name: Package debug/ZTS Homebrew cache
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') }}
-        env: *debug-zts
-        run: bash scripts/build.sh package
-
-      - name: Verify debug/ZTS archive
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') }}
-        env: *debug-zts
-        run: bash scripts/build.sh verify
-
-      - name: Reset runner after debug/ZTS
-        if: ${{ always() && contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') }}
-        env: *debug-zts
-        run: bash scripts/build.sh reset
-
-      - name: Upload architecture caches for compatibility tests
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: php-${{ matrix.php }}-${{ matrix.arch }}
-          path: builds
-          if-no-files-found: error
-          retention-days: 2
-          overwrite: true
-
-  test:
-    name: Test PHP ${{ matrix.php }} packages on ${{ matrix.runner }}
-    needs: [matrix, build]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
-    env:
-      ARCH: ${{ matrix.arch }}
-      HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.matrix.outputs.extensions-source-commit }}
-      HOMEBREW_PHP_COMMIT: ${{ needs.matrix.outputs.source-commit }}
-      PHP_VERSION: ${{ matrix.php }}
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.matrix.outputs.test) }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Remove unused Homebrew taps
-        run: bash scripts/cleanup-taps.sh
-
-      - name: Download architecture caches built on the minimum macOS version
-        uses: ./.github/actions/download-artifacts
-        timeout-minutes: 10
-        with:
-          name: php-${{ matrix.php }}-${{ matrix.arch }}
-          path: ${{ runner.temp }}/php-darwin
-
-      - name: Prepare release/NTS Homebrew formula source
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
-        env: *release-nts
-        run: bash scripts/test-install.sh prepare
-
-      - name: Install release/NTS Homebrew cache
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
-        env: *release-nts
-        run: bash scripts/test-install.sh install
-
-      - name: Validate release/NTS PHP runtime and build flags
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
-        env: *release-nts
-        run: bash scripts/test-install.sh runtime
-
-      - name: Validate release/NTS Homebrew state and operations
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
-        env: *release-nts
-        run: bash scripts/test-install.sh homebrew
-
-      - name: Reset runner after release/NTS validation
-        if: ${{ always() && contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
-        env: *release-nts
-        run: bash scripts/test-install.sh reset
-
-      - name: Prepare release/ZTS Homebrew formula source
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') }}
-        env: *release-zts
-        run: bash scripts/test-install.sh prepare
-
-      - name: Install release/ZTS Homebrew cache
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') }}
-        env: *release-zts
-        run: bash scripts/test-install.sh install
-
-      - name: Validate release/ZTS PHP runtime and build flags
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') }}
-        env: *release-zts
-        run: bash scripts/test-install.sh runtime
-
-      - name: Validate release/ZTS Homebrew state and operations
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') }}
-        env: *release-zts
-        run: bash scripts/test-install.sh homebrew
-
-      - name: Reset runner after release/ZTS validation
-        if: ${{ always() && contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') }}
-        env: *release-zts
-        run: bash scripts/test-install.sh reset
-
-      - name: Prepare debug/NTS Homebrew formula source
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') }}
-        env: *debug-nts
-        run: bash scripts/test-install.sh prepare
-
-      - name: Install debug/NTS Homebrew cache
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') }}
-        env: *debug-nts
-        run: bash scripts/test-install.sh install
-
-      - name: Validate debug/NTS PHP runtime and build flags
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') }}
-        env: *debug-nts
-        run: bash scripts/test-install.sh runtime
-
-      - name: Validate debug/NTS Homebrew state and operations
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') }}
-        env: *debug-nts
-        run: bash scripts/test-install.sh homebrew
-
-      - name: Reset runner after debug/NTS validation
-        if: ${{ always() && contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') }}
-        env: *debug-nts
-        run: bash scripts/test-install.sh reset
-
-      - name: Prepare debug/ZTS Homebrew formula source
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') }}
-        env: *debug-zts
-        run: bash scripts/test-install.sh prepare
-
-      - name: Install debug/ZTS Homebrew cache
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') }}
-        env: *debug-zts
-        run: bash scripts/test-install.sh install
-
-      - name: Validate debug/ZTS PHP runtime and build flags
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') }}
-        env: *debug-zts
-        run: bash scripts/test-install.sh runtime
-
-      - name: Validate debug/ZTS Homebrew state and operations
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') }}
-        env: *debug-zts
-        run: bash scripts/test-install.sh homebrew
-
-      - name: Reset runner after debug/ZTS validation
-        if: ${{ always() && contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') }}
-        env: *debug-zts
-        run: bash scripts/test-install.sh reset
+    uses: ./.github/workflows/build-architecture.yml
+    with:
+      php-version: ${{ matrix.php }}
+      arch: ${{ matrix.arch }}
+      runner: ${{ matrix.runner }}
+      test-runners: ${{ toJSON(matrix.test_runners) }}
+      builds: ${{ inputs.builds }}
+      ts: ${{ inputs.ts }}
+      homebrew-php-commit: ${{ needs.matrix.outputs.source-commit }}
+      homebrew-extensions-commit: ${{ needs.matrix.outputs.extensions-source-commit }}
+      source-cache-release: ${{ inputs.source-cache-release }}
+      reuse-archives: ${{ inputs.reuse-archives }}
+      force-source: ${{ inputs.force-source }}
 
   publish:
     name: Publish PHP ${{ inputs.php-version }} release assets
-    if: ${{ inputs.publish }}
-    needs: [matrix, build, test]
+    if: ${{ inputs.publish && needs.matrix.outputs.build-required == 'true' }}
+    needs: [matrix, architecture]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     concurrency:
@@ -457,3 +202,36 @@ jobs:
     uses: ./.github/workflows/e2e.yml
     with:
       php-version: ${{ inputs.php-version }}
+
+  report:
+    name: Report cache work and workflow timings
+    if: ${{ always() }}
+    needs: [matrix, architecture, publish, e2e]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Download available timing data
+        if: ${{ needs.matrix.outputs.build-required == 'true' }}
+        continue-on-error: true
+        uses: ./.github/actions/download-artifacts
+        with:
+          pattern: timing-*
+          path: .timing
+      - name: Report build, packaging, testing, and queue time
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/workflow-report.cjs workflow
+      - name: Upload workflow performance report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: workflow-performance
+          path: workflow-performance.json
+          compression-level: 0
+          retention-days: 30
+          overwrite: true

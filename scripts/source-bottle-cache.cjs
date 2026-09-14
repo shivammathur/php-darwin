@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
+const { recordMetric } = require('./build-metrics.cjs');
 
 function command(program, args, { inherit = false, cwd, env } = {}) {
   const result = spawnSync(program, args, {
@@ -93,11 +94,15 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
   const platform = buildEnvironment();
   const result = { built: 0, restored: 0 };
   for (const item of plan) {
+    const started = Date.now();
+    const metric = values => recordMetric({ kind: 'source', formula: item.full_name,
+      elapsedMs: Date.now() - started, ...values });
     const target = item === plan.at(-1);
     const flags = target && skipLink ? ['--skip-link'] : [];
-    if (item.installed) continue;
+    if (item.installed) { metric({ result: 'preinstalled' }); continue; }
     if (item.bottled && !(target && forceSource)) {
       run('brew', ['install', '--formula', ...flags, item.full_name], { inherit: true });
+      metric({ result: 'upstream-bottle' });
       continue;
     }
     const build = inputs(item, platform);
@@ -106,44 +111,82 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
     const directory = path.join(cacheRoot, key);
     fs.mkdirSync(directory, { recursive: true });
     let bottle;
+    let missReason = 'not-cached';
     try {
       bottle = readBottle(directory, key);
       if (!bottle) {
         // Never use a partial/prefix match for compiled packages.
         const restoredKey = await cache.restoreCache([directory], key, []);
         if (restoredKey === key) bottle = readBottle(directory, key);
+        else if (cache.missReason) missReason = cache.missReason(key, build);
       }
     } catch (error) {
+      missReason = 'cache-unavailable-or-invalid';
       warn(`Source cache unavailable for ${item.full_name}: ${error.message}`);
     }
     if (bottle) {
       log(`Restoring source bottle: ${item.full_name} ${item.version}`);
       run('brew', ['install', '--formula', ...flags, path.resolve(bottle)], { inherit: true });
       result.restored++;
+      metric({ result: 'restored', key });
       continue;
     }
-    fs.rmSync(directory, { recursive: true, force: true });
-    fs.mkdirSync(directory, { recursive: true });
-    log(`Building source bottle: ${item.full_name} ${item.version}`);
-    run('brew', ['install', '--formula', '--build-bottle', ...flags, item.full_name], { inherit: true });
-    run('brew', ['bottle', '--json', '--no-rebuild', item.full_name], {
-      inherit: true, cwd: path.resolve(directory),
-    });
-    const files = fs.readdirSync(directory).filter(file => file.endsWith('.tar.gz'));
-    if (files.length !== 1) throw new Error(`Expected one bottle for ${item.full_name}`);
-    const file = files[0];
-    const sha256 = digest(fs.readFileSync(path.join(directory, file)));
-    fs.writeFileSync(path.join(directory, 'metadata.json'), JSON.stringify({ schema: 1, key, file, sha256, inputs: build }));
-    readBottle(directory, key);
-    // --build-bottle skips post_install. Run it after bottling so first builds
-    // and restored bottles both recreate PHP/PEAR and dependency configuration.
-    if (item.post_install) run('brew', ['postinstall', item.full_name], { inherit: true });
-    result.built++;
-    try {
-      await cache.saveCache([directory], key);
-    } catch (error) {
-      warn(`Could not save source bottle for ${item.full_name}: ${error.message}`);
-    }
+    const buildMissing = async (waitedMs = 0) => {
+      // Another PHP version may have produced this library while this job
+      // waited for ownership. Recheck the exact key before compiling anything.
+      if (cache.withBuildLock) {
+        let cached;
+        try {
+          const restored = await cache.restoreCache([directory], key, []);
+          if (restored === key) cached = readBottle(directory, key);
+        } catch (error) {
+          missReason = 'cache-unavailable-or-invalid';
+          warn(`Source cache unavailable while owning ${item.full_name}: ${error.message}`);
+        }
+        if (cached) {
+          run('brew', ['install', '--formula', ...flags, path.resolve(cached)], { inherit: true });
+          result.restored++;
+          log(`Restored source bottle after coordination: ${item.full_name} ${item.version}`);
+          metric({ result: 'restored-after-wait', key, waitedMs });
+          return;
+        }
+      }
+      fs.rmSync(directory, { recursive: true, force: true });
+      fs.mkdirSync(directory, { recursive: true });
+      log(`Building source bottle: ${item.full_name} ${item.version}`);
+      const compileStarted = Date.now();
+      run('brew', ['install', '--formula', '--build-bottle', ...flags, item.full_name], { inherit: true });
+      const compileMs = Date.now() - compileStarted;
+      const bottleStarted = Date.now();
+      run('brew', ['bottle', '--json', '--no-rebuild', item.full_name], {
+        inherit: true, cwd: path.resolve(directory),
+      });
+      const files = fs.readdirSync(directory).filter(file => file.endsWith('.tar.gz'));
+      if (files.length !== 1) throw new Error(`Expected one bottle for ${item.full_name}`);
+      const file = files[0];
+      const sha256 = digest(fs.readFileSync(path.join(directory, file)));
+      fs.writeFileSync(path.join(directory, 'metadata.json'), JSON.stringify({ schema: 1, key, file, sha256, inputs: build }));
+      readBottle(directory, key);
+      // --build-bottle skips post_install. Run it after bottling so first builds
+      // and restored bottles both recreate PHP/PEAR and dependency configuration.
+      if (item.post_install) run('brew', ['postinstall', item.full_name], { inherit: true });
+      const bottleMs = Date.now() - bottleStarted;
+      result.built++;
+      const uploadStarted = Date.now();
+      let saved = true;
+      let saveError;
+      try {
+        await cache.saveCache([directory], key);
+      } catch (error) {
+        saved = false;
+        saveError = error.message;
+        warn(`Could not save source bottle for ${item.full_name}: ${error.message}`);
+      }
+      metric({ result: 'built', key, missReason, waitedMs, compileMs, bottleMs,
+        uploadMs: Date.now() - uploadStarted, saved, ...(saveError ? { saveError } : {}) });
+    };
+    if (cache.withBuildLock) await cache.withBuildLock(key, buildMissing);
+    else await buildMissing();
   }
   log(`Source bottles: ${result.restored} restored, ${result.built} built`);
   return result;
@@ -169,4 +212,4 @@ function extensionInputs(abstract, phpPrefix, build, ts, run = command) {
   };
 }
 
-module.exports = { command, brewSource, keyFor, readBottle, install, extensionInputs };
+module.exports = { command, brewSource, keyFor, readBottle, install, extensionInputs, environment, recipeHash };

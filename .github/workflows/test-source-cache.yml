@@ -7,6 +7,11 @@ on:
       - .github/actions/source-cache/**
       - .github/workflows/test-source-cache.yml
       - scripts/source-bottle-*
+      - scripts/source-build-lock.cjs
+      - scripts/release-http.cjs
+      - scripts/test-release-http.cjs
+      - scripts/build-metrics.cjs
+      - scripts/test-source-build-lock-live.cjs
       - scripts/brew-php-darwin-source.rb
       - scripts/test-source-bottle-*
       - scripts/formula-build-inputs.sh
@@ -14,6 +19,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   source-cache:
@@ -34,6 +40,9 @@ jobs:
           persist-credentials: false
       - name: Remove unused Homebrew taps
         run: bash scripts/cleanup-taps.sh
+
+      - name: Verify concurrent ownership through the GitHub API
+        run: node scripts/test-source-build-lock-live.cjs
       - name: Prepare source-only library and consumer
         run: bash scripts/test-source-bottle-native.sh prepare
       - name: Verify native bottle selection and dependency pruning
@@ -84,6 +93,7 @@ jobs:
           path: .source-bottle-cache
           include-hidden-files: true
           if-no-files-found: ignore
+          compression-level: 0
           retention-days: 2
           overwrite: true
       - name: Remove source bottle fixtures
@@ -148,6 +158,7 @@ jobs:
           path: .source-bottle-cache
           include-hidden-files: true
           if-no-files-found: ignore
+          compression-level: 0
           retention-days: 2
           overwrite: true
 

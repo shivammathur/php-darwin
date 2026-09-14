@@ -32,6 +32,22 @@ on:
         description: Existing extension release commit used only when completing a platform
         required: false
         type: string
+      source-cache-release:
+        description: Source bottle release (use an isolated test release for benchmarks)
+        default: cache
+        type: string
+      reuse-archives:
+        description: Reuse verified archive checkpoints with matching inputs
+        default: true
+        type: boolean
+      force-source:
+        description: Build PHP from source even when an upstream bottle exists
+        default: false
+        type: boolean
+      force:
+        description: Build even when the release already has these inputs
+        default: false
+        type: boolean
       publish:
         description: Publish validated caches to the PHP release
         default: true
@@ -50,6 +66,7 @@ jobs:
     permissions:
       # Required by the called publish job to replace GitHub Release assets.
       contents: write
+      actions: write
     uses: ./.github/workflows/build.yml
     with:
       channel: stable
@@ -60,3 +77,7 @@ jobs:
       homebrew-php-commit: ${{ inputs.homebrew-php-commit || '' }}
       homebrew-extensions-commit: ${{ inputs.homebrew-extensions-commit || '' }}
       publish: ${{ inputs.publish }}
+      source-cache-release: ${{ inputs.source-cache-release || 'cache' }}
+      reuse-archives: ${{ github.event_name == 'schedule' || inputs.reuse-archives }}
+      force-source: ${{ inputs.force-source || false }}
+      force: ${{ inputs.force || false }}

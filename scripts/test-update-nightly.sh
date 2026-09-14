@@ -64,8 +64,8 @@ write_manifest() {
   done < <(php_darwin_configured_variants)
   jq -s --arg commit "$commit" --arg extensions_hash "$extensions_hash" \
     --arg extensions_commit "$extensions_commit" \
-    --arg homebrew_commit 0123456789abcdef0123456789abcdef01234567 \
-    --arg source_hash "$(printf '%064d' 1)" '
+    --arg homebrew_commit "$php_commit" \
+    --arg source_hash "$(HOMEBREW_PHP_PATH="$tap_path" bash "$script_dir/source-hash.sh" 8.6)" '
     {schema:1,php_version:"8.6",php_semver:"8.6.0",php_src_commit:$commit,
      extensions_source_hash:$extensions_hash,homebrew_php_commit:$homebrew_commit,
      homebrew_extensions_commit:$extensions_commit,
@@ -91,18 +91,33 @@ run_gate() {
     php_darwin_die 'nightly update gate returned the wrong configured version'
   grep -Fxq "architectures=$expected_architectures" "$output" || \
     php_darwin_die "nightly update gate did not return architectures=$expected_architectures"
+  FORCE="$force" PUBLISH=true CHANNEL=nightly GITHUB_OUTPUT="$output" \
+    HOMEBREW_EXTENSIONS_PATH="$extensions_path" HOMEBREW_PHP_PATH="$tap_path" \
+    PHP_DARWIN_MANIFEST_PATH="$manifest" PHP_VERSION=8.6 \
+    bash "$script_dir/check-build-freshness.sh" >/dev/null || php_darwin_die 'queued nightly freshness check failed'
+  grep -Fxq "build-required=$expected" "$output" || \
+    php_darwin_die 'queued nightly freshness did not match the published inputs'
 }
 
 write_formulae "$current"
+git -C "$tap_path" init -q || exit 1
+git -C "$tap_path" add . || exit 1
+git -C "$tap_path" -c user.name=fixture -c user.email=fixture@example.invalid \
+  -c commit.gpgsign=false commit -qm fixture || exit 1
+php_commit=$(git -C "$tap_path" rev-parse HEAD) || exit 1
 [ "$(HOMEBREW_PHP_PATH="$tap_path" bash "$script_dir/php-src-commit.sh" 8.6)" = "$current" ] || \
   php_darwin_die 'PHP source commit resolver returned the wrong commit'
 write_manifest "$current"
+run_gate false
+printf '  revision 1\n' >> "$formula_dir/php@8.6.rb" || exit 1
+run_gate true
+write_formulae "$current"
 run_gate false
 jq '.assets |= map(select(.architecture == "arm64"))' "$manifest" > "$manifest.arm" || \
   php_darwin_die 'could not write the ARM64-only nightly manifest fixture'
 mv "$manifest.arm" "$manifest" || php_darwin_die 'could not install the ARM64-only nightly manifest fixture'
 run_gate true false x86_64
-grep -Fxq 'homebrew-php-commit=0123456789abcdef0123456789abcdef01234567' "$output" || \
+grep -Fxq "homebrew-php-commit=$php_commit" "$output" || \
   php_darwin_die 'nightly platform completion did not pin the published homebrew-php commit'
 grep -Fxq "homebrew-extensions-commit=$extensions_commit" "$output" || \
   php_darwin_die 'nightly platform completion did not pin the published extension commit'

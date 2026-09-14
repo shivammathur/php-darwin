@@ -81,6 +81,32 @@ test('cache outages and concurrent saves do not discard successful source builds
   assert.equal(f.warnings.length, 4);
 });
 
+test('invalid bottle data can rebuild while owned, but unavailable ownership never starts a build', async t => {
+  const f = fixture(t);
+  f.args.cache.restoreCache = async () => { throw new Error('invalid cached bottle'); };
+  f.args.cache.withBuildLock = async (key, build) => build(0);
+  assert.deepEqual(await install(f.args), { built: 2, restored: 0 });
+  f.freshRunner();
+  f.args.cache.withBuildLock = async () => { throw new Error('ownership unavailable'); };
+  await assert.rejects(install(f.args), /ownership unavailable/);
+  assert.equal(f.events.length, 0);
+});
+
+test('a library uploaded while waiting is restored instead of being compiled twice', async t => {
+  const f = fixture(t);
+  await install(f.args);
+  f.freshRunner();
+  const restore = f.args.cache.restoreCache;
+  let owned = false;
+  f.args.cache.restoreCache = async (...args) => owned ? restore(...args) : undefined;
+  f.args.cache.withBuildLock = async (key, build) => {
+    owned = true;
+    try { return await build(500); } finally { owned = false; }
+  };
+  assert.deepEqual(await install(f.args), { built: 0, restored: 2 });
+  assert.equal(f.events.filter(args => args.includes('--build-bottle')).length, 0);
+});
+
 test('corrupt cached bottles are rejected before installation', async t => {
   const f = fixture(t);
   await install(f.args);

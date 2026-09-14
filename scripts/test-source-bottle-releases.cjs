@@ -6,6 +6,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { ReleaseCache, family, releaseAsset, assetIdentity } = require('./source-bottle-releases.cjs');
 const { keyFor, readBottle } = require('./source-bottle-cache.cjs');
+const { SourceBuildLock } = require('./source-build-lock.cjs');
 const digest = value => crypto.createHash('sha256').update(value).digest('hex');
 
 function fixture(t, tag = 'cache') {
@@ -98,6 +99,130 @@ test('persistent release round-trip and pruning only older versions in the same 
   await f.cache.saveCache([old.directory], old.key);
   assert.ok(f.state.assets.some(asset => asset.name === current.name));
   assert.ok(!f.state.assets.some(asset => asset.name === old.name));
+});
+
+test('source build ownership permits one builder at a time and releases failed work', async t => {
+  const f = fixture(t);
+  const key = f.bottle('1').key;
+  let active = 0;
+  let maximum = 0;
+  let releaseFirst;
+  const firstCanFinish = new Promise(resolve => { releaseFirst = resolve; });
+  f.state.intercept = endpoint => endpoint.startsWith('actions/jobs/') ?
+    Response.json({ run_id: 10, status: 'in_progress' }) : undefined;
+  f.cache.wait = async () => { releaseFirst(); await new Promise(resolve => setImmediate(resolve)); };
+  const first = new SourceBuildLock(f.cache, { owner: { job: 1, run: 10, attempt: 1 } });
+  const second = new SourceBuildLock(f.cache, { owner: { job: 2, run: 10, attempt: 1 } });
+  await Promise.all([first.run(key, async () => {
+    maximum = Math.max(maximum, ++active);
+    await firstCanFinish;
+    active--;
+  }), second.run(key, async () => {
+    maximum = Math.max(maximum, ++active);
+    active--;
+  })]);
+  assert.equal(maximum, 1);
+  assert.equal(f.state.assets.length, 0);
+  await assert.rejects(first.run(key, async () => { throw new Error('compile failed'); }), /compile failed/);
+  assert.equal(f.state.assets.length, 0);
+});
+
+test('a completed owner is recovered but an old active owner cannot be expired', async t => {
+  const f = fixture(t);
+  const key = f.bottle('1').key;
+  let now = Date.now();
+  let completed = false;
+  f.state.intercept = endpoint => endpoint.startsWith('actions/jobs/') ?
+    Response.json({ run_id: 10, status: completed ? 'completed' : 'in_progress' }) : undefined;
+  const first = new SourceBuildLock(f.cache, { owner: { job: 1, run: 10, attempt: 1 } });
+  const claim = await first.acquire(key);
+  f.state.assets[0].created_at = '2000-01-01T00:00:00Z';
+  f.cache.wait = async delay => { now += delay; };
+  const second = new SourceBuildLock(f.cache, { owner: { job: 2, run: 11, attempt: 1 }, now: () => now, timeout: 20000 });
+  await assert.rejects(second.acquire(key), /Timed out/);
+  assert.ok(f.state.assets.some(asset => asset.id === claim.id));
+  completed = true;
+  await second.run(key, async () => {});
+  assert.equal(f.state.assets.length, 0);
+});
+
+test('a lost ownership upload reply preserves the original claim', async t => {
+  const f = fixture(t);
+  const lock = new SourceBuildLock(f.cache, { owner: { job: 1, run: 10, attempt: 1 } });
+  f.state.loseUploadReply = true;
+  await lock.run(f.bottle('1').key, async () => assert.equal(f.state.assets.length, 1));
+  assert.equal(f.state.assets.length, 0);
+});
+
+test('transient upload 404s are retried before claiming ownership', async t => {
+  const f = fixture(t);
+  let uploads = 0;
+  f.state.intercept = (endpoint, options) => {
+    if (endpoint === 'releases/1/assets' && options.method === 'POST' && uploads++ === 0) {
+      return new Response(null, { status: 404 });
+    }
+  };
+  const lock = new SourceBuildLock(f.cache, { owner: { job: 1, run: 10, attempt: 1 } });
+  await lock.run(f.bottle('1').key, async () => assert.equal(f.state.assets.length, 1));
+  assert.equal(uploads, 2);
+  assert.deepEqual(f.state.delays, [1000]);
+  assert.equal(f.state.assets.length, 0);
+});
+
+test('a competing claim released before its lookup is retried safely', async t => {
+  const f = fixture(t);
+  let uploads = 0;
+  f.state.intercept = (endpoint, options) => {
+    if (endpoint === 'releases/1/assets' && options.method === 'POST' && uploads++ === 0) {
+      return new Response(null, { status: 422 });
+    }
+  };
+  const lock = new SourceBuildLock(f.cache, { owner: { job: 1, run: 10, attempt: 1 } });
+  await lock.run(f.bottle('1').key, async () => assert.equal(f.state.assets.length, 1));
+  assert.equal(uploads, 2);
+  assert.deepEqual(f.state.delays, [1000]);
+});
+
+test('conditional metadata reads revalidate changes and forget deleted state', async t => {
+  const f = fixture(t);
+  let request = 0;
+  f.state.intercept = (endpoint, options) => {
+    assert.equal(endpoint, 'actions/jobs/1');
+    const etag = options.headers['If-None-Match'];
+    switch (request++) {
+      case 0:
+        assert.equal(etag, undefined);
+        return Response.json({ status: 'in_progress' }, { headers: { etag: 'one' } });
+      case 1:
+        assert.equal(etag, 'one');
+        return new Response(null, { status: 304 });
+      case 2:
+        assert.equal(etag, 'one');
+        return Response.json({ status: 'completed' }, { headers: { etag: 'two' } });
+      case 3:
+        assert.equal(etag, 'two');
+        return new Response(null, { status: 404 });
+      case 4:
+        assert.equal(etag, undefined);
+        return Response.json({ status: 'completed' });
+      default: throw new Error('unexpected metadata request');
+    }
+  };
+  assert.equal((await f.cache.api('actions/jobs/1')).status, 'in_progress');
+  assert.equal((await f.cache.api('actions/jobs/1')).status, 'in_progress');
+  assert.equal((await f.cache.api('actions/jobs/1')).status, 'completed');
+  assert.equal(await f.cache.api('actions/jobs/1', { allow: [404] }), null);
+  assert.equal((await f.cache.api('actions/jobs/1')).status, 'completed');
+});
+
+test('artifact ZIP requests use the Actions media type while streaming binary data', async t => {
+  const f = fixture(t);
+  f.state.intercept = (endpoint, options) => {
+    assert.equal(options.headers.Accept, 'application/vnd.github+json');
+    return new Response('zip bytes');
+  };
+  assert.equal(await f.cache.api('actions/artifacts/1/zip', { binary: true,
+    accept: 'application/vnd.github+json', consume: response => response.text() }), 'zip bytes');
 });
 
 test('release requests retry transient responses and respect rate-limit backoff', async t => {
