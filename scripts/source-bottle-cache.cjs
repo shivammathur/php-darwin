@@ -72,6 +72,7 @@ function readBottle(directory, key) {
 }
 
 async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
+  forceSource = false, skipLink = false, context,
   run = command, query = inspect, inputs = buildInputs, buildEnvironment = environment,
   log = console.log, warn = console.warn }) {
   if (!/^(?:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/)?[A-Za-z0-9@+_.-]+$/.test(formula)) {
@@ -89,12 +90,15 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
   const platform = buildEnvironment();
   const result = { built: 0, restored: 0 };
   for (const item of plan) {
+    const target = item === plan.at(-1);
+    const flags = target && skipLink ? ['--skip-link'] : [];
     if (item.installed) continue;
-    if (item.bottled) {
-      run('brew', ['install', '--formula', item.full_name], { inherit: true });
+    if (item.bottled && !(target && forceSource)) {
+      run('brew', ['install', '--formula', ...flags, item.full_name], { inherit: true });
       continue;
     }
     const build = inputs(item, platform);
+    if (target && context) build.context = context;
     const key = keyFor(build);
     const directory = path.join(cacheRoot, key);
     fs.mkdirSync(directory, { recursive: true });
@@ -111,14 +115,14 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
     }
     if (bottle) {
       log(`Restoring source bottle: ${item.full_name} ${item.version}`);
-      run('brew', ['install', '--formula', path.resolve(bottle)], { inherit: true });
+      run('brew', ['install', '--formula', ...flags, path.resolve(bottle)], { inherit: true });
       result.restored++;
       continue;
     }
     fs.rmSync(directory, { recursive: true, force: true });
     fs.mkdirSync(directory, { recursive: true });
     log(`Building source bottle: ${item.full_name} ${item.version}`);
-    run('brew', ['install', '--formula', '--build-bottle', item.full_name], { inherit: true });
+    run('brew', ['install', '--formula', '--build-bottle', ...flags, item.full_name], { inherit: true });
     run('brew', ['bottle', '--json', '--no-rebuild', item.full_name], {
       inherit: true, cwd: path.resolve(directory),
     });
@@ -130,7 +134,7 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
     readBottle(directory, key);
     // --build-bottle skips post_install. Run it after bottling so first builds
     // and restored bottles both recreate PHP/PEAR and dependency configuration.
-    run('brew', ['postinstall', item.full_name], { inherit: true });
+    if (item.post_install) run('brew', ['postinstall', item.full_name], { inherit: true });
     result.built++;
     try {
       await cache.saveCache([directory], key);
@@ -142,4 +146,16 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
   return result;
 }
 
-module.exports = { command, keyFor, readBottle, install };
+function extensionInputs(abstract, phpPrefix, build, ts, run = command) {
+  return {
+    build, ts, abstract: digest(fs.readFileSync(abstract)),
+    php: {
+      version: run(path.join(phpPrefix, 'bin/php'), ['-n', '-r', 'echo PHP_VERSION;']).trim(),
+      api: run(path.join(phpPrefix, 'bin/php-config'), ['--phpapi']).trim(),
+      configure: run(path.join(phpPrefix, 'bin/php-config'), ['--configure-options']).trim(),
+      extensionDirectory: run(path.join(phpPrefix, 'bin/php-config'), ['--extension-dir']).trim(),
+    },
+  };
+}
+
+module.exports = { command, keyFor, readBottle, install, extensionInputs };

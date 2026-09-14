@@ -9,9 +9,10 @@ on:
       - scripts/source-bottle-*
       - scripts/test-source-bottle-*
       - scripts/formula-build-inputs.sh
+      - scripts/build-extensions.sh
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   source-cache:
@@ -24,27 +25,29 @@ jobs:
     timeout-minutes: 30
     env:
       HOMEBREW_DEVELOPER: '1'
+      GH_TOKEN: ${{ github.token }}
+      CACHE_RELEASE: source-bottles-test-${{ github.run_id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Install cache client
-        run: npm ci --prefix .github/actions/source-cache --ignore-scripts --no-audit --no-fund
       - name: Prepare source-only library and consumer
         run: bash scripts/test-source-bottle-native.sh prepare
       - name: Build or restore source bottles
         uses: ./.github/actions/source-cache
         with:
           formula: php-darwin/source-cache-test/php-darwin-cache-app
+          release: source-bottles-test-${{ github.run_id }}
       - name: Verify first installation and clear local packages
         run: |
           bash scripts/test-source-bottle-native.sh verify
           bash scripts/test-source-bottle-native.sh reset
-      - name: Restore both packages from the remote cache
+      - name: Restore both packages from the release cache
         id: warm
         uses: ./.github/actions/source-cache
         with:
           formula: php-darwin/source-cache-test/php-darwin-cache-app
+          release: source-bottles-test-${{ github.run_id }}
       - name: Verify both builds were reused
         env:
           BUILT: ${{ steps.warm.outputs.built }}
@@ -60,12 +63,14 @@ jobs:
         uses: ./.github/actions/source-cache
         with:
           formula: php-darwin/source-cache-test/php-darwin-cache-app
+          release: source-bottles-test-${{ github.run_id }}
       - name: Verify unchanged library reuse and native packages
         env:
           RESTORED: ${{ steps.changed.outputs.restored }}
         run: |
           test "$RESTORED" -ge 1
           bash scripts/test-source-bottle-native.sh verify
+          bash scripts/test-source-bottle-native.sh verify-release
       - name: Upload native bottles and build inputs
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -78,3 +83,76 @@ jobs:
       - name: Remove source bottle fixtures
         if: ${{ always() }}
         run: bash scripts/test-source-bottle-native.sh cleanup
+
+  extensions:
+    name: Extension bottles on ${{ matrix.runner }} (${{ matrix.build }}/${{ matrix.ts }})
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-14, macos-15-intel]
+        build: [release, debug]
+        ts: [nts, zts]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HOMEBREW_DEVELOPER: '1'
+      PHP_VERSION: '8.4'
+      BUILD: ${{ matrix.build }}
+      TS: ${{ matrix.ts }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install published PHP and prepare extension source
+        run: bash scripts/test-source-bottle-extensions.sh prepare
+      - name: Build source extension bottles
+        uses: ./.github/actions/source-cache
+        with:
+          stage: extensions
+          force-source: 'true'
+          release: source-bottles-test-${{ github.run_id }}
+      - name: Verify modules and clear the local cache
+        run: |
+          bash scripts/test-source-bottle-extensions.sh verify > "$RUNNER_TEMP/extensions-cold.txt"
+          bash scripts/test-source-bottle-extensions.sh reset
+      - name: Restore extension bottles from the release
+        id: warm
+        uses: ./.github/actions/source-cache
+        with:
+          stage: extensions
+          force-source: 'true'
+          release: source-bottles-test-${{ github.run_id }}
+      - name: Verify reuse and identical loadable modules
+        env:
+          BUILT: ${{ steps.warm.outputs.built }}
+          RESTORED: ${{ steps.warm.outputs.restored }}
+        run: |
+          test "$BUILT" = 0
+          test "$RESTORED" = 2
+          bash scripts/test-source-bottle-extensions.sh verify > "$RUNNER_TEMP/extensions-warm.txt"
+          diff -u "$RUNNER_TEMP/extensions-cold.txt" "$RUNNER_TEMP/extensions-warm.txt"
+      - name: Upload extension bottles and build inputs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: extension-bottles-${{ matrix.runner }}-${{ matrix.build }}-${{ matrix.ts }}
+          path: .source-bottle-cache
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 2
+
+  cleanup:
+    name: Remove the isolated test release
+    if: ${{ always() }}
+    needs: [source-cache, extensions]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      CACHE_RELEASE: source-bottles-test-${{ github.run_id }}
+    steps:
+      - run: |
+          if gh release view "$CACHE_RELEASE" >/dev/null 2>&1; then
+            gh release delete "$CACHE_RELEASE" --cleanup-tag --yes
+          fi

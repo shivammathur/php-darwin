@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { install, keyFor, readBottle } = require('./source-bottle-cache.cjs');
+const { install, keyFor, readBottle, extensionInputs } = require('./source-bottle-cache.cjs');
 
 function fixture(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'php-darwin-source-cache-'));
@@ -15,8 +15,8 @@ function fixture(t) {
   const warnings = [];
   const state = { library: '1.0', php: '8.4.1', recipe: 'recipe', compiler: 'clang-1' };
   const plan = () => [
-    { full_name: 'libxml2', name: 'libxml2', version: state.library },
-    { full_name: 'shivammathur/php/php@8.4', name: 'php@8.4', version: state.php },
+    { full_name: 'libxml2', name: 'libxml2', version: state.library, post_install: true },
+    { full_name: 'shivammathur/php/php@8.4', name: 'php@8.4', version: state.php, post_install: true },
   ];
   const cache = {
     async restoreCache([destination], key, fallback) {
@@ -34,7 +34,7 @@ function fixture(t) {
     query: () => plan(), buildEnvironment: () => ({ compiler: state.compiler }),
     inputs: (item, environment) => ({
       formula: item.full_name, version: item.version, environment, recipe: state.recipe,
-      dependencies: item.name === 'libxml2' ? [] : [{ name: 'libxml2', version: state.library }],
+      dependencies: item.name === 'libxml2' ? [] : [{ name: 'libxml2', version: state.library, post_install: true }],
     }),
     log: () => {}, warn: message => warnings.push(message),
     run: (program, argv, options = {}) => {
@@ -131,4 +131,43 @@ test('cache metadata cannot redirect installation outside its directory', t => {
     schema: 1, key: 'key', file: '../foreign.bottle.tar.gz', sha256: 'a'.repeat(64),
   }));
   assert.throws(() => readBottle(f.cacheRoot, 'key'), /identity/);
+});
+
+test('extension variants bypass upstream bottles, preserve skip-link, and isolate shared source', async t => {
+  const f = fixture(t);
+  const query = f.args.query;
+  f.args.query = () => query().map(item => ({ ...item, bottled: true }));
+  f.args.forceSource = true;
+  f.args.skipLink = true;
+  f.args.context = { build: 'debug', ts: 'zts', abstract: 'original', php: { api: '20240924' } };
+  assert.deepEqual(await install(f.args), { built: 1, restored: 0 });
+  assert.deepEqual(f.events.find(args => args.includes('--build-bottle')).slice(0, 4),
+    ['install', '--formula', '--build-bottle', '--skip-link']);
+  assert.ok(!f.events.find(args => args.at(-1) === 'libxml2').includes('--skip-link'));
+  f.freshRunner();
+  assert.deepEqual(await install(f.args), { built: 0, restored: 1 });
+  assert.ok(f.events.find(args => args.at(-1).endsWith('.tar.gz')).includes('--skip-link'));
+  for (const context of [
+    { ...f.args.context, abstract: 'patched' },
+    { ...f.args.context, build: 'release' },
+    { ...f.args.context, ts: 'nts' },
+    { ...f.args.context, php: { api: '20250925' } },
+  ]) {
+    f.freshRunner();
+    assert.deepEqual(await install({ ...f.args, context }), { built: 1, restored: 0 });
+  }
+});
+
+test('extension keys include the patched base recipe and actual PHP ABI/configuration', t => {
+  const f = fixture(t);
+  const abstract = path.join(f.cacheRoot, 'abstract.rb');
+  fs.mkdirSync(f.cacheRoot);
+  fs.writeFileSync(abstract, 'original recipe');
+  const calls = [];
+  const run = (program, args) => { calls.push([program, args]); return args.join(' '); };
+  const first = extensionInputs(abstract, '/opt/php', 'release', 'nts', run);
+  assert.equal(calls.length, 4);
+  assert.ok(calls.some(([program, args]) => program === '/opt/php/bin/php-config' && args[0] === '--phpapi'));
+  fs.writeFileSync(abstract, 'patched recipe');
+  assert.notEqual(keyFor(first), keyFor(extensionInputs(abstract, '/opt/php', 'release', 'nts', run)));
 });

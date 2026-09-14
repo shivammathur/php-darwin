@@ -90,6 +90,25 @@ EOF
     tap_path=$(brew --repository "$tap")
     sed -i '' 's/version "1.0.0"/version "1.0.1"/' "$tap_path/Formula/php-darwin-cache-app.rb"
     ;;
+  verify-release)
+    node <<'JS'
+const fs = require('node:fs');
+const path = require('node:path');
+const assert = require('node:assert/strict');
+const { ReleaseCache, family } = require('./scripts/source-bottle-releases.cjs');
+(async () => {
+  const cache = new ReleaseCache({ tag: process.env.CACHE_RELEASE });
+  const assets = await cache.assets(await cache.release());
+  const entries = fs.readdirSync('.source-bottle-cache').map(key =>
+    JSON.parse(fs.readFileSync(path.join('.source-bottle-cache', key, 'metadata.json'))));
+  const app = entries.find(entry => entry.inputs.formula.endsWith('/php-darwin-cache-app'));
+  assert.equal(app.inputs.version, '1.0.1');
+  const prefix = `source-v1:${family(app.inputs)}:`;
+  assert.deepEqual(assets.filter(asset => asset.label?.startsWith(prefix)).map(asset => asset.label), [prefix + '1.0.1']);
+  console.log('Release retains the new consumer and has removed its older version');
+})().catch(error => { console.error(error); process.exitCode = 1; });
+JS
+    ;;
   cleanup)
     brew uninstall --force --ignore-dependencies "$app" "$library" || true
     brew untap --force "$tap" || true

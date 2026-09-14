@@ -18,10 +18,12 @@ records = formulae.map do |name|
     recipe: formula.path.to_s,
     installed: formula.any_version_installed?,
     bottled: FormulaInstaller.new(formula).pour_bottle?,
+    post_install: formula.post_install_defined? || formula.post_install_steps_defined?,
   }
   if mode == "inputs"
     record[:dependencies] = Dependency.expand(formula) do |_dependent, dep|
-      next Dependable::PRUNE if dep.optional? || dep.test? || (dep.uses_from_macos? && dep.use_macos_install?)
+      next Dependable::PRUNE if dep.optional? || (dep.test? && !dep.build?) ||
+                               (dep.uses_from_macos? && dep.use_macos_install?)
     end.map do |dep|
       dependency = dep.to_formula
       keg = dependency.any_installed_keg

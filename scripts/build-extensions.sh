@@ -148,6 +148,13 @@ if [ -n "$suffix" ]; then
     ! grep -Fq "\"#{php_version}$suffix\" / \"conf.d\"" "$abstract_file"; then
     php_darwin_die 'homebrew-extensions variant patch did not apply'
   fi
+fi
+
+if [ -n "${PHP_DARWIN_SOURCE_CACHE_NODE:-}" ]; then
+  "$PHP_DARWIN_SOURCE_CACHE_NODE" "${PHP_DARWIN_SOURCE_CACHE_ACTION:?}" install-extensions \
+    "$extension_tap_path/Abstract/abstract-php-extension.rb" "$brew_prefix/opt/$formula" \
+    "${extension_references[@]}" || php_darwin_die "could not cache PHP $version extension bottles"
+elif [ -n "$suffix" ]; then
   brew install --build-from-source --skip-link \
     "${extension_references[@]}" || \
     php_darwin_die "could not build cached PHP $version extensions"

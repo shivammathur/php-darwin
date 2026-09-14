@@ -1,6 +1,15 @@
-name: Install PHP with reusable source bottles
+name: Install PHP and extensions with reusable source bottles
 description: Reuse individually cached Homebrew source builds and build only missing packages
 inputs:
+  release:
+    description: GitHub Release tag used to store source bottles
+    default: source-bottles
+  stage:
+    description: Install PHP or build and cache coverage extensions (php or extensions)
+    default: php
+  force-source:
+    description: Ignore upstream bottles for the requested formulae (native cache tests)
+    default: 'false'
   formula:
     description: Optional formula override for the native bottle smoke test
     required: false

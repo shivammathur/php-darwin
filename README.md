@@ -33,20 +33,29 @@ metadata for integrity validation. When no compatible bottle exists, Homebrew
 builds from source on the same runner; macOS 14 ARM64 remains the cache minimum
 even after its bottles stop being published.
 
-During cache builds, missing PHP and library bottles are built once with
-`brew install --build-bottle` and saved individually in GitHub Actions Cache.
+During cache builds, missing PHP, library, Xdebug, and PCOV bottles are built with
+`brew install --build-bottle` and saved individually in the `source-bottles`
+GitHub Release. Each `php-darwin-source-v1-<key>.tar` asset contains the native
+Homebrew bottle and `metadata.json` with its SHA-256 and complete build inputs.
 Later runs restore them with Homebrew, including its normal linking and
 post-install configuration. Library bottles are shared across PHP versions;
-the four PHP variants have separate entries. For example, a PHP update reuses
+the four PHP variants have separate entries, as do their extension builds. For example, a PHP update reuses
 an unchanged libxml2, while a libxml2 update rebuilds both libxml2 and PHP.
 
 Keys cover package version/revision, formula source, installed dependency
 versions/recipes/options, architecture, macOS major, Homebrew major, compiler,
-and SDK. Unrelated bottle updates do not invalidate source builds. Existing
-runner dependencies and usable upstream bottles retain priority. Cache misses,
-eviction, and service outages fall back to source builds. Run
-`test-source-cache.yml` to verify native compilation, remote restoration, linkage,
-and consumer updates on both cache build platforms.
+and SDK. Extension keys also cover the patched shared base formula and the
+installed PHP version, API, and configure options. Unrelated bottle updates do not invalidate source builds. Existing
+runner dependencies and usable upstream bottles retain priority; debug/ZTS
+extensions use their own source bottles. Assets do not expire. After uploading
+and downloading a replacement to verify its checksum, the builder deletes older
+package versions for the same architecture, macOS, and PHP variant. It preserves
+newer versions uploaded by concurrent runs and different build inputs for the
+current version. Cache misses and service outages fall back to source builds.
+Build jobs need `contents: write` to maintain this release. Run
+`test-source-cache.yml` to verify compilation, release storage, remote restoration,
+linkage, consumer updates, and real Xdebug/PCOV modules for all four PHP variants
+on both cache build platforms. Tests use a separate release that is removed afterward.
 
 ## Dependencies
 

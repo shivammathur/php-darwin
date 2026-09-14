@@ -13,6 +13,7 @@ bash "$script_dir/test-extensions-source-hash.sh" || \
   php_darwin_die 'cached extension source hash validation failed'
 bash "$script_dir/test-build-inputs.sh" || php_darwin_die 'cache build input validation failed'
 node --test "$script_dir/test-source-bottle-cache.cjs" || php_darwin_die 'source bottle cache validation failed'
+node --test "$script_dir/test-source-bottle-releases.cjs" || php_darwin_die 'release source cache validation failed'
 bash "$script_dir/test-restore-published.sh" || \
   php_darwin_die 'published architecture restore validation failed'
 pinned_source_output=$(GITHUB_OUTPUT='' PINNED_COMMIT=0123456789abcdef0123456789abcdef01234567 \
