@@ -87,9 +87,9 @@ for route in unavailable missing partial corrupt stall error-stall; do
 done
 # An error response must fail over on its headers, without waiting for its body.
 PHP_DARWIN_RELEASE_URL="$base/error-stall/archive"
-SECONDS=0
+download_error_started=$(date +%s)
 php_darwin_download_release_archive || php_darwin_die 'slow error body did not recover'
-[ "$SECONDS" -lt 3 ] || php_darwin_die 'waited for an HTTP error response body'
+[ "$(( $(date +%s) - download_error_started ))" -lt 3 ] || php_darwin_die 'waited for an HTTP error response body'
 export PHP_DARWIN_PREFER_MIRROR=true
 : > "$work_dir/requests"
 PHP_DARWIN_RELEASE_URL="$base/unavailable/archive"
