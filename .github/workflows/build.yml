@@ -2,6 +2,13 @@ name: Build and publish PHP cache
 
 on:
   workflow_call:
+    secrets:
+      CF_R2_AWS_ACCESS_KEY_ID:
+        required: false
+      CF_R2_AWS_SECRET_ACCESS_KEY:
+        required: false
+      CF_R2_AWS_S3_ENDPOINT:
+        required: false
     inputs:
       php-version:
         required: true
@@ -189,6 +196,10 @@ jobs:
 
       - name: Replace versioned release assets
         env:
+          PHP_DARWIN_MIRROR_REQUIRED: 'true'
+          CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
+          CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
+          CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
           GH_TOKEN: ${{ github.token }}
           HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.matrix.outputs.extensions-source-commit }}
           HOMEBREW_PHP_COMMIT: ${{ needs.matrix.outputs.source-commit }}

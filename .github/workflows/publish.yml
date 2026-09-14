@@ -49,6 +49,10 @@ jobs:
 
       - name: Replace versioned release assets
         env:
+          PHP_DARWIN_MIRROR_REQUIRED: 'true'
+          CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
+          CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
+          CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
           GH_TOKEN: ${{ github.token }}
           PHP_VERSION: ${{ inputs.php-version }}
         run: bash scripts/publish.sh builds

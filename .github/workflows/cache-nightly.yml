@@ -111,6 +111,10 @@ jobs:
       contents: write
       actions: write
     uses: ./.github/workflows/build.yml
+    secrets:
+      CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
+      CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
+      CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
     with:
       channel: nightly
       php-version: ${{ needs.freshness.outputs.php-version }}

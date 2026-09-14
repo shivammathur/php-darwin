@@ -1,0 +1,64 @@
+name: Mirror published PHP releases
+run-name: Mirror PHP ${{ inputs.php-version || 'all' }} releases (update installers ${{ inputs.publish-installers }})
+on:
+  workflow_dispatch:
+    inputs:
+      php-version:
+        description: PHP minor version or all
+        default: all
+        required: true
+        type: string
+      publish-installers:
+        description: Also update the GitHub release installers after verifying R2
+        default: false
+        type: boolean
+permissions:
+  contents: read
+jobs:
+  matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      versions: ${{ steps.matrix.outputs.versions }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: matrix
+        env:
+          PHP_VERSION: ${{ inputs.php-version || 'all' }}
+        run: |
+          source scripts/lib.sh
+          if [ "$PHP_VERSION" = all ]; then
+            versions=$(php_darwin_configured_versions | cut -d ' ' -f2 | jq -Rsc 'split("\n") | map(select(length > 0))')
+          else
+            php_darwin_validate_version "$PHP_VERSION"
+            versions=$(jq -cn --arg version "$PHP_VERSION" '[$version]')
+          fi
+          echo "versions=$versions" >> "$GITHUB_OUTPUT"
+  mirror:
+    needs: matrix
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        php-version: ${{ fromJSON(needs.matrix.outputs.versions) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    concurrency:
+      group: php-darwin-release-publish-${{ matrix.php-version }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify and mirror the published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PHP_VERSION: ${{ matrix.php-version }}
+          PUBLISH_INSTALLER: ${{ inputs.publish-installers }}
+          CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
+          CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
+          CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
+        run: bash scripts/sync-release.sh

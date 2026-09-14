@@ -603,16 +603,65 @@ php_darwin_release_manifest_url() {
 php_darwin_fetch_release_manifest() {
   local destination=$3
   local manifest_url
-  local request_status
+  local request_status=000
+  local mirror_url
+  local urls=()
 
   if [ -n "${4:-}" ]; then
     manifest_url=$4
   else
     manifest_url=$(php_darwin_release_manifest_url "$1" "$2") || return 1
   fi
-  request_status=$(curl --config <(php_darwin_read_config download.conf) \
-    -sSL -w '%{http_code}' "$manifest_url" -o "$destination") || return 1
+  urls+=("$manifest_url")
+  if [ -z "${4:-}" ] || [ -n "${PHP_DARWIN_MIRROR_URL:-}" ]; then
+    mirror_url=$(php_darwin_release_mirror "$1" "$2") || return 1
+    [ -z "$mirror_url" ] || urls+=("$mirror_url/php-$2-manifest.json")
+    if [ -n "$mirror_url" ] && [ "${PHP_DARWIN_PREFER_MIRROR:-false}" = true ]; then
+      urls=("$mirror_url/php-$2-manifest.json" "$manifest_url")
+    fi
+  fi
+  for manifest_url in "${urls[@]}"; do
+    if ! request_status=$(php_darwin_request_release "$manifest_url" "$destination"); then
+      request_status=000
+      continue
+    fi
+    if [ "$request_status" = 200 ]; then
+      if php_darwin_validate_release_manifest "$destination" "$2" >/dev/null 2>&1; then
+        printf '200\n'
+        return 0
+      fi
+      printf 'php-darwin: invalid release manifest from %s\n' "$manifest_url" >&2
+      request_status=000
+    fi
+  done
   printf '%s\n' "$request_status"
+}
+
+# Forks and explicit test URLs never silently fall back to production assets.
+php_darwin_release_mirror() {
+  local mirror=${PHP_DARWIN_MIRROR_URL-}
+  if [ "${PHP_DARWIN_MIRROR_URL+x}" != x ] && [ "$1" = shivammathur/php-darwin ]; then
+    mirror=https://artifacts.php-darwin.setup-php.com
+  fi
+  [ -n "$mirror" ] || return 0
+  printf '%s/php-%s\n' "${mirror%/}" "$2"
+}
+
+php_darwin_request_release() {
+  local status
+  local result=0
+
+  # Fail over before retrying the same broken origin. Bound connection and
+  # stalled-transfer time while allowing large legacy archives to finish.
+  status=$(curl --config <(php_darwin_read_config download.conf) \
+    --retry 0 --connect-timeout 2 --speed-time 3 --speed-limit 1024 \
+    -sSL -w '%{http_code}' "$1" -o "$2") || result=$?
+  if [ "$result" -ne 0 ] || [ "$status" != 200 ]; then
+    printf 'php-darwin: download failed (curl %s, HTTP %s): %s\n' \
+      "$result" "${status:-000}" "$1" >&2
+  fi
+  printf '%s\n' "${status:-000}"
+  return "$result"
 }
 
 php_darwin_release_manifest_has_current_platforms() {

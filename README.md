@@ -26,6 +26,23 @@ Each PHP minor uses a release tag such as `php-8.5`. The release manifest maps a
 logical name such as `php_8.5-nts-release+darwin_arm64.tar.zst` to an immutable,
 checksum-addressed archive. New patch releases update the manifest without replacing archives in place.
 
+Downloads fall back to `https://artifacts.php-darwin.setup-php.com` when GitHub
+fails. R2 uses the same version directories, immutable filenames, and SHA-256
+checksums, for example `php-8.5/php_8.5-nts-release+darwin_arm64.<sha256>.tar.zst`.
+Each directory also has `install.sh` and `php-8.5-manifest.json`. Archives are
+cached for one year; installers and manifests require revalidation on every
+request. The installer verifies bytes from either origin before extraction.
+
+Publishing verifies the R2 copies before updating the GitHub installer and
+manifest. The repository secrets `CF_R2_AWS_ACCESS_KEY_ID`,
+`CF_R2_AWS_SECRET_ACCESS_KEY`, and `CF_R2_AWS_S3_ENDPOINT` provide an R2 token
+scoped to object access in the `php-darwin` bucket. The **Mirror published PHP
+releases** workflow can backfill one version or all versions without compiling
+anything. Its optional installer update refreshes GitHub installers only after
+R2 verification and a check that the release manifest has not changed. If R2
+already has that exact manifest, an installer refresh reuses the verified
+archives without downloading or uploading them again.
+
 Update checks compare formula source and the bottles usable on the cache build
 platforms. Adding bottles for newer macOS versions (including macOS 27) does not
 rebuild the shared architecture caches. Full formula hashes remain in the cache

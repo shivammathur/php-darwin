@@ -604,16 +604,65 @@ php_darwin_release_manifest_url() {
 php_darwin_fetch_release_manifest() {
   local destination=$3
   local manifest_url
-  local request_status
+  local request_status=000
+  local mirror_url
+  local urls=()
 
   if [ -n "${4:-}" ]; then
     manifest_url=$4
   else
     manifest_url=$(php_darwin_release_manifest_url "$1" "$2") || return 1
   fi
-  request_status=$(curl --config <(php_darwin_read_config download.conf) \
-    -sSL -w '%{http_code}' "$manifest_url" -o "$destination") || return 1
+  urls+=("$manifest_url")
+  if [ -z "${4:-}" ] || [ -n "${PHP_DARWIN_MIRROR_URL:-}" ]; then
+    mirror_url=$(php_darwin_release_mirror "$1" "$2") || return 1
+    [ -z "$mirror_url" ] || urls+=("$mirror_url/php-$2-manifest.json")
+    if [ -n "$mirror_url" ] && [ "${PHP_DARWIN_PREFER_MIRROR:-false}" = true ]; then
+      urls=("$mirror_url/php-$2-manifest.json" "$manifest_url")
+    fi
+  fi
+  for manifest_url in "${urls[@]}"; do
+    if ! request_status=$(php_darwin_request_release "$manifest_url" "$destination"); then
+      request_status=000
+      continue
+    fi
+    if [ "$request_status" = 200 ]; then
+      if php_darwin_validate_release_manifest "$destination" "$2" >/dev/null 2>&1; then
+        printf '200\n'
+        return 0
+      fi
+      printf 'php-darwin: invalid release manifest from %s\n' "$manifest_url" >&2
+      request_status=000
+    fi
+  done
   printf '%s\n' "$request_status"
+}
+
+# Forks and explicit test URLs never silently fall back to production assets.
+php_darwin_release_mirror() {
+  local mirror=${PHP_DARWIN_MIRROR_URL-}
+  if [ "${PHP_DARWIN_MIRROR_URL+x}" != x ] && [ "$1" = shivammathur/php-darwin ]; then
+    mirror=https://artifacts.php-darwin.setup-php.com
+  fi
+  [ -n "$mirror" ] || return 0
+  printf '%s/php-%s\n' "${mirror%/}" "$2"
+}
+
+php_darwin_request_release() {
+  local status
+  local result=0
+
+  # Fail over before retrying the same broken origin. Bound connection and
+  # stalled-transfer time while allowing large legacy archives to finish.
+  status=$(curl --config <(php_darwin_read_config download.conf) \
+    --retry 0 --connect-timeout 2 --speed-time 3 --speed-limit 1024 \
+    -sSL -w '%{http_code}' "$1" -o "$2") || result=$?
+  if [ "$result" -ne 0 ] || [ "$status" != 200 ]; then
+    printf 'php-darwin: download failed (curl %s, HTTP %s): %s\n' \
+      "$result" "${status:-000}" "$1" >&2
+  fi
+  printf '%s\n' "${status:-000}"
+  return "$result"
 }
 
 php_darwin_release_manifest_has_current_platforms() {
@@ -2330,7 +2379,7 @@ php_darwin_refresh_release_manifest() {
   [ -n "$manifest_url" ] || manifest_url=$(php_darwin_release_manifest_url "$release_repository" "$version") || \
     php_darwin_die 'could not construct the release manifest URL'
   manifest_status=$(php_darwin_fetch_release_manifest "$release_repository" "$version" \
-    "$release_manifest" "$manifest_url") || php_darwin_die "could not request $manifest_url"
+    "$release_manifest" "${PHP_DARWIN_MANIFEST_URL:-}") || php_darwin_die "could not request $manifest_url"
   [ "$manifest_status" = 200 ] || \
     php_darwin_die "could not fetch the PHP $version release manifest (HTTP $manifest_status)"
   php_darwin_use_release_manifest "$release_manifest" || \
@@ -2339,40 +2388,42 @@ php_darwin_refresh_release_manifest() {
 }
 
 php_darwin_download_release_archive() {
-  local archive_curl_status
   local archive_http_status
+  local mirror_url
+  local urls=()
 
   release_archive_error=
   release_url=${PHP_DARWIN_RELEASE_URL:-https://github.com/$release_repository/releases/download/php-$version/$manifest_download_asset}
-  # Do not retry a retired immutable name: a single 404 should immediately
-  # fall through to the current manifest instead of consuming the fetch budget.
-  # Leave HTTP errors to the status check. curl can then retry every transport
-  # failure (including truncated transfers) without retrying a retired 404.
-  archive_http_status=$(curl --config <(php_darwin_read_config download.conf) \
-    -sSL -w '%{http_code}' "$release_url" -o "$archive")
-  archive_curl_status=$?
-  if [ "$archive_curl_status" -ne 0 ]; then
-    if [ "$archive_http_status" = 404 ]; then
-      release_archive_error=not-found
-    else
-      release_archive_error=download
+  urls+=("$release_url")
+  if [ -z "${PHP_DARWIN_RELEASE_URL:-}" ] || [ -n "${PHP_DARWIN_MIRROR_URL:-}" ]; then
+    mirror_url=$(php_darwin_release_mirror "$release_repository" "$version") || return 1
+    [ -z "$mirror_url" ] || urls+=("$mirror_url/$manifest_download_asset")
+    if [ -n "$mirror_url" ] && [ "${PHP_DARWIN_PREFER_MIRROR:-false}" = true ]; then
+      urls=("$mirror_url/$manifest_download_asset" "$release_url")
     fi
-    return 1
   fi
-  [ "$archive_http_status" = 200 ] || {
-    if [ "$archive_http_status" = 404 ]; then
-      release_archive_error=not-found
-    else
-      release_archive_error=download
+  release_archive_error=not-found
+  for release_url in "${urls[@]}"; do
+    if ! archive_http_status=$(php_darwin_request_release "$release_url" "$archive"); then
+      [ "$release_archive_error" = checksum ] || release_archive_error=download
+      continue
     fi
-    return 1
-  }
-  php_darwin_start_archive_hash "$archive"
-  php_darwin_wait_for_archive_hash
-  [ "$actual_hash" = "$expected_hash" ] || {
+    if [ "$archive_http_status" != 200 ]; then
+      if [ "$archive_http_status" != 404 ] && [ "$release_archive_error" != checksum ]; then
+        release_archive_error=download
+      fi
+      continue
+    fi
+    php_darwin_start_archive_hash "$archive"
+    php_darwin_wait_for_archive_hash
+    if [ "$actual_hash" = "$expected_hash" ]; then
+      release_archive_error=
+      return 0
+    fi
+    printf 'php-darwin: checksum mismatch from %s; trying the next origin\n' "$release_url" >&2
     release_archive_error=checksum
-    return 1
-  }
+  done
+  return 1
 }
 
 php_darwin_set_phase fetch

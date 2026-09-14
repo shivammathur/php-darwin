@@ -355,6 +355,11 @@ if [ "${#upload_files[@]}" -gt 0 ]; then
   gh release upload "$tag" "${upload_files[@]}" --repo "$release_repository" || \
     php_darwin_die "could not upload release archives to $tag"
 fi
+# Verify the independent fallback before advertising the new GitHub release.
+if [ "${PHP_DARWIN_MIRROR_REQUIRED:-false}" = true ] || [ -n "${CF_R2_AWS_ACCESS_KEY_ID:-}" ]; then
+  PHP_VERSION="$version" bash "$script_dir/mirror-release.sh" "$staging" || \
+    php_darwin_die "could not mirror the verified release $tag"
+fi
 mutable_mutation_started=true
 gh release upload "$tag" "$installer" --clobber --repo "$release_repository" || \
   php_darwin_die "could not upload the release installer to $tag"
