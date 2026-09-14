@@ -12079,5 +12079,117 @@
       "result": "success",
       "coverage": "Preserved PEAR/config through reinstall and rollback, HTTP-error body and R2 recovery, PHP 5.6/8.4 on ARM and Intel"
     }
-  ]
+  ],
+  "publication": {
+    "source_commit": "20cb965455e100911b13b2a82f0439ab7d222a11",
+    "publish_url": "https://github.com/shivammathur/php-darwin/actions/runs/34888578478",
+    "versions_verified": 13,
+    "origins": [
+      "GitHub",
+      "R2"
+    ],
+    "result": "success",
+    "live_run_url": "https://github.com/shivammathur/test-setup-php/actions/runs/34888637054",
+    "scope": "Complete setup-php action, tools:none, update:true; no replacement wrapper or archive/manifest prefetch before installation. Post-install QA compares executed installer bytes with source generated from the public manifest, then checks provenance, trust, PHP and every cached extension.",
+    "observations": [
+      {
+        "os": "macos-14",
+        "php": "7.4",
+        "action_seconds": 4.0,
+        "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34888637054/job/104125676054",
+        "conclusion": "success"
+      },
+      {
+        "os": "macos-14",
+        "php": "8.6",
+        "action_seconds": 5.0,
+        "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34888637054/job/104125676182",
+        "conclusion": "success"
+      },
+      {
+        "os": "macos-15",
+        "php": "7.4",
+        "action_seconds": 9.0,
+        "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34888637054/job/104125676114",
+        "conclusion": "success"
+      },
+      {
+        "os": "macos-15",
+        "php": "8.6",
+        "action_seconds": 5.0,
+        "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34888637054/job/104125676045",
+        "conclusion": "success"
+      },
+      {
+        "os": "macos-26",
+        "php": "7.4",
+        "action_seconds": 6.0,
+        "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34888637054/job/104125675980",
+        "conclusion": "success"
+      },
+      {
+        "os": "macos-26",
+        "php": "8.6",
+        "action_seconds": 4.0,
+        "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34888637054/job/104125676183",
+        "conclusion": "success"
+      },
+      {
+        "os": "macos-latest",
+        "php": "7.4",
+        "action_seconds": 6.0,
+        "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34888637054/job/104125676139",
+        "conclusion": "success"
+      },
+      {
+        "os": "macos-latest",
+        "php": "8.6",
+        "action_seconds": 4.0,
+        "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34888637054/job/104125676150",
+        "conclusion": "success"
+      },
+      {
+        "os": "macos-15-intel",
+        "php": "7.4",
+        "action_seconds": 12.0,
+        "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34888637054/job/104125676037",
+        "conclusion": "success"
+      },
+      {
+        "os": "macos-15-intel",
+        "php": "8.6",
+        "action_seconds": 6.0,
+        "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34888637054/job/104125676206",
+        "conclusion": "success"
+      },
+      {
+        "os": "macos-26-intel",
+        "php": "7.4",
+        "action_seconds": 10.0,
+        "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34888637054/job/104125676136",
+        "conclusion": "success"
+      },
+      {
+        "os": "macos-26-intel",
+        "php": "8.6",
+        "action_seconds": 7.0,
+        "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34888637054/job/104125676064",
+        "conclusion": "success"
+      },
+      {
+        "os": "xcode-27",
+        "php": "7.4",
+        "action_seconds": 5.0,
+        "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34888637054/job/104125676071",
+        "conclusion": "success"
+      },
+      {
+        "os": "xcode-27",
+        "php": "8.6",
+        "action_seconds": 3.0,
+        "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34888637054/job/104125676148",
+        "conclusion": "success"
+      }
+    ]
+  }
 }

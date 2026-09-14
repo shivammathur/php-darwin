@@ -26,6 +26,34 @@ for every legacy PHP version on Intel runners.
 
 No payload rebuild or setup-php change is required.
 
+## Published installer verification
+
+[Publication passed for all 13 PHP releases](https://github.com/shivammathur/php-darwin/actions/runs/34888578478),
+covering PHP 5.6 through 8.6. GitHub and R2 installer bytes were checked against
+source commit `20cb965`; existing payload archives were reused.
+
+[All 14 live installations passed](https://github.com/shivammathur/test-setup-php/actions/runs/34888637054)
+(plus the publication gate). These use normal `setup-php@develop` downloads with
+no installer substitution and no archive/manifest prefetch before installation.
+Every job compares the executed installer with the source-generated release
+installer and verifies cache provenance, native Homebrew trust, PHP and each
+cached extension after the timed action. `tools: none` excludes Composer and tools.
+
+| Runner | PHP 7.4 action | PHP 8.6 action |
+|---|---:|---:|
+| macos-14 | 4 s | 5 s |
+| macos-15 | 9 s | 5 s |
+| macos-26 | 6 s | 4 s |
+| macos-latest | 6 s | 4 s |
+| macos-15-intel | 12 s | 6 s |
+| macos-26-intel | 10 s | 7 s |
+| xcode-27 | 5 s | 3 s |
+
+PHP 8.6 finished below 10 seconds on every runner in this live sample (3–7 seconds).
+PHP 7.4 took 4–12 seconds. These are single live samples; the repeated comparison
+below captures the larger Intel variance and does not support a universal sub-10s
+guarantee. Main-branch [source CI also passed](https://github.com/shivammathur/php-darwin/actions/runs/34888572656).
+
 ## Complete action before and after
 
 [All 84 jobs passed](https://github.com/shivammathur/test-setup-php/actions/runs/34886166287).
