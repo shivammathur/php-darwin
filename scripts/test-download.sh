@@ -52,6 +52,11 @@ loop do
       while (line = connection.gets) && line != "\r\n"; end
       File.open("#{directory}/requests", 'a') { |f| f.puts(route) }
       mode = route.split('/')[1]
+      if mode == 'error-stall'
+        connection.write("HTTP/1.1 503 Fixture\r\nContent-Length: 1000000\r\nConnection: close\r\n\r\n")
+        sleep 5
+        next
+      end
       sleep 5 if mode == 'stall'
       status = {'missing'=>404,'unavailable'=>503}.fetch(mode, 200)
       body = File.read("#{directory}/#{route.end_with?('manifest.json') ? 'manifest' : 'fixture'}")
@@ -73,13 +78,18 @@ done
 [ -s "$work_dir/port" ] || php_darwin_die 'download fixture server did not start'
 base=http://127.0.0.1:$(cat "$work_dir/port")
 export PHP_DARWIN_MIRROR_URL="$base/good"
-for route in unavailable missing partial corrupt stall; do
+for route in unavailable missing partial corrupt stall error-stall; do
   PHP_DARWIN_RELEASE_URL="$base/$route/archive"
   : > "$work_dir/requests"
   php_darwin_download_release_archive || php_darwin_die "$route did not recover from the mirror"
   cmp -s "$archive" "$work_dir/fixture" || php_darwin_die "$route retained invalid bytes"
   [ "$(wc -l < "$work_dir/requests" | tr -d ' ')" = 2 ] || php_darwin_die "$route retried the broken origin"
 done
+# An error response must fail over on its headers, without waiting for its body.
+PHP_DARWIN_RELEASE_URL="$base/error-stall/archive"
+SECONDS=0
+php_darwin_download_release_archive || php_darwin_die 'slow error body did not recover'
+[ "$SECONDS" -lt 3 ] || php_darwin_die 'waited for an HTTP error response body'
 export PHP_DARWIN_PREFER_MIRROR=true
 : > "$work_dir/requests"
 PHP_DARWIN_RELEASE_URL="$base/unavailable/archive"

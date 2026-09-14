@@ -780,10 +780,15 @@ php_darwin_request_release() {
   esac
   status=$(php_darwin_timed "download.$origin" curl --config <(php_darwin_read_config download.conf) \
     --retry 0 --connect-timeout 2 --speed-time 3 --speed-limit 1024 \
-    -sSL -w '%{http_code}' "$1" -o "$2") || result=$?
+    -fsSL -w '%{http_code}' "$1" -o "$2") || result=$?
   if [ "$result" -ne 0 ] || [ "$status" != 200 ]; then
     printf 'php-darwin: download failed (curl %s, HTTP %s): %s\n' \
       "$result" "${status:-000}" "$1" >&2
+  fi
+  # HTTP errors are classified by the caller (especially retired 404 assets).
+  # --fail stops at their headers instead of downloading a slow error body.
+  if [ "$result" -eq 22 ] && [[ "$status" =~ ^[45][0-9][0-9]$ ]]; then
+    result=0
   fi
   printf '%s\n' "${status:-000}"
   return "$result"
