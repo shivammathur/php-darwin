@@ -34,7 +34,7 @@ builds from source on the same runner; macOS 14 ARM64 remains the cache minimum
 even after its bottles stop being published.
 
 During cache builds, missing PHP, library, Xdebug, and PCOV bottles are built with
-`brew install --build-bottle` and saved individually in the `source-bottles`
+`brew install --build-bottle` and saved individually in the `cache`
 GitHub Release. Each `php-darwin-source-v1-<key>.tar` asset contains the native
 Homebrew bottle and `metadata.json` with its SHA-256 and complete build inputs.
 Later runs restore them with Homebrew, including its normal linking and

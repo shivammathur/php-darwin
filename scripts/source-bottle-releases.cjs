@@ -41,7 +41,7 @@ function unpack(archive, directory, key) {
 
 class ReleaseCache {
   constructor({ repository = process.env.GITHUB_REPOSITORY, token = process.env.GH_TOKEN,
-    tag = 'source-bottles', request = fetch, versionsToPrune = olderVersions } = {}) {
+    tag = 'cache', request = fetch, versionsToPrune = olderVersions } = {}) {
     if (!/^shivammathur\/[A-Za-z0-9_.-]+$/.test(repository || '') || !token) {
       throw new Error('Release source cache requires a shivammathur repository and GH_TOKEN');
     }
@@ -69,7 +69,7 @@ class ReleaseCache {
     let release = await this.api(`releases/tags/${encodeURIComponent(this.tag)}`, { allow: [404] });
     if (!release && create) {
       release = await this.api('releases', { method: 'POST', allow: [422], body: {
-        tag_name: this.tag, target_commitish: 'main', name: 'Reusable source bottles',
+        tag_name: this.tag, target_commitish: 'main', name: this.tag,
         body: 'Homebrew source bottles and build-input metadata used by PHP cache builds.',
         prerelease: true, make_latest: 'false',
       } });

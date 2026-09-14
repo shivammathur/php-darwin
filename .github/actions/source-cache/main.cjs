@@ -7,7 +7,7 @@ async function main() {
   if (process.platform !== 'darwin' || process.env.GITHUB_ACTIONS !== 'true') {
     throw new Error('Source bottle installation requires a macOS Actions runner');
   }
-  const cache = new ReleaseCache({ tag: process.env.INPUT_RELEASE || 'source-bottles' });
+  const cache = new ReleaseCache({ tag: process.env.INPUT_RELEASE || 'cache' });
   if (process.argv[2] === 'install-extensions') {
     const [abstract, phpPrefix, ...formulae] = process.argv.slice(3);
     const context = extensionInputs(abstract, phpPrefix, process.env.BUILD, process.env.TS);

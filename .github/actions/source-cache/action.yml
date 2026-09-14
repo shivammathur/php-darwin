@@ -3,7 +3,7 @@ description: Reuse individually cached Homebrew source builds and build only mis
 inputs:
   release:
     description: GitHub Release tag used to store source bottles
-    default: source-bottles
+    default: cache
   stage:
     description: Install PHP or build and cache coverage extensions (php or extensions)
     default: php
