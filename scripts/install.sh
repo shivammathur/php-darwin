@@ -1847,20 +1847,13 @@ fi
   exit 1
 }
 
-comparison_status=
-repository_slug=${repository#https://github.com/}
-repository_slug=${repository_slug%.git}
-if [[ "$repository_slug" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
-  comparison_status=$(curl --retry 2 -fsSL \
-    "https://api.github.com/repos/$repository_slug/compare/$existing_commit...$cached_commit" 2>/dev/null | \
-    jq -er '.status | select(. == "ahead" or . == "behind" or . == "identical" or . == "diverged")' \
-      2>/dev/null) || comparison_status=
-fi
-if [ "$comparison_status" = ahead ]; then
+# Both snapshots are already present locally. Never make a network request to
+# order them: shallow histories may be incomplete, in which case preserve the
+# installed tap and use the requested snapshot only for this transaction.
+if git -C "$cached_tap_path" merge-base --is-ancestor "$existing_commit" "$cached_commit" 2>/dev/null || \
+  git -C "$tap_path" merge-base --is-ancestor "$existing_commit" "$cached_commit" 2>/dev/null; then
   printf 'replace\n'
 else
-  # Use an older, rebased, or unorderable cache snapshot only for this install.
-  # Restoring the existing cache-owned tap avoids a persistent downgrade.
   printf 'temporary\n'
 fi
 )
@@ -2299,6 +2292,138 @@ php_darwin_timed archive.extract.tar tar --ignore-zeros -xkmpf "$archive" --no-s
 extract_status=$?
 restore_permissions || exit 1
 exit "$extract_status"
+)
+
+# Source: scripts/install-state.sh
+php_darwin_install_state() (
+
+
+php_darwin_ruby - "$@" <<'PHP_DARWIN_INSTALL_STATE_RUBY'
+begin
+  mode, prefix, packages_file, selected_file, output_file, linked_file = ARGV
+  packages = File.readlines(packages_file, chomp: true).map do |line|
+    name, target, keg_only, extra = line.split("\t", -1)
+    raise 'invalid package record' unless extra.nil? && %w[true false].include?(keg_only) &&
+      name && !%w[. ..].include?(name) && name.match?(/\A[a-zA-Z0-9@+_.-]+\z/) &&
+      target && target.match?(%r{\A\.\./Cellar/#{Regexp.escape(name)}/[^/\s]+\z}) &&
+      !%w[. ..].include?(target.split('/').last)
+    [name, target, keg_only]
+  end
+  selected = File.readlines(selected_file, chomp: true).each_with_object({}) { |name, set| set[name] = true }
+  case mode
+  when 'plan'
+    existing_names = selected.keys.each_with_object({}) { |keg, set| set[keg.split('/')[1]] = true }
+    changed, linked = [], []
+    packages.each do |name, target, keg_only|
+      next if selected.key?(target.delete_prefix('../'))
+      changed << name
+      next unless keg_only == 'false' && existing_names.key?(name)
+      path = File.join(prefix, 'var/homebrew/linked', name)
+      next unless File.symlink?(path)
+      previous = File.readlink(path)
+      raise "invalid linked dependency target for #{name}" unless previous.match?(%r{\A\.\./\.\./\.\./Cellar/#{Regexp.escape(name)}/[^/\s]+\z})
+      linked << name
+    end
+    File.write(output_file, changed.map { |name| name + "\n" }.join)
+    File.write(linked_file, linked.map { |name| name + "\n" }.join)
+  when 'receipts'
+    replacements = []
+    packages.each do |name, target, _|
+      raise "cache did not install #{target}" unless File.directory?(File.join(prefix, target.delete_prefix('../')))
+      next unless selected.key?(name)
+      path = File.join(prefix, 'opt', name)
+      stat = begin
+        File.lstat(path)
+      rescue Errno::ENOENT
+        nil
+      end
+      raise "Homebrew opt path is not a symlink: #{path}" if stat && !stat.symlink?
+      previous = stat && File.readlink(path)
+      next if previous == target
+      raise "invalid previous Homebrew opt link for #{name}" if previous && previous.match?(/[\r\n\t]/)
+      replacements << [name, path, target, previous]
+    end
+    # Finish validation before mutation and journal each old target before
+    # replacing it. The installer's existing rollback consumes this same file.
+    File.open(output_file, 'a') do |journal|
+      replacements.each do |name, path, target, previous|
+        if previous
+          journal.puts([name, previous].join("\t"))
+          journal.flush
+        end
+        File.unlink(path) if previous
+        File.symlink(target, path)
+      end
+    end
+  else
+    raise 'invalid installation state operation'
+  end
+rescue SystemCallError, RuntimeError, ArgumentError => error
+  warn "php-darwin: installation state: #{error.message}"
+  exit 1
+end
+PHP_DARWIN_INSTALL_STATE_RUBY
+)
+
+# Source: scripts/verify-runtime.sh
+php_darwin_verify_runtime() (
+
+prefix=${1:?}
+formula=${2:?}
+expected_version=${3:?}
+extensions=${4:?}
+php_bin="$prefix/opt/$formula/bin/php"
+php_config="$prefix/opt/$formula/bin/php-config"
+[ -f "$php_bin" ] && [ -x "$php_bin" ] && [ ! -L "$php_bin" ] || {
+  printf 'Cached PHP binary is missing or not executable\n' >&2
+  exit 1
+}
+[ -f "$php_config" ] && [ ! -L "$php_config" ] || {
+  printf 'Cached php-config is missing or is a symlink\n' >&2
+  exit 1
+}
+
+# Read the same literal assignment used by setup-php's php_semver. Never source
+# php-config or start PHP to read a version already authenticated by the cache.
+installed_version=
+while IFS= read -r config_line; do
+  case "$config_line" in
+    version=\"*\")
+      [ -z "$installed_version" ] || { printf 'Duplicate php-config version\n' >&2; exit 1; }
+      installed_version=${config_line#version=\"}
+      installed_version=${installed_version%\"}
+      ;;
+  esac
+done < "$php_config"
+[ "$installed_version" = "$expected_version" ] || {
+  printf 'Cached php-config version mismatch: expected %s, found %s\n' \
+    "$expected_version" "$installed_version" >&2
+  exit 1
+}
+while IFS=$'\t' read -r extension extension_type extension_path extra; do
+  [[ "$extension" =~ ^[A-Za-z0-9_]+$ ]] && [ -z "$extra" ] && \
+    [[ "$extension_type" =~ ^(extension|zend_extension)$ ]] && \
+    [[ "$extension_path" =~ ^(Cellar|lib)/ ]] && \
+    [[ ! "$extension_path" =~ (^|/)\.\.(/|$) ]] || exit 1
+  [ -s "$prefix/$extension_path" ] && [ ! -L "$prefix/$extension_path" ] || {
+    printf 'Cached %s module is missing or is a symlink\n' "$extension" >&2
+    exit 1
+  }
+done < "$extensions"
+
+# Release QA tests PHP and each extension on every supported runner before
+# publication. Keep explicit load probes available for installation diagnostics.
+if [ "${PHP_DARWIN_VERIFY_RUNTIME:-false}" = true ]; then
+  installed_version=$("$php_bin" -n -r 'echo PHP_VERSION;') || exit 1
+  [ "$installed_version" = "$expected_version" ] || exit 1
+  while IFS=$'\t' read -r extension extension_type extension_path; do
+    "$php_bin" -n -d "$extension_type=$prefix/$extension_path" -r \
+      "if (!extension_loaded('$extension')) { exit(1); }" || {
+      printf 'Cached %s module does not load\n' "$extension" >&2
+      exit 1
+    }
+  done < "$extensions"
+fi
 )
 
 # Source: scripts/install-package.sh
@@ -3227,39 +3352,38 @@ php_darwin_timed homebrew.inventory php_darwin_existing_paths "$brew_prefix" "$e
   "$archive_roots_file" \
   "$existing_kegs" "$managed_paths_file" "$package_kegs_file" || \
   php_darwin_die 'could not record existing Homebrew paths'
-# Existing Homebrew links are excluded from extraction and remain owned by the
-# user's installed keg. Verify and roll back only links the cache will add.
+# Preserved PEAR and configuration files were moved aside for rollback. Do not
+# extract replacement copies that would immediately be discarded on success.
+if [ "$pear_backed_up" = true ]; then
+  printf '%s\n' "$pear_path" >> "$exclude_file" || exit 1
+fi
+while IFS= read -r postinstall_path; do
+  if [ -e "$postinstall_backup_dir/$postinstall_path" ] || [ -L "$postinstall_backup_dir/$postinstall_path" ]; then
+    printf '%s\n' "$postinstall_path" >> "$exclude_file" || exit 1
+  fi
+done < "$postinstall_paths_file"
+# Existing paths (including complete excluded subtrees) remain user-owned.
+# Verify and roll back only links the cache will add.
 awk -F '\t' '
-  NR == FNR { excluded[$0]=1; next }
-  !($1 in excluded)
+  FILENAME == ARGV[1] { excluded[$0]=1; next }
+  {
+    path=$1
+    while (1) {
+      if (path in excluded) next
+      if (!sub("/[^/]+$", "", path)) break
+    }
+    print
+  }
 ' "$exclude_file" "$links_file" > "$installed_links_file" || \
   php_darwin_die 'could not select Homebrew links installed by the cache'
 [ -s "$installed_links_file" ] || php_darwin_die 'cache extraction would not add any Homebrew links'
-: > "$changed_formulae_file"
-while IFS=$'\t' read -r package_name opt_target keg_only; do
-  keg_relative=${opt_target#../}
-  if ! grep -Fxq "$keg_relative" "$existing_kegs"; then
-    printf '%s\n' "$package_name" >> "$changed_formulae_file"
-    package_preexisting=false
-    if awk -v prefix="Cellar/$package_name/" 'index($0, prefix) == 1 { found=1; exit } END { exit !found }' \
-      "$existing_kegs"; then
-      package_preexisting=true
-    fi
-    if [ "$package_name" != "$formula" ] && [ "$keg_only" = false ] && \
-      [ "$package_preexisting" = true ]; then
-      dependency_link="$brew_prefix/var/homebrew/linked/$package_name"
-      if [ -L "$dependency_link" ]; then
-        dependency_target=$(readlink "$dependency_link") || \
-          php_darwin_die "could not read the linked dependency $package_name"
-        case "$dependency_target" in "../../../Cellar/$package_name/"*) ;; *)
-          php_darwin_die "invalid linked dependency target for $package_name: $dependency_target"
-          ;;
-        esac
-        linked_dependency_references+=("$package_name")
-      fi
-    fi
-  fi
-done < "$packages_file"
+dependency_links_file="$tmp_dir/dependency-links.txt"
+php_darwin_timed homebrew.packages.plan php_darwin_install_state plan "$brew_prefix" \
+  "$packages_file" "$existing_kegs" "$changed_formulae_file" "$dependency_links_file" || \
+  php_darwin_die 'could not plan cached Homebrew package changes'
+while IFS= read -r package_name; do
+  [ "$package_name" = "$formula" ] || linked_dependency_references+=("$package_name")
+done < "$dependency_links_file"
 [ -s "$changed_formulae_file" ] || php_darwin_die 'cache extraction would not add any Homebrew kegs'
 grep -Fxq "$formula" "$changed_formulae_file" || php_darwin_die "cache extraction would not add $formula"
 if [ "${#linked_dependency_references[@]}" -gt 0 ]; then
@@ -3303,30 +3427,9 @@ metadata="$brew_prefix/$internal_metadata_path"
 cmp -s "$metadata" "$metadata_copy" || \
   php_darwin_die 'extracted installation metadata changed during archive extraction'
 rm -f "$metadata" || php_darwin_die 'could not remove embedded installation metadata'
-while IFS=$'\t' read -r package_name opt_target keg_only; do
-  keg_relative=${opt_target#../}
-  [ -d "$brew_prefix/$keg_relative" ] || php_darwin_die "cache did not install $keg_relative"
-  if grep -Fxq "$package_name" "$changed_formulae_file"; then
-    opt_path="$brew_prefix/opt/$package_name"
-    if [ -e "$opt_path" ] && [ ! -L "$opt_path" ]; then
-      php_darwin_die "Homebrew opt path is not a symlink: $opt_path"
-    fi
-    if [ ! -L "$opt_path" ] || [ "$(readlink "$opt_path")" != "$opt_target" ]; then
-      if [ -L "$opt_path" ]; then
-        previous_opt_target=$(readlink "$opt_path") || \
-          php_darwin_die "could not read the previous Homebrew opt link for $package_name"
-        case "$previous_opt_target" in *$'\n'*|*$'\r'*|*$'\t'*)
-          php_darwin_die "unsupported previous Homebrew opt link for $package_name"
-          ;;
-        esac
-        printf '%s\t%s\n' "$package_name" "$previous_opt_target" >> "$previous_opt_links" || \
-          php_darwin_die "could not back up the Homebrew opt link for $package_name"
-      fi
-      rm -f "$opt_path" || php_darwin_die "could not replace the Homebrew opt link for $package_name"
-      ln -s "$opt_target" "$opt_path" || php_darwin_die "could not create the Homebrew opt link for $package_name"
-    fi
-  fi
-done < "$packages_file"
+php_darwin_timed homebrew.packages.receipts php_darwin_install_state receipts "$brew_prefix" \
+  "$packages_file" "$changed_formulae_file" "$previous_opt_links" || \
+  php_darwin_die 'could not install cached Homebrew package opt links'
 if [ -n "$tap_pid" ] && [ ! -f "$tap_path/Formula/$formula.rb" ]; then
   php_darwin_wait_for_tap
 fi
@@ -3357,7 +3460,8 @@ php_darwin_check_installed_dependencies > "$missing_log" 2>&1 &
 missing_pid=$!
 
 php_darwin_set_phase homebrew.configure
-[ -d "$brew_prefix/$pear_path" ] || php_darwin_die "cache did not install $pear_path"
+[ "$pear_backed_up" = true ] || [ -d "$brew_prefix/$pear_path" ] || \
+  php_darwin_die "cache did not install $pear_path"
 while IFS= read -r postinstall_path; do
   [ -n "$postinstall_path" ] || continue
   if [ -e "$postinstall_backup_dir/$postinstall_path" ] || \
@@ -3396,18 +3500,10 @@ php_darwin_timed homebrew.links.verify php_darwin_verify_links "$brew_prefix" "$
   php_darwin_die 'cached Homebrew links did not match the archive metadata'
 
 php_darwin_set_phase runtime.verify
-php_bin="$brew_prefix/opt/$formula/bin/php"
-[ -x "$php_bin" ] || php_darwin_die "PHP binary missing after cache extraction: $php_bin"
-installed_semver=$($php_bin -n -r 'echo PHP_VERSION;' 2>/dev/null) || \
-  php_darwin_die 'cached PHP could not report its version'
-[ "${installed_semver%.*}" = "$version" ] || php_darwin_die "cache installed PHP $installed_semver for requested $version"
-while IFS=$'\t' read -r extension extension_type extension_path; do
-  [ -f "$brew_prefix/$extension_path" ] && [ ! -L "$brew_prefix/$extension_path" ] || \
-    php_darwin_die "cached $extension module is missing after extraction"
-  "$php_bin" -n -d "$extension_type=$brew_prefix/$extension_path" -r \
-    "if (!extension_loaded('$extension')) { exit(1); }" || \
-    php_darwin_die "cached $extension module does not load"
-done < "$extension_paths_inventory"
+expected_runtime_version=$metadata_php_semver
+[ "$channel" != nightly ] || expected_runtime_version="$metadata_php_semver-dev"
+php_darwin_verify_runtime "$brew_prefix" "$formula" "$expected_runtime_version" \
+  "$extension_paths_inventory" || php_darwin_die 'cached PHP installation validation failed'
 php_darwin_set_phase homebrew.dependencies
 php_darwin_resolve_tap_and_dependencies
 runtime_verified=true

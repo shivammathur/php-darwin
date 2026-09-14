@@ -10,6 +10,8 @@ scripts/tap-action.sh
 scripts/verify-links.sh
 scripts/existing-paths.sh
 scripts/extract.sh
+scripts/install-state.sh
+scripts/verify-runtime.sh
 conf/archive-paths
 conf/download.conf
 conf/package.json
