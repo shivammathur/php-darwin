@@ -16,6 +16,28 @@ function family(inputs) {
   }));
 }
 
+function releaseAsset(metadata) {
+  const { inputs, key } = metadata;
+  const hash = key.match(/^php-darwin-source-v1-([0-9a-f]{64})$/)?.[1];
+  const variant = inputs.context ? `.${inputs.context.build}-${inputs.context.ts}` : '';
+  const stem = `${inputs.formula.split('/').at(-1)}--${inputs.version}` +
+    `.macos-${inputs.environment.macos}.${inputs.environment.arch}${variant}`;
+  if (!hash || !/^[A-Za-z0-9@+_.-]+$/.test(stem)) throw new Error('Invalid source bottle asset name');
+  // Keep the full input key and cleanup family in the filename. GitHub displays
+  // the shorter, readable label; neither hash needs to be recovered from it.
+  return { name: `${stem}.source-v1-${family(inputs)}.${hash}.tar`, label: `${stem}.${hash.slice(0, 12)}.tar` };
+}
+
+function assetIdentity(asset) {
+  const match = asset.name.match(/^[A-Za-z0-9@+_.-]+--([A-Za-z0-9+_.-]+)\.macos-[0-9]+\.[A-Za-z0-9_.-]+\.source-v1-([0-9a-f]{64})\.([0-9a-f]{64})\.tar$/);
+  if (match) return { version: match[1], group: match[2], key: `php-darwin-source-v1-${match[3]}` };
+  // Read caches created before readable filenames were introduced.
+  if (/^php-darwin-source-v1-[0-9a-f]{64}\.tar$/.test(asset.name)) {
+    const label = asset.label?.match(/^source-v1:([0-9a-f]{64}):(.+)$/);
+    return { key: asset.name.slice(0, -4), group: label?.[1], version: label?.[2] };
+  }
+}
+
 function olderVersions(versions) {
   return JSON.parse(command('brew', ['ruby', '--', path.join(__dirname, 'source-bottle-prune.rb'),
     JSON.stringify(versions)]));
@@ -71,7 +93,7 @@ class ReleaseCache {
       release = await this.api('releases', { method: 'POST', allow: [422], body: {
         tag_name: this.tag, target_commitish: 'main', name: this.tag,
         body: 'Homebrew source bottles and build-input metadata used by PHP cache builds.',
-        prerelease: true, make_latest: 'false',
+        prerelease: false, make_latest: 'false',
       } });
       release ||= await this.api(`releases/tags/${encodeURIComponent(this.tag)}`);
     }
@@ -103,7 +125,7 @@ class ReleaseCache {
   async restoreCache([directory], key) {
     const release = await this.release();
     if (!release) return;
-    const asset = (await this.assets(release)).find(asset => asset.name === `${key}.tar`);
+    const asset = (await this.assets(release)).find(asset => assetIdentity(asset)?.key === key);
     if (!asset) return;
     await this.download(asset, directory, key);
     return key;
@@ -113,7 +135,7 @@ class ReleaseCache {
     readBottle(directory, key);
     const metadata = JSON.parse(fs.readFileSync(path.join(directory, 'metadata.json')));
     const group = family(metadata.inputs);
-    const label = `source-v1:${group}:${metadata.inputs.version}`;
+    const { name, label } = releaseAsset(metadata);
     const release = await this.release(true);
     const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'source-bottle-upload-'));
     try {
@@ -123,30 +145,28 @@ class ReleaseCache {
       // win this exact key; never clobber it or expose a partial pair of files.
       const response = await this.request(
         `https://uploads.github.com/repos/${this.repository}/releases/${release.id}/assets?` +
-        new URLSearchParams({ name: `${key}.tar`, label }), {
+        new URLSearchParams({ name, label }), {
           method: 'POST', headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/x-tar',
             'Content-Length': String(fs.statSync(archive).size) },
           body: fs.createReadStream(archive), duplex: 'half',
         });
       if (!response.ok && response.status !== 422) throw new Error(`Source bottle upload: HTTP ${response.status}`);
       const assets = await this.assets(release);
-      const saved = assets.find(asset => asset.name === `${key}.tar`);
+      const saved = assets.find(asset => asset.name === name);
       if (!saved) throw new Error('Uploaded source bottle is missing');
       // Read back the actual remote bytes before removing superseded versions.
       await this.download(saved, path.join(temporary, 'verified'), key);
-      const related = assets.filter(asset => asset.label?.startsWith(`source-v1:${group}:`));
-      const obsolete = this.versionsToPrune(related.map(asset => asset.label.split(':').slice(2).join(':')));
+      const related = assets.map(asset => ({ asset, identity: assetIdentity(asset) }))
+        .filter(entry => entry.identity?.group === group);
+      const obsolete = this.versionsToPrune(related.map(entry => entry.identity.version));
       if (obsolete.includes(metadata.inputs.version)) {
         // An older job can finish after a newer upload. Verify that replacement
         // too; its own uploader may have failed before completing read-back.
-        const newer = related.find(asset => !obsolete.includes(asset.label.split(':').slice(2).join(':')));
-        if (!/^php-darwin-source-v1-[0-9a-f]{64}\.tar$/.test(newer?.name || '')) {
-          throw new Error('Invalid replacement source bottle');
-        }
-        await this.download(newer, path.join(temporary, 'replacement'), newer.name.slice(0, -4));
+        const newer = related.find(entry => !obsolete.includes(entry.identity.version));
+        await this.download(newer.asset, path.join(temporary, 'replacement'), newer.identity.key);
       }
-      for (const asset of related) {
-        if (obsolete.includes(asset.label.split(':').slice(2).join(':'))) {
+      for (const { asset, identity } of related) {
+        if (obsolete.includes(identity.version)) {
           await this.api(`releases/assets/${asset.id}`, { method: 'DELETE', allow: [404] });
         }
       }
@@ -154,4 +174,4 @@ class ReleaseCache {
   }
 }
 
-module.exports = { ReleaseCache, family, unpack };
+module.exports = { ReleaseCache, family, releaseAsset, assetIdentity, unpack };

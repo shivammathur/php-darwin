@@ -35,8 +35,14 @@ even after its bottles stop being published.
 
 During cache builds, missing PHP, library, Xdebug, and PCOV bottles are built with
 `brew install --build-bottle` and saved individually in the `cache`
-GitHub Release. Each `php-darwin-source-v1-<key>.tar` asset contains the native
+stable GitHub Release. Asset labels show the package, version, macOS major,
+architecture, PHP variant when applicable, and a short build key, for example
+`xdebug@8.4--3.5.3.macos-14.arm64.release-nts.dc8af3b8dbdf.tar`.
+Download filenames retain the readable package information plus the full family
+and build hashes for exact matching and cleanup. Each asset contains the native
 Homebrew bottle and `metadata.json` with its SHA-256 and complete build inputs.
+The release lists packages compiled from source; upstream bottles are not copied
+into it. The cache release is stable but is not designated the latest release.
 Later runs restore them with Homebrew, including its normal linking and
 post-install configuration. Library bottles are shared across PHP versions;
 the four PHP variants have separate entries, as do their extension builds. For example, a PHP update reuses

@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { ReleaseCache, family } = require('./source-bottle-releases.cjs');
+const { ReleaseCache, family, releaseAsset, assetIdentity } = require('./source-bottle-releases.cjs');
 const { keyFor, readBottle } = require('./source-bottle-cache.cjs');
 const digest = value => crypto.createHash('sha256').update(value).digest('hex');
 
@@ -20,7 +20,7 @@ function fixture(t) {
     if (endpoint === 'releases' && options.method === 'POST') {
       const body = JSON.parse(options.body);
       assert.equal(body.make_latest, 'false');
-      assert.equal(body.prerelease, true);
+      assert.equal(body.prerelease, false);
       state.release = { id: 1 };
       return json(state.release, 201);
     }
@@ -59,7 +59,7 @@ function fixture(t) {
     fs.writeFileSync(path.join(directory, 'metadata.json'), JSON.stringify({
       schema: 1, key, file, sha256: digest(contents), inputs,
     }));
-    return { directory, key };
+    return { directory, key, ...releaseAsset(JSON.parse(fs.readFileSync(path.join(directory, 'metadata.json')))) };
   }
   return { root, state, cache, bottle };
 }
@@ -76,13 +76,13 @@ test('persistent release round-trip and pruning only older versions in the same 
   await f.cache.saveCache([intel.directory], intel.key);
   const current = f.bottle('2');
   await f.cache.saveCache([current.directory], current.key);
-  assert.deepEqual(f.state.deleted, [`${old.key}.tar`]);
+  assert.deepEqual(f.state.deleted, [old.name]);
   assert.equal(await f.cache.restoreCache([restored], old.key), undefined);
-  assert.ok(f.state.assets.some(asset => asset.name === `${intel.key}.tar`));
+  assert.ok(f.state.assets.some(asset => asset.name === intel.name));
   // An older job finishing later removes its own superseded version, never the newer one.
   await f.cache.saveCache([old.directory], old.key);
-  assert.ok(f.state.assets.some(asset => asset.name === `${current.key}.tar`));
-  assert.ok(!f.state.assets.some(asset => asset.name === `${old.key}.tar`));
+  assert.ok(f.state.assets.some(asset => asset.name === current.name));
+  assert.ok(!f.state.assets.some(asset => asset.name === old.name));
 });
 
 test('failed remote verification preserves old versions', async t => {
@@ -113,7 +113,7 @@ test('a late older build does not prune against an unverified newer upload', asy
   const current = f.bottle('2');
   await assert.rejects(f.cache.saveCache([current.directory], current.key), /503/);
   f.state.failDownload = false;
-  f.state.assets.find(asset => asset.name === `${current.key}.tar`).data = Buffer.from('corrupt');
+  f.state.assets.find(asset => asset.name === current.name).data = Buffer.from('corrupt');
   await assert.rejects(f.cache.saveCache([old.directory], old.key), /checksum/);
   assert.deepEqual(f.state.deleted, []);
 });
@@ -134,4 +134,48 @@ test('cleanup keeps PHP extension ABI families separate', () => {
   assert.notEqual(family(inputs), family({ ...inputs, context: { ...inputs.context, ts: 'zts' } }));
   assert.notEqual(family(inputs), family({ ...inputs, context: { ...inputs.context, build: 'debug' } }));
   assert.equal(family(inputs), family({ ...inputs, context: { ...inputs.context, php: { version: '8.4.2' } } }));
+});
+
+test('readable names preserve full cache identity independently of display labels', () => {
+  const inputs = { formula: 'shivammathur/extensions/xdebug@8.4', version: '3.5.3_1',
+    environment: { arch: 'arm64', macos: '14', prefix: '/opt/homebrew' },
+    context: { build: 'debug', ts: 'zts' } };
+  const key = keyFor(inputs);
+  const asset = releaseAsset({ inputs, key });
+  assert.equal(asset.label, `xdebug@8.4--3.5.3_1.macos-14.arm64.debug-zts.${key.slice(-64, -52)}.tar`);
+  assert.ok(asset.name.startsWith('xdebug@8.4--3.5.3_1.macos-14.arm64.debug-zts.'));
+  assert.deepEqual(assetIdentity({ ...asset, label: 'Edited in GitHub' }),
+    { version: inputs.version, group: family(inputs), key });
+  assert.equal(assetIdentity({ name: asset.label }), undefined);
+});
+
+test('legacy assets restore and are pruned when a readable replacement is verified', async t => {
+  const f = fixture(t);
+  const old = f.bottle('1');
+  await f.cache.saveCache([old.directory], old.key);
+  const legacy = f.state.assets[0];
+  const identity = assetIdentity(legacy);
+  legacy.name = `${old.key}.tar`;
+  legacy.label = `source-v1:${identity.group}:1`;
+  assert.equal(await f.cache.restoreCache([path.join(f.root, 'legacy')], old.key), old.key);
+  const current = f.bottle('2');
+  await f.cache.saveCache([current.directory], current.key);
+  assert.deepEqual(f.state.deleted, [legacy.name]);
+  assert.deepEqual(f.state.assets.map(asset => asset.name), [current.name]);
+});
+
+test('same-version builds retain distinct inputs and ignore edited display labels', async t => {
+  const f = fixture(t);
+  const first = f.bottle('1', { recipe: 'first' });
+  const second = f.bottle('1', { recipe: 'second' });
+  await f.cache.saveCache([first.directory], first.key);
+  f.state.assets[0].label = 'Custom display name';
+  await f.cache.saveCache([second.directory], second.key);
+  assert.equal(f.state.assets.length, 2);
+  assert.deepEqual(f.state.deleted, []);
+  assert.equal(await f.cache.restoreCache([path.join(f.root, 'first')], first.key), first.key);
+  assert.equal(await f.cache.restoreCache([path.join(f.root, 'second')], second.key), second.key);
+  const next = f.bottle('2');
+  await f.cache.saveCache([next.directory], next.key);
+  assert.deepEqual(f.state.deleted.sort(), [first.name, second.name].sort());
 });
