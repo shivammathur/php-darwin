@@ -21,9 +21,9 @@ function keyFor(inputs) {
   return `php-darwin-source-v1-${digest(JSON.stringify(inputs))}`;
 }
 
-function inspect(mode, formulae) {
+function inspect(mode, formulae, forceSource = false) {
   return JSON.parse(command('brew', ['ruby', '--', path.join(__dirname, 'source-bottle-info.rb'),
-    mode, JSON.stringify(formulae)]));
+    mode, JSON.stringify(formulae), String(forceSource)]));
 }
 
 function recipeHash(recipe) {
@@ -84,9 +84,7 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
     'NO_INSTALL_CLEANUP', 'NO_INSTALLED_DEPENDENTS_CHECK', 'NO_INSTALL_FROM_API']) {
     process.env[`HOMEBREW_${option}`] = '1';
   }
-  const dependencies = run('brew', ['deps', '--formula', '--topological', '--full-name',
-    '--include-build', '--include-implicit', formula]).trim().split('\n').filter(Boolean);
-  const plan = query('plan', [...new Set([...dependencies, formula])]);
+  const plan = query('plan', [formula], forceSource);
   const platform = buildEnvironment();
   const result = { built: 0, restored: 0 };
   for (const item of plan) {

@@ -105,6 +105,19 @@ test('concurrent upload winners are verified and reused without clobbering', asy
   assert.deepEqual(f.state.deleted, []);
 });
 
+test('a late older build does not prune against an unverified newer upload', async t => {
+  const f = fixture(t);
+  const old = f.bottle('1');
+  await f.cache.saveCache([old.directory], old.key);
+  f.state.failDownload = true;
+  const current = f.bottle('2');
+  await assert.rejects(f.cache.saveCache([current.directory], current.key), /503/);
+  f.state.failDownload = false;
+  f.state.assets.find(asset => asset.name === `${current.key}.tar`).data = Buffer.from('corrupt');
+  await assert.rejects(f.cache.saveCache([old.directory], old.key), /checksum/);
+  assert.deepEqual(f.state.deleted, []);
+});
+
 test('corrupt release bytes are rejected before extracting a bottle', async t => {
   const f = fixture(t);
   const current = f.bottle('2');

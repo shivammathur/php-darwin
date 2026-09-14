@@ -6,10 +6,37 @@ require "json"
 Formulary.enable_factory_cache!
 mode = ARGV.fetch(0)
 formulae = JSON.parse(ARGV.fetch(1))
+force_source = ARGV[2] == "true"
 raise "Invalid source bottle mode" unless %w[plan inputs].include?(mode)
 
-records = formulae.map do |name|
-  formula = Formulary.factory(name)
+def source_dependencies(formula, planning:, force_source: false)
+  Dependency.expand(formula) do |dependent, dep|
+    next Dependable::PRUNE if dep.optional? || (dep.test? && !dep.build?) ||
+                             (dep.uses_from_macos? && dep.use_macos_install?)
+
+    if dep.build?
+      building = if planning
+        !dependent.any_version_installed? &&
+          ((dependent == formula && force_source) || !FormulaInstaller.new(dependent).pour_bottle?)
+      else
+        # Inputs describe a source build of this formula. Its dependencies are
+        # already installed: their runtime requirements matter, their original
+        # build tools do not. Keep dependencies tagged both :build and :test.
+        dependent == formula
+      end
+      next Dependable::PRUNE unless building
+    end
+  end
+end
+
+resolved = formulae.map { |name| Formulary.factory(name) }
+if mode == "plan"
+  resolved = resolved.flat_map do |formula|
+    source_dependencies(formula, planning: true, force_source:).map(&:to_formula) + [formula]
+  end.uniq(&:full_name)
+end
+
+records = resolved.map do |formula|
   record = {
     name: formula.name,
     full_name: formula.full_name,
@@ -21,10 +48,7 @@ records = formulae.map do |name|
     post_install: formula.post_install_defined? || formula.post_install_steps_defined?,
   }
   if mode == "inputs"
-    record[:dependencies] = Dependency.expand(formula) do |_dependent, dep|
-      next Dependable::PRUNE if dep.optional? || (dep.test? && !dep.build?) ||
-                               (dep.uses_from_macos? && dep.use_macos_install?)
-    end.map do |dep|
+    record[:dependencies] = source_dependencies(formula, planning: false).map do |dep|
       dependency = dep.to_formula
       keg = dependency.any_installed_keg
       raise "Missing build dependency #{dependency.full_name}" unless keg

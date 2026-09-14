@@ -37,6 +37,9 @@ for file in pathlib.Path('.source-bottle-cache').glob('*/metadata.json'):
     assert inputs['context']['build'] == build and inputs['context']['ts'] == ts
     assert inputs['context']['php']['api']
     assert any(dep['name'] == 'shivammathur/php/' + formula for dep in inputs['dependencies']), inputs
+    # These are PHP's build dependencies, unnecessary for an extension using
+    # the installed PHP binary and headers. Previously this compiled LLVM.
+    assert not any(dep['name'] in {'llvm', 're2c', 'httpd'} for dep in inputs['dependencies']), inputs
     bottle = file.parent / metadata['file']
     assert hashlib.sha256(bottle.read_bytes()).hexdigest() == metadata['sha256']
     extension = inputs['formula'].split('/')[-1].split('@')[0]

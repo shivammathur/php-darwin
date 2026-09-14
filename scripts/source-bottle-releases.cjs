@@ -136,6 +136,15 @@ class ReleaseCache {
       await this.download(saved, path.join(temporary, 'verified'), key);
       const related = assets.filter(asset => asset.label?.startsWith(`source-v1:${group}:`));
       const obsolete = this.versionsToPrune(related.map(asset => asset.label.split(':').slice(2).join(':')));
+      if (obsolete.includes(metadata.inputs.version)) {
+        // An older job can finish after a newer upload. Verify that replacement
+        // too; its own uploader may have failed before completing read-back.
+        const newer = related.find(asset => !obsolete.includes(asset.label.split(':').slice(2).join(':')));
+        if (!/^php-darwin-source-v1-[0-9a-f]{64}\.tar$/.test(newer?.name || '')) {
+          throw new Error('Invalid replacement source bottle');
+        }
+        await this.download(newer, path.join(temporary, 'replacement'), newer.name.slice(0, -4));
+      }
       for (const asset of related) {
         if (obsolete.includes(asset.label.split(':').slice(2).join(':'))) {
           await this.api(`releases/assets/${asset.id}`, { method: 'DELETE', allow: [404] });
