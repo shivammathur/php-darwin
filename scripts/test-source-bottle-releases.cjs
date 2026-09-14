@@ -32,23 +32,30 @@ function fixture(t, tag = 'cache') {
       for await (const chunk of options.body) chunks.push(chunk);
       const data = Buffer.concat(chunks);
       const name = parsed.searchParams.get('name');
-      if (!state.assets.some(asset => asset.name === name)) state.assets.push({
+      const existing = state.assets.some(asset => asset.name === name);
+      if (!existing) state.assets.push({
         id: ++state.next, name, label: parsed.searchParams.get('label'),
+        state: 'uploaded', size: data.length, created_at: new Date().toISOString(),
         digest: `sha256:${digest(data)}`, data,
       });
       if (state.loseUploadReply) {
         state.loseUploadReply = false;
         throw new TypeError('fetch failed after upload');
       }
-      return json({}, state.uploadRace ? 422 : 201);
+      return json({}, existing || state.uploadRace ? 422 : 201);
     }
     if (endpoint === 'releases/1/assets') return json(state.assets.map(({ data, ...asset }) => asset));
     const id = Number(endpoint.split('/').at(-1));
     const asset = state.assets.find(asset => asset.id === id);
+    if (!asset) return json(null, 404);
     if (options.method === 'DELETE') {
       state.deleted.push(asset.name);
       state.assets = state.assets.filter(asset => asset.id !== id);
       return new Response(null, { status: 204 });
+    }
+    if (options.headers.Accept !== 'application/octet-stream') {
+      const { data, ...metadata } = asset;
+      return json(metadata);
     }
     if (state.failDownload) return new Response('unavailable', { status: 503 });
     return new Response(asset.data);
@@ -125,6 +132,50 @@ test('a lost upload response recreates the stream and verifies the existing winn
   assert.equal(f.state.assets.length, 1);
   assert.deepEqual(f.state.delays, [1000]);
   assert.equal(await f.cache.restoreCache([path.join(f.root, 'restored-upload')], current.key), current.key);
+});
+
+test('a stale empty upload is recovered without losing the previous verified version', async t => {
+  const f = fixture(t);
+  const old = f.bottle('1');
+  await f.cache.saveCache([old.directory], old.key);
+  const current = f.bottle('2');
+  f.state.assets.push({ id: ++f.state.next, name: current.name, state: 'starter', size: 0,
+    created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), data: Buffer.alloc(0) });
+  assert.equal(await f.cache.restoreCache([path.join(f.root, 'incomplete')], current.key), undefined);
+  await f.cache.saveCache([current.directory], current.key);
+  assert.deepEqual(f.state.deleted, [current.name, old.name]);
+  assert.equal(await f.cache.restoreCache([path.join(f.root, 'recovered')], current.key), current.key);
+});
+
+test('recent, nonempty, or undated incomplete uploads cannot be deleted', async t => {
+  const f = fixture(t);
+  await f.cache.release(true);
+  const current = f.bottle('2');
+  for (const attributes of [
+    { size: 0, created_at: new Date().toISOString() },
+    { size: 1, created_at: '2000-01-01T00:00:00Z' },
+    { size: 0 },
+  ]) {
+    f.state.assets = [{ id: ++f.state.next, name: current.name, state: 'starter', ...attributes }];
+    await f.cache.removeAbandonedUpload(f.state.release, current.name);
+  }
+  assert.deepEqual(f.state.deleted, []);
+});
+
+test('an upload that completes during stale-upload inspection is preserved', async t => {
+  const f = fixture(t);
+  const current = f.bottle('2');
+  await f.cache.saveCache([current.directory], current.key);
+  const saved = f.state.assets[0];
+  f.state.intercept = (endpoint, options) => {
+    if (endpoint === 'releases/1/assets' && options.method === 'GET') {
+      return Response.json([{ ...saved, data: undefined, state: 'starter', size: 0,
+        created_at: '2000-01-01T00:00:00Z' }]);
+    }
+  };
+  await f.cache.removeAbandonedUpload(f.state.release, current.name);
+  assert.deepEqual(f.state.deleted, []);
+  assert.equal(f.state.assets[0].state, 'uploaded');
 });
 
 test('interrupted downloads restart the archive before checksum verification', async t => {

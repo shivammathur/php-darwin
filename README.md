@@ -63,7 +63,9 @@ Build jobs need `contents: write` to maintain this release. Run
 linkage, consumer updates, and real Xdebug/PCOV modules for all four PHP variants
 on both cache build platforms. Tests use a separate release that is removed afterward.
 Release-cache requests have bounded timeouts and retries for transient network,
-server, and rate-limit errors. Artifact downloads retry up to three times while
+server, and rate-limit errors. Empty incomplete uploads are ignored on restore;
+a later upload of the same key removes them after 30 minutes, with a fresh state
+check to preserve uploads that have completed. Artifact downloads retry up to three times while
 requiring valid digests. Workflow and script changes run the local validation
 suite automatically in CI; publication still requires successful builds and
 compatibility tests for every selected platform.

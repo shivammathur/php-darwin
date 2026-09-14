@@ -150,6 +150,20 @@ class ReleaseCache {
     }
   }
 
+  async removeAbandonedUpload(release, name) {
+    // A failed GitHub upload can reserve a name with an empty "starter"
+    // asset. Wait longer than all bounded upload attempts before removing it
+    // so another runner still uploading this key is not interrupted.
+    const abandoned = asset => asset?.name === name && asset.state === 'starter' &&
+      asset.size === 0 && Date.now() - Date.parse(asset.created_at) >= 30 * 60 * 1000;
+    const pending = (await this.assets(release)).find(abandoned);
+    if (!pending) return;
+    const current = await this.api(`releases/assets/${pending.id}`, { allow: [404] });
+    if (abandoned(current)) {
+      await this.api(`releases/assets/${pending.id}`, { method: 'DELETE', allow: [404] });
+    }
+  }
+
   async download(asset, directory, key) {
     const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'source-bottle-download-'));
     try {
@@ -166,7 +180,8 @@ class ReleaseCache {
   async restoreCache([directory], key) {
     const release = await this.release();
     if (!release) return;
-    const asset = (await this.assets(release)).find(asset => assetIdentity(asset)?.key === key);
+    const asset = (await this.assets(release)).find(asset =>
+      asset.state !== 'starter' && assetIdentity(asset)?.key === key);
     if (!asset) return;
     await this.download(asset, directory, key);
     return key;
@@ -178,12 +193,13 @@ class ReleaseCache {
     const group = family(metadata.inputs);
     const { name, label } = releaseAsset(metadata);
     const release = await this.release(true);
+    await this.removeAbandonedUpload(release, name);
     const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'source-bottle-upload-'));
     try {
       const archive = path.join(temporary, `${key}.tar`);
       command('tar', ['-cf', archive, '-C', path.resolve(directory), 'metadata.json', metadata.file]);
-      // GitHub creates the whole bundle atomically. A concurrent upload may
-      // win this exact key; never clobber it or expose a partial pair of files.
+      // Upload metadata and the bottle together. A concurrent upload may win
+      // this exact key; never clobber it or expose a separate pair of files.
       await this.transfer(
         `https://uploads.github.com/repos/${this.repository}/releases/${release.id}/assets?` +
         new URLSearchParams({ name, label }), () => ({
