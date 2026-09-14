@@ -1693,5 +1693,119 @@
       ]
     }
   ],
-  "native_validation_url": "https://github.com/shivammathur/test-setup-php/actions/runs/34880159996"
+  "native_validation_url": "https://github.com/shivammathur/test-setup-php/actions/runs/34880159996",
+  "published_verification": {
+    "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34881287775",
+    "installer_commit": "318ac4abb9c8ff947f300409e5efbfb010a08219",
+    "jobs": [
+      {
+        "name": "macos-15 published R2 missing",
+        "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34881287775/job/104100930382",
+        "conclusion": "success"
+      },
+      {
+        "name": "macos-15 published R2 checksum",
+        "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34881287775/job/104100930614",
+        "conclusion": "success"
+      },
+      {
+        "name": "macos-15 PHP 8.6 published normal",
+        "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34881287775/job/104100930633",
+        "conclusion": "success",
+        "action_seconds": 9
+      },
+      {
+        "name": "macos-15-intel published R2 missing",
+        "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34881287775/job/104100930657",
+        "conclusion": "success"
+      },
+      {
+        "name": "macos-15-intel published R2 checksum",
+        "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34881287775/job/104100930777",
+        "conclusion": "success"
+      },
+      {
+        "name": "macos-15 PHP 8.6 published vvv",
+        "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34881287775/job/104100930802",
+        "conclusion": "success",
+        "action_seconds": 8
+      },
+      {
+        "name": "macos-14 PHP 8.6 published vvv",
+        "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34881287775/job/104100930810",
+        "conclusion": "success",
+        "action_seconds": 5
+      },
+      {
+        "name": "macos-26 PHP 8.6 published vvv",
+        "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34881287775/job/104100930848",
+        "conclusion": "success",
+        "action_seconds": 7
+      },
+      {
+        "name": "xcode-27 PHP 8.6 published vvv",
+        "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34881287775/job/104100930862",
+        "conclusion": "success",
+        "action_seconds": 6
+      },
+      {
+        "name": "macos-14 PHP 8.6 published normal",
+        "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34881287775/job/104100930870",
+        "conclusion": "success",
+        "action_seconds": 5
+      },
+      {
+        "name": "macos-latest PHP 8.6 published normal",
+        "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34881287775/job/104100930969",
+        "conclusion": "success",
+        "action_seconds": 7
+      },
+      {
+        "name": "macos-15-intel PHP 8.6 published vvv",
+        "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34881287775/job/104100931010",
+        "conclusion": "success",
+        "action_seconds": 14
+      },
+      {
+        "name": "macos-26 PHP 8.6 published normal",
+        "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34881287775/job/104100931015",
+        "conclusion": "success",
+        "action_seconds": 8
+      },
+      {
+        "name": "macos-latest PHP 8.6 published vvv",
+        "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34881287775/job/104100931016",
+        "conclusion": "success",
+        "action_seconds": 9
+      },
+      {
+        "name": "xcode-27 PHP 8.6 published normal",
+        "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34881287775/job/104100931034",
+        "conclusion": "success",
+        "action_seconds": 6
+      },
+      {
+        "name": "macos-26-intel PHP 8.6 published normal",
+        "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34881287775/job/104100931077",
+        "conclusion": "success",
+        "action_seconds": 8
+      },
+      {
+        "name": "macos-15-intel PHP 8.6 published normal",
+        "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34881287775/job/104100931082",
+        "conclusion": "success",
+        "action_seconds": 13
+      },
+      {
+        "name": "macos-26-intel PHP 8.6 published vvv",
+        "url": "https://github.com/shivammathur/test-setup-php/actions/runs/34881287775/job/104100931174",
+        "conclusion": "success",
+        "action_seconds": 9
+      }
+    ],
+    "macos_15_intel_normal": {
+      "php_stage_seconds": 9.488448,
+      "composer_stage_seconds": 3.793138
+    }
+  }
 }

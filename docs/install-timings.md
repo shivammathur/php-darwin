@@ -17,6 +17,31 @@ phase times. The installer total includes cleanup but excludes setup-php's
 bootstrap download and Composer. The normal jobs have timing disabled and report
 complete action duration at GitHub's one-second resolution.
 
+## Published installer verification
+
+The [final live run](https://github.com/shivammathur/test-setup-php/actions/runs/34881287775)
+used the published installer directly with `setup-php@develop`, without the
+candidate replacement wrapper. All 18 jobs passed: seven normal installations,
+seven `vvv` installations, and four GitHub-to-R2 recovery checks covering HTTP
+404 and checksum mismatches on ARM and Intel.
+
+| Runner | Published PHP 8.6 complete action |
+|---|---:|
+| macos-14 | 5 s |
+| macos-15 | 9 s |
+| macos-26 | 8 s |
+| macos-latest | 7 s |
+| macos-15-intel | 13 s |
+| macos-26-intel | 8 s |
+| xcode-27 | 6 s |
+
+Six of seven normal installs finished below 10 seconds. The macOS 15 Intel
+normal job spent 9.49 seconds in the PHP stage and 3.79 seconds in Composer.
+Its verbose companion measured 3.78 seconds in tar extraction and 1.26 seconds
+in runtime verification; Ruby runtime selection took 0.15 seconds. The former
+system-Ruby startup delay is removed, but runner and download variation still
+prevent a consistent sub-10-second full action on every run.
+
 ## Findings and changes
 
 - The [cold interpreter comparison](https://github.com/shivammathur/test-setup-php/actions/runs/34879867818)
@@ -51,7 +76,7 @@ network conditions vary; the full data also includes cases that became slower.
 | macos-26-intel | 12 s | 8 s |
 | xcode-27 | 8 s | 7 s |
 
-PHP 8.6 was below 10 seconds on every tested runner. Additional normal checks
+PHP 8.6 was below 10 seconds on every runner in this comparison matrix. Additional normal checks
 measured PHP 5.6 at 13 seconds on ARM and 17 seconds on Intel, and PHP 8.4 at
 9 seconds on both. The target is not yet met for every PHP version.
 
