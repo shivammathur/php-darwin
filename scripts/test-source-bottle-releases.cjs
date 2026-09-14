@@ -8,7 +8,7 @@ const { ReleaseCache, family, releaseAsset, assetIdentity } = require('./source-
 const { keyFor, readBottle } = require('./source-bottle-cache.cjs');
 const digest = value => crypto.createHash('sha256').update(value).digest('hex');
 
-function fixture(t) {
+function fixture(t, tag = 'cache') {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'release-bottle-test-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const state = { release: null, assets: [], deleted: [], failDownload: false, uploadRace: false, next: 0 };
@@ -20,8 +20,8 @@ function fixture(t) {
     if (endpoint === 'releases' && options.method === 'POST') {
       const body = JSON.parse(options.body);
       assert.equal(body.make_latest, 'false');
-      assert.equal(body.prerelease, false);
-      state.release = { id: 1 };
+      assert.equal(body.prerelease, tag.startsWith('source-bottles-test-'));
+      state.release = { id: 1, ...body };
       return json(state.release, 201);
     }
     if (endpoint === 'releases/1/assets' && options.method === 'POST') {
@@ -46,7 +46,7 @@ function fixture(t) {
     if (state.failDownload) return new Response('unavailable', { status: 503 });
     return new Response(asset.data);
   };
-  const cache = new ReleaseCache({ repository: 'shivammathur/php-darwin', token: 'fixture', request,
+  const cache = new ReleaseCache({ repository: 'shivammathur/php-darwin', token: 'fixture', tag, request,
     versionsToPrune: versions => versions.filter(version => Number(version) < Math.max(...versions.map(Number))) });
   function bottle(version, overrides = {}) {
     const inputs = { formula: 'libxml2', version, environment: { arch: 'arm64', macos: '14', prefix: '/opt/homebrew' }, ...overrides };
@@ -83,6 +83,13 @@ test('persistent release round-trip and pruning only older versions in the same 
   await f.cache.saveCache([old.directory], old.key);
   assert.ok(f.state.assets.some(asset => asset.name === current.name));
   assert.ok(!f.state.assets.some(asset => asset.name === old.name));
+});
+
+test('temporary test releases remain prereleases', async t => {
+  const f = fixture(t, 'source-bottles-test-123');
+  const release = await f.cache.release(true);
+  assert.equal(release.prerelease, true);
+  assert.equal(release.make_latest, 'false');
 });
 
 test('failed remote verification preserves old versions', async t => {

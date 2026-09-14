@@ -93,7 +93,7 @@ class ReleaseCache {
       release = await this.api('releases', { method: 'POST', allow: [422], body: {
         tag_name: this.tag, target_commitish: 'main', name: this.tag,
         body: 'Homebrew source bottles and build-input metadata used by PHP cache builds.',
-        prerelease: false, make_latest: 'false',
+        prerelease: this.tag.startsWith('source-bottles-test-'), make_latest: 'false',
       } });
       release ||= await this.api(`releases/tags/${encodeURIComponent(this.tag)}`);
     }
