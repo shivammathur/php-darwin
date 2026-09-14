@@ -5,6 +5,8 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=scripts/lib.sh
 . "$script_dir/lib.sh"
 
+php_darwin_timing_init
+trap 'php_darwin_timing_finish "$?"' EXIT
 php_darwin_set_phase input
 version=${1:-}
 build=${2:-release}
@@ -96,6 +98,10 @@ php_darwin_configure_homebrew_environment
 
 tmp_dir=$(mktemp -d "${RUNNER_TEMP:-/tmp}/php-darwin-install.XXXXXX") || \
   php_darwin_die 'could not create the installation directory'
+if [ "$PHP_DARWIN_TIMING_ACTIVE" = true ]; then
+  export PHP_DARWIN_TIMING_LOG="$tmp_dir/timings.log"
+fi
+php_darwin_timed runtime.ruby.select php_darwin_select_ruby
 archive_roots_file="$tmp_dir/archive-paths.txt"
 php_darwin_read_config archive-paths > "$archive_roots_file" || \
   php_darwin_die 'could not stage the archive root configuration'
@@ -159,10 +165,10 @@ php_darwin_unlink_formulae() {
   shift
 
   printf 'fast\n' > "$mode_file" || return 1
-  bash "$script_dir/unlink-kegs.sh" unlink "$brew_prefix" "$unlink_journal_dir" "$@" || unlink_status=$?
+  php_darwin_timed homebrew.unlink.fast bash "$script_dir/unlink-kegs.sh" unlink "$brew_prefix" "$unlink_journal_dir" "$@" || unlink_status=$?
   if [ "$unlink_status" -eq 78 ]; then
     printf 'brew\n' > "$mode_file" || return 1
-    brew unlink "$@"
+    php_darwin_timed homebrew.unlink.cli brew unlink "$@"
   else
     return "$unlink_status"
   fi
@@ -171,9 +177,9 @@ php_darwin_unlink_formulae() {
 php_darwin_check_installed_dependencies() {
   local dependency_status=0
 
-  bash "$script_dir/check-dependencies.sh" "$brew_prefix" "$packages_file" || dependency_status=$?
+  php_darwin_timed homebrew.dependencies.fast bash "$script_dir/check-dependencies.sh" "$brew_prefix" "$packages_file" || dependency_status=$?
   if [ "$dependency_status" -eq 78 ]; then
-    brew missing "$tap/$formula"
+    php_darwin_timed homebrew.dependencies.cli brew missing "$tap/$formula"
   else
     return "$dependency_status"
   fi
@@ -318,7 +324,7 @@ php_darwin_start_archive_hash() {
   local archive_to_hash=$1
 
   (
-    php_darwin_sha256 "$archive_to_hash" > "$archive_hash_file"
+    php_darwin_timed archive.sha256 php_darwin_sha256 "$archive_to_hash" > "$archive_hash_file"
   ) > "$archive_hash_log" 2>&1 &
   archive_hash_pid=$!
 }
@@ -376,6 +382,7 @@ php_darwin_restore_formula_trust() {
 
 php_darwin_install_cleanup() {
   cleanup_status=$?
+  php_darwin_set_phase cleanup "$cleanup_status"
   rollback_status=ok
   rollback_attempted=false
   rollback_log="$tmp_dir/rollback.log"
@@ -539,11 +546,13 @@ php_darwin_install_cleanup() {
     printf 'php-darwin: restore the previous cache tap with: sudo mv %s %s\n' \
       "$tap_snapshot_backup" "$tap_snapshot_path" >&2
   fi
+  php_darwin_timing_flush
   if [ "$preserve_tmp_dir" = true ]; then
     printf 'php-darwin: preserved recovery files in %s\n' "$tmp_dir" >&2
   else
     rm -rf "$tmp_dir"
   fi
+  php_darwin_timing_finish "$cleanup_status"
   exit "$cleanup_status"
 }
 trap php_darwin_install_cleanup EXIT
@@ -572,9 +581,9 @@ done
 : > "$homebrew_prepare_phase_file" || php_darwin_die 'could not create the Homebrew preparation phase file'
 (
   trust_status=0
-  trust_json=$(bash "$script_dir/trust-store.sh" snapshot "$brew_prefix") || trust_status=$?
+  trust_json=$(php_darwin_timed homebrew.trust.snapshot.fast bash "$script_dir/trust-store.sh" snapshot "$brew_prefix") || trust_status=$?
   if [ "$trust_status" -eq 78 ]; then
-    trust_json=$(brew trust --json=v1) || exit 1
+    trust_json=$(php_darwin_timed homebrew.trust.snapshot.cli brew trust --json=v1) || exit 1
   elif [ "$trust_status" -ne 0 ]; then
     exit "$trust_status"
   fi
@@ -601,7 +610,7 @@ done
 homebrew_trust_pid=$!
 (
   printf 'homebrew.tap-path\n' > "$homebrew_prepare_phase_file" || exit 1
-  brew --repository "$tap" > "$tap_path_file" || exit 1
+  php_darwin_timed homebrew.repository php_darwin_tap_repository_path "$tap" > "$tap_path_file" || exit 1
   if [ "${#linked_php_references[@]}" -gt 0 ]; then
     printf 'homebrew.unlink\n' > "$homebrew_prepare_phase_file" || exit 1
     php_darwin_unlink_formulae "$php_unlink_mode_file" "${linked_php_references[@]}" || exit 1
@@ -738,7 +747,7 @@ else
     fi
   fi
   [ "$actual_hash" = "$expected_hash" ] || php_darwin_die "checksum mismatch for $asset"
-  bash "$script_dir/read-metadata.sh" "$archive" "$internal_metadata_path" "$metadata_copy" || \
+  php_darwin_timed archive.metadata.read bash "$script_dir/read-metadata.sh" "$archive" "$internal_metadata_path" "$metadata_copy" || \
     php_darwin_die 'could not read metadata from the verified release archive'
 fi
 
@@ -819,7 +828,7 @@ while IFS=$'\t' read -r extension extension_type extension_path; do
   fi
 done < "$extension_paths_inventory"
 
-php_darwin_set_phase homebrew.tap
+php_darwin_set_phase homebrew.prepare.wait
 php_darwin_wait_for_homebrew_prepare
 case "$tap_path" in
   "$brew_prefix/Library/Taps/"*|"$brew_prefix/Homebrew/Library/Taps/"*) ;;
@@ -914,7 +923,7 @@ cat "$postinstall_paths_file" >> "$managed_paths_file" || \
   php_darwin_die 'could not add formula-managed post-install paths'
 LC_ALL=C sort -u "$managed_paths_file" -o "$managed_paths_file" || \
   php_darwin_die 'could not sort managed archive paths'
-bash "$script_dir/existing-paths.sh" "$brew_prefix" "$exclude_file" \
+php_darwin_timed homebrew.inventory bash "$script_dir/existing-paths.sh" "$brew_prefix" "$exclude_file" \
   "$archive_roots_file" \
   "$existing_kegs" "$managed_paths_file" "$package_kegs_file" || \
   php_darwin_die 'could not record existing Homebrew paths'
@@ -962,20 +971,20 @@ fi
 php_darwin_set_phase archive.extract
 archive_mutation_started=true
 tap_snapshot_extracted=true
-bash "$script_dir/extract.sh" "$archive" "$brew_prefix" "$exclude_file" \
+php_darwin_timed archive.extract.files bash "$script_dir/extract.sh" "$archive" "$brew_prefix" "$exclude_file" \
   "$managed_paths_file" "$package_kegs_file" || \
   php_darwin_die "could not extract $asset into Homebrew"
 
 php_darwin_set_phase homebrew.tap
 [ -d "$tap_snapshot_path/.git" ] && [ ! -L "$tap_snapshot_path" ] || \
   php_darwin_die 'cache did not contain a valid Homebrew tap snapshot'
-bash "$script_dir/validate-tap.sh" "$tap_snapshot_path" "$version" '' \
+php_darwin_timed homebrew.tap.validate bash "$script_dir/validate-tap.sh" "$tap_snapshot_path" "$version" '' \
   "$tap_repository" "$metadata_homebrew_commit" "$tap_branch" >/dev/null || \
   php_darwin_die 'cached Homebrew tap snapshot validation failed'
 if [ -e "$tap_path" ]; then
   php_darwin_is_git_worktree "$tap_path" || \
     php_darwin_die "installed Homebrew tap is not a Git repository: $tap_path"
-  bash "$script_dir/tap-action.sh" "$tap_path" "$tap_snapshot_path" "$version" \
+  php_darwin_timed homebrew.tap.select bash "$script_dir/tap-action.sh" "$tap_path" "$tap_snapshot_path" "$version" \
     "$cached_source_hash" "$tap_repository" "$metadata_homebrew_commit" "$tap_branch" \
     > "$tap_action_file" 2> "$tap_log" &
   tap_pid=$!
@@ -1028,12 +1037,12 @@ if [ "$tap_was_trusted" = false ]; then
     printf 'Trusting %s installed Homebrew formula(s) from %s\n' \
       "${#formula_trust_references[@]}" "$tap"
     trust_status=0
-    bash "$script_dir/trust-store.sh" add "$brew_prefix" "$tap" "$formula_trust_pending" \
+    php_darwin_timed homebrew.trust.add.fast bash "$script_dir/trust-store.sh" add "$brew_prefix" "$tap" "$formula_trust_pending" \
       "${formula_trust_references[@]}" || trust_status=$?
     if [ "$trust_status" -eq 78 ]; then
       printf '%s\n' "${formula_trust_references[@]}" > "$formula_trust_pending" || \
         php_darwin_die 'could not record formula trust added by the cache installation'
-      brew trust --formula "${formula_trust_references[@]}" || \
+      php_darwin_timed homebrew.trust.add.cli brew trust --formula "${formula_trust_references[@]}" || \
         php_darwin_die "could not trust installed Homebrew formulae from $tap"
     elif [ "$trust_status" -ne 0 ]; then
       php_darwin_die "could not merge installed Homebrew formula trust for $tap"
@@ -1083,7 +1092,7 @@ grep -Fq "$brew_prefix/lib/php/pecl/$pecl_extension" "$brew_prefix/etc/php/$conf
   php_darwin_die 'cached PHP PECL link has no shared directory target'
 
 php_darwin_set_phase homebrew.link
-bash "$script_dir/verify-links.sh" "$brew_prefix" "$installed_links_file" || \
+php_darwin_timed homebrew.links.verify bash "$script_dir/verify-links.sh" "$brew_prefix" "$installed_links_file" || \
   php_darwin_die 'cached Homebrew links did not match the archive metadata'
 
 php_darwin_set_phase runtime.verify
@@ -1102,7 +1111,7 @@ done < "$extension_paths_inventory"
 php_darwin_set_phase homebrew.dependencies
 php_darwin_resolve_tap_and_dependencies
 runtime_verified=true
-php_darwin_set_phase complete
+php_darwin_set_phase homebrew.finalize
 
 if [ "$tap_snapshot_backed_up" = true ]; then
   if { [ ! -e "$tap_snapshot_path" ] && [ ! -L "$tap_snapshot_path" ]; } && \

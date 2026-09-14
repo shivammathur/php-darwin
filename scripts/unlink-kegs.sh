@@ -1,13 +1,26 @@
 #!/usr/bin/env bash
 
-[ -x /usr/bin/ruby ] || exit 78
-/usr/bin/ruby - "$@" <<'PHP_DARWIN_UNLINK_RUBY'
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=scripts/lib.sh
+. "$script_dir/lib.sh"
+
+php_darwin_ruby - "$@" <<'PHP_DARWIN_UNLINK_RUBY'
 require 'json'
 require 'find'
 require 'fileutils'
 require 'tempfile'
 
 def unsupported
+  location = caller(1, 1).first
+  if ENV['PHP_DARWIN_TIMING_ACTIVE'] == 'true' && ENV['PHP_DARWIN_TIMING_LOG']
+    begin
+      File.open(ENV['PHP_DARWIN_TIMING_LOG'], 'a') do |log|
+        log.puts "php-darwin: unlink-kegs fallback at #{location}; arguments=#{ARGV.join(' ')}"
+      end
+    rescue SystemCallError
+      # Diagnostics must never change the compatibility fallback.
+    end
+  end
   exit 78
 end
 
@@ -44,12 +57,15 @@ begin
   if mode == 'restore'
     journals = Dir.glob(File.join(journal_dir, '*.json')).sort.reverse
     restored_names = journals.flat_map do |journal|
-      JSON.parse(File.read(journal)).map do |entry|
+      JSON.parse(File.read(journal)).flat_map do |entry|
         path = File.join(prefix, entry.fetch('path'))
         target = File.expand_path(entry.fetch('target'), File.dirname(path))
         match = target.match(%r{\A#{Regexp.escape(prefix)}/Cellar/([^/]+)/})
         raise 'invalid unlink journal target' unless match
-        match[1]
+        names = [match[1]]
+        names << File.basename(path) if File.dirname(path) == File.join(prefix, 'opt') ||
+          File.dirname(path) == File.join(prefix, 'var/homebrew/linked')
+        names
       end
     end
     restored_names.uniq.sort.each { |name| acquire_lock(prefix, name, locks) }
@@ -57,7 +73,7 @@ begin
       JSON.parse(File.read(journal)).reverse_each do |entry|
         relative, target = entry.values_at('path', 'target')
         raise 'invalid unlink journal' unless relative.is_a?(String) && target.is_a?(String) &&
-          relative.match?(%r{\A(?:bin|etc|include|lib|sbin|share|var)/}) &&
+          relative.match?(%r{\A(?:(?:bin|etc|include|lib|sbin|share|var)/|opt/[^/]+\z)}) &&
           !relative.match?(%r{(?:\A|/)\.\.?(/|\z)|//|[\r\n\t]}) &&
           File.expand_path(target, File.dirname(File.join(prefix, relative))).start_with?(prefix + '/Cellar/')
         path = File.join(prefix, relative)
@@ -106,11 +122,20 @@ begin
       receipt = JSON.parse(File.read(File.join(keg, 'INSTALL_RECEIPT.json')))
       aliases = receipt['aliases'] || []
       unsupported unless aliases.is_a?(Array) && aliases.all? { |value| value.is_a?(String) && !%w[. ..].include?(value) && value.match?(/\A[a-zA-Z0-9@+_.-]+\z/) }
-      # Alias cleanup and info-index updates remain Homebrew operations. The
-      # common case needs only owned symlinks and the linked-keg record removed.
+      # Homebrew removes unversioned aliases of this keg during unlink. Record
+      # only direct, owned aliases; unusual layouts still use the native command.
       aliases.reject { |value| value.include?('@') }.each do |value|
-        unsupported if File.exist?(File.join(prefix, 'opt', value)) || File.symlink?(File.join(prefix, 'opt', value))
-        unsupported if File.exist?(File.join(prefix, 'var/homebrew/linked', value)) || File.symlink?(File.join(prefix, 'var/homebrew/linked', value))
+        %w[opt var/homebrew/linked].each do |directory|
+          alias_path = File.join(prefix, directory, value)
+          next unless File.exist?(alias_path) || File.symlink?(alias_path)
+          unsupported unless File.symlink?(alias_path)
+          target = resolved(alias_path)
+          # A link to another installed keg is left alone, as Homebrew does.
+          next if File.exist?(alias_path) && File.realpath(alias_path) != keg
+          unsupported unless target.match?(%r{\A#{Regexp.escape(prefix)}/Cellar/#{Regexp.escape(name)}/[^/]+\z})
+          additional_locks << value
+          plans << {'path' => alias_path.delete_prefix(prefix + '/'), 'target' => File.readlink(alias_path)}
+        end
       end
       Dir.glob(opt + '@*').each do |alias_path|
         next if aliases.include?(File.basename(alias_path))

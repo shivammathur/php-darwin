@@ -44,9 +44,21 @@ included in the cache, and installing a formula does not trust its entire tap.
 The installer also avoids repeated Homebrew startup when unlinking ordinary
 kegs and checking installed dependency receipts. It locks the affected formulae,
 records removed symlinks for rollback, and preserves unrelated files and links.
-Alias cleanup and info-index maintenance still use Homebrew. Dependency checks
+Unusual alias layouts and info-index maintenance still use Homebrew. Dependency checks
 cover the runtime receipts of every cached package; unfamiliar receipt formats
 fall back to `brew missing`.
+
+Set the setup-php step's environment to `verbose: vvv` to include installer
+timings, or set `PHP_DARWIN_TIMING=true` when invoking `install.sh` directly.
+Each record contains its scope, logical name, monotonic start time, elapsed
+milliseconds, and exit status. Phase timings describe the main install path;
+operation timings include background downloads and Homebrew workers and can
+overlap those phases. The installer total includes cleanup. Normal installs do
+not read the timing clock or print timing records. Verbose action tracing adds
+overhead, so compare final user-facing speed with verbosity disabled as well.
+Helpers use Homebrew's installed portable Ruby directly after checking its
+required standard libraries. If that runtime is unavailable or unusable, they
+use the system Ruby; no additional interpreter is downloaded.
 
 Publishing verifies the R2 copies before updating the GitHub installer and
 manifest. The repository secrets `CF_R2_AWS_ACCESS_KEY_ID`,

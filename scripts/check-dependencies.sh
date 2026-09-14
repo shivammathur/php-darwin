@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 
-[ -x /usr/bin/ruby ] || exit 78
-/usr/bin/ruby - "$@" <<'PHP_DARWIN_DEPENDENCIES_RUBY'
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=scripts/lib.sh
+. "$script_dir/lib.sh"
+
+php_darwin_ruby - "$@" <<'PHP_DARWIN_DEPENDENCIES_RUBY'
 require 'json'
 begin
   prefix, packages = ARGV

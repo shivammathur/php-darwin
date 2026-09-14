@@ -18,7 +18,85 @@ php_darwin_die() {
 }
 
 php_darwin_set_phase() {
+  if [ "${PHP_DARWIN_TIMING_ACTIVE:-false}" = true ]; then
+    local now
+    now=$(php_darwin_timing_now) || now=
+    if [[ "$now" =~ ^[0-9]+$ ]]; then
+      if [ -n "${php_darwin_phase_started:-}" ]; then
+        php_darwin_timing_emit phase "$PHP_DARWIN_PHASE" "$php_darwin_phase_started" "$now" "${2:-0}"
+      fi
+      php_darwin_phase_started=$now
+    fi
+  fi
   PHP_DARWIN_PHASE=$1
+}
+
+php_darwin_timing_now() {
+  /usr/bin/perl -MTime::HiRes=clock_gettime,CLOCK_MONOTONIC -e 'printf "%.0f\n", 1000 * clock_gettime(CLOCK_MONOTONIC)'
+}
+
+php_darwin_timing_init() {
+  export PHP_DARWIN_TIMING_ACTIVE=false
+  unset php_darwin_phase_started php_darwin_install_started PHP_DARWIN_TIMING_LOG
+  case "${PHP_DARWIN_TIMING:-${verbose:-${VERBOSE:-}}}:${SETUP_PHP_TRACE:-0}" in
+    true:*|vvv:*|*:2) ;;
+    *) return 0 ;;
+  esac
+  php_darwin_install_started=$(php_darwin_timing_now 2>/dev/null) || return 0
+  [[ "$php_darwin_install_started" =~ ^[0-9]+$ ]] || return 0
+  export PHP_DARWIN_TIMING_ACTIVE=true
+}
+
+php_darwin_timing_emit() {
+  local record
+  printf -v record 'php-darwin: timing scope=%s name=%s start_ms=%s elapsed_ms=%s status=%s' \
+    "$1" "$2" "$3" "$(($4 - $3))" "$5"
+  if [ -n "${PHP_DARWIN_TIMING_LOG:-}" ]; then
+    printf '%s\n' "$record" >> "$PHP_DARWIN_TIMING_LOG" || printf '%s\n' "$record" >&2
+  else
+    printf '%s\n' "$record" >&2
+  fi
+  return 0
+}
+
+# Operation durations can overlap the main phases and other background work.
+# Keep stdout and the command's exit status intact, including command substitution.
+php_darwin_timed() {
+  local name=$1 started finished status=0
+  shift
+  if [ "${PHP_DARWIN_TIMING_ACTIVE:-false}" != true ]; then
+    "$@"
+    return $?
+  fi
+  started=$(php_darwin_timing_now) || started=
+  "$@" || status=$?
+  finished=$(php_darwin_timing_now) || finished=
+  if [[ "$started" =~ ^[0-9]+$ ]] && [[ "$finished" =~ ^[0-9]+$ ]]; then
+    php_darwin_timing_emit operation "$name" "$started" "$finished" "$status"
+  fi
+  return "$status"
+}
+
+php_darwin_timing_flush() {
+  if [ -n "${PHP_DARWIN_TIMING_LOG:-}" ] && [ -f "$PHP_DARWIN_TIMING_LOG" ]; then
+    cat "$PHP_DARWIN_TIMING_LOG" >&2
+  fi
+  unset PHP_DARWIN_TIMING_LOG
+  return 0
+}
+
+php_darwin_timing_finish() {
+  local status=${1:-0} now
+  [ "${PHP_DARWIN_TIMING_ACTIVE:-false}" = true ] || return 0
+  now=$(php_darwin_timing_now) || now=
+  if [[ "$now" =~ ^[0-9]+$ ]]; then
+    if [ -n "${php_darwin_phase_started:-}" ]; then
+      php_darwin_timing_emit phase "$PHP_DARWIN_PHASE" "$php_darwin_phase_started" "$now" "$status"
+    fi
+    php_darwin_timing_emit total installer "$php_darwin_install_started" "$now" "$status"
+  fi
+  php_darwin_timing_flush
+  PHP_DARWIN_TIMING_ACTIVE=false
 }
 
 php_darwin_configure_homebrew_environment() {
@@ -28,6 +106,48 @@ php_darwin_configure_homebrew_environment() {
   export HOMEBREW_NO_INSTALL_CLEANUP=1
   export HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1
   export HOMEBREW_NO_INSTALL_FROM_API=1
+}
+
+php_darwin_tap_repository_path() {
+  local tap=$1 repository name
+
+  # The no-argument command exits early in brew.sh. Asking for a tap runs
+  # Homebrew's full shell initialization just to append this fixed path.
+  if [[ "$tap" =~ ^[a-z0-9_.-]+/[a-z0-9_.-]+$ ]]; then
+    repository=$(brew --repository) || return 1
+    if [[ "$repository" = /* ]] && [ -d "$repository/Library/Homebrew" ]; then
+      name=${tap#*/}
+      case "$name" in homebrew-*) name=${name#homebrew-} ;; linuxbrew-*) name=${name#linuxbrew-} ;; esac
+      printf '%s/Library/Taps/%s/homebrew-%s\n' "$repository" "${tap%%/*}" "$name"
+      return 0
+    fi
+  fi
+  brew --repository "$tap"
+}
+
+php_darwin_select_ruby() {
+  local repository candidate
+
+  # macOS system Ruby can spend several seconds loading its standard library
+  # for the first time. Homebrew already ships an independent Ruby runtime.
+  # Probe only the installed binary; never download or start `brew ruby` here.
+  export PHP_DARWIN_RUBY=/usr/bin/ruby
+  repository=$(brew --repository 2>/dev/null) || return 0
+  candidate="$repository/Library/Homebrew/vendor/portable-ruby/current/bin/ruby"
+  if [[ "$repository" = /* ]] && [ -x "$candidate" ] && \
+    "$candidate" --disable=gems -rjson -rfileutils -rfind -rtempfile -e 'exit 0' >/dev/null 2>&1; then
+    PHP_DARWIN_RUBY=$candidate
+  fi
+  if [ "${PHP_DARWIN_TIMING_ACTIVE:-false}" = true ]; then
+    printf 'php-darwin: helper Ruby: %s\n' "$PHP_DARWIN_RUBY" >&2
+  fi
+  return 0
+}
+
+php_darwin_ruby() {
+  local binary=${PHP_DARWIN_RUBY:-/usr/bin/ruby}
+  [ -x "$binary" ] || return 78
+  "$binary" --disable=gems "$@"
 }
 
 php_darwin_is_git_worktree() {
@@ -654,7 +774,12 @@ php_darwin_request_release() {
 
   # Fail over before retrying the same broken origin. Bound connection and
   # stalled-transfer time while allowing large legacy archives to finish.
-  status=$(curl --config <(php_darwin_read_config download.conf) \
+  local origin=other
+  case "$1" in
+    https://github.com/*) origin=github ;;
+    https://artifacts.php-darwin.setup-php.com/*) origin=r2 ;;
+  esac
+  status=$(php_darwin_timed "download.$origin" curl --config <(php_darwin_read_config download.conf) \
     --retry 0 --connect-timeout 2 --speed-time 3 --speed-limit 1024 \
     -sSL -w '%{http_code}' "$1" -o "$2") || result=$?
   if [ "$result" -ne 0 ] || [ "$status" != 200 ]; then
@@ -1089,15 +1214,24 @@ PHP_DARWIN_RELEASE_MANIFEST
 # Source: scripts/trust-store.sh
 php_darwin_trust_store() (
 
+
 # Exit 78 means that Homebrew must handle this layout/configuration itself.
-# Keep the helper on the system Ruby: invoking `brew ruby` loads Homebrew first.
-[ -x /usr/bin/ruby ] || exit 78
-/usr/bin/ruby - "$@" <<'PHP_DARWIN_TRUST_RUBY'
+php_darwin_ruby - "$@" <<'PHP_DARWIN_TRUST_RUBY'
 require 'json'
 require 'fileutils'
 require 'tempfile'
 
 def unsupported
+  location = caller(1, 1).first
+  if ENV['PHP_DARWIN_TIMING_ACTIVE'] == 'true' && ENV['PHP_DARWIN_TIMING_LOG']
+    begin
+      File.open(ENV['PHP_DARWIN_TIMING_LOG'], 'a') do |log|
+        log.puts "php-darwin: trust-store fallback at #{location}; arguments=#{ARGV.join(' ')}"
+      end
+    rescue SystemCallError
+      # Diagnostics must never change the compatibility fallback.
+    end
+  end
   exit 78
 end
 
@@ -1229,8 +1363,8 @@ PHP_DARWIN_TRUST_RUBY
 # Source: scripts/check-dependencies.sh
 php_darwin_check_dependencies() (
 
-[ -x /usr/bin/ruby ] || exit 78
-/usr/bin/ruby - "$@" <<'PHP_DARWIN_DEPENDENCIES_RUBY'
+
+php_darwin_ruby - "$@" <<'PHP_DARWIN_DEPENDENCIES_RUBY'
 require 'json'
 begin
   prefix, packages = ARGV
@@ -1270,14 +1404,24 @@ PHP_DARWIN_DEPENDENCIES_RUBY
 # Source: scripts/unlink-kegs.sh
 php_darwin_unlink_kegs() (
 
-[ -x /usr/bin/ruby ] || exit 78
-/usr/bin/ruby - "$@" <<'PHP_DARWIN_UNLINK_RUBY'
+
+php_darwin_ruby - "$@" <<'PHP_DARWIN_UNLINK_RUBY'
 require 'json'
 require 'find'
 require 'fileutils'
 require 'tempfile'
 
 def unsupported
+  location = caller(1, 1).first
+  if ENV['PHP_DARWIN_TIMING_ACTIVE'] == 'true' && ENV['PHP_DARWIN_TIMING_LOG']
+    begin
+      File.open(ENV['PHP_DARWIN_TIMING_LOG'], 'a') do |log|
+        log.puts "php-darwin: unlink-kegs fallback at #{location}; arguments=#{ARGV.join(' ')}"
+      end
+    rescue SystemCallError
+      # Diagnostics must never change the compatibility fallback.
+    end
+  end
   exit 78
 end
 
@@ -1314,12 +1458,15 @@ begin
   if mode == 'restore'
     journals = Dir.glob(File.join(journal_dir, '*.json')).sort.reverse
     restored_names = journals.flat_map do |journal|
-      JSON.parse(File.read(journal)).map do |entry|
+      JSON.parse(File.read(journal)).flat_map do |entry|
         path = File.join(prefix, entry.fetch('path'))
         target = File.expand_path(entry.fetch('target'), File.dirname(path))
         match = target.match(%r{\A#{Regexp.escape(prefix)}/Cellar/([^/]+)/})
         raise 'invalid unlink journal target' unless match
-        match[1]
+        names = [match[1]]
+        names << File.basename(path) if File.dirname(path) == File.join(prefix, 'opt') ||
+          File.dirname(path) == File.join(prefix, 'var/homebrew/linked')
+        names
       end
     end
     restored_names.uniq.sort.each { |name| acquire_lock(prefix, name, locks) }
@@ -1327,7 +1474,7 @@ begin
       JSON.parse(File.read(journal)).reverse_each do |entry|
         relative, target = entry.values_at('path', 'target')
         raise 'invalid unlink journal' unless relative.is_a?(String) && target.is_a?(String) &&
-          relative.match?(%r{\A(?:bin|etc|include|lib|sbin|share|var)/}) &&
+          relative.match?(%r{\A(?:(?:bin|etc|include|lib|sbin|share|var)/|opt/[^/]+\z)}) &&
           !relative.match?(%r{(?:\A|/)\.\.?(/|\z)|//|[\r\n\t]}) &&
           File.expand_path(target, File.dirname(File.join(prefix, relative))).start_with?(prefix + '/Cellar/')
         path = File.join(prefix, relative)
@@ -1376,11 +1523,20 @@ begin
       receipt = JSON.parse(File.read(File.join(keg, 'INSTALL_RECEIPT.json')))
       aliases = receipt['aliases'] || []
       unsupported unless aliases.is_a?(Array) && aliases.all? { |value| value.is_a?(String) && !%w[. ..].include?(value) && value.match?(/\A[a-zA-Z0-9@+_.-]+\z/) }
-      # Alias cleanup and info-index updates remain Homebrew operations. The
-      # common case needs only owned symlinks and the linked-keg record removed.
+      # Homebrew removes unversioned aliases of this keg during unlink. Record
+      # only direct, owned aliases; unusual layouts still use the native command.
       aliases.reject { |value| value.include?('@') }.each do |value|
-        unsupported if File.exist?(File.join(prefix, 'opt', value)) || File.symlink?(File.join(prefix, 'opt', value))
-        unsupported if File.exist?(File.join(prefix, 'var/homebrew/linked', value)) || File.symlink?(File.join(prefix, 'var/homebrew/linked', value))
+        %w[opt var/homebrew/linked].each do |directory|
+          alias_path = File.join(prefix, directory, value)
+          next unless File.exist?(alias_path) || File.symlink?(alias_path)
+          unsupported unless File.symlink?(alias_path)
+          target = resolved(alias_path)
+          # A link to another installed keg is left alone, as Homebrew does.
+          next if File.exist?(alias_path) && File.realpath(alias_path) != keg
+          unsupported unless target.match?(%r{\A#{Regexp.escape(prefix)}/Cellar/#{Regexp.escape(name)}/[^/]+\z})
+          additional_locks << value
+          plans << {'path' => alias_path.delete_prefix(prefix + '/'), 'target' => File.readlink(alias_path)}
+        end
       end
       Dir.glob(opt + '@*').each do |alias_path|
         next if aliases.include?(File.basename(alias_path))
@@ -1907,6 +2063,7 @@ LC_ALL=C sort -u "$kegs_output" -o "$kegs_output" || exit 1
 # Source: scripts/extract.sh
 php_darwin_extract() (
 
+
 archive=${1:?}
 prefix=${2:?}
 exclude_file=${3:?}
@@ -2138,7 +2295,7 @@ case "$tar_version" in
     ;;
   *) extract_options=(-T "$extract_members") ;;
 esac
-tar --ignore-zeros -xkmpf "$archive" --no-same-owner -C "$prefix" "${extract_options[@]}"
+php_darwin_timed archive.extract.tar tar --ignore-zeros -xkmpf "$archive" --no-same-owner -C "$prefix" "${extract_options[@]}"
 extract_status=$?
 restore_permissions || exit 1
 exit "$extract_status"
@@ -2148,6 +2305,8 @@ exit "$extract_status"
 
 
 
+php_darwin_timing_init
+trap 'php_darwin_timing_finish "$?"' EXIT
 php_darwin_set_phase input
 version=${1:-}
 build=${2:-release}
@@ -2239,6 +2398,10 @@ php_darwin_configure_homebrew_environment
 
 tmp_dir=$(mktemp -d "${RUNNER_TEMP:-/tmp}/php-darwin-install.XXXXXX") || \
   php_darwin_die 'could not create the installation directory'
+if [ "$PHP_DARWIN_TIMING_ACTIVE" = true ]; then
+  export PHP_DARWIN_TIMING_LOG="$tmp_dir/timings.log"
+fi
+php_darwin_timed runtime.ruby.select php_darwin_select_ruby
 archive_roots_file="$tmp_dir/archive-paths.txt"
 php_darwin_read_config archive-paths > "$archive_roots_file" || \
   php_darwin_die 'could not stage the archive root configuration'
@@ -2302,10 +2465,10 @@ php_darwin_unlink_formulae() {
   shift
 
   printf 'fast\n' > "$mode_file" || return 1
-  php_darwin_unlink_kegs unlink "$brew_prefix" "$unlink_journal_dir" "$@" || unlink_status=$?
+  php_darwin_timed homebrew.unlink.fast php_darwin_unlink_kegs unlink "$brew_prefix" "$unlink_journal_dir" "$@" || unlink_status=$?
   if [ "$unlink_status" -eq 78 ]; then
     printf 'brew\n' > "$mode_file" || return 1
-    brew unlink "$@"
+    php_darwin_timed homebrew.unlink.cli brew unlink "$@"
   else
     return "$unlink_status"
   fi
@@ -2314,9 +2477,9 @@ php_darwin_unlink_formulae() {
 php_darwin_check_installed_dependencies() {
   local dependency_status=0
 
-  php_darwin_check_dependencies "$brew_prefix" "$packages_file" || dependency_status=$?
+  php_darwin_timed homebrew.dependencies.fast php_darwin_check_dependencies "$brew_prefix" "$packages_file" || dependency_status=$?
   if [ "$dependency_status" -eq 78 ]; then
-    brew missing "$tap/$formula"
+    php_darwin_timed homebrew.dependencies.cli brew missing "$tap/$formula"
   else
     return "$dependency_status"
   fi
@@ -2461,7 +2624,7 @@ php_darwin_start_archive_hash() {
   local archive_to_hash=$1
 
   (
-    php_darwin_sha256 "$archive_to_hash" > "$archive_hash_file"
+    php_darwin_timed archive.sha256 php_darwin_sha256 "$archive_to_hash" > "$archive_hash_file"
   ) > "$archive_hash_log" 2>&1 &
   archive_hash_pid=$!
 }
@@ -2519,6 +2682,7 @@ php_darwin_restore_formula_trust() {
 
 php_darwin_install_cleanup() {
   cleanup_status=$?
+  php_darwin_set_phase cleanup "$cleanup_status"
   rollback_status=ok
   rollback_attempted=false
   rollback_log="$tmp_dir/rollback.log"
@@ -2682,11 +2846,13 @@ php_darwin_install_cleanup() {
     printf 'php-darwin: restore the previous cache tap with: sudo mv %s %s\n' \
       "$tap_snapshot_backup" "$tap_snapshot_path" >&2
   fi
+  php_darwin_timing_flush
   if [ "$preserve_tmp_dir" = true ]; then
     printf 'php-darwin: preserved recovery files in %s\n' "$tmp_dir" >&2
   else
     rm -rf "$tmp_dir"
   fi
+  php_darwin_timing_finish "$cleanup_status"
   exit "$cleanup_status"
 }
 trap php_darwin_install_cleanup EXIT
@@ -2715,9 +2881,9 @@ done
 : > "$homebrew_prepare_phase_file" || php_darwin_die 'could not create the Homebrew preparation phase file'
 (
   trust_status=0
-  trust_json=$(php_darwin_trust_store snapshot "$brew_prefix") || trust_status=$?
+  trust_json=$(php_darwin_timed homebrew.trust.snapshot.fast php_darwin_trust_store snapshot "$brew_prefix") || trust_status=$?
   if [ "$trust_status" -eq 78 ]; then
-    trust_json=$(brew trust --json=v1) || exit 1
+    trust_json=$(php_darwin_timed homebrew.trust.snapshot.cli brew trust --json=v1) || exit 1
   elif [ "$trust_status" -ne 0 ]; then
     exit "$trust_status"
   fi
@@ -2744,7 +2910,7 @@ done
 homebrew_trust_pid=$!
 (
   printf 'homebrew.tap-path\n' > "$homebrew_prepare_phase_file" || exit 1
-  brew --repository "$tap" > "$tap_path_file" || exit 1
+  php_darwin_timed homebrew.repository php_darwin_tap_repository_path "$tap" > "$tap_path_file" || exit 1
   if [ "${#linked_php_references[@]}" -gt 0 ]; then
     printf 'homebrew.unlink\n' > "$homebrew_prepare_phase_file" || exit 1
     php_darwin_unlink_formulae "$php_unlink_mode_file" "${linked_php_references[@]}" || exit 1
@@ -2881,7 +3047,7 @@ else
     fi
   fi
   [ "$actual_hash" = "$expected_hash" ] || php_darwin_die "checksum mismatch for $asset"
-  php_darwin_read_metadata "$archive" "$internal_metadata_path" "$metadata_copy" || \
+  php_darwin_timed archive.metadata.read php_darwin_read_metadata "$archive" "$internal_metadata_path" "$metadata_copy" || \
     php_darwin_die 'could not read metadata from the verified release archive'
 fi
 
@@ -2962,7 +3128,7 @@ while IFS=$'\t' read -r extension extension_type extension_path; do
   fi
 done < "$extension_paths_inventory"
 
-php_darwin_set_phase homebrew.tap
+php_darwin_set_phase homebrew.prepare.wait
 php_darwin_wait_for_homebrew_prepare
 case "$tap_path" in
   "$brew_prefix/Library/Taps/"*|"$brew_prefix/Homebrew/Library/Taps/"*) ;;
@@ -3057,7 +3223,7 @@ cat "$postinstall_paths_file" >> "$managed_paths_file" || \
   php_darwin_die 'could not add formula-managed post-install paths'
 LC_ALL=C sort -u "$managed_paths_file" -o "$managed_paths_file" || \
   php_darwin_die 'could not sort managed archive paths'
-php_darwin_existing_paths "$brew_prefix" "$exclude_file" \
+php_darwin_timed homebrew.inventory php_darwin_existing_paths "$brew_prefix" "$exclude_file" \
   "$archive_roots_file" \
   "$existing_kegs" "$managed_paths_file" "$package_kegs_file" || \
   php_darwin_die 'could not record existing Homebrew paths'
@@ -3105,20 +3271,20 @@ fi
 php_darwin_set_phase archive.extract
 archive_mutation_started=true
 tap_snapshot_extracted=true
-php_darwin_extract "$archive" "$brew_prefix" "$exclude_file" \
+php_darwin_timed archive.extract.files php_darwin_extract "$archive" "$brew_prefix" "$exclude_file" \
   "$managed_paths_file" "$package_kegs_file" || \
   php_darwin_die "could not extract $asset into Homebrew"
 
 php_darwin_set_phase homebrew.tap
 [ -d "$tap_snapshot_path/.git" ] && [ ! -L "$tap_snapshot_path" ] || \
   php_darwin_die 'cache did not contain a valid Homebrew tap snapshot'
-php_darwin_validate_tap "$tap_snapshot_path" "$version" '' \
+php_darwin_timed homebrew.tap.validate php_darwin_validate_tap "$tap_snapshot_path" "$version" '' \
   "$tap_repository" "$metadata_homebrew_commit" "$tap_branch" >/dev/null || \
   php_darwin_die 'cached Homebrew tap snapshot validation failed'
 if [ -e "$tap_path" ]; then
   php_darwin_is_git_worktree "$tap_path" || \
     php_darwin_die "installed Homebrew tap is not a Git repository: $tap_path"
-  php_darwin_tap_action "$tap_path" "$tap_snapshot_path" "$version" \
+  php_darwin_timed homebrew.tap.select php_darwin_tap_action "$tap_path" "$tap_snapshot_path" "$version" \
     "$cached_source_hash" "$tap_repository" "$metadata_homebrew_commit" "$tap_branch" \
     > "$tap_action_file" 2> "$tap_log" &
   tap_pid=$!
@@ -3171,12 +3337,12 @@ if [ "$tap_was_trusted" = false ]; then
     printf 'Trusting %s installed Homebrew formula(s) from %s\n' \
       "${#formula_trust_references[@]}" "$tap"
     trust_status=0
-    php_darwin_trust_store add "$brew_prefix" "$tap" "$formula_trust_pending" \
+    php_darwin_timed homebrew.trust.add.fast php_darwin_trust_store add "$brew_prefix" "$tap" "$formula_trust_pending" \
       "${formula_trust_references[@]}" || trust_status=$?
     if [ "$trust_status" -eq 78 ]; then
       printf '%s\n' "${formula_trust_references[@]}" > "$formula_trust_pending" || \
         php_darwin_die 'could not record formula trust added by the cache installation'
-      brew trust --formula "${formula_trust_references[@]}" || \
+      php_darwin_timed homebrew.trust.add.cli brew trust --formula "${formula_trust_references[@]}" || \
         php_darwin_die "could not trust installed Homebrew formulae from $tap"
     elif [ "$trust_status" -ne 0 ]; then
       php_darwin_die "could not merge installed Homebrew formula trust for $tap"
@@ -3226,7 +3392,7 @@ grep -Fq "$brew_prefix/lib/php/pecl/$pecl_extension" "$brew_prefix/etc/php/$conf
   php_darwin_die 'cached PHP PECL link has no shared directory target'
 
 php_darwin_set_phase homebrew.link
-php_darwin_verify_links "$brew_prefix" "$installed_links_file" || \
+php_darwin_timed homebrew.links.verify php_darwin_verify_links "$brew_prefix" "$installed_links_file" || \
   php_darwin_die 'cached Homebrew links did not match the archive metadata'
 
 php_darwin_set_phase runtime.verify
@@ -3245,7 +3411,7 @@ done < "$extension_paths_inventory"
 php_darwin_set_phase homebrew.dependencies
 php_darwin_resolve_tap_and_dependencies
 runtime_verified=true
-php_darwin_set_phase complete
+php_darwin_set_phase homebrew.finalize
 
 if [ "$tap_snapshot_backed_up" = true ]; then
   if { [ ! -e "$tap_snapshot_path" ] && [ ! -L "$tap_snapshot_path" ]; } && \

@@ -7,6 +7,7 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 bash -n "$script_dir"/*.sh "$script_dir"/../templates/*.sh || php_darwin_die 'shell syntax validation failed'
 bash "$script_dir/test-job-control.sh" || php_darwin_die 'bounded job cleanup validation failed'
 node --test "$script_dir/test-trust-store.cjs" || php_darwin_die 'Homebrew trust merge validation failed'
+node --test "$script_dir/test-install-timing.cjs" || php_darwin_die 'installer timing validation failed'
 node --test "$script_dir/test-homebrew-files.cjs" || php_darwin_die 'Homebrew link and dependency validation failed'
 bash "$script_dir/test-download.sh" || php_darwin_die 'cache download failover validation failed'
 bash "$script_dir/test-mirror.sh" || php_darwin_die 'release mirror validation failed'

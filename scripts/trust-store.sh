@@ -1,14 +1,26 @@
 #!/usr/bin/env bash
 
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=scripts/lib.sh
+. "$script_dir/lib.sh"
+
 # Exit 78 means that Homebrew must handle this layout/configuration itself.
-# Keep the helper on the system Ruby: invoking `brew ruby` loads Homebrew first.
-[ -x /usr/bin/ruby ] || exit 78
-/usr/bin/ruby - "$@" <<'PHP_DARWIN_TRUST_RUBY'
+php_darwin_ruby - "$@" <<'PHP_DARWIN_TRUST_RUBY'
 require 'json'
 require 'fileutils'
 require 'tempfile'
 
 def unsupported
+  location = caller(1, 1).first
+  if ENV['PHP_DARWIN_TIMING_ACTIVE'] == 'true' && ENV['PHP_DARWIN_TIMING_LOG']
+    begin
+      File.open(ENV['PHP_DARWIN_TIMING_LOG'], 'a') do |log|
+        log.puts "php-darwin: trust-store fallback at #{location}; arguments=#{ARGV.join(' ')}"
+      end
+    rescue SystemCallError
+      # Diagnostics must never change the compatibility fallback.
+    end
+  end
   exit 78
 end
 

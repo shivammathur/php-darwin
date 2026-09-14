@@ -75,6 +75,36 @@ test('stale aliases delegate before mutation', t => {
   assert.equal(fs.existsSync(f.journals), false);
 });
 
+test('owned unversioned aliases are journaled and restored; unrelated aliases are preserved', t => {
+  const f = fixture(t);
+  f.write('Cellar/php/1.0/INSTALL_RECEIPT.json', JSON.stringify({aliases: ['php@1', 'php-alias', 'other-alias'], runtime_dependencies: []}));
+  f.link('opt/php-alias', '../Cellar/php/1.0');
+  f.link('var/homebrew/linked/php-alias', '../../../Cellar/php/1.0');
+  f.write('Cellar/other/1.0/fixture', 'other package');
+  f.link('opt/other-alias', '../Cellar/other/1.0');
+  let result = f.run('unlink');
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(fs.existsSync(path.join(f.prefix, 'opt/php-alias')), false);
+  assert.equal(fs.existsSync(path.join(f.prefix, 'var/homebrew/linked/php-alias')), false);
+  assert.equal(fs.readlinkSync(path.join(f.prefix, 'opt/php@1')), '../Cellar/php/1.0');
+  assert.equal(fs.readlinkSync(path.join(f.prefix, 'opt/other-alias')), '../Cellar/other/1.0');
+  result = f.run('restore');
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(fs.readlinkSync(path.join(f.prefix, 'opt/php-alias')), '../Cellar/php/1.0');
+  assert.equal(fs.readlinkSync(path.join(f.prefix, 'var/homebrew/linked/php-alias')), '../../../Cellar/php/1.0');
+  f.check();
+});
+
+test('an alias represented by a real user file delegates before modifying anything', t => {
+  const f = fixture(t);
+  f.write('Cellar/php/1.0/INSTALL_RECEIPT.json', JSON.stringify({aliases: ['php-alias']}));
+  f.write('opt/php-alias', 'user content');
+  assert.equal(f.run('unlink').status, 78);
+  assert.equal(fs.readFileSync(path.join(f.prefix, 'opt/php-alias'), 'utf8'), 'user content');
+  f.check();
+  assert.equal(fs.existsSync(f.journals), false);
+});
+
 test('symlinked parents outside the selected keg are left to Homebrew', t => {
   const f = fixture(t);
   fs.unlinkSync(path.join(f.prefix, 'include/php'));

@@ -19,9 +19,7 @@ bash -n "$installer" || php_darwin_die 'standalone installer has invalid shell s
 if grep -Eq 'base64|PHP_DARWIN_PAYLOAD|PHP_DARWIN_CLIENT|gzip -d' "$installer"; then
   php_darwin_die 'standalone installer contains an encoded payload'
 fi
-if grep -Eq 'PHP_DARWIN_TIMING_LOG|php_darwin_(log_metric|show_metrics)|installer\.total_seconds' "$installer"; then
-  php_darwin_die 'standalone installer contains profiling logic'
-fi
+
 if grep -Fq 'GITHUB_PATH' "$installer"; then
   php_darwin_die 'standalone installer must use Homebrew links instead of changing GITHUB_PATH'
 fi
