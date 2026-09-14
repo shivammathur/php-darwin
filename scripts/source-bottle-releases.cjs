@@ -6,7 +6,7 @@ const { Readable } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
 const { spawnSync } = require('node:child_process');
 const { setTimeout: pause } = require('node:timers/promises');
-const { command, readBottle } = require('./source-bottle-cache.cjs');
+const { command, brewSource, readBottle } = require('./source-bottle-cache.cjs');
 
 const sha256 = value => crypto.createHash('sha256').update(value).digest('hex');
 
@@ -44,8 +44,7 @@ function assetIdentity(asset) {
 }
 
 function olderVersions(versions) {
-  return JSON.parse(command('brew', ['ruby', '--', path.join(__dirname, 'source-bottle-prune.rb'),
-    JSON.stringify(versions)]));
+  return JSON.parse(brewSource('prune', [JSON.stringify(versions)]));
 }
 
 function unpack(archive, directory, key) {

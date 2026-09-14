@@ -7,6 +7,7 @@ on:
       - .github/actions/source-cache/**
       - .github/workflows/test-source-cache.yml
       - scripts/source-bottle-*
+      - scripts/brew-php-darwin-source.rb
       - scripts/test-source-bottle-*
       - scripts/formula-build-inputs.sh
       - scripts/build-extensions.sh
@@ -35,6 +36,8 @@ jobs:
         run: bash scripts/cleanup-taps.sh
       - name: Prepare source-only library and consumer
         run: bash scripts/test-source-bottle-native.sh prepare
+      - name: Verify native bottle selection and dependency pruning
+        run: bash scripts/test-source-bottle-native.sh verify-plan
       - name: Build or restore source bottles
         uses: ./.github/actions/source-cache
         with:

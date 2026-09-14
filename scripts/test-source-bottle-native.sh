@@ -68,7 +68,37 @@ class PhpDarwinCacheApp < Formula
   end
 end
 EOF
+    cat > "$tap_path/Formula/php-darwin-cache-bottled.rb" <<EOF
+class PhpDarwinCacheBottled < Formula
+  desc "Bottle planning regression fixture"
+  homepage "https://github.com/shivammathur/php-darwin"
+  url "file://$fixtures/source.tar.gz"
+  version "1.0.0"
+  sha256 "$source_hash"
+  license "MIT"
+  bottle do
+    root_url "file://$fixtures"
+    sha256 Utils::Bottles.tag.to_sym => "$source_hash"
+  end
+  depends_on "$library" => :build
+end
+EOF
     brew trust "$tap"
+    ;;
+  verify-plan)
+    # This fixture is never installed. Its platform-default Cellar must be
+    # recognized without fetching anything or including its source build tool.
+    node <<'JS'
+const assert = require('node:assert/strict');
+const { brewSource } = require('./scripts/source-bottle-cache.cjs');
+const formula = 'php-darwin/source-cache-test/php-darwin-cache-bottled';
+const plan = force => JSON.parse(brewSource('info', ['plan', JSON.stringify([formula]), String(force)]));
+const bottled = plan(false);
+assert.deepEqual(bottled.map(item => item.full_name), [formula]);
+assert.equal(bottled[0].bottled, true);
+assert.deepEqual(plan(true).map(item => item.name), ['php-darwin-cache-lib', 'php-darwin-cache-bottled']);
+console.log('Native bottle selected; build-only dependency included only for forced source builds');
+JS
     ;;
   verify)
     [ "$("$(brew --prefix "$app")/bin/php-darwin-cache-app")" = 42 ]

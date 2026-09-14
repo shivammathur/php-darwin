@@ -17,13 +17,18 @@ function digest(value) {
   return crypto.createHash('sha256').update(value).digest('hex');
 }
 
+function brewSource(mode, args) {
+  return command('brew', ['php-darwin-source', mode, ...args], {
+    env: { PATH: `${__dirname}${path.delimiter}${process.env.PATH}` },
+  });
+}
+
 function keyFor(inputs) {
   return `php-darwin-source-v1-${digest(JSON.stringify(inputs))}`;
 }
 
 function inspect(mode, formulae, forceSource = false) {
-  return JSON.parse(command('brew', ['ruby', '--', path.join(__dirname, 'source-bottle-info.rb'),
-    mode, JSON.stringify(formulae), String(forceSource)]));
+  return JSON.parse(brewSource('info', [mode, JSON.stringify(formulae), String(forceSource)]));
 }
 
 function recipeHash(recipe) {
@@ -164,4 +169,4 @@ function extensionInputs(abstract, phpPrefix, build, ts, run = command) {
   };
 }
 
-module.exports = { command, keyFor, readBottle, install, extensionInputs };
+module.exports = { command, brewSource, keyFor, readBottle, install, extensionInputs };

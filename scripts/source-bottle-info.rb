@@ -1,4 +1,5 @@
-# Invoked through brew ruby so resolution and bottle selection use Homebrew.
+# Invoked as a Homebrew external command so resolution and bottle selection
+# retain Homebrew's initialized platform defaults.
 require "formulary"
 require "formula_installer"
 require "json"
