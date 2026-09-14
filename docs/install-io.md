@@ -1,5 +1,10 @@
 # Installer I/O and network measurements
 
+The instrumentation used for these measurements is preserved on
+[`debug/install-timing`](https://github.com/shivammathur/php-darwin/tree/debug/install-timing).
+Production retains the optimizations below with timing wrappers, probes and
+logs removed. Timings here refer to the recorded revisions and runs.
+
 Measured on 2026-09-14 UTC (2026-09-15 in India). Changes are limited to
 php-darwin. Keep compression level **19** and native `tar`: controlled downloads
 and extraction did not show a consistent advantage from level 22 or a piped

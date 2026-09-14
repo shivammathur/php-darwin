@@ -7,7 +7,7 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 bash -n "$script_dir"/*.sh "$script_dir"/../templates/*.sh || php_darwin_die 'shell syntax validation failed'
 bash "$script_dir/test-job-control.sh" || php_darwin_die 'bounded job cleanup validation failed'
 node --test "$script_dir/test-trust-store.cjs" || php_darwin_die 'Homebrew trust merge validation failed'
-node --test "$script_dir/test-install-timing.cjs" || php_darwin_die 'installer timing validation failed'
+node --test "$script_dir/test-install-environment.cjs" || php_darwin_die 'installer environment validation failed'
 node --test "$script_dir/test-homebrew-files.cjs" || php_darwin_die 'Homebrew link and dependency validation failed'
 node --test "$script_dir/test-install-state.cjs" || php_darwin_die 'batched install state and static PHP validation failed'
 bash "$script_dir/test-download.sh" || php_darwin_die 'cache download failover validation failed'
@@ -243,7 +243,7 @@ fi
 bash "$script_dir/validate-install.sh" || php_darwin_die 'standalone installer validation failed'
 if bash -c '
   . "$1"
-  php_darwin_set_phase archive.extract
+  PHP_DARWIN_PHASE=archive.extract
   php_darwin_die "fixture extraction error"
 ' _ "$script_dir/lib.sh" > /dev/null 2> "$phase_failure_log"; then
   php_darwin_die 'phase failure fixture unexpectedly succeeded'

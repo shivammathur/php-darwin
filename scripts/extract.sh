@@ -235,7 +235,7 @@ case "$tar_version" in
     ;;
   *) extract_options=(-T "$extract_members") ;;
 esac
-php_darwin_timed archive.extract.tar tar --ignore-zeros -xkmpf "$archive" --no-same-owner -C "$prefix" "${extract_options[@]}"
+tar --ignore-zeros -xkmpf "$archive" --no-same-owner -C "$prefix" "${extract_options[@]}"
 extract_status=$?
 restore_permissions || exit 1
 exit "$extract_status"

@@ -16,6 +16,9 @@ bash "$script_dir/generate-install.sh" "$expected" >/dev/null || \
   php_darwin_die 'could not independently generate the standalone installer'
 cmp -s "$installer" "$expected" || php_darwin_die 'standalone installer is stale'
 bash -n "$installer" || php_darwin_die 'standalone installer has invalid shell syntax'
+if grep -Eq 'php_darwin_(timed|timing_|set_phase)|PHP_DARWIN_TIMING|Time::HiRes' "$installer"; then
+  php_darwin_die 'production installer contains debug timing instrumentation'
+fi
 if grep -Eq 'base64|PHP_DARWIN_PAYLOAD|PHP_DARWIN_CLIENT|gzip -d' "$installer"; then
   php_darwin_die 'standalone installer contains an encoded payload'
 fi

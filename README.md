@@ -63,14 +63,13 @@ Git history; incomplete history preserves the installed tap transactionally
 without an additional GitHub API request. Downloads stop at HTTP error headers
 and try the next origin without waiting for an error response body.
 
-Set the setup-php step's environment to `verbose: vvv` to include installer
-timings, or set `PHP_DARWIN_TIMING=true` when invoking `install.sh` directly.
-Each record contains its scope, logical name, monotonic start time, elapsed
-milliseconds, and exit status. Phase timings describe the main install path;
-operation timings include background downloads and Homebrew workers and can
-overlap those phases. The installer total includes cleanup. Normal installs do
-not read the timing clock or print timing records. Verbose action tracing adds
-overhead, so compare final user-facing speed with verbosity disabled as well.
+Installer timing instrumentation lives on the
+[`debug/install-timing` branch](https://github.com/shivammathur/php-darwin/tree/debug/install-timing).
+Production installers contain no timing wrappers, clock probes, or timing logs;
+they retain phase-specific error messages and recovery diagnostics. To profile
+an install, use that branch's generated installer with `PHP_DARWIN_TIMING=true`.
+Timing flags do not enable instrumentation in the production installer.
+
 Helpers use Homebrew's installed portable Ruby directly after checking its
 required standard libraries. If that runtime is unavailable or unusable, they
 use the system Ruby; no additional interpreter is downloaded.

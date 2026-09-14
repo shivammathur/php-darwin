@@ -1,5 +1,10 @@
 # Installer timing measurements
 
+Instrumentation is now maintained on
+[`debug/install-timing`](https://github.com/shivammathur/php-darwin/tree/debug/install-timing).
+The production installer has no timing wrappers or logging. The measurements
+below describe the instrumented revisions linked in this report.
+
 The [follow-up I/O measurements](install-io.md) cover static `php-config`
 validation, reduced filesystem/network work, repeated installs without Composer,
 and controlled level-19/22 downloads. This page records the earlier comparison.

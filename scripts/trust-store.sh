@@ -11,16 +11,6 @@ require 'fileutils'
 require 'tempfile'
 
 def unsupported
-  location = caller(1, 1).first
-  if ENV['PHP_DARWIN_TIMING_ACTIVE'] == 'true' && ENV['PHP_DARWIN_TIMING_LOG']
-    begin
-      File.open(ENV['PHP_DARWIN_TIMING_LOG'], 'a') do |log|
-        log.puts "php-darwin: trust-store fallback at #{location}; arguments=#{ARGV.join(' ')}"
-      end
-    rescue SystemCallError
-      # Diagnostics must never change the compatibility fallback.
-    end
-  end
   exit 78
 end
 

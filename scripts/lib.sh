@@ -16,88 +16,6 @@ php_darwin_die() {
   exit 1
 }
 
-php_darwin_set_phase() {
-  if [ "${PHP_DARWIN_TIMING_ACTIVE:-false}" = true ]; then
-    local now
-    now=$(php_darwin_timing_now) || now=
-    if [[ "$now" =~ ^[0-9]+$ ]]; then
-      if [ -n "${php_darwin_phase_started:-}" ]; then
-        php_darwin_timing_emit phase "$PHP_DARWIN_PHASE" "$php_darwin_phase_started" "$now" "${2:-0}"
-      fi
-      php_darwin_phase_started=$now
-    fi
-  fi
-  PHP_DARWIN_PHASE=$1
-}
-
-php_darwin_timing_now() {
-  /usr/bin/perl -MTime::HiRes=clock_gettime,CLOCK_MONOTONIC -e 'printf "%.0f\n", 1000 * clock_gettime(CLOCK_MONOTONIC)'
-}
-
-php_darwin_timing_init() {
-  export PHP_DARWIN_TIMING_ACTIVE=false
-  unset php_darwin_phase_started php_darwin_install_started PHP_DARWIN_TIMING_LOG
-  case "${PHP_DARWIN_TIMING:-${verbose:-${VERBOSE:-}}}:${SETUP_PHP_TRACE:-0}" in
-    true:*|vvv:*|*:2) ;;
-    *) return 0 ;;
-  esac
-  php_darwin_install_started=$(php_darwin_timing_now 2>/dev/null) || return 0
-  [[ "$php_darwin_install_started" =~ ^[0-9]+$ ]] || return 0
-  export PHP_DARWIN_TIMING_ACTIVE=true
-}
-
-php_darwin_timing_emit() {
-  local record
-  printf -v record 'php-darwin: timing scope=%s name=%s start_ms=%s elapsed_ms=%s status=%s' \
-    "$1" "$2" "$3" "$(($4 - $3))" "$5"
-  if [ -n "${PHP_DARWIN_TIMING_LOG:-}" ]; then
-    printf '%s\n' "$record" >> "$PHP_DARWIN_TIMING_LOG" || printf '%s\n' "$record" >&2
-  else
-    printf '%s\n' "$record" >&2
-  fi
-  return 0
-}
-
-# Operation durations can overlap the main phases and other background work.
-# Keep stdout and the command's exit status intact, including command substitution.
-php_darwin_timed() {
-  local name=$1 started finished status=0
-  shift
-  if [ "${PHP_DARWIN_TIMING_ACTIVE:-false}" != true ]; then
-    "$@"
-    return $?
-  fi
-  started=$(php_darwin_timing_now) || started=
-  "$@" || status=$?
-  finished=$(php_darwin_timing_now) || finished=
-  if [[ "$started" =~ ^[0-9]+$ ]] && [[ "$finished" =~ ^[0-9]+$ ]]; then
-    php_darwin_timing_emit operation "$name" "$started" "$finished" "$status"
-  fi
-  return "$status"
-}
-
-php_darwin_timing_flush() {
-  if [ -n "${PHP_DARWIN_TIMING_LOG:-}" ] && [ -f "$PHP_DARWIN_TIMING_LOG" ]; then
-    cat "$PHP_DARWIN_TIMING_LOG" >&2
-  fi
-  unset PHP_DARWIN_TIMING_LOG
-  return 0
-}
-
-php_darwin_timing_finish() {
-  local status=${1:-0} now
-  [ "${PHP_DARWIN_TIMING_ACTIVE:-false}" = true ] || return 0
-  now=$(php_darwin_timing_now) || now=
-  if [[ "$now" =~ ^[0-9]+$ ]]; then
-    if [ -n "${php_darwin_phase_started:-}" ]; then
-      php_darwin_timing_emit phase "$PHP_DARWIN_PHASE" "$php_darwin_phase_started" "$now" "$status"
-    fi
-    php_darwin_timing_emit total installer "$php_darwin_install_started" "$now" "$status"
-  fi
-  php_darwin_timing_flush
-  PHP_DARWIN_TIMING_ACTIVE=false
-}
-
 php_darwin_configure_homebrew_environment() {
   export HOMEBREW_NO_AUTO_UPDATE=1
   export HOMEBREW_NO_AUTOREMOVE=1
@@ -136,9 +54,6 @@ php_darwin_select_ruby() {
   if [[ "$repository" = /* ]] && [ -x "$candidate" ] && \
     "$candidate" --disable=gems -rjson -rfileutils -rfind -rtempfile -e 'exit 0' >/dev/null 2>&1; then
     PHP_DARWIN_RUBY=$candidate
-  fi
-  if [ "${PHP_DARWIN_TIMING_ACTIVE:-false}" = true ]; then
-    printf 'php-darwin: helper Ruby: %s\n' "$PHP_DARWIN_RUBY" >&2
   fi
   return 0
 }
@@ -773,12 +688,7 @@ php_darwin_request_release() {
 
   # Fail over before retrying the same broken origin. Bound connection and
   # stalled-transfer time while allowing large legacy archives to finish.
-  local origin=other
-  case "$1" in
-    https://github.com/*) origin=github ;;
-    https://artifacts.php-darwin.setup-php.com/*) origin=r2 ;;
-  esac
-  status=$(php_darwin_timed "download.$origin" curl --config <(php_darwin_read_config download.conf) \
+  status=$(curl --config <(php_darwin_read_config download.conf) \
     --retry 0 --connect-timeout 2 --speed-time 3 --speed-limit 1024 \
     -fsSL -w '%{http_code}' "$1" -o "$2") || result=$?
   if [ "$result" -ne 0 ] || [ "$status" != 200 ]; then
