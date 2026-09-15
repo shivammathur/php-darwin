@@ -36,3 +36,7 @@ jobs:
           (cd "$RUNNER_TEMP/actionlint" && sha256sum --check --ignore-missing actionlint_1.7.12_checksums.txt)
           tar -xzf "$RUNNER_TEMP/actionlint/actionlint_1.7.12_linux_amd64.tar.gz" -C "$RUNNER_TEMP/actionlint" actionlint
           "$RUNNER_TEMP/actionlint/actionlint"
+      - name: Preserve the Actions Node runtime
+        uses: ./.github/actions/node-runtime
+      - name: Verify the preserved Node runtime works without Node on PATH
+        run: PATH=/nonexistent "$PHP_DARWIN_NODE" -e 'require("node:assert/strict").ok(process.versions.node)'

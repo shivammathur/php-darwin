@@ -15,7 +15,7 @@ check() {
       *.cjs) node --check "$file" ;;
       *.rb) "${PHP_DARWIN_RUBY:-ruby}" -c "$file" >/dev/null ;;
     esac
-  done < <(find scripts .github templates -type f -print0)
+  done < <(find scripts .github/actions templates -type f -print0)
   bash "$script_dir/integration/configuration.test.sh"
 }
 

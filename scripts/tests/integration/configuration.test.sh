@@ -4,6 +4,13 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=scripts/lib/lib.sh
 . "$script_dir/../../lib/lib.sh"
 
+pinned_source_output=$(GITHUB_OUTPUT='' PINNED_COMMIT=0123456789abcdef0123456789abcdef01234567 \
+  bash "$script_dir/../../build/source-commit.sh") || php_darwin_die 'pinned source commit validation failed'
+[ "$pinned_source_output" = 0123456789abcdef0123456789abcdef01234567 ] || \
+  php_darwin_die 'pinned source commit was not preserved'
+if GITHUB_OUTPUT='' PINNED_COMMIT=invalid bash "$script_dir/../../build/source-commit.sh" >/dev/null 2>&1; then
+  php_darwin_die 'invalid pinned source commit was accepted'
+fi
 for json_file in "$script_dir"/../../../conf/*.json "$script_dir"/../../../templates/*.json; do
   jq -e . "$json_file" >/dev/null || php_darwin_die "invalid JSON: $json_file"
 done
