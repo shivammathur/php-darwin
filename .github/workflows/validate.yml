@@ -1,0 +1,38 @@
+name: Validate workflows and cache scripts
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/**', 'scripts/**', 'conf/**', 'templates/**']
+  pull_request:
+    paths: ['.github/**', 'scripts/**', 'conf/**', 'templates/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate cache inputs, recovery, publishing, and generated installer
+        run: bash scripts/tests/run.sh
+      - name: Validate workflow expressions and shell commands
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/actionlint"
+          gh release download v1.7.12 --repo rhysd/actionlint --dir "$RUNNER_TEMP/actionlint" \
+            --pattern actionlint_1.7.12_linux_amd64.tar.gz --pattern actionlint_1.7.12_checksums.txt
+          (cd "$RUNNER_TEMP/actionlint" && sha256sum --check --ignore-missing actionlint_1.7.12_checksums.txt)
+          tar -xzf "$RUNNER_TEMP/actionlint/actionlint_1.7.12_linux_amd64.tar.gz" -C "$RUNNER_TEMP/actionlint" actionlint
+          "$RUNNER_TEMP/actionlint/actionlint"
