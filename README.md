@@ -6,6 +6,8 @@ Configuration lives in `conf/`; supported PHP versions and variants are shared b
 
 Runner preparation pins Homebrew sources, preserves the Actions Node runtime, and recovers only proven orphaned builds.
 
+Build PHP archives with `scripts/build/build.sh`. Packages include runtime dependencies, coverage modules, development files, licenses and the pinned PHP tap.
+
 Run local checks with `bash scripts/tests/run.sh` and workflow checks with `actionlint`.
 
 [MIT license](LICENSE).
