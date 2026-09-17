@@ -10,6 +10,8 @@ Build PHP archives with `scripts/build/build.sh`. Packages include runtime depen
 
 Generate the standalone installer with `bash scripts/installer/generate-install.sh`. Edit its source inputs, never the generated `scripts/install.sh`. Installation preserves existing PHP, configuration and services and rolls back failed transactions.
 
+Release transfers verify checksums and use bounded retries. R2 upload completion is verified against the signed object API before checking public downloads.
+
 Run local checks with `bash scripts/tests/run.sh` and workflow checks with `actionlint`.
 
 [MIT license](LICENSE).

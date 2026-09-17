@@ -40,3 +40,21 @@ jobs:
         uses: ./.github/actions/node-runtime
       - name: Verify the preserved Node runtime works without Node on PATH
         run: PATH=/nonexistent "$PHP_DARWIN_NODE" -e 'require("node:assert/strict").ok(process.versions.node)'
+      - name: Upload an artifact transfer fixture
+        id: upload-fixture
+        uses: ./.github/actions/upload-artifacts
+        with:
+          name: workflow-validation
+          path: conf/platforms.json
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
+          compression-level: 0
+      - name: Verify the shared artifact downloader
+        uses: ./.github/actions/download-artifacts
+        timeout-minutes: 5
+        with:
+          artifact-ids: ${{ steps.upload-fixture.outputs.artifact-id }}
+          path: ${{ runner.temp }}/workflow-validation
+      - name: Verify artifact contents
+        run: cmp conf/platforms.json "$RUNNER_TEMP/workflow-validation/platforms.json"
