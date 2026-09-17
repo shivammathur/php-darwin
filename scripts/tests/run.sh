@@ -17,6 +17,7 @@ check() {
     esac
   done < <(find scripts .github/actions templates -type f -print0)
   bash "$script_dir/integration/configuration.test.sh"
+  bash "$root/scripts/installer/validate-install.sh"
 }
 
 suite() {
