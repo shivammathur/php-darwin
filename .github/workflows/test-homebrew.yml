@@ -1,0 +1,50 @@
+name: Test Homebrew update compatibility
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 6 * * 0'
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/test-homebrew.yml
+      - scripts/tests/helpers/prepare-e2e.sh
+      - scripts/build/ensure-core-history.sh
+      - scripts/build/check-homebrew.sh
+permissions:
+  contents: read
+jobs:
+  test:
+    name: Published PHP and brew update on ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-latest, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    env:
+      PHP_VERSION: '8.5'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/runner-preflight
+      - name: Clean taps and check the runner
+        run: |
+          bash scripts/build/cleanup-taps.sh
+          bash scripts/build/check-homebrew.sh
+      - name: Record existing PHP and services
+        run: bash scripts/tests/helpers/prepare-e2e.sh
+      - name: Install existing published PHP
+        run: bash scripts/tests/e2e/release.test.sh
+      - name: Verify installation before updating Homebrew
+        run: bash scripts/tests/e2e/setup-php.test.sh
+      - name: Verify Homebrew can update with the installed cache
+        run: |
+          core=$(brew --repository homebrew/core)
+          if [ -d "$core/.git" ]; then
+            bash scripts/build/ensure-core-history.sh "$core"
+          fi
+          source scripts/lib/retry.sh
+          php_darwin_retry brew update
+          php-config --version
+          php -n -r 'echo "Runtime remains loadable after brew update\n";'

@@ -14,6 +14,8 @@ Release transfers verify checksums and use bounded retries. R2 upload completion
 
 Publish complete PHP matrices with `scripts/release/publish.sh`. Immutable archives are verified before the matching installer and manifest are published. `mirror.yml` refreshes mirrors and installers.
 
+`test.yml` checks native archives. `e2e.yml` checks direct installation and setup-php on ARM and Intel; inspect runtime, linkage and preservation evidence.
+
 Run local checks with `bash scripts/tests/run.sh` and workflow checks with `actionlint`.
 
 [MIT license](LICENSE).

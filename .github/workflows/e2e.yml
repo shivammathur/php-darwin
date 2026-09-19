@@ -1,0 +1,159 @@
+name: Test setup-php end to end
+run-name: Test PHP ${{ inputs.php-version }} cache through setup-php
+
+on:
+  workflow_call:
+    secrets:
+      TOKEN:
+        required: false
+    inputs:
+      optional-packs:
+        description: Require published optional packs matching the PHP release
+        default: false
+        type: boolean
+      checkout-installer:
+        default: false
+        type: boolean
+      php-version:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      optional-packs:
+        description: Require published optional packs matching the PHP release
+        default: false
+        type: boolean
+      checkout-installer:
+        description: Test the checked-out installer against existing published packages
+        default: false
+        type: boolean
+      php-version:
+        description: Published PHP minor version
+        default: '8.5'
+        required: true
+        type: string
+
+concurrency:
+  group: setup-php-e2e-${{ inputs.php-version }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  HOMEBREW_DEVELOPER: '1'
+  use_package_cache: 'true'
+  PHP_DARWIN_TEST_INSTALLER: ${{ inputs.checkout-installer && format('{0}/scripts/install.sh', github.workspace) || '' }}
+
+jobs:
+  direct:
+    name: Install PHP ${{ inputs.php-version }} with the release installer on ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    env:
+      PHP_VERSION: ${{ inputs.php-version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Recover abandoned Homebrew installers
+        uses: ./.github/actions/runner-preflight
+
+      - name: Remove unused Homebrew taps
+        run: bash scripts/build/cleanup-taps.sh
+
+      - name: Record preinstalled PHP and services
+        run: bash scripts/tests/helpers/prepare-e2e.sh
+
+      - name: Run the published installer with visible output
+        id: install
+        run: bash scripts/tests/e2e/release.test.sh
+
+      - name: Verify the direct cache installation
+        if: ${{ !cancelled() && steps.install.outcome != 'skipped' }}
+        run: bash scripts/tests/e2e/setup-php.test.sh
+
+  setup-php:
+    name: Install PHP ${{ inputs.php-version }} through setup-php on ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    env:
+      EXTENSIONS: ${{ format('{0}{1}', (inputs.php-version == '5.6' || inputs.php-version == '7.0') && 'xdebug' || 'xdebug, pcov', inputs.optional-packs && ', imagick, mongodb, memcached' || '') }}
+      PHP_DARWIN_REQUIRE_PACKS: ${{ inputs.optional-packs }}
+      PHP_DARWIN_REQUIRE_PCOV: ${{ (inputs.php-version == '5.6' || inputs.php-version == '7.0') && 'false' || 'true' }}
+      PHP_DARWIN_REQUIRE_CACHE: 'true'
+      PHP_DARWIN_REQUIRE_XDEBUG: 'true'
+      PHP_VERSION: ${{ inputs.php-version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Recover abandoned Homebrew installers
+        uses: ./.github/actions/runner-preflight
+
+      - name: Remove unused Homebrew taps
+        run: bash scripts/build/cleanup-taps.sh
+
+      - name: Remove PHP for the cold setup-php path
+        run: bash scripts/tests/helpers/remove-preinstalled-php.sh
+
+      - name: Record preinstalled PHP and services
+        run: bash scripts/tests/helpers/prepare-e2e.sh
+
+      - name: Check setup-php's passwordless sudo prerequisite
+        run: sudo -n true
+
+      - name: Check out unchanged setup-php
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: shivammathur/setup-php
+          ref: 2c253bfdb2619dd9b1764905d5b5e7488adfc104
+          path: .setup-php
+          persist-credentials: false
+
+      - name: Preserve the Actions Node runtime
+        uses: ./.github/actions/node-runtime
+
+      - name: Install PHP and extensions through setup-php from cold
+        # Stock setup-php needs a parent directory without "darwin". The helper
+        # copies its dist/src verbatim; the repository and action stay unchanged.
+        env:
+          BASH_ENV: ${{ github.workspace }}/scripts/tests/helpers/setup-php-installer.sh
+          INPUT_PHP-VERSION: ${{ inputs.php-version }}
+          INPUT_EXTENSIONS: ${{ env.EXTENSIONS }}
+          INPUT_INI-FILE: production
+          INPUT_GITHUB-TOKEN: ${{ secrets.TOKEN || github.token }}
+        run: '"$PHP_DARWIN_NODE" scripts/tests/helpers/run-setup-php.cjs .setup-php'
+
+      - name: Verify the php-darwin cache installation
+        run: bash scripts/tests/e2e/setup-php.test.sh
+
+      - name: Run setup-php again on the hot path
+        env:
+          BASH_ENV: ${{ github.workspace }}/scripts/tests/helpers/setup-php-installer.sh
+          INPUT_PHP-VERSION: ${{ inputs.php-version }}
+          INPUT_EXTENSIONS: ${{ env.EXTENSIONS }}
+          INPUT_INI-FILE: production
+          INPUT_GITHUB-TOKEN: ${{ secrets.TOKEN || github.token }}
+        run: '"$PHP_DARWIN_NODE" scripts/tests/helpers/run-setup-php.cjs .setup-php'
+
+      - name: Verify the hot installation
+        run: bash scripts/tests/e2e/setup-php.test.sh
+
+      - name: Preserve cache installer diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifacts
+        with:
+          name: setup-php-${{ inputs.php-version }}-${{ matrix.runner }}
+          path: ${{ runner.temp }}/php-darwin-setup-install.log
+          if-no-files-found: ignore
+          retention-days: 7

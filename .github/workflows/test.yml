@@ -1,0 +1,52 @@
+name: Test PHP cache
+run-name: Test PHP ${{ inputs.php-version }} cache from run ${{ inputs.run-id }} on ${{ inputs.runner }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      php-version:
+        description: PHP minor version
+        required: true
+        type: string
+      run-id:
+        description: Workflow run containing architecture artifacts
+        required: true
+        type: string
+      runner:
+        description: macOS runner label
+        options:
+          - macos-14
+          - macos-15
+          - macos-15-intel
+          - macos-26
+          - macos-26-intel
+          - macos-latest
+        required: true
+        type: choice
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  HOMEBREW_DEVELOPER: '1'
+
+jobs:
+  test:
+    name: Test PHP ${{ inputs.php-version }} packages on ${{ inputs.runner }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 90
+    env:
+      PHP_VERSION: ${{ inputs.php-version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate existing PHP archives
+        uses: ./.github/actions/test-cache
+        with:
+          php-version: ${{ inputs.php-version }}
+          runner: ${{ inputs.runner }}
+          run-id: ${{ inputs.run-id }}
+          github-token: ${{ secrets.TOKEN || github.token }}
