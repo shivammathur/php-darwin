@@ -16,6 +16,8 @@ Publish complete PHP matrices with `scripts/release/publish.sh`. Immutable archi
 
 `test.yml` checks native archives. `e2e.yml` checks direct installation and setup-php on ARM and Intel; inspect runtime, linkage and preservation evidence.
 
+`cache-stable.yml` and `cache-nightly.yml` build the configured architecture and variant matrices, test them, and publish only after required checks pass.
+
 Run local checks with `bash scripts/tests/run.sh` and workflow checks with `actionlint`.
 
 [MIT license](LICENSE).

@@ -1,0 +1,171 @@
+name: Build and test one PHP cache architecture
+
+on:
+  workflow_call:
+    secrets:
+      TOKEN:
+        required: false
+    inputs:
+      php-version:
+        required: true
+        type: string
+      arch:
+        required: true
+        type: string
+      runner:
+        required: true
+        type: string
+      test-runners:
+        required: true
+        type: string
+      variants:
+        required: true
+        type: string
+      builds:
+        required: true
+        type: string
+      ts:
+        required: true
+        type: string
+      homebrew-php-commit:
+        required: true
+        type: string
+      homebrew-extensions-commit:
+        required: true
+        type: string
+      homebrew-core-commit:
+        required: true
+        type: string
+      source-cache-release:
+        required: true
+        type: string
+      reuse-archives:
+        default: true
+        type: boolean
+      force-source:
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  HOMEBREW_DEVELOPER: '1'
+  HOMEBREW_NO_AUTO_UPDATE: '1'
+  HOMEBREW_NO_INSTALL_FROM_API: '1'
+  HOMEBREW_VERBOSE: '1'
+  HOMEBREW_VERBOSE_USING_DOTS: '0'
+
+jobs:
+  build:
+    name: Build PHP ${{ inputs.php-version }} ${{ matrix.build }}/${{ matrix.ts }} package on ${{ inputs.arch }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(inputs.variants) }}
+    permissions:
+      # Source bottles are persisted as GitHub Release assets.
+      contents: write
+      actions: write
+    env:
+      ARCH: ${{ inputs.arch }}
+      BUILD: ${{ matrix.build }}
+      TS: ${{ matrix.ts }}
+      GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+      HOMEBREW_EXTENSIONS_COMMIT: ${{ inputs.homebrew-extensions-commit }}
+      HOMEBREW_CORE_COMMIT: ${{ inputs.homebrew-core-commit }}
+      HOMEBREW_PHP_COMMIT: ${{ inputs.homebrew-php-commit }}
+      PHP_VERSION: ${{ inputs.php-version }}
+      REUSE_ARCHIVES: ${{ inputs.reuse-archives }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Recover abandoned Homebrew installers
+        uses: ./.github/actions/runner-preflight
+
+      - name: Preserve Node before Homebrew cleanup
+        uses: ./.github/actions/node-runtime
+
+      - name: Bound Homebrew bottle downloads
+        run: |
+          printf 'http1.1\nmax-time = 600\nretry-max-time = 900\n' > "$RUNNER_TEMP/php-darwin-curlrc"
+          echo "HOMEBREW_CURLRC=$RUNNER_TEMP/php-darwin-curlrc" >> "$GITHUB_ENV"
+
+      - name: Clean runner before building PHP
+        # test-bot purges the prefix into /tmp on disposable runners. Shared
+        # runners must retain their installed PHP, services and dependencies.
+        run: brew test-bot --only-cleanup-before
+
+      - name: Pin Homebrew core before resolving dependencies
+        run: bash scripts/build/pin-core.sh
+
+      - name: Install archive tools
+        run: brew install jq zstd
+
+      - name: Remove unused Homebrew taps
+        run: bash scripts/build/cleanup-taps.sh
+
+      - name: Prepare ${{ matrix.build }}/${{ matrix.ts }} Homebrew tap
+        run: bash scripts/build/build.sh prepare
+
+      - name: Clean runner for ${{ matrix.build }}/${{ matrix.ts }}
+        run: bash scripts/build/build.sh cleanup
+
+      - name: Check the cleaned Homebrew environment
+        run: bash scripts/build/check-homebrew.sh
+
+      - name: Install PHP
+        run: bash scripts/build/build.sh install
+
+      - name: Build coverage extensions
+        run: bash scripts/build/build-extensions.sh
+
+      - name: Package ${{ matrix.build }}/${{ matrix.ts }} Homebrew cache
+        run: bash scripts/build/build.sh package
+
+      - name: Verify ${{ matrix.build }}/${{ matrix.ts }} archive
+        run: bash scripts/build/build.sh verify
+
+      - name: Upload verified PHP archives
+        uses: ./.github/actions/upload-artifacts
+        with:
+          name: php-${{ inputs.php-version }}-${{ inputs.arch }}-${{ matrix.build }}-${{ matrix.ts }}
+          path: builds
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+          overwrite: true
+
+      - name: Reset runner after ${{ matrix.build }}/${{ matrix.ts }}
+        if: ${{ always() }}
+        run: bash scripts/build/build.sh reset
+
+  test:
+    name: Test PHP ${{ inputs.php-version }} packages on ${{ matrix.runner }}
+    needs: build
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    env:
+      ARCH: ${{ inputs.arch }}
+      HOMEBREW_EXTENSIONS_COMMIT: ${{ inputs.homebrew-extensions-commit }}
+      HOMEBREW_CORE_COMMIT: ${{ inputs.homebrew-core-commit }}
+      HOMEBREW_PHP_COMMIT: ${{ inputs.homebrew-php-commit }}
+      PHP_VERSION: ${{ inputs.php-version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: ${{ fromJSON(inputs.test-runners) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate existing PHP archives
+        uses: ./.github/actions/test-cache
+        with:
+          php-version: ${{ inputs.php-version }}
+          runner: ${{ matrix.runner }}
+          arch: ${{ inputs.arch }}
+          builds: ${{ inputs.builds }}
+          ts: ${{ inputs.ts }}

@@ -1,0 +1,88 @@
+name: Cache stable PHP
+run-name: Cache stable PHP ${{ inputs.php-version }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      php-version:
+        description: PHP minor version
+        default: '8.5'
+        required: true
+        type: string
+      builds:
+        description: Space-separated build types
+        default: debug release
+        required: false
+        type: string
+      ts:
+        description: Space-separated thread-safety modes
+        default: nts zts
+        required: false
+        type: string
+      architectures:
+        description: Space-separated CPU architectures
+        default: arm64 x86_64
+        required: false
+        type: string
+      homebrew-php-commit:
+        description: Existing release commit used only when completing a platform
+        required: false
+        type: string
+      homebrew-extensions-commit:
+        description: Existing extension release commit used only when completing a platform
+        required: false
+        type: string
+      source-cache-release:
+        description: Source bottle release (use an isolated release for cache tests)
+        default: cache
+        type: string
+      reuse-archives:
+        description: Reuse verified archive checkpoints with matching inputs
+        default: true
+        type: boolean
+      force-source:
+        description: Build PHP from source even when an upstream bottle exists
+        default: false
+        type: boolean
+      force:
+        description: Build even when the release already has these inputs
+        default: false
+        type: boolean
+      publish:
+        description: Publish validated caches to the PHP release
+        default: true
+        required: false
+        type: boolean
+
+concurrency:
+  group: cache-stable-${{ inputs.php-version }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  cache:
+    permissions:
+      # Required by the called publish job to replace GitHub Release assets.
+      contents: write
+      actions: write
+    uses: ./.github/workflows/build.yml
+    secrets:
+      TOKEN: ${{ secrets.TOKEN }}
+      CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
+      CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
+      CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
+    with:
+      channel: stable
+      php-version: ${{ inputs.php-version }}
+      builds: ${{ inputs.builds || 'debug release' }}
+      ts: ${{ inputs.ts || 'nts zts' }}
+      architectures: ${{ inputs.architectures || 'arm64 x86_64' }}
+      homebrew-php-commit: ${{ inputs.homebrew-php-commit || '' }}
+      homebrew-extensions-commit: ${{ inputs.homebrew-extensions-commit || '' }}
+      publish: ${{ inputs.publish }}
+      source-cache-release: ${{ inputs.source-cache-release || 'cache' }}
+      reuse-archives: ${{ inputs.reuse-archives }}
+      force-source: ${{ inputs.force-source || false }}
+      force: ${{ inputs.force || false }}

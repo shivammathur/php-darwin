@@ -1,0 +1,216 @@
+name: Build and publish PHP cache
+
+on:
+  workflow_call:
+    secrets:
+      TOKEN:
+        required: false
+      CF_R2_AWS_ACCESS_KEY_ID:
+        required: false
+      CF_R2_AWS_SECRET_ACCESS_KEY:
+        required: false
+      CF_R2_AWS_S3_ENDPOINT:
+        required: false
+    inputs:
+      php-version:
+        required: true
+        type: string
+      channel:
+        required: true
+        type: string
+      builds:
+        default: debug release
+        required: false
+        type: string
+      ts:
+        default: nts zts
+        required: false
+        type: string
+      architectures:
+        default: arm64 x86_64
+        required: false
+        type: string
+      homebrew-php-commit:
+        default: ''
+        required: false
+        type: string
+      homebrew-extensions-commit:
+        default: ''
+        required: false
+        type: string
+      source-cache-release:
+        default: cache
+        type: string
+      reuse-archives:
+        default: true
+        type: boolean
+      force-source:
+        default: false
+        type: boolean
+      force:
+        default: false
+        type: boolean
+      publish:
+        default: true
+        required: false
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  HOMEBREW_DEVELOPER: '1'
+
+jobs:
+  matrix:
+    name: Create build and test matrices
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      build: ${{ steps.matrix.outputs.build-matrix }}
+      variants: ${{ steps.matrix.outputs.variant-matrix }}
+      build-required: 'true'
+      extensions-source-commit: ${{ steps.extensions-source.outputs.commit }}
+      source-commit: ${{ steps.source.outputs.commit }}
+      core-commit: ${{ steps.core.outputs.commit }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Create build and compatibility-test matrices
+        id: matrix
+        env:
+          PHP_DARWIN_BUILD_PLAN: ${{ runner.temp }}/build-plan.json
+          ARCHITECTURES: ${{ inputs.architectures }}
+          BUILDS: ${{ inputs.builds }}
+          CHANNEL: ${{ inputs.channel }}
+          HOMEBREW_EXTENSIONS_COMMIT: ${{ inputs.homebrew-extensions-commit }}
+          HOMEBREW_PHP_COMMIT: ${{ inputs.homebrew-php-commit }}
+          PHP_VERSION: ${{ inputs.php-version }}
+          PUBLISH: ${{ inputs.publish }}
+          TS: ${{ inputs.ts }}
+        run: |
+          bash scripts/tests/run.sh check
+          bash scripts/build/get-matrix.sh
+
+      - name: Preserve the expected build and compatibility matrix
+        uses: ./.github/actions/upload-artifacts
+        with:
+          name: build-plan-${{ inputs.php-version }}
+          path: ${{ runner.temp }}/build-plan.json
+          retention-days: 7
+          overwrite: true
+          compression-level: 0
+
+      - name: Pin the homebrew-php source commit
+        id: source
+        env:
+          PINNED_COMMIT: ${{ inputs.homebrew-php-commit }}
+        run: bash scripts/build/source-commit.sh
+
+      - name: Pin the homebrew-extensions source commit
+        id: extensions-source
+        env:
+          PINNED_COMMIT: ${{ inputs.homebrew-extensions-commit }}
+        run: bash scripts/build/source-commit.sh extensions
+
+      - name: Pin Homebrew core dependencies
+        id: core
+        run: bash scripts/build/source-commit.sh core
+
+  architecture:
+    name: ${{ matrix.arch }}
+    needs: matrix
+    if: ${{ needs.matrix.outputs.build-required == 'true' }}
+    permissions:
+      contents: write
+      actions: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.build) }}
+    uses: ./.github/workflows/build-architecture.yml
+    secrets:
+      TOKEN: ${{ secrets.TOKEN }}
+    with:
+      php-version: ${{ matrix.php }}
+      arch: ${{ matrix.arch }}
+      runner: ${{ matrix.runner }}
+      test-runners: ${{ toJSON(matrix.test_runners) }}
+      variants: ${{ needs.matrix.outputs.variants }}
+      builds: ${{ inputs.builds }}
+      ts: ${{ inputs.ts }}
+      homebrew-php-commit: ${{ needs.matrix.outputs.source-commit }}
+      homebrew-extensions-commit: ${{ needs.matrix.outputs.extensions-source-commit }}
+      homebrew-core-commit: ${{ needs.matrix.outputs.core-commit }}
+      source-cache-release: ${{ inputs.source-cache-release }}
+      reuse-archives: ${{ inputs.reuse-archives }}
+      force-source: ${{ inputs.force-source }}
+
+  publish:
+    name: Publish PHP ${{ inputs.php-version }} release assets
+    if: ${{ inputs.publish && needs.matrix.outputs.build-required == 'true' }}
+    needs: [matrix, architecture]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: php-darwin-release-publish-${{ inputs.php-version }}
+      cancel-in-progress: false
+    permissions:
+      # Required to create and replace GitHub Release assets.
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download validated caches
+        uses: ./.github/actions/download-artifacts
+        timeout-minutes: 10
+        with:
+          pattern: php-${{ inputs.php-version }}-*
+          path: builds
+
+      - name: Restore published ARM caches not rebuilt in this run
+        if: ${{ !contains(inputs.architectures, 'arm64') }}
+        env:
+          ARCH: arm64
+          HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.matrix.outputs.extensions-source-commit }}
+          HOMEBREW_PHP_COMMIT: ${{ needs.matrix.outputs.source-commit }}
+          PHP_VERSION: ${{ inputs.php-version }}
+        run: bash scripts/cache/restore-published-architecture.sh builds
+
+      - name: Restore published Intel caches not rebuilt in this run
+        if: ${{ !contains(inputs.architectures, 'x86_64') }}
+        env:
+          ARCH: x86_64
+          HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.matrix.outputs.extensions-source-commit }}
+          HOMEBREW_PHP_COMMIT: ${{ needs.matrix.outputs.source-commit }}
+          PHP_VERSION: ${{ inputs.php-version }}
+        run: bash scripts/cache/restore-published-architecture.sh builds
+
+      - name: Replace versioned release assets
+        env:
+          PHP_DARWIN_MIRROR_REQUIRED: 'true'
+          CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
+          CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
+          CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+          HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.matrix.outputs.extensions-source-commit }}
+          HOMEBREW_PHP_COMMIT: ${{ needs.matrix.outputs.source-commit }}
+          PHP_VERSION: ${{ inputs.php-version }}
+        run: bash scripts/release/publish.sh builds
+
+  e2e:
+    name: Test the published PHP ${{ inputs.php-version }} cache through setup-php
+    if: ${{ inputs.publish && contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
+    needs: publish
+    uses: ./.github/workflows/e2e.yml
+    secrets:
+      TOKEN: ${{ secrets.TOKEN }}
+    with:
+      php-version: ${{ inputs.php-version }}
+      # Optional packs have an independent release cycle and may still target
+      # the previous PHP patch or nightly commit immediately after publication.
+      optional-packs: false
+
