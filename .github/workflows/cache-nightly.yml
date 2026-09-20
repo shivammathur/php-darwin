@@ -61,7 +61,62 @@ permissions:
   contents: read
 
 jobs:
+  freshness:
+    name: Check nightly php-src commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      architectures: ${{ steps.freshness.outputs.architectures }}
+      build: ${{ steps.freshness.outputs.build }}
+      homebrew-extensions-commit: ${{ steps.freshness.outputs.homebrew-extensions-commit }}
+      homebrew-php-commit: ${{ steps.freshness.outputs.homebrew-php-commit }}
+      php-version: ${{ steps.freshness.outputs.php-version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out homebrew-php once
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: shivammathur/homebrew-php
+          ref: ${{ inputs.homebrew-php-commit || '' }}
+          path: homebrew-php
+          persist-credentials: false
+
+      - name: Check out homebrew-extensions once
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: shivammathur/homebrew-extensions
+          ref: ${{ inputs.homebrew-extensions-commit || '' }}
+          path: homebrew-extensions
+          persist-credentials: false
+
+      - name: Select approved dependency recipes
+        id: core
+        run: bash scripts/build/source-commit.sh core
+
+      - name: Check out Homebrew core for dependency freshness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Homebrew/homebrew-core
+          ref: ${{ steps.core.outputs.commit }}
+          path: homebrew-core
+          persist-credentials: false
+
+      - name: Compare nightly sources with the published manifest
+        id: freshness
+        env:
+          FORCE: ${{ inputs.force || false }}
+          HOMEBREW_EXTENSIONS_PATH: ${{ github.workspace }}/homebrew-extensions
+          HOMEBREW_CORE_PATH: ${{ github.workspace }}/homebrew-core
+          HOMEBREW_PHP_PATH: ${{ github.workspace }}/homebrew-php
+          PHP_VERSION: ${{ inputs.php-version }}
+        run: bash scripts/release/update-nightly.sh
+
   cache:
+    needs: freshness
+    if: ${{ needs.freshness.outputs.build == 'true' }}
     permissions:
       # Required by the called publish job to replace GitHub Release assets.
       contents: write
@@ -74,12 +129,12 @@ jobs:
       CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
     with:
       channel: nightly
-      php-version: ${{ inputs.php-version || '8.6' }}
+      php-version: ${{ needs.freshness.outputs.php-version }}
       builds: ${{ inputs.builds || 'debug release' }}
       ts: ${{ inputs.ts || 'nts zts' }}
-      architectures: ${{ inputs.architectures || 'arm64 x86_64' }}
-      homebrew-php-commit: ${{ inputs.homebrew-php-commit }}
-      homebrew-extensions-commit: ${{ inputs.homebrew-extensions-commit }}
+      architectures: ${{ inputs.architectures || needs.freshness.outputs.architectures }}
+      homebrew-php-commit: ${{ inputs.homebrew-php-commit || (inputs.architectures == '' || inputs.architectures == needs.freshness.outputs.architectures) && needs.freshness.outputs.homebrew-php-commit || '' }}
+      homebrew-extensions-commit: ${{ inputs.homebrew-extensions-commit || (inputs.architectures == '' || inputs.architectures == needs.freshness.outputs.architectures) && needs.freshness.outputs.homebrew-extensions-commit || '' }}
       publish: ${{ inputs.publish }}
       source-cache-release: ${{ inputs.source-cache-release || 'cache' }}
       reuse-archives: ${{ inputs.reuse-archives }}

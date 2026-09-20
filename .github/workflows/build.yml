@@ -69,7 +69,7 @@ jobs:
     outputs:
       build: ${{ steps.matrix.outputs.build-matrix }}
       variants: ${{ steps.matrix.outputs.variant-matrix }}
-      build-required: 'true'
+      build-required: ${{ steps.freshness.outputs.build-required }}
       extensions-source-commit: ${{ steps.extensions-source.outputs.commit }}
       source-commit: ${{ steps.source.outputs.commit }}
       core-commit: ${{ steps.core.outputs.commit }}
@@ -118,6 +118,42 @@ jobs:
       - name: Pin Homebrew core dependencies
         id: core
         run: bash scripts/build/source-commit.sh core
+
+      - name: Check out Homebrew core for dependency freshness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Homebrew/homebrew-core
+          ref: ${{ steps.core.outputs.commit }}
+          path: homebrew-core
+          persist-credentials: false
+
+      - name: Check out the pinned PHP formulae for freshness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: shivammathur/homebrew-php
+          ref: ${{ steps.source.outputs.commit }}
+          path: homebrew-php
+          persist-credentials: false
+
+      - name: Check out the pinned extension formulae for freshness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: shivammathur/homebrew-extensions
+          ref: ${{ steps.extensions-source.outputs.commit }}
+          path: homebrew-extensions
+          persist-credentials: false
+
+      - name: Recheck published inputs after queueing
+        id: freshness
+        env:
+          PHP_VERSION: ${{ inputs.php-version }}
+          CHANNEL: ${{ inputs.channel }}
+          FORCE: ${{ inputs.force }}
+          PUBLISH: ${{ inputs.publish }}
+          HOMEBREW_CORE_PATH: ${{ github.workspace }}/homebrew-core
+          HOMEBREW_PHP_PATH: ${{ github.workspace }}/homebrew-php
+          HOMEBREW_EXTENSIONS_PATH: ${{ github.workspace }}/homebrew-extensions
+        run: bash scripts/build/check-build-freshness.sh
 
   architecture:
     name: ${{ matrix.arch }}
