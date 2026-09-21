@@ -85,6 +85,11 @@ jobs:
       - name: Recover abandoned Homebrew installers
         uses: ./.github/actions/runner-preflight
 
+      - name: Record dependency cache misses
+        run: |
+          echo "PHP_DARWIN_BOTTLE_MISSES=$RUNNER_TEMP/bottle-misses.jsonl" >> "$GITHUB_ENV"
+          echo "PHP_DARWIN_SOURCE_BOTTLE_MISSES=$RUNNER_TEMP/source-bottle-misses.jsonl" >> "$GITHUB_ENV"
+
       - name: Preserve Node before Homebrew cleanup
         uses: ./.github/actions/node-runtime
 
@@ -141,6 +146,17 @@ jobs:
       - name: Reset runner after ${{ matrix.build }}/${{ matrix.ts }}
         if: ${{ always() }}
         run: bash scripts/build/build.sh reset
+
+      - name: Queue missing Cloudflare bottles
+        if: ${{ always() }}
+        uses: ./.github/actions/upload-artifacts
+        with:
+          name: bottle-misses-${{ inputs.php-version }}-${{ inputs.arch }}-${{ matrix.build }}-${{ matrix.ts }}
+          path: ${{ runner.temp }}/bottle-misses.jsonl
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 7
+          overwrite: true
 
   test:
     name: Test PHP ${{ inputs.php-version }} packages on ${{ matrix.runner }}

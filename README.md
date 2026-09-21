@@ -20,6 +20,8 @@ Publish complete PHP matrices with `scripts/release/publish.sh`. Immutable archi
 
 `update.yml` and `update-nightly.yml` compare PHP, extension, dependency and nightly source inputs before dispatching builds. Installer-only changes do not require rebuilding PHP.
 
+`cache-bottles.yml` mirrors exact upstream bottle digests into Cloudflare. Homebrew remains responsible for installation and relocation.
+
 Run local checks with `bash scripts/tests/run.sh` and workflow checks with `actionlint`.
 
 [MIT license](LICENSE).
