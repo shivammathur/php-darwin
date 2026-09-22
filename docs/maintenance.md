@@ -22,4 +22,6 @@ Publish complete PHP matrices with `scripts/release/publish.sh`. Immutable archi
 
 Source-cache keys include software/dependency versions, target platform and PHP ABI. Existing configuration is preserved while producing clean reusable bottles.
 
+Source bottles use named GitHub Releases and Cloudflare mirrors. Build claims coordinate concurrent workers. `test-source-cache.yml` verifies native cold and warm reuse; `test-source-lock.yml` checks live coordination.
+
 Local tests use temporary fixtures. Native tests run on the configured macOS Actions runners.

@@ -106,8 +106,11 @@ jobs:
       - name: Pin Homebrew core before resolving dependencies
         run: bash scripts/build/pin-core.sh
 
-      - name: Install archive tools
-        run: brew install jq zstd
+      - name: Restore Homebrew build tools
+        uses: ./.github/actions/source-cache
+        with:
+          stage: tools
+          release: ${{ inputs.source-cache-release }}
 
       - name: Remove unused Homebrew taps
         run: bash scripts/build/cleanup-taps.sh
@@ -121,11 +124,18 @@ jobs:
       - name: Check the cleaned Homebrew environment
         run: bash scripts/build/check-homebrew.sh
 
-      - name: Install PHP
-        run: bash scripts/build/build.sh install
+      - name: Install ${{ matrix.build }}/${{ matrix.ts }} PHP formula
+        uses: ./.github/actions/source-cache
+        with:
+          release: ${{ inputs.source-cache-release }}
+          force-source: ${{ inputs.force-source }}
 
-      - name: Build coverage extensions
-        run: bash scripts/build/build-extensions.sh
+      - name: Cache ${{ matrix.build }}/${{ matrix.ts }} coverage extensions
+        uses: ./.github/actions/source-cache
+        with:
+          release: ${{ inputs.source-cache-release }}
+          force-source: ${{ inputs.force-source }}
+          stage: extensions
 
       - name: Package ${{ matrix.build }}/${{ matrix.ts }} Homebrew cache
         run: bash scripts/build/build.sh package
@@ -153,6 +163,17 @@ jobs:
         with:
           name: bottle-misses-${{ inputs.php-version }}-${{ inputs.arch }}-${{ matrix.build }}-${{ matrix.ts }}
           path: ${{ runner.temp }}/bottle-misses.jsonl
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 7
+          overwrite: true
+
+      - name: Queue source-built bottles for Cloudflare
+        if: ${{ always() }}
+        uses: ./.github/actions/upload-artifacts
+        with:
+          name: source-bottle-misses-${{ inputs.php-version }}-${{ inputs.arch }}-${{ matrix.build }}-${{ matrix.ts }}
+          path: ${{ runner.temp }}/source-bottle-misses.jsonl
           if-no-files-found: ignore
           compression-level: 0
           retention-days: 7

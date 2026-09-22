@@ -137,7 +137,11 @@ for extension_reference in "${extension_references[@]}"; do
   fi
 done
 
-if [ -n "$suffix" ]; then
+if [ -n "${PHP_DARWIN_SOURCE_CACHE_NODE:-}" ]; then
+  "$PHP_DARWIN_SOURCE_CACHE_NODE" "${PHP_DARWIN_SOURCE_CACHE_ACTION:?}" install-extensions \
+    "$extension_tap_path/Abstract/abstract-php-extension.rb" "$brew_prefix/opt/$formula" \
+    "${extension_references[@]}" || php_darwin_die "could not cache PHP $version extension bottles"
+elif [ -n "$suffix" ]; then
   brew install --verbose --build-from-source --skip-link \
     "${extension_references[@]}" || \
     php_darwin_die "could not build cached PHP $version extensions"

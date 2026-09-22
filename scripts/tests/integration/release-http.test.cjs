@@ -6,6 +6,7 @@ const os = require('node:os');
 const { Readable } = require('node:stream');
 const { once } = require('node:events');
 const { curlRequest, errorDetails } = require('../../lib/release-http.cjs');
+const { ReleaseCache } = require('../../cache/source-bottle-releases.cjs');
 
 async function server(t, handle) {
   const instance = http.createServer(handle);
@@ -68,6 +69,15 @@ test('304, 204, and permission failures remain HTTP responses for the retry poli
   }
 });
 
+test('HTTP server errors retain normal retries without switching network clients', async () => {
+  let calls = 0;
+  const cache = new ReleaseCache({ repository: 'shivammathur/php-darwin', token: 'fixture',
+    request: async () => new Response(++calls === 1 ? 'unavailable' : 'ok', { status: calls === 1 ? 503 : 200 }),
+    fallbackRequest: async () => { throw new Error('HTTP response must not change clients'); }, wait: async () => {}, warn: () => {} });
+  assert.equal(await cache.transfer('https://api.github.com/', () => ({}), response => response.text()), 'ok');
+  assert.equal(calls, 2);
+  assert.equal(cache.useFallback, undefined);
+});
 
 test('aborted transfers close curl and remove temporary credential and response files', async t => {
   const existing = new Set(fs.readdirSync(os.tmpdir()).filter(name => name.startsWith('php-darwin-http-')));
@@ -77,3 +87,24 @@ test('aborted transfers close curl and remove temporary credential and response 
   assert.deepEqual(new Set(fs.readdirSync(os.tmpdir()).filter(name => name.startsWith('php-darwin-http-'))), existing);
 });
 
+test('a failed Node connection switches subsequent retries and requests to curl', async t => {
+  let calls = 0;
+  const url = await server(t, async (request, response) => {
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    assert.equal(Buffer.concat(chunks).toString(), 'fresh upload stream');
+    response.writeHead(201); response.end('saved');
+  });
+  const error = new TypeError('fetch failed', { cause: Object.assign(new Error('Connection timed out'), { code: 'UND_ERR_CONNECT_TIMEOUT' }) });
+  const warnings = [], delays = [];
+  const cache = new ReleaseCache({ repository: 'shivammathur/php-darwin', token: 'fixture',
+    request: async () => { calls++; throw error; }, fallbackRequest: curlRequest,
+    wait: async delay => delays.push(delay), warn: message => warnings.push(message) });
+  const upload = () => cache.transfer(url, () => ({ method: 'POST', body: Readable.from(['fresh upload stream']) }), response => response.text());
+  assert.equal(await upload(), 'saved');
+  assert.equal(await upload(), 'saved');
+  assert.equal(calls, 1);
+  assert.deepEqual(delays, [1000]);
+  assert.match(warnings[0], /curl.*UND_ERR_CONNECT_TIMEOUT/);
+  assert.match(errorDetails(error), /Connection timed out/);
+});
