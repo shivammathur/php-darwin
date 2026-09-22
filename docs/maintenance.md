@@ -20,4 +20,6 @@ Publish complete PHP matrices with `scripts/release/publish.sh`. Immutable archi
 
 `cache-bottles.yml` mirrors exact upstream bottle digests into Cloudflare. Homebrew remains responsible for installation and relocation.
 
+Source-cache keys include software/dependency versions, target platform and PHP ABI. Existing configuration is preserved while producing clean reusable bottles.
+
 Local tests use temporary fixtures. Native tests run on the configured macOS Actions runners.
