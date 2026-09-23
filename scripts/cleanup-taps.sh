@@ -6,7 +6,7 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 php_darwin_configure_homebrew_environment
 
-required_tap=$(php_darwin_package_config tap)
+required_tap=$(php_darwin_package_config tap) || exit 1
 installed_taps=$(brew tap) || php_darwin_die 'could not list installed Homebrew taps'
 unused_taps=()
 untap_log=$(mktemp "${RUNNER_TEMP:-/tmp}/php-darwin-untap.XXXXXX") || \
