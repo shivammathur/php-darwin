@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { spawnSync } = require('node:child_process');
 const { prefetch, matrix, publish, publicURL, key, validate } = require('./upstream-bottle-cache.cjs');
 const bytes = Buffer.from('a verified bottle archive');
 const digest = crypto.createHash('sha256').update(bytes).digest('hex');
@@ -17,6 +18,16 @@ function fixture(t) {
   return { record: record({ cached_download: path.join(directory, 'downloads', 'gcc.tar.gz') }),
     directory, missFile: path.join(directory, 'misses.jsonl'), log: () => {}, warn: () => {} };
 }
+test('tools entry point loads the resolver without partially initialized cache exports', t => {
+  const f = fixture(t);
+  fs.writeFileSync(path.join(f.directory, 'brew'), '#!/bin/sh\nprintf "[]\\n"\n', { mode: 0o755 });
+  const result = spawnSync(process.execPath, [path.join(__dirname, 'upstream-bottle-cache.cjs'), 'tools'], {
+    env: { ...process.env, PATH: `${f.directory}${path.delimiter}${process.env.PATH}` }, encoding: 'utf8',
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stderr, '');
+  assert.equal(result.stdout, '');
+});
 test('verified Cloudflare bytes populate the exact Homebrew path without upstream transfer', async t => {
   const f = fixture(t);
   await prefetch([f.record], { ...f, download: async (url, file) => {

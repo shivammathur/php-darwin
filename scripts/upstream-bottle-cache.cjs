@@ -174,5 +174,5 @@ async function main() {
     await prefetch(plan.filter(item => !item.installed && item.bottle).map(item => item.bottle));
   } else throw new Error('Expected matrix, publish, or tools');
 }
-if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });
 module.exports = { validate, portable, key, publicURL, sha256, validFile, transfer, pool, prefetch, matrix, readRecords, publish };
+if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });
