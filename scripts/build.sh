@@ -155,7 +155,9 @@ clean_homebrew() {
     brew uninstall --force --ignore-dependencies "${installed_formulae[@]}" || \
       php_darwin_die 'could not remove unrelated preinstalled Homebrew formulae'
   fi
-  brew cleanup --prune=all || php_darwin_die 'Homebrew cleanup failed'
+  # Keep current upstream bottles on persistent runners. Pruning the entire
+  # download cache made each build fetch large dependencies again.
+  brew cleanup || php_darwin_die 'Homebrew cleanup failed'
 
   brew list --formula --versions > "$preinstalled_formulae" || \
     php_darwin_die 'could not record the cleaned Homebrew formula baseline'

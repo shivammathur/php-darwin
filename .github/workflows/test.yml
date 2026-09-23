@@ -13,11 +13,12 @@ on:
         required: true
         type: string
       runner:
-        description: Free macOS runner label
+        description: macOS runner label
         options:
           - macos-14
           - macos-15
           - macos-15-intel
+          - macos-15-x86_64
           - macos-26
           - macos-26-intel
           - macos-latest

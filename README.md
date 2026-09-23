@@ -20,7 +20,11 @@ Archives retain runtime/development files and licenses; general documentation, m
 | Architecture | Build label | Test labels | Platform tag |
 |---|---|---|---|
 | ARM64 | `macos-14` | `macos-14`, `macos-15`, `macos-26`, `macos-latest` | `arm64_sonoma` |
-| x86_64 | `macos-15-intel` | `macos-15-intel`, `macos-26-intel` | `sequoia` |
+| x86_64 | `macos-15-intel` | `macos-15-intel`, `macos-15-x86_64` (self-hosted), `macos-26-intel` | `sequoia` |
+
+The self-hosted Intel runners use only the `macos-15-x86_64` custom label so
+package builds go to GitHub-hosted `macos-15-intel` runners. Compatibility tests
+still install each cache on a self-hosted runner.
 
 Each PHP minor uses a release tag such as `php-8.5`. The release manifest maps a
 logical name such as `php_8.5-nts-release+darwin_arm64.tar.zst` to an immutable,

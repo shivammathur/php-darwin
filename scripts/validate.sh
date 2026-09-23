@@ -92,7 +92,7 @@ jq -e '
   .arm64.test_runners == ["macos-14", "macos-15", "macos-26", "macos-latest"] and
   .x86_64.build_runner == "macos-15-intel" and .x86_64.minimum_macos == 15 and
   .x86_64.platform_key == "sequoia" and
-  .x86_64.test_runners == ["macos-15-intel", "macos-26-intel"]
+  .x86_64.test_runners == ["macos-15-intel", "macos-15-x86_64", "macos-26-intel"]
 ' "$script_dir/../conf/platforms.json" >/dev/null || php_darwin_die 'invalid platform configuration'
 jq -e '
   keys == ["platforms", "purpose", "schema"] and .schema == 1 and

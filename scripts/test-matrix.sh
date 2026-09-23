@@ -18,7 +18,7 @@ full_variants=$(sed -n 's/^variant-matrix=//p' "$full_output")
 jq -e '
   .include == [
     {php:"8.5",arch:"arm64",runner:"macos-14",test_runners:["macos-14","macos-15","macos-26","macos-latest"]},
-    {php:"8.5",arch:"x86_64",runner:"macos-15-intel",test_runners:["macos-15-intel","macos-26-intel"]}
+    {php:"8.5",arch:"x86_64",runner:"macos-15-intel",test_runners:["macos-15-intel","macos-15-x86_64","macos-26-intel"]}
   ]
 ' <<< "$full_build" >/dev/null || php_darwin_die 'full architecture matrix uses incorrect build runners'
 jq -e '
@@ -34,6 +34,7 @@ jq -e '
     {php:"8.5",arch:"arm64",runner:"macos-26"},
     {php:"8.5",arch:"arm64",runner:"macos-latest"},
     {php:"8.5",arch:"x86_64",runner:"macos-15-intel"},
+    {php:"8.5",arch:"x86_64",runner:"macos-15-x86_64"},
     {php:"8.5",arch:"x86_64",runner:"macos-26-intel"}
   ]
 ' <<< "$full_test" >/dev/null || php_darwin_die 'full test matrix does not cover every free macOS runner'
@@ -65,11 +66,12 @@ target_test=$(sed -n 's/^test-matrix=//p' "$target_output")
 target_variants=$(sed -n 's/^variant-matrix=//p' "$target_output")
 jq -e '.include == [{build:"debug",ts:"nts"}]' <<< "$target_variants" >/dev/null || \
   php_darwin_die 'targeted variant matrix builds unrequested variants'
-jq -e '.include == [{php:"5.6",arch:"x86_64",runner:"macos-15-intel",test_runners:["macos-15-intel","macos-26-intel"]}]' \
+jq -e '.include == [{php:"5.6",arch:"x86_64",runner:"macos-15-intel",test_runners:["macos-15-intel","macos-15-x86_64","macos-26-intel"]}]' \
   <<< "$target_build" >/dev/null || php_darwin_die 'targeted build matrix is invalid'
 jq -e '
   .include == [
     {php:"5.6",arch:"x86_64",runner:"macos-15-intel"},
+    {php:"5.6",arch:"x86_64",runner:"macos-15-x86_64"},
     {php:"5.6",arch:"x86_64",runner:"macos-26-intel"}
   ]
 ' <<< "$target_test" >/dev/null || php_darwin_die 'targeted test matrix is invalid'
@@ -84,7 +86,7 @@ partial_build=$(sed -n 's/^build-matrix=//p' "$partial_output")
 partial_variants=$(sed -n 's/^variant-matrix=//p' "$partial_output")
 [ "$partial_variants" = "$full_variants" ] || \
   php_darwin_die 'partial-platform publishing omitted build variants'
-jq -e '.include == [{php:"8.5",arch:"x86_64",runner:"macos-15-intel",test_runners:["macos-15-intel","macos-26-intel"]}]' \
+jq -e '.include == [{php:"8.5",arch:"x86_64",runner:"macos-15-intel",test_runners:["macos-15-intel","macos-15-x86_64","macos-26-intel"]}]' \
   <<< "$partial_build" >/dev/null || php_darwin_die 'partial-platform publish build matrix is invalid'
 if HOMEBREW_PHP_COMMIT='' HOMEBREW_EXTENSIONS_COMMIT='' \
   GITHUB_OUTPUT="$work_dir/invalid-partial.txt" PHP_VERSION=8.5 CHANNEL=stable \
@@ -127,7 +129,8 @@ macos-15 arm64
 macos-26 arm64
 macos-latest arm64
 macos-15-intel x86_64
+macos-15-x86_64 x86_64
 macos-26-intel x86_64
 RUNNERS
 
-printf 'Workflow matrix validation passed (8 variant builds, 6 free-runner tests, partial publishing)\n'
+printf 'Workflow matrix validation passed (8 variant builds, 6 hosted and 1 self-hosted tests, partial publishing)\n'
