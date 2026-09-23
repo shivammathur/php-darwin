@@ -148,21 +148,26 @@ runners. `force` bypasses this check; an unpublished test matrix is also allowed
 to run explicitly. Nightly checks include both php-src and normalized formula
 inputs, so recipe changes rebuild while unrelated macOS bottle additions do not.
 
-Each PHP variant is verified and uploaded immediately as a separate Actions
-artifact. Retries can reuse these archive checkpoints for seven days when the
-workflow revision, pinned taps, compiler/SDK, installed dependency recipes and
-bytes, PHP variant, and extension bytes all match. Homebrew-generated installation
-receipts and SBOM timestamps do not invalidate identical package payloads. GitHub's artifact digest,
+Each PHP variant builds in a separate matrix job: release/NTS, release/ZTS,
+debug/NTS, and debug/ZTS for each selected architecture. A full build has eight
+independent build jobs. Each variant is verified and uploaded immediately as a
+separate Actions artifact, with its own timing artifact. Retries can reuse
+these archive checkpoints for seven days when the workflow revision, pinned
+taps, compiler/SDK, installed dependency recipes and bytes, PHP variant, and
+extension bytes all match. Homebrew-generated installation receipts and SBOM
+timestamps do not invalidate identical package payloads. GitHub's artifact digest,
 archive checksum, metadata, and native archive checks are verified again on
 restore. Only then can packaging be skipped. Source bottles remain permanent
 in the `cache` release; the seven-day retention applies only to these completed
 archive checkpoints. Build jobs need `actions: write` to remove superseded
 checkpoints from a retry after their replacement has been uploaded.
 
-ARM and Intel compatibility tests start independently as soon as their own
-architecture finishes. Publication still waits for all required tests. Archives
-use Zstd level 19 and artifact uploads use compression level 0; already compressed
-packages are not compressed again. See [compression measurements](docs/compression.md).
+ARM and Intel compatibility tests start independently once every selected
+variant for their architecture succeeds, downloading the combined variant
+artifacts. Publication still waits for all required tests and validates the
+complete eight-archive release matrix. Archives use Zstd level 19 and artifact
+uploads use compression level 0; already compressed packages are not compressed
+again. See [compression measurements](docs/compression.md).
 
 Job summaries and the `workflow-performance` artifact report source-cache
 hits/misses, miss reasons, compilation, bottling, uploads, packaging, and runner

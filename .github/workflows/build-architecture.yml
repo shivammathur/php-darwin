@@ -15,6 +15,9 @@ on:
       test-runners:
         required: true
         type: string
+      variants:
+        required: true
+        type: string
       builds:
         required: true
         type: string
@@ -45,15 +48,20 @@ env:
 
 jobs:
   build:
-    name: Build PHP ${{ inputs.php-version }} packages on ${{ inputs.arch }}
+    name: Build PHP ${{ inputs.php-version }} ${{ matrix.build }}/${{ matrix.ts }} package on ${{ inputs.arch }}
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(inputs.variants) }}
     permissions:
       # Source bottles are persisted as GitHub Release assets.
       contents: write
       actions: write
     env:
       ARCH: ${{ inputs.arch }}
+      BUILD: ${{ matrix.build }}
+      TS: ${{ matrix.ts }}
       GH_TOKEN: ${{ github.token }}
       HOMEBREW_EXTENSIONS_COMMIT: ${{ inputs.homebrew-extensions-commit }}
       HOMEBREW_PHP_COMMIT: ${{ inputs.homebrew-php-commit }}
@@ -73,292 +81,56 @@ jobs:
       - name: Remove unused Homebrew taps
         run: bash scripts/cleanup-taps.sh
 
-      - name: Prepare release/NTS Homebrew tap
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
-        env: &release-nts
-          BUILD: release
-          TS: nts
+      - name: Prepare ${{ matrix.build }}/${{ matrix.ts }} Homebrew tap
         run: bash scripts/build.sh prepare
 
-      - name: Clean runner for release/NTS
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
-        env: *release-nts
+      - name: Clean runner for ${{ matrix.build }}/${{ matrix.ts }}
         run: bash scripts/build.sh cleanup
 
-      - name: Install release/NTS PHP formula
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
-        env: *release-nts
+      - name: Install ${{ matrix.build }}/${{ matrix.ts }} PHP formula
         uses: ./.github/actions/source-cache
         with:
           release: ${{ inputs.source-cache-release }}
           force-source: ${{ inputs.force-source }}
 
-      - name: Cache release/NTS coverage extensions
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
-        env: *release-nts
+      - name: Cache ${{ matrix.build }}/${{ matrix.ts }} coverage extensions
         uses: ./.github/actions/source-cache
         with:
           release: ${{ inputs.source-cache-release }}
           force-source: ${{ inputs.force-source }}
           stage: extensions
 
-      - name: Restore verified release/NTS archive checkpoint
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
-        id: checkpoint-release-nts
-        env: *release-nts
+      - name: Restore verified ${{ matrix.build }}/${{ matrix.ts }} archive checkpoint
+        id: checkpoint
         run: '"$PHP_DARWIN_NODE" scripts/archive-checkpoint.cjs restore'
 
-      - name: Package release/NTS Homebrew cache
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') && steps.checkpoint-release-nts.outputs.hit != 'true' }}
-        env: *release-nts
+      - name: Package ${{ matrix.build }}/${{ matrix.ts }} Homebrew cache
+        if: ${{ steps.checkpoint.outputs.hit != 'true' }}
         run: bash scripts/build.sh package
 
-      - name: Verify release/NTS archive
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
-        env: *release-nts
+      - name: Verify ${{ matrix.build }}/${{ matrix.ts }} archive
         run: bash scripts/build.sh verify
 
-      - name: Stage verified release/NTS checkpoint
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
-        id: stage-release-nts
-        env: *release-nts
+      - name: Stage verified ${{ matrix.build }}/${{ matrix.ts }} checkpoint
+        id: stage
         run: '"$PHP_DARWIN_NODE" scripts/archive-checkpoint.cjs stage'
 
-      - name: Upload verified release/NTS checkpoint
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') && steps.checkpoint-release-nts.outputs.current != 'true' }}
+      - name: Upload verified ${{ matrix.build }}/${{ matrix.ts }} checkpoint
+        if: ${{ steps.checkpoint.outputs.current != 'true' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ${{ steps.checkpoint-release-nts.outputs.name }}
-          path: ${{ steps.stage-release-nts.outputs.path }}
+          name: ${{ steps.checkpoint.outputs.name }}
+          path: ${{ steps.stage.outputs.path }}
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
           overwrite: true
 
-      - name: Remove superseded release/NTS checkpoints from this run
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
-        env: *release-nts
+      - name: Remove superseded ${{ matrix.build }}/${{ matrix.ts }} checkpoints from this run
         run: '"$PHP_DARWIN_NODE" scripts/archive-checkpoint.cjs prune'
 
-      - name: Reset runner after release/NTS
-        if: ${{ always() && contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
-        env: *release-nts
-        run: bash scripts/build.sh reset
-
-      - name: Prepare release/ZTS Homebrew tap
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') }}
-        env: &release-zts
-          BUILD: release
-          TS: zts
-        run: bash scripts/build.sh prepare
-
-      - name: Clean runner for release/ZTS
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') }}
-        env: *release-zts
-        run: bash scripts/build.sh cleanup
-
-      - name: Install release/ZTS PHP formula
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') }}
-        env: *release-zts
-        uses: ./.github/actions/source-cache
-        with:
-          release: ${{ inputs.source-cache-release }}
-          force-source: ${{ inputs.force-source }}
-
-      - name: Cache release/ZTS coverage extensions
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') }}
-        env: *release-zts
-        uses: ./.github/actions/source-cache
-        with:
-          release: ${{ inputs.source-cache-release }}
-          force-source: ${{ inputs.force-source }}
-          stage: extensions
-
-      - name: Restore verified release/ZTS archive checkpoint
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') }}
-        id: checkpoint-release-zts
-        env: *release-zts
-        run: '"$PHP_DARWIN_NODE" scripts/archive-checkpoint.cjs restore'
-
-      - name: Package release/ZTS Homebrew cache
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') && steps.checkpoint-release-zts.outputs.hit != 'true' }}
-        env: *release-zts
-        run: bash scripts/build.sh package
-
-      - name: Verify release/ZTS archive
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') }}
-        env: *release-zts
-        run: bash scripts/build.sh verify
-
-      - name: Stage verified release/ZTS checkpoint
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') }}
-        id: stage-release-zts
-        env: *release-zts
-        run: '"$PHP_DARWIN_NODE" scripts/archive-checkpoint.cjs stage'
-
-      - name: Upload verified release/ZTS checkpoint
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') && steps.checkpoint-release-zts.outputs.current != 'true' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: ${{ steps.checkpoint-release-zts.outputs.name }}
-          path: ${{ steps.stage-release-zts.outputs.path }}
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 7
-          overwrite: true
-
-      - name: Remove superseded release/ZTS checkpoints from this run
-        if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') }}
-        env: *release-zts
-        run: '"$PHP_DARWIN_NODE" scripts/archive-checkpoint.cjs prune'
-
-      - name: Reset runner after release/ZTS
-        if: ${{ always() && contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') }}
-        env: *release-zts
-        run: bash scripts/build.sh reset
-
-      - name: Prepare debug/NTS Homebrew tap
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') }}
-        env: &debug-nts
-          BUILD: debug
-          TS: nts
-        run: bash scripts/build.sh prepare
-
-      - name: Clean runner for debug/NTS
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') }}
-        env: *debug-nts
-        run: bash scripts/build.sh cleanup
-
-      - name: Install debug/NTS PHP formula
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') }}
-        env: *debug-nts
-        uses: ./.github/actions/source-cache
-        with:
-          release: ${{ inputs.source-cache-release }}
-          force-source: ${{ inputs.force-source }}
-
-      - name: Cache debug/NTS coverage extensions
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') }}
-        env: *debug-nts
-        uses: ./.github/actions/source-cache
-        with:
-          release: ${{ inputs.source-cache-release }}
-          force-source: ${{ inputs.force-source }}
-          stage: extensions
-
-      - name: Restore verified debug/NTS archive checkpoint
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') }}
-        id: checkpoint-debug-nts
-        env: *debug-nts
-        run: '"$PHP_DARWIN_NODE" scripts/archive-checkpoint.cjs restore'
-
-      - name: Package debug/NTS Homebrew cache
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') && steps.checkpoint-debug-nts.outputs.hit != 'true' }}
-        env: *debug-nts
-        run: bash scripts/build.sh package
-
-      - name: Verify debug/NTS archive
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') }}
-        env: *debug-nts
-        run: bash scripts/build.sh verify
-
-      - name: Stage verified debug/NTS checkpoint
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') }}
-        id: stage-debug-nts
-        env: *debug-nts
-        run: '"$PHP_DARWIN_NODE" scripts/archive-checkpoint.cjs stage'
-
-      - name: Upload verified debug/NTS checkpoint
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') && steps.checkpoint-debug-nts.outputs.current != 'true' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: ${{ steps.checkpoint-debug-nts.outputs.name }}
-          path: ${{ steps.stage-debug-nts.outputs.path }}
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 7
-          overwrite: true
-
-      - name: Remove superseded debug/NTS checkpoints from this run
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') }}
-        env: *debug-nts
-        run: '"$PHP_DARWIN_NODE" scripts/archive-checkpoint.cjs prune'
-
-      - name: Reset runner after debug/NTS
-        if: ${{ always() && contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') }}
-        env: *debug-nts
-        run: bash scripts/build.sh reset
-
-      - name: Prepare debug/ZTS Homebrew tap
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') }}
-        env: &debug-zts
-          BUILD: debug
-          TS: zts
-        run: bash scripts/build.sh prepare
-
-      - name: Clean runner for debug/ZTS
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') }}
-        env: *debug-zts
-        run: bash scripts/build.sh cleanup
-
-      - name: Install debug/ZTS PHP formula
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') }}
-        env: *debug-zts
-        uses: ./.github/actions/source-cache
-        with:
-          release: ${{ inputs.source-cache-release }}
-          force-source: ${{ inputs.force-source }}
-
-      - name: Cache debug/ZTS coverage extensions
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') }}
-        env: *debug-zts
-        uses: ./.github/actions/source-cache
-        with:
-          release: ${{ inputs.source-cache-release }}
-          force-source: ${{ inputs.force-source }}
-          stage: extensions
-
-      - name: Restore verified debug/ZTS archive checkpoint
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') }}
-        id: checkpoint-debug-zts
-        env: *debug-zts
-        run: '"$PHP_DARWIN_NODE" scripts/archive-checkpoint.cjs restore'
-
-      - name: Package debug/ZTS Homebrew cache
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') && steps.checkpoint-debug-zts.outputs.hit != 'true' }}
-        env: *debug-zts
-        run: bash scripts/build.sh package
-
-      - name: Verify debug/ZTS archive
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') }}
-        env: *debug-zts
-        run: bash scripts/build.sh verify
-
-      - name: Stage verified debug/ZTS checkpoint
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') }}
-        id: stage-debug-zts
-        env: *debug-zts
-        run: '"$PHP_DARWIN_NODE" scripts/archive-checkpoint.cjs stage'
-
-      - name: Upload verified debug/ZTS checkpoint
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') && steps.checkpoint-debug-zts.outputs.current != 'true' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: ${{ steps.checkpoint-debug-zts.outputs.name }}
-          path: ${{ steps.stage-debug-zts.outputs.path }}
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 7
-          overwrite: true
-
-      - name: Remove superseded debug/ZTS checkpoints from this run
-        if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') }}
-        env: *debug-zts
-        run: '"$PHP_DARWIN_NODE" scripts/archive-checkpoint.cjs prune'
-
-      - name: Reset runner after debug/ZTS
-        if: ${{ always() && contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') }}
-        env: *debug-zts
+      - name: Reset runner after ${{ matrix.build }}/${{ matrix.ts }}
+        if: ${{ always() }}
         run: bash scripts/build.sh reset
 
       - name: Summarize source builds and checkpoints
@@ -369,7 +141,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: timing-${{ inputs.php-version }}-${{ inputs.arch }}
+          name: timing-${{ inputs.php-version }}-${{ inputs.arch }}-${{ matrix.build }}-${{ matrix.ts }}
           path: ${{ runner.temp }}/php-darwin-metrics.jsonl
           if-no-files-found: ignore
           compression-level: 0
@@ -408,7 +180,9 @@ jobs:
 
       - name: Prepare release/NTS Homebrew formula source
         if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
-        env: *release-nts
+        env: &release-nts
+          BUILD: release
+          TS: nts
         run: bash scripts/test-install.sh prepare
 
       - name: Install release/NTS Homebrew cache
@@ -433,7 +207,9 @@ jobs:
 
       - name: Prepare release/ZTS Homebrew formula source
         if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') }}
-        env: *release-zts
+        env: &release-zts
+          BUILD: release
+          TS: zts
         run: bash scripts/test-install.sh prepare
 
       - name: Install release/ZTS Homebrew cache
@@ -458,7 +234,9 @@ jobs:
 
       - name: Prepare debug/NTS Homebrew formula source
         if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') }}
-        env: *debug-nts
+        env: &debug-nts
+          BUILD: debug
+          TS: nts
         run: bash scripts/test-install.sh prepare
 
       - name: Install debug/NTS Homebrew cache
@@ -483,7 +261,9 @@ jobs:
 
       - name: Prepare debug/ZTS Homebrew formula source
         if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') }}
-        env: *debug-zts
+        env: &debug-zts
+          BUILD: debug
+          TS: zts
         run: bash scripts/test-install.sh prepare
 
       - name: Install debug/ZTS Homebrew cache

@@ -57,8 +57,16 @@ work_dir=$(mktemp -d "${RUNNER_TEMP:-/tmp}/php-darwin-matrix.XXXXXX")
 trap 'rm -rf "$work_dir"' EXIT
 build_entries_file="$work_dir/build.jsonl"
 test_entries_file="$work_dir/test.jsonl"
+variant_entries_file="$work_dir/variants.jsonl"
 : > "$build_entries_file"
 : > "$test_entries_file"
+: > "$variant_entries_file"
+for build in "${build_values[@]}"; do
+  for ts in "${ts_values[@]}"; do
+    jq -cn --arg build "$build" --arg ts "$ts" '{build:$build,ts:$ts}' >> "$variant_entries_file" || \
+      php_darwin_die 'could not create a build variant matrix entry'
+  done
+done
 for requested_arch in "${arch_values[@]}"; do
   arch=$(php_darwin_normalize_arch "$requested_arch") || exit 1
   runner=$(php_darwin_platform_value "$arch" build_runner) || \
@@ -77,5 +85,8 @@ build_matrix=$(jq -c --slurpfile include "$build_entries_file" '.include=$includ
   php_darwin_die 'could not create the build matrix'
 test_matrix=$(jq -c --slurpfile include "$test_entries_file" '.include=$include' "$script_dir/../templates/workflow-matrix.json") || \
   php_darwin_die 'could not create the test matrix'
+variant_matrix=$(jq -c --slurpfile include "$variant_entries_file" '.include=$include' "$script_dir/../templates/workflow-matrix.json") || \
+  php_darwin_die 'could not create the build variant matrix'
 printf 'build-matrix=%s\n' "$build_matrix" >> "${GITHUB_OUTPUT:?}" || php_darwin_die 'could not write the build matrix output'
 printf 'test-matrix=%s\n' "$test_matrix" >> "${GITHUB_OUTPUT:?}" || php_darwin_die 'could not write the test matrix output'
+printf 'variant-matrix=%s\n' "$variant_matrix" >> "${GITHUB_OUTPUT:?}" || php_darwin_die 'could not write the build variant matrix output'

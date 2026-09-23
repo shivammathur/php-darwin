@@ -66,6 +66,7 @@ jobs:
     timeout-minutes: 10
     outputs:
       build: ${{ steps.matrix.outputs.build-matrix }}
+      variants: ${{ steps.matrix.outputs.variant-matrix }}
       build-required: ${{ steps.freshness.outputs.build-required }}
       extensions-source-commit: ${{ steps.extensions-source.outputs.commit }}
       source-commit: ${{ steps.source.outputs.commit }}
@@ -144,6 +145,7 @@ jobs:
       arch: ${{ matrix.arch }}
       runner: ${{ matrix.runner }}
       test-runners: ${{ toJSON(matrix.test_runners) }}
+      variants: ${{ needs.matrix.outputs.variants }}
       builds: ${{ inputs.builds }}
       ts: ${{ inputs.ts }}
       homebrew-php-commit: ${{ needs.matrix.outputs.source-commit }}
