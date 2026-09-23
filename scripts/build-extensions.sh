@@ -4,6 +4,7 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=scripts/lib.sh
 . "$script_dir/lib.sh"
 php_darwin_configure_homebrew_environment
+export HOMEBREW_VERBOSE=1 HOMEBREW_VERBOSE_USING_DOTS=0
 
 version=${PHP_VERSION:?}
 build=${BUILD:?}
@@ -156,12 +157,12 @@ if [ -n "${PHP_DARWIN_SOURCE_CACHE_NODE:-}" ]; then
     "$extension_tap_path/Abstract/abstract-php-extension.rb" "$brew_prefix/opt/$formula" \
     "${extension_references[@]}" || php_darwin_die "could not cache PHP $version extension bottles"
 elif [ -n "$suffix" ]; then
-  brew install --build-from-source --skip-link \
+  brew install --verbose --build-from-source --skip-link \
     "${extension_references[@]}" || \
     php_darwin_die "could not build cached PHP $version extensions"
 else
   # Homebrew pours compatible bottles and builds only unavailable formulae.
-  brew install --skip-link \
+  brew install --verbose --skip-link \
     "${extension_references[@]}" || \
     php_darwin_die "could not install cached PHP $version extensions"
 fi

@@ -59,6 +59,7 @@ runner_arch=$(php_darwin_normalize_arch "$(uname -m)") || exit 1
 [ "$runner_arch" = "$arch" ] || php_darwin_die 'runner architecture does not match the matrix'
 [ "$brew_prefix" = "$expected_prefix" ] || php_darwin_die "expected Homebrew at $expected_prefix, found $brew_prefix"
 php_darwin_configure_homebrew_environment
+export HOMEBREW_VERBOSE=1 HOMEBREW_VERBOSE_USING_DOTS=0
 
 prepare_homebrew() {
   local formula_file
@@ -191,7 +192,7 @@ install_formula() {
   local semver_output
 
   [ -s "$before_manifest" ] || php_darwin_die 'the clean Homebrew snapshot is missing'
-  brew install "$tap/$requested_formula" || php_darwin_die "could not install $requested_formula"
+  brew install --verbose "$tap/$requested_formula" || php_darwin_die "could not install $requested_formula"
   brew unlink "$formula" >/dev/null 2>&1 || true
   brew link --overwrite --force "$formula" || php_darwin_die "could not link $formula after building"
 

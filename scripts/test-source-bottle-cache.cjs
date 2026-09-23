@@ -139,7 +139,7 @@ test('existing dependencies and upstream bottles do not get rebuilt', async t =>
     { full_name: 'shivammathur/php/php@8.4', bottled: true },
   ];
   assert.deepEqual(await install(f.args), { built: 0, restored: 0 });
-  assert.deepEqual(f.events.at(-1), ['install', '--formula', 'shivammathur/php/php@8.4']);
+  assert.deepEqual(f.events.at(-1), ['install', '--formula', '--verbose', 'shivammathur/php/php@8.4']);
 });
 
 test('missing upstream bottles are prefetched together and install still retries after fetch failure', async t => {
@@ -157,7 +157,7 @@ test('missing upstream bottles are prefetched together and install still retries
   assert.deepEqual(await install(f.args), { built: 1, restored: 0 });
   assert.deepEqual(f.warnings, ['Upstream bottle prefetch incomplete: temporary download failure']);
   assert.deepEqual(f.events.filter(args => args[0] === 'install' && !args.includes('--build-bottle')),
-    [['install', '--formula', 'aspell'], ['install', '--formula', 'gcc']]);
+    [['install', '--formula', '--verbose', 'aspell'], ['install', '--formula', '--verbose', 'gcc']]);
   f.args.run = run;
   f.freshRunner();
   assert.deepEqual(await install(f.args), { built: 0, restored: 1 });
@@ -189,8 +189,8 @@ test('extension variants bypass upstream bottles, preserve skip-link, and isolat
   f.args.skipLink = true;
   f.args.context = { build: 'debug', ts: 'zts', abstract: 'original', php: { api: '20240924' } };
   assert.deepEqual(await install(f.args), { built: 1, restored: 0 });
-  assert.deepEqual(f.events.find(args => args.includes('--build-bottle')).slice(0, 4),
-    ['install', '--formula', '--build-bottle', '--skip-link']);
+  assert.deepEqual(f.events.find(args => args.includes('--build-bottle')).slice(0, 5),
+    ['install', '--formula', '--build-bottle', '--verbose', '--skip-link']);
   assert.ok(!f.events.find(args => args.at(-1) === 'libxml2').includes('--skip-link'));
   f.freshRunner();
   assert.deepEqual(await install(f.args), { built: 0, restored: 1 });

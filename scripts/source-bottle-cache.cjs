@@ -87,9 +87,10 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
   // Match the environment used by build.sh, including its preservation of
   // pinned, preinstalled dependencies. Do not cache or restore the whole Cellar.
   for (const option of ['NO_AUTO_UPDATE', 'NO_AUTOREMOVE', 'NO_ENV_HINTS',
-    'NO_INSTALL_CLEANUP', 'NO_INSTALLED_DEPENDENTS_CHECK', 'NO_INSTALL_FROM_API']) {
+    'NO_INSTALL_CLEANUP', 'NO_INSTALLED_DEPENDENTS_CHECK', 'NO_INSTALL_FROM_API', 'VERBOSE']) {
     process.env[`HOMEBREW_${option}`] = '1';
   }
+  process.env.HOMEBREW_VERBOSE_USING_DOTS = '0';
   const plan = query('plan', [formula], forceSource);
   const platform = buildEnvironment();
   const result = { built: 0, restored: 0 };
@@ -117,7 +118,7 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
     const metric = values => recordMetric({ kind: 'source', formula: item.full_name,
       elapsedMs: Date.now() - started, ...values });
     const target = item === plan.at(-1);
-    const flags = target && skipLink ? ['--skip-link'] : [];
+    const flags = ['--verbose', ...(target && skipLink ? ['--skip-link'] : [])];
     if (item.installed) { metric({ result: 'preinstalled' }); continue; }
     if (item.bottled && !(target && forceSource)) {
       run('brew', ['install', '--formula', ...flags, item.full_name], { inherit: true });
@@ -188,7 +189,7 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
       readBottle(directory, key);
       // --build-bottle skips post_install. Run it after bottling so first builds
       // and restored bottles both recreate PHP/PEAR and dependency configuration.
-      if (item.post_install) run('brew', ['postinstall', item.full_name], { inherit: true });
+      if (item.post_install) run('brew', ['postinstall', '--verbose', item.full_name], { inherit: true });
       const bottleMs = Date.now() - bottleStarted;
       result.built++;
       const uploadStarted = Date.now();

@@ -12,11 +12,13 @@ brew_prefix=$(brew --prefix)
 case "${1:?}" in
   prepare)
     # Reuse the published PHP archive so these tests compile only extensions.
-    while IFS= read -r installed; do
-      if php_darwin_is_php_formula "$installed"; then
-        brew uninstall --force --ignore-dependencies "$installed"
-      fi
-    done < <(brew list --formula)
+    # Builds leave a detached tap at their pinned revision. Let the archive
+    # supply its matching tap, while preserving every installed PHP keg.
+    tap=$(php_darwin_package_config tap)
+    tap_path=$(php_darwin_tap_repository_path "$tap")
+    if [ -d "$tap_path" ]; then
+      brew untap --force "$tap"
+    fi
     bash "$script_dir/install.sh" "$PHP_VERSION" "$BUILD" "$TS"
     brew pin "$formula"
     brew tap shivammathur/extensions
