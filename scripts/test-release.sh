@@ -24,7 +24,7 @@ started=$SECONDS
 mirror=$(php_darwin_release_mirror "$release_repository" "$version") || exit 1
 urls=("https://github.com/$release_repository/releases/download/php-$version/install.sh")
 if [ -n "$mirror" ]; then
-  if [ "${PHP_DARWIN_PREFER_MIRROR:-true}" = true ]; then
+  if [ "${PHP_DARWIN_PREFER_MIRROR:-false}" = true ]; then
     urls=("$mirror/install.sh" "${urls[@]}")
   else
     urls+=("$mirror/install.sh")

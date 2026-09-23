@@ -78,7 +78,16 @@ done
 [ -s "$work_dir/port" ] || php_darwin_die 'download fixture server did not start'
 base=http://127.0.0.1:$(cat "$work_dir/port")
 export PHP_DARWIN_MIRROR_URL="$base/good"
-export PHP_DARWIN_PREFER_MIRROR=false
+unset PHP_DARWIN_PREFER_MIRROR
+: > "$work_dir/requests"
+PHP_DARWIN_RELEASE_URL="$base/good/archive"
+php_darwin_download_release_archive || php_darwin_die 'default GitHub download failed'
+[ "$(cat "$work_dir/requests")" = /good/archive ] || php_darwin_die 'GitHub was not the default archive origin'
+: > "$work_dir/requests"
+status=$(php_darwin_fetch_release_manifest "$release_repository" "$version" "$work_dir/body" \
+  "$base/good/manifest.json")
+[ "$status" = 200 ] || php_darwin_die 'default GitHub manifest download failed'
+[ "$(cat "$work_dir/requests")" = /good/manifest.json ] || php_darwin_die 'GitHub was not the default manifest origin'
 for route in unavailable missing partial corrupt stall error-stall; do
   PHP_DARWIN_RELEASE_URL="$base/$route/archive"
   : > "$work_dir/requests"
@@ -91,7 +100,7 @@ PHP_DARWIN_RELEASE_URL="$base/error-stall/archive"
 download_error_started=$(date +%s)
 php_darwin_download_release_archive || php_darwin_die 'slow error body did not recover'
 [ "$(( $(date +%s) - download_error_started ))" -lt 3 ] || php_darwin_die 'waited for an HTTP error response body'
-unset PHP_DARWIN_PREFER_MIRROR
+export PHP_DARWIN_PREFER_MIRROR=true
 : > "$work_dir/requests"
 PHP_DARWIN_RELEASE_URL="$base/unavailable/archive"
 php_darwin_download_release_archive || php_darwin_die 'the healthy bootstrap origin was not reused'

@@ -169,8 +169,9 @@ requiring valid digests. Workflow and script changes run the local validation
 suite automatically in CI; publication still requires successful builds and
 compatibility tests for every selected platform.
 
-PHP archive installs also prefer the Cloudflare mirror, with checksum-verified
-GitHub fallback. Set `PHP_DARWIN_PREFER_MIRROR=false` to prefer GitHub explicitly.
+PHP archive installs, including setup-php, prefer GitHub Releases and fall back
+to the checksum-verified Cloudflare mirror. Set `PHP_DARWIN_PREFER_MIRROR=true`
+to prefer Cloudflare explicitly. Build dependency bottles use Cloudflare first.
 Compatibility tests enforce installation below 10 seconds; direct release tests
 include bootstrap and archive downloads in that limit. Tests preserve installed
 PHP versions and compare PHP service definitions before and after installation.
