@@ -65,7 +65,9 @@ records = resolved.map do |formula|
     post_install: formula.post_install_defined? || formula.post_install_steps_defined?,
   }
   if %w[plan seed].include?(mode) && record[:bottled]
-    bottle = installer.selected_bottle
+    # Older hosted Homebrew versions select directly from the formula. Newer
+    # versions can also select an internal-API bottle through the installer.
+    bottle = installer.respond_to?(:selected_bottle) ? installer.selected_bottle : formula.bottle
     record[:bottle] = {
       formula: formula.full_name, version: formula.pkg_version.to_s, tag: bottle.tag.to_s,
       sha256: bottle.resource.checksum.hexdigest, url: bottle.url,
