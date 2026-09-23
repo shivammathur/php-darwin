@@ -22,9 +22,10 @@ Archives retain runtime/development files and licenses; general documentation, m
 | ARM64 | `macos-14` | `macos-14`, `macos-15`, `macos-26`, `macos-latest` | `arm64_sonoma` |
 | x86_64 | `macos-15-intel` | `macos-15-intel`, `macos-15-x86_64` (self-hosted), `macos-26-intel` | `sequoia` |
 
-The self-hosted Intel runners use only the `macos-15-x86_64` custom label so
-package builds go to GitHub-hosted `macos-15-intel` runners. Compatibility tests
-still install each cache on a self-hosted runner.
+The self-hosted Intel runners have both `macos-15-intel` and
+`macos-15-x86_64` labels. They build packages alongside GitHub-hosted Intel
+runners, and the separate test label ensures compatibility tests install each
+cache on a self-hosted runner.
 
 Each PHP minor uses a release tag such as `php-8.5`. The release manifest maps a
 logical name such as `php_8.5-nts-release+darwin_arm64.tar.zst` to an immutable,
@@ -120,7 +121,9 @@ versions/recipes/options, architecture, macOS major, Homebrew major, compiler,
 and SDK. Extension keys also cover the patched shared base formula and the
 installed PHP version, API, and configure options. Unrelated bottle updates do not invalidate source builds. Existing
 runner dependencies and usable upstream bottles retain priority; debug/ZTS
-extensions use their own source bottles. Assets do not expire. After uploading
+extensions use their own source bottles. Missing upstream bottles are prefetched
+through Homebrew's concurrent download queue, and persistent runners retain
+current bottle downloads across builds. Assets do not expire. After uploading
 and downloading a replacement to verify its checksum, the builder deletes older
 package versions for the same architecture, macOS, and PHP variant. It preserves
 newer versions uploaded by concurrent runs and different build inputs for the

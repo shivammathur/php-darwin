@@ -142,6 +142,28 @@ test('existing dependencies and upstream bottles do not get rebuilt', async t =>
   assert.deepEqual(f.events.at(-1), ['install', '--formula', 'shivammathur/php/php@8.4']);
 });
 
+test('missing upstream bottles are prefetched together and install still retries after fetch failure', async t => {
+  const f = fixture(t);
+  f.args.query = () => [
+    { full_name: 'aspell', version: '0.60.8.2', bottled: true },
+    { full_name: 'gcc', version: '16.2.0', bottled: true },
+    { full_name: 'shivammathur/php/php@8.4', version: '8.4.1', bottled: false },
+  ];
+  const run = f.args.run;
+  f.args.run = (program, argv, options) => {
+    if (argv[0] === 'fetch') throw new Error('temporary download failure');
+    return run(program, argv, options);
+  };
+  assert.deepEqual(await install(f.args), { built: 1, restored: 0 });
+  assert.deepEqual(f.warnings, ['Upstream bottle prefetch incomplete: temporary download failure']);
+  assert.deepEqual(f.events.filter(args => args[0] === 'install' && !args.includes('--build-bottle')),
+    [['install', '--formula', 'aspell'], ['install', '--formula', 'gcc']]);
+  f.args.run = run;
+  f.freshRunner();
+  assert.deepEqual(await install(f.args), { built: 0, restored: 1 });
+  assert.deepEqual(f.events[0], ['fetch', '--formula', 'aspell', 'gcc']);
+});
+
 test('keys distinguish recipes, platforms, dependencies, and PHP variants', () => {
   const baseline = { formula: 'php', version: '8.4', recipe: 'abc', arch: 'arm64', macos: '14', deps: 'libxml2-1' };
   for (const [field, value] of Object.entries({ formula: 'php-debug-zts', version: '8.5',

@@ -93,6 +93,25 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
   const plan = query('plan', [formula], forceSource);
   const platform = buildEnvironment();
   const result = { built: 0, restored: 0 };
+  // Homebrew installs the plan one formula at a time. Fetch all missing
+  // upstream bottles in one command so its download queue can run concurrently.
+  const bottled = plan.filter((item, index) => !item.installed && item.bottled &&
+    !(index === plan.length - 1 && forceSource)).map(item => item.full_name);
+  if (bottled.length > 1) {
+    const started = Date.now();
+    log(`Prefetching ${bottled.length} upstream bottles`);
+    try {
+      run('brew', ['fetch', '--formula', ...bottled], { inherit: true });
+      recordMetric({ kind: 'prefetch', formula, result: 'complete', count: bottled.length,
+        elapsedMs: Date.now() - started });
+    } catch (error) {
+      // A failed prefetch may still have cached most bottles. Let the normal
+      // install path retry the missing one while retaining those downloads.
+      warn(`Upstream bottle prefetch incomplete: ${error.message}`);
+      recordMetric({ kind: 'prefetch', formula, result: 'incomplete', count: bottled.length,
+        elapsedMs: Date.now() - started });
+    }
+  }
   for (const item of plan) {
     const started = Date.now();
     const metric = values => recordMetric({ kind: 'source', formula: item.full_name,

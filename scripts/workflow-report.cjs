@@ -14,10 +14,11 @@ function duration(value) {
 }
 function summarizeEvents(events) {
   const counts = {};
-  const phases = { compileMs: 0, bottleMs: 0, uploadMs: 0, waitedMs: 0 };
+  const phases = { prefetchMs: 0, compileMs: 0, bottleMs: 0, uploadMs: 0, waitedMs: 0 };
   for (const event of events) {
     const name = `${event.kind}/${event.result}`;
     counts[name] = (counts[name] || 0) + 1;
+    if (event.kind === 'prefetch') phases.prefetchMs += event.elapsedMs || 0;
     for (const key of Object.keys(phases)) phases[key] += event[key] || 0;
   }
   const unsaved = events.filter(event => event.kind === 'source' && event.result === 'built' && event.saved === false)
@@ -47,7 +48,7 @@ function eventTable(events) {
   return ['### Work performed', '', '| Result | Packages / archives |', '|---|---:|', ...rows, '',
     ...(summary.unsaved.length ? [`**${summary.unsaved.length} compiled source bottles were not saved to the release cache.**`, '',
       ...summary.unsaved.map(item => `- ${item.formula}: ${item.error} (key ${item.key}).`), ''] : []),
-    `Source compilation: **${duration(summary.phases.compileMs / 1000)}**; bottle creation/post-install: **${duration(summary.phases.bottleMs / 1000)}**; source-cache uploads: **${duration(summary.phases.uploadMs / 1000)}**; ownership waits: **${duration(summary.phases.waitedMs / 1000)}**.`, '',
+    `Upstream bottle prefetch: **${duration(summary.phases.prefetchMs / 1000)}**; source compilation: **${duration(summary.phases.compileMs / 1000)}**; bottle creation/post-install: **${duration(summary.phases.bottleMs / 1000)}**; source-cache uploads: **${duration(summary.phases.uploadMs / 1000)}**; ownership waits: **${duration(summary.phases.waitedMs / 1000)}**.`, '',
     'These phase totals are accumulated work across jobs; they are not workflow elapsed time.', '',
     ...events.filter(event => event.missReason || event.reason).map(event =>
       `- ${event.formula || `${event.php} ${event.arch} ${event.build}/${event.ts}`}: ${event.missReason || event.reason} (key ${event.key?.slice(-12) || 'unavailable'}).`), ''].join('\n');

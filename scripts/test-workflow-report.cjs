@@ -42,14 +42,16 @@ test('partial reruns exclude previous attempts and idle time between attempts', 
 
 test('report distinguishes source builds, cache reuse and archive reuse', () => {
   const summary = summarizeEvents([
+    { kind: 'prefetch', result: 'complete', count: 2, elapsedMs: 300 },
     { kind: 'source', result: 'built', compileMs: 1000, bottleMs: 20, uploadMs: 10 },
     { kind: 'source', result: 'restored-after-wait', waitedMs: 500 },
     { kind: 'checkpoint', result: 'restored' },
   ]);
+  assert.equal(summary.counts['prefetch/complete'], 1);
   assert.equal(summary.counts['source/built'], 1);
   assert.equal(summary.counts['source/restored-after-wait'], 1);
   assert.equal(summary.counts['checkpoint/restored'], 1);
-  assert.deepEqual(summary.phases, { compileMs: 1000, bottleMs: 20, uploadMs: 10, waitedMs: 500 });
+  assert.deepEqual(summary.phases, { prefetchMs: 300, compileMs: 1000, bottleMs: 20, uploadMs: 10, waitedMs: 500 });
 });
 
 test('successful compilation does not conceal a failed cache upload', () => {
