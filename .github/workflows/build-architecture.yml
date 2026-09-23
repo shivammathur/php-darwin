@@ -80,6 +80,11 @@ jobs:
       - name: Preserve Node before Homebrew cleanup
         uses: ./.github/actions/node-runtime
 
+      - name: Bound Homebrew bottle downloads
+        run: |
+          printf 'http1.1\nmax-time = 600\nretry-max-time = 900\n' > "$RUNNER_TEMP/php-darwin-curlrc"
+          echo "HOMEBREW_CURLRC=$RUNNER_TEMP/php-darwin-curlrc" >> "$GITHUB_ENV"
+
       - name: Clean runner before building PHP
         run: brew test-bot --only-cleanup-before
 

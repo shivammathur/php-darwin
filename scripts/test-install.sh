@@ -21,15 +21,19 @@ if [ -z "$source_commit" ]; then
 fi
 brew_prefix=$(brew --prefix)
 tap=$(php_darwin_package_config tap)
-sentinel="$brew_prefix/etc/php-darwin-preserve.conf"
-installed_before="${RUNNER_TEMP:?}/php-darwin-installed-before.txt"
+fixture_id=${GITHUB_RUN_ID:-local}-${build}-${ts}-${arch}
+sentinel="$brew_prefix/etc/php-darwin-preserve-$fixture_id.conf"
+installed_before="${RUNNER_TEMP:?}/php-darwin-installed-before-$fixture_id.txt"
+installed_versions_before="${RUNNER_TEMP:?}/php-darwin-versions-before-$fixture_id.txt"
+default_php_before="${RUNNER_TEMP:?}/php-darwin-default-php-before-$fixture_id.txt"
+extensions_before="${RUNNER_TEMP:?}/php-darwin-extensions-before-$fixture_id.txt"
 php_bin="$brew_prefix/opt/$formula/bin/php"
 php_config="$brew_prefix/opt/$formula/bin/php-config"
 php_fpm="$brew_prefix/opt/$formula/sbin/php-fpm"
 pear_path=$(php_darwin_pear_path "$version" "$formula") || exit 1
 config_id=$(php_darwin_config_id "$version" "$build" "$ts") || exit 1
-pear_fixture="$brew_prefix/$pear_path/php-darwin-user-package.php"
-tap_trust_before="${RUNNER_TEMP:?}/php-darwin-tap-trust-before.txt"
+pear_fixture="$brew_prefix/$pear_path/php-darwin-user-package-$fixture_id.php"
+tap_trust_before="${RUNNER_TEMP:?}/php-darwin-tap-trust-before-$fixture_id.txt"
 
 php_darwin_configure_homebrew_environment
 
@@ -57,47 +61,64 @@ php_darwin_test_tap_trust_state() {
 }
 
 prepare_homebrew() {
-  local installed_php
-  local installed_php_formulae=()
-  local installed_formulae_list=${RUNNER_TEMP:?}/php-darwin-prepare-formulae.txt
+  local default_target
+  local extension_path
+  local previous_default
   local tap_trust_state
 
   [[ "$source_commit" =~ ^[0-9a-f]{40}$ ]] || php_darwin_die 'invalid pinned homebrew-php source commit'
+  [ ! -e "$pear_fixture" ] && [ ! -L "$pear_fixture" ] || \
+    php_darwin_die 'the PEAR preservation fixture already exists'
+  [ ! -e "$sentinel" ] && [ ! -L "$sentinel" ] || \
+    php_darwin_die 'the Homebrew preservation fixture already exists'
   tap_trust_state=$(php_darwin_test_tap_trust_state) || \
     php_darwin_die "could not read the initial $tap trust state"
   printf '%s\n' "$tap_trust_state" > "$tap_trust_before" || \
     php_darwin_die "could not record the initial $tap trust state"
-  php_darwin_record_formulae "$installed_formulae_list"
-  brew untap --force "$tap" >/dev/null 2>&1 || true
-  while IFS= read -r installed_php; do
-    php_darwin_is_php_formula "$installed_php" && installed_php_formulae+=("$installed_php")
-  done < "$installed_formulae_list"
-  if [ "${#installed_php_formulae[@]}" -gt 0 ]; then
-    brew uninstall --force --ignore-dependencies "${installed_php_formulae[@]}" || \
-      php_darwin_die 'could not remove preinstalled Homebrew PHP formulae'
+  php_darwin_record_formulae "$installed_before"
+  LC_ALL=C sort -u "$installed_before" -o "$installed_before" || \
+    php_darwin_die 'could not sort the initial Homebrew formulae'
+  brew list --formula --versions > "$installed_versions_before" || \
+    php_darwin_die 'could not record preinstalled Homebrew formula versions'
+  : > "$extensions_before" || php_darwin_die 'could not record preinstalled PHP extensions'
+  while IFS= read -r extension_path; do
+    if [ -e "$brew_prefix/$extension_path" ] || [ -L "$brew_prefix/$extension_path" ]; then
+      printf '%s\n' "$extension_path" >> "$extensions_before" || \
+        php_darwin_die 'could not record a preinstalled PHP extension'
+    fi
+  done < <(jq -r '(.extensions // [])[].path' "$cache_metadata")
+  : > "$default_php_before" || php_darwin_die 'could not record the default PHP formula'
+  if [ -L "$brew_prefix/bin/php" ]; then
+    default_target=$(readlink "$brew_prefix/bin/php") || php_darwin_die 'could not read the default PHP link'
+    case "$default_target" in ../Cellar/*/*/bin/php)
+      previous_default=${default_target#../Cellar/}
+      previous_default=${previous_default%%/*}
+      php_darwin_is_php_formula "$previous_default" || \
+        php_darwin_die "unexpected default PHP formula: $previous_default"
+      printf '%s\n' "$previous_default" > "$default_php_before" || \
+        php_darwin_die 'could not record the default PHP formula'
+      ;;
+    esac
   fi
-  php_darwin_record_formulae "$installed_formulae_list"
-  while IFS= read -r installed_php; do
-    php_darwin_is_php_formula "$installed_php" && \
-      php_darwin_die 'a Homebrew PHP formula remained before cache installation'
-  done < "$installed_formulae_list"
+  brew untap --force "$tap" >/dev/null 2>&1 || true
   mkdir -p "${pear_fixture%/*}" || php_darwin_die 'could not create the existing PEAR fixture'
   printf 'preserve-user-pear-package\n' > "$pear_fixture" || \
     php_darwin_die 'could not write the existing PEAR fixture'
   printf 'preserve-existing-homebrew-state\n' > "$sentinel" || php_darwin_die 'could not create the preservation fixture'
   chmod 0444 "$sentinel" || php_darwin_die 'could not protect the preservation fixture'
-  php_darwin_record_formulae "$installed_before"
-  LC_ALL=C sort -u "$installed_before" -o "$installed_before" || \
-    php_darwin_die 'could not sort the initial Homebrew formulae'
 }
 
 install_cache() {
+  local started=$SECONDS
   bash "$script_dir/install-package.sh" "$version" "$build" "$ts" "$archive" || \
     php_darwin_die 'cache installation failed'
-  printf 'Cache installation completed for %s\n' "$asset"
+  local elapsed=$((SECONDS - started))
+  printf 'Cache installation completed for %s in %ss\n' "$asset" "$elapsed"
+  [ "$elapsed" -lt 10 ] || php_darwin_die "cache installation exceeded 10 seconds: ${elapsed}s"
 }
 
 validate_runtime() {
+  local cached_php_link
   local extension
   local extension_path
   local extension_type
@@ -117,7 +138,13 @@ validate_runtime() {
   [ "$(cat "$pear_fixture")" = preserve-user-pear-package ] || \
     php_darwin_die 'cache installation did not preserve the existing PEAR packages'
   "$brew_prefix/opt/$formula/bin/pecl" version >/dev/null || php_darwin_die 'PECL failed after cache installation'
-  command -v php >/dev/null 2>&1 || php_darwin_die 'php is not linked into the Homebrew prefix'
+  cached_php_link=$(jq -er '[.links[] | select(.path == "bin/php") | .target] | select(length == 1) | .[0]' \
+    "$cache_metadata") || php_darwin_die 'the cache does not contain a default PHP link'
+  [ -L "$brew_prefix/bin/php" ] && \
+    [ "$(readlink "$brew_prefix/bin/php")" = "$cached_php_link" ] || \
+    php_darwin_die 'the cached PHP link is not the Homebrew default'
+  [ "$(command -v php)" = "$brew_prefix/bin/php" ] || \
+    php_darwin_die 'the cached PHP binary is not the PATH default'
   command -v php-config >/dev/null 2>&1 || php_darwin_die 'php-config is not linked into the Homebrew prefix'
   php -d date.timezone=UTC -r "if (strpos(PHP_VERSION, '$version') !== 0) { exit(1); }" || \
     php_darwin_die 'linked PHP does not match the requested version'
@@ -151,7 +178,6 @@ validate_runtime() {
 }
 
 cleanup_homebrew_validation() {
-  brew services stop "$formula" >/dev/null 2>&1 || true
   if [ -e "$sentinel" ] || [ -L "$sentinel" ]; then
     chmod u+w "$sentinel" >/dev/null 2>&1 || true
     rm -f "$sentinel" >/dev/null 2>&1 || true
@@ -175,25 +201,24 @@ reset_homebrew() {
   local extension
   local extension_path
   local extension_type
-  local installed_php
-  local installed_php_formulae=()
   local postinstall_path
-  local reset_formula
+  local previous_default
   local reset_formulae
+  local target_preinstalled=false
   local tap_trust_before_value
   local trust_status
 
   cleanup_homebrew_validation || php_darwin_die 'could not clean the previous Homebrew validation state'
   php_darwin_enable_test_cleanup
-  brew services stop "$formula" >/dev/null 2>&1 || true
+  [ -f "$installed_before" ] || \
+    php_darwin_die 'initial Homebrew formula snapshot is missing; refusing to remove PHP'
   reset_formulae=${RUNNER_TEMP:?}/php-darwin-reset-formulae.txt
   php_darwin_record_formulae "$reset_formulae"
-  while IFS= read -r installed_php; do
-    php_darwin_is_php_formula "$installed_php" && installed_php_formulae+=("$installed_php")
-  done < "$reset_formulae"
-  if [ "${#installed_php_formulae[@]}" -gt 0 ]; then
-    brew uninstall --force --ignore-dependencies "${installed_php_formulae[@]}" || \
-      php_darwin_die 'could not reset Homebrew PHP after validation'
+  if grep -Fxq "$formula" "$installed_before"; then
+    target_preinstalled=true
+  elif grep -Fxq "$formula" "$reset_formulae"; then
+    brew uninstall --force --ignore-dependencies "$formula" || \
+      php_darwin_die 'could not reset the newly installed PHP formula'
   fi
   while IFS=$'\t' read -r extension extension_type extension_path; do
     [[ "$extension" =~ ^[A-Za-z0-9_]+$ ]] && \
@@ -201,6 +226,9 @@ reset_homebrew() {
       [[ "$extension_path" =~ ^(Cellar|lib)/ ]] && \
       [ "${extension_path##*/}" = "$extension.so" ] || \
       php_darwin_die 'cached extension reset path is invalid'
+    if grep -Fxq "$extension_path" "$extensions_before"; then
+      continue
+    fi
     [ -e "$brew_prefix/$extension_path" ] || [ -L "$brew_prefix/$extension_path" ] || continue
     if [ -w "$brew_prefix/${extension_path%/*}" ]; then
       rm -f "$brew_prefix/$extension_path" || php_darwin_die "could not reset cached $extension"
@@ -211,23 +239,38 @@ reset_homebrew() {
         php_darwin_die "could not reset cached $extension in a protected directory"
     fi
   done < <(jq -r '(.extensions // [])[] | [.name,.type,.path] | @tsv' "$cache_metadata")
-  rm -rf "${brew_prefix:?}/${pear_path:?}" || \
-    php_darwin_die 'could not reset formula-managed PEAR state'
-  while IFS= read -r postinstall_path; do
-    [ -n "$postinstall_path" ] || continue
-    rm -rf "${brew_prefix:?}/${postinstall_path:?}" || \
-      php_darwin_die "could not reset $postinstall_path"
-  done < <(php_darwin_postinstall_paths "$version" "$formula" "$build" "$ts")
-  rm -rf "${brew_prefix:?}/etc/php/${config_id:?}" || \
-    php_darwin_die 'could not reset formula-managed PHP configuration'
+  rm -f "$pear_fixture" || php_darwin_die 'could not remove the PEAR fixture'
+  if [ "$target_preinstalled" = false ]; then
+    rm -rf "${brew_prefix:?}/${pear_path:?}" || \
+      php_darwin_die 'could not reset formula-managed PEAR state'
+    while IFS= read -r postinstall_path; do
+      [ -n "$postinstall_path" ] || continue
+      rm -rf "${brew_prefix:?}/${postinstall_path:?}" || \
+        php_darwin_die "could not reset $postinstall_path"
+    done < <(php_darwin_postinstall_paths "$version" "$formula" "$build" "$ts")
+    rm -rf "${brew_prefix:?}/etc/php/${config_id:?}" || \
+      php_darwin_die 'could not reset formula-managed PHP configuration'
+  fi
+  if [ -f "$default_php_before" ]; then
+    previous_default=$(cat "$default_php_before") || \
+      php_darwin_die 'could not read the previous default PHP formula'
+    if [ -n "$previous_default" ]; then
+      brew link --overwrite --force "$previous_default" || \
+        php_darwin_die "could not restore the previous default PHP formula: $previous_default"
+    fi
+  fi
   php_darwin_record_formulae "$reset_formulae"
-  while IFS= read -r reset_formula; do
-    php_darwin_is_php_formula "$reset_formula" && \
-      php_darwin_die 'a Homebrew PHP formula remained after the validation reset'
-  done < "$reset_formulae"
+  if [ -f "$installed_before" ]; then
+    LC_ALL=C sort -u "$reset_formulae" -o "$reset_formulae" || \
+      php_darwin_die 'could not sort Homebrew formulae after reset'
+    LC_ALL=C comm -23 "$installed_before" "$reset_formulae" > "${RUNNER_TEMP:?}/php-darwin-removed-after-reset.txt" || \
+      php_darwin_die 'could not compare preinstalled Homebrew formulae after reset'
+    [ ! -s "${RUNNER_TEMP:?}/php-darwin-removed-after-reset.txt" ] || \
+      php_darwin_die 'reset removed a preinstalled Homebrew formula'
+  fi
   tap_trust_before_value=$(cat "$tap_trust_before") || \
     php_darwin_die "could not read the initial $tap trust state during reset"
-  if [ "$tap_trust_before_value" = false ]; then
+  if [ "$tap_trust_before_value" = false ] && [ "$target_preinstalled" = false ]; then
     if php_darwin_formula_trusted "$tap/$formula"; then
       php_darwin_die "Homebrew uninstall retained trust for $tap/$formula"
     else
@@ -244,7 +287,11 @@ reset_homebrew() {
 validate_homebrew() {
   local doctor_log=${RUNNER_TEMP:-/tmp}/brew-doctor.log
   local formula_info=${RUNNER_TEMP:-/tmp}/php-darwin-formula-info.json
+  local service_info=${RUNNER_TEMP:-/tmp}/php-darwin-service-info.json
   local installed_after=${RUNNER_TEMP:-/tmp}/php-darwin-installed-after.txt
+  local installed_versions_after=${RUNNER_TEMP:-/tmp}/php-darwin-versions-after.txt
+  local php_versions_before=${RUNNER_TEMP:-/tmp}/php-darwin-php-versions-before.txt
+  local php_versions_after=${RUNNER_TEMP:-/tmp}/php-darwin-php-versions-after.txt
   local new_formulae=${RUNNER_TEMP:-/tmp}/php-darwin-new-formulae.txt
   local removed_formulae=${RUNNER_TEMP:-/tmp}/php-darwin-removed-formulae.txt
   local installed_formula
@@ -318,6 +365,14 @@ validate_homebrew() {
     php_darwin_die 'could not identify removed Homebrew formulae'
   [ ! -s "$removed_formulae" ] || \
     php_darwin_die "cache extraction removed existing Homebrew formulae: $(tr '\n' ' ' < "$removed_formulae")"
+  brew list --formula --versions > "$installed_versions_after" || \
+    php_darwin_die 'could not inspect Homebrew formula versions after cache installation'
+  awk -v target="$formula" '$1 != target && $1 ~ /^php(@[0-9]+\.[0-9]+)?(-debug)?(-zts)?$/ { print }' \
+    "$installed_versions_before" | LC_ALL=C sort -u > "$php_versions_before"
+  awk -v target="$formula" '$1 != target && $1 ~ /^php(@[0-9]+\.[0-9]+)?(-debug)?(-zts)?$/ { print }' \
+    "$installed_versions_after" | LC_ALL=C sort -u > "$php_versions_after"
+  cmp -s "$php_versions_before" "$php_versions_after" || \
+    php_darwin_die 'cache installation changed a preinstalled PHP version'
   LC_ALL=C comm -13 "$installed_before" "$installed_after" > "$new_formulae" || \
     php_darwin_die 'could not identify the newly installed Homebrew formulae'
   printf '%s\n' "$formula" >> "$new_formulae" || php_darwin_die 'could not record the PHP formula'
@@ -357,19 +412,12 @@ validate_homebrew() {
   "$php_bin" -d date.timezone=UTC -r "if (strpos(PHP_VERSION, '$version') !== 0) { exit(1); }" || \
     php_darwin_die 'PHP failed after Homebrew relinking'
 
-  brew services start "$formula" || php_darwin_die 'PHP service did not start'
-  service_running=false
-  service_attempt=0
-  while [ "$service_attempt" -lt 10 ]; do
-    service_attempt=$((service_attempt + 1))
-    if brew services info "$formula" --json | jq -e '.[0].running == true' >/dev/null; then
-      service_running=true
-      break
-    fi
-    sleep 1
-  done
-  [ "$service_running" = true ] || php_darwin_die 'PHP service is not running'
-  brew services stop "$formula" || php_darwin_die 'PHP service did not stop'
+  brew info --json=v2 --formula "$tap/$requested_formula" > "$service_info" || \
+    php_darwin_die 'could not inspect the cached PHP service definition'
+  jq -e --arg php_fpm "$php_fpm" \
+    '.formulae | length == 1 and .[0].service.run[0] == $php_fpm' \
+    "$service_info" >/dev/null || php_darwin_die 'the cached PHP service does not run its own php-fpm'
+  "$php_fpm" -t || php_darwin_die 'the cached PHP-FPM configuration is invalid'
 
   if ! brew doctor >"$doctor_log" 2>&1; then
     if grep -Eq '^(Error:|.*broken)' "$doctor_log"; then

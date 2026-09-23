@@ -233,6 +233,24 @@ php_darwin_validate_cache_metadata "$legacy_metadata" "$version" "$legacy_build"
   "$(php_darwin_package_config tap_snapshot)" "$legacy_minimum" "$legacy_platform" \
   "$extension_source_commit" >/dev/null || \
   php_darwin_die 'legacy stable cache metadata did not pass compatibility validation'
+missing_default_metadata="$work_dir/missing-default-php-metadata.json"
+jq '.links=[]' "$legacy_metadata" > "$missing_default_metadata" || \
+  php_darwin_die 'could not create a missing default PHP link fixture'
+if php_darwin_validate_cache_metadata "$missing_default_metadata" "$version" "$legacy_build" "$legacy_ts" \
+  "$legacy_arch" "$legacy_prefix" 26 "$source_commit" '' "$(php_darwin_package_config current_version)" \
+  "$(php_darwin_package_config tap_snapshot)" "$legacy_minimum" "$legacy_platform" \
+  "$extension_source_commit" >/dev/null 2>&1; then
+  php_darwin_die 'cache metadata accepted a missing default PHP link'
+fi
+wrong_default_metadata="$work_dir/wrong-default-php-metadata.json"
+jq '.links[0].target="../Cellar/php@8.4/8.4.0/bin/php"' "$legacy_metadata" > "$wrong_default_metadata" || \
+  php_darwin_die 'could not create a wrong default PHP link fixture'
+if php_darwin_validate_cache_metadata "$wrong_default_metadata" "$version" "$legacy_build" "$legacy_ts" \
+  "$legacy_arch" "$legacy_prefix" 26 "$source_commit" '' "$(php_darwin_package_config current_version)" \
+  "$(php_darwin_package_config tap_snapshot)" "$legacy_minimum" "$legacy_platform" \
+  "$extension_source_commit" >/dev/null 2>&1; then
+  php_darwin_die 'cache metadata accepted another formula as the default PHP link'
+fi
 legacy_trust_metadata="$work_dir/legacy-trust-metadata.json"
 jq 'del(.tap_formulae)' "$legacy_metadata" > "$legacy_trust_metadata" || \
   php_darwin_die 'could not create legacy formula-trust metadata'

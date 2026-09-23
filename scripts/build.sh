@@ -457,6 +457,10 @@ package_cache() {
   LC_ALL=C sort -u "$links_file" -o "$links_file" || php_darwin_die 'could not sort Homebrew links'
   awk -F '\t' 'seen[$1]++ { exit 1 }' "$links_file" || php_darwin_die 'Homebrew link plan contains duplicate paths'
   [ -s "$links_file" ] || php_darwin_die 'Homebrew link plan is empty'
+  awk -F '\t' -v formula="$formula" \
+    '$1 == "bin/php" && index($2, "../Cellar/" formula "/") == 1 && $2 ~ /\/bin\/php$/ { found=1 }
+     END { exit !found }' "$links_file" || \
+    php_darwin_die 'the cache does not contain the default PHP binary link'
 
   pear_path=$(php_darwin_pear_path "$version" "$formula") || exit 1
   [ -d "$brew_prefix/$pear_path" ] || php_darwin_die "formula post-install did not create $pear_path"

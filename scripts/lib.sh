@@ -912,6 +912,9 @@ php_darwin_validate_cache_metadata() {
       (.name as $name | .opt_target | split("/") |
         length == 4 and .[0] == ".." and .[1] == "Cellar" and .[2] == $name and
         (.[3] | type == "string" and test("^[^\\r\\n\\t/]+$") and . != "." and . != ".."))) and
+    any(.links[]; .path == "bin/php" and
+      (.target as $target | any($metadata.packages[];
+        .name == $formula and $target == (.opt_target + "/bin/php")))) and
     ((.tap_formulae // []) as $tap_formulae |
       ($tap_formulae | type == "array") and
       ([$tap_formulae[]] | unique | length) == ($tap_formulae | length) and
