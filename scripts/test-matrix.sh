@@ -31,6 +31,21 @@ jq -e '
   ]
 ' <<< "$full_test" >/dev/null || php_darwin_die 'full test matrix does not cover every free macOS runner'
 
+for version in $(php_darwin_nightly_versions); do
+  nightly_output="$work_dir/nightly-$version.txt"
+  GITHUB_OUTPUT="$nightly_output" PHP_VERSION="$version" CHANNEL=nightly BUILDS='debug release' \
+    TS='nts zts' ARCHITECTURES='arm64 x86_64' PUBLISH=true bash "$script_dir/get-matrix.sh" || \
+    php_darwin_die "PHP $version nightly workflow matrix generation failed"
+  nightly_build=$(sed -n 's/^build-matrix=//p' "$nightly_output")
+  nightly_test=$(sed -n 's/^test-matrix=//p' "$nightly_output")
+  jq -e --arg version "$version" --argjson stable "$full_build" \
+    '. == ($stable | .include[].php = $version)' <<< "$nightly_build" >/dev/null || \
+    php_darwin_die "PHP $version nightly build matrix is incomplete"
+  jq -e --arg version "$version" --argjson stable "$full_test" \
+    '. == ($stable | .include[].php = $version)' <<< "$nightly_test" >/dev/null || \
+    php_darwin_die "PHP $version nightly test matrix is incomplete"
+done
+
 target_output="$work_dir/target.txt"
 GITHUB_OUTPUT="$target_output" PHP_VERSION=5.6 CHANNEL=stable BUILDS=debug TS=nts \
   ARCHITECTURES=x86_64 PUBLISH=false bash "$script_dir/get-matrix.sh" || \

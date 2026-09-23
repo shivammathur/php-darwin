@@ -419,20 +419,19 @@ php_darwin_current_version() {
   php_darwin_package_config current_version
 }
 
-php_darwin_nightly_version() {
+php_darwin_nightly_versions() {
   local channel
   local configured_version
   local extra
-  local nightly_version=
+  local nightly_versions=
 
   php_darwin_load_versions || php_darwin_die 'invalid PHP version configuration'
   while read -r channel configured_version extra; do
     [ "$channel" = nightly ] || continue
-    [ -z "$nightly_version" ] || php_darwin_die 'multiple nightly PHP versions are configured'
-    nightly_version=$configured_version
+    nightly_versions=${nightly_versions:+"$nightly_versions"$'\n'}"$configured_version"
   done <<< "$php_darwin_configured_versions_data"
-  [ -n "$nightly_version" ] || php_darwin_die 'no nightly PHP version is configured'
-  printf '%s\n' "$nightly_version"
+  [ -n "$nightly_versions" ] || php_darwin_die 'no nightly PHP version is configured'
+  printf '%s\n' "$nightly_versions"
 }
 
 php_darwin_expected_asset_count() {

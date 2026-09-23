@@ -2,7 +2,7 @@
 
 <a href="https://github.com/shivammathur/php-darwin/actions/workflows/cache-stable.yml" title="PHP Package Cache"><img alt="Build status" src="https://github.com/shivammathur/php-darwin/actions/workflows/cache-stable.yml/badge.svg"></a>
 <a href="https://github.com/shivammathur/php-darwin/blob/main/LICENSE" title="license"><img alt="LICENSE" src="https://img.shields.io/badge/license-MIT-428f7e.svg?logo=open%20source%20initiative&logoColor=white&labelColor=555555"></a>
-<a href="https://github.com/shivammathur/php-darwin/releases" title="builds"><img alt="PHP Versions Supported" src="https://img.shields.io/badge/php-5.6%20to%208.6-777bb3.svg?logo=php&logoColor=white&labelColor=555555"></a>
+<a href="https://github.com/shivammathur/php-darwin/releases" title="builds"><img alt="PHP Versions Supported" src="https://img.shields.io/badge/php-5.6%20to%208.7-777bb3.svg?logo=php&logoColor=white&labelColor=555555"></a>
 
 > Cache Homebrew PHP packages for fast installation on GitHub Actions macOS runners.
 
@@ -11,7 +11,7 @@ Archives retain runtime/development files and licenses; general documentation, m
 ## PHP versions
 
 - Stable: PHP 5.6 through PHP 8.5
-- Nightly: PHP 8.6
+- Nightly: PHP 8.6 and PHP 8.7
 - Variants: NTS and ZTS, debug and release
 - Architectures: ARM64 and x86_64
 
@@ -90,6 +90,11 @@ rebuild the shared architecture caches. Full formula hashes remain in the cache
 metadata for integrity validation. When no compatible bottle exists, Homebrew
 builds from source on the same runner; macOS 14 ARM64 remains the cache minimum
 even after its bottles stop being published.
+
+The nightly update schedule starts separate cache workflow runs for PHP 8.6
+and PHP 8.7. Each run uses the same php-src freshness gate, architecture
+builds, publishing, and setup-php tests. Manual cache runs select one PHP minor
+and default to PHP 8.6.
 
 During cache builds, missing PHP, library, Xdebug, and PCOV bottles are built with
 `brew install --build-bottle` and saved individually in the `cache`

@@ -4,8 +4,7 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=scripts/lib.sh
 . "$script_dir/lib.sh"
 
-version=${PHP_VERSION:-}
-[ -n "$version" ] || version=$(php_darwin_nightly_version) || exit 1
+version=${PHP_VERSION:-8.6}
 force=${FORCE:-false}
 manifest_override=${PHP_DARWIN_MANIFEST_PATH:-}
 release_repository=$(php_darwin_package_config release_repository)

@@ -1,13 +1,12 @@
 name: Cache nightly PHP
-run-name: Cache nightly PHP ${{ inputs.php-version || 'configured version' }}
+run-name: Cache nightly PHP ${{ inputs.php-version || '8.6' }}
 
 on:
-  schedule:
-    - cron: '20 4 * * *'
   workflow_dispatch:
     inputs:
       php-version:
         description: PHP minor version
+        default: '8.6'
         required: false
         type: string
       builds:
@@ -55,7 +54,7 @@ on:
         type: boolean
 
 concurrency:
-  group: cache-nightly
+  group: cache-nightly-${{ inputs.php-version || '8.6' }}
   cancel-in-progress: false
 
 permissions:
@@ -123,8 +122,8 @@ jobs:
       architectures: ${{ inputs.architectures || needs.freshness.outputs.architectures }}
       homebrew-php-commit: ${{ inputs.homebrew-php-commit || (inputs.architectures == '' || inputs.architectures == needs.freshness.outputs.architectures) && needs.freshness.outputs.homebrew-php-commit || '' }}
       homebrew-extensions-commit: ${{ inputs.homebrew-extensions-commit || (inputs.architectures == '' || inputs.architectures == needs.freshness.outputs.architectures) && needs.freshness.outputs.homebrew-extensions-commit || '' }}
-      publish: ${{ github.event_name == 'schedule' || inputs.publish }}
+      publish: ${{ inputs.publish }}
       source-cache-release: ${{ inputs.source-cache-release || 'cache' }}
-      reuse-archives: ${{ github.event_name == 'schedule' || inputs.reuse-archives }}
+      reuse-archives: ${{ inputs.reuse-archives }}
       force-source: ${{ inputs.force-source || false }}
       force: ${{ inputs.force || false }}

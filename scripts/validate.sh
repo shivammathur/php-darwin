@@ -40,6 +40,7 @@ php_darwin_validate_channel "$current_version" stable
 php_darwin_validate_channel 5.6 stable
 php_darwin_validate_channel 8.5 stable
 php_darwin_validate_channel 8.6 nightly
+php_darwin_validate_channel 8.7 nightly
 php_darwin_validate_php_semver 8.6 8.6.0beta2 || \
   php_darwin_die 'nightly prerelease PHP version validation failed'
 php_darwin_validate_php_semver 8.6 8.6.0RC1 || \
@@ -69,13 +70,13 @@ while read -r channel version; do
     php_darwin_asset "$version" "$build" "$ts" x86_64 >/dev/null
   done < <(php_darwin_configured_variants)
 done < <(php_darwin_configured_versions)
-[ "$version_count" -eq 13 ] || php_darwin_die "expected 13 configured PHP versions, found $version_count"
-[ "$nightly_count" -eq 1 ] || php_darwin_die "expected one nightly PHP version, found $nightly_count"
+[ "$version_count" -eq 14 ] || php_darwin_die "expected 14 configured PHP versions, found $version_count"
+[ "$nightly_count" -eq 2 ] || php_darwin_die "expected two nightly PHP versions, found $nightly_count"
 configured_versions=$(php_darwin_configured_versions | \
   awk '{ printf "%s%s", separator, $1 ":" $2; separator=" " }') || \
   php_darwin_die 'could not read configured PHP versions'
 [ "$configured_versions" = \
-  'stable:5.6 stable:7.0 stable:7.1 stable:7.2 stable:7.3 stable:7.4 stable:8.0 stable:8.1 stable:8.2 stable:8.3 stable:8.4 stable:8.5 nightly:8.6' ] || \
+  'stable:5.6 stable:7.0 stable:7.1 stable:7.2 stable:7.3 stable:7.4 stable:8.0 stable:8.1 stable:8.2 stable:8.3 stable:8.4 stable:8.5 nightly:8.6 nightly:8.7' ] || \
   php_darwin_die 'the PHP release-channel configuration is incomplete or out of order'
 [ "$(printf '%s\n' "$seen_variants" | awk '{ print NF }')" -eq 4 ] || \
   php_darwin_die 'expected four build variants'
@@ -130,7 +131,7 @@ jq -e '
   keys == ["compression_level", "compression_long", "max_archive_bytes"] and
   (.compression_level | type == "number" and . >= 1 and . <= 22 and . == floor) and
   .compression_level == 19 and .compression_long == 27 and
-  (.max_archive_bytes | length) == 13 and
+  (.max_archive_bytes | length) == 14 and
   all(.max_archive_bytes[]; . == 180000000)
 ' "$script_dir/../conf/build.json" >/dev/null || php_darwin_die 'invalid build configuration'
 jq -e '
@@ -170,6 +171,8 @@ jq -e '
   php_darwin_die 'PHP 8.5 cached extensions are invalid'
 [ "$(bash "$script_dir/cached-extensions.sh" 8.6 | tr '\n' ' ')" = 'xdebug pcov ' ] || \
   php_darwin_die 'PHP 8.6 cached extensions are invalid'
+[ "$(bash "$script_dir/cached-extensions.sh" 8.7 | tr '\n' ' ')" = 'xdebug pcov ' ] || \
+  php_darwin_die 'PHP 8.7 cached extensions are invalid'
 [ "$(bash "$script_dir/cached-extensions.sh" 8.5 records | tr '\n' ' ')" = \
   $'xdebug\tzend_extension pcov\textension ' ] || \
   php_darwin_die 'PHP 8.5 cached extension types are invalid'
@@ -563,7 +566,11 @@ bash "$script_dir/filesystem-manifest.sh" "$fixture_prefix" "$fixture_snapshot_m
 HOMEBREW_EXTENSIONS_COMMIT='' HOMEBREW_PHP_COMMIT='' \
   bash "$script_dir/test-publish.sh" || php_darwin_die 'publish validation failed'
 bash "$script_dir/test-update.sh" || php_darwin_die 'stable update validation failed'
-bash "$script_dir/test-update-nightly.sh" || php_darwin_die 'nightly update validation failed'
+bash "$script_dir/test-dispatch-nightly.sh" || php_darwin_die 'nightly dispatch validation failed'
+for nightly_version in $(php_darwin_nightly_versions); do
+  bash "$script_dir/test-update-nightly.sh" "$nightly_version" || \
+    php_darwin_die "PHP $nightly_version nightly update validation failed"
+done
 bash "$script_dir/test-tap.sh" || php_darwin_die 'Homebrew tap snapshot validation failed'
 bash "$script_dir/test-matrix.sh" || php_darwin_die 'workflow matrix validation failed'
 
