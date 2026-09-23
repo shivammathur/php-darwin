@@ -26,6 +26,8 @@ Source-cache keys include software/dependency versions, target platform and PHP 
 
 Source bottles use named GitHub Releases and Cloudflare mirrors. Build claims coordinate concurrent workers. `test-source-cache.yml` verifies native cold and warm reuse; `test-source-lock.yml` checks live coordination.
 
+Normal builds require `conf/dependencies.json`. `update-dependencies.yml` prepares and verifies a replacement on both architectures before promotion. Missing approved bottles fail instead of compiling dependencies.
+
 Run local checks with `bash scripts/tests/run.sh` and workflow checks with `actionlint`.
 
 [MIT license](LICENSE).

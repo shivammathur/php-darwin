@@ -115,6 +115,7 @@ jobs:
           test "$BUILT" = 0
           test "$RESTORED" = 3
           bash scripts/tests/native/source-bottle-native.test.sh verify
+          "$PHP_DARWIN_NODE" scripts/tests/native/approved-dependencies.test.cjs
           bash scripts/tests/native/source-bottle-native.test.sh reset
           bash scripts/tests/native/source-bottle-native.test.sh bump
       - name: Build a new consumer with the cached library

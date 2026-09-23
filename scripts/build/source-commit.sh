@@ -21,6 +21,9 @@ case "$source_name" in
     repository=https://github.com/Homebrew/homebrew-core.git
     branch=main
     source_label=homebrew-core
+    if [ -z "$pinned_commit" ] && [ "${PHP_DARWIN_UPDATE_DEPENDENCIES:-false}" != true ]; then
+      pinned_commit=$("${PHP_DARWIN_NODE:-node}" "$script_dir/../cache/approved-dependencies.cjs" core) || exit 1
+    fi
     ;;
   *) php_darwin_die 'usage: source-commit.sh [php|extensions|core]' ;;
 esac

@@ -2,16 +2,24 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { install, command, extensionInputs } = require('../../../scripts/cache/source-bottle-cache.cjs');
 const { ReleaseCache } = require('../../../scripts/cache/source-bottle-releases.cjs');
+const { ApprovedDependencies, readLock } = require('../../../scripts/cache/approved-dependencies.cjs');
 
 async function main() {
   if (process.platform !== 'darwin' || process.env.GITHUB_ACTIONS !== 'true') {
     throw new Error('Source bottle installation requires a macOS Actions runner');
   }
   const cache = new ReleaseCache({ tag: process.env.INPUT_RELEASE || 'cache' });
+  const mode = process.env['INPUT_DEPENDENCY-MODE'] || 'approved';
+  if (!['approved', 'update'].includes(mode)) throw new Error('Invalid dependency mode');
+  const lock = mode === 'approved' ? readLock(process.env.PHP_DARWIN_DEPENDENCY_LOCK) : undefined;
+  if (lock && process.env.HOMEBREW_CORE_COMMIT && process.env.HOMEBREW_CORE_COMMIT !== lock.core_commit) {
+    throw new Error('Homebrew core differs from the approved dependency snapshot');
+  }
+  const approvedDependencies = lock ? new ApprovedDependencies(lock) : undefined;
   if (process.env.INPUT_STAGE === 'tools') {
     const result = { built: 0, restored: 0 };
     for (const formula of ['jq', 'zstd']) {
-      const installed = await install({ formula, cache });
+      const installed = await install({ formula, cache, approvedDependencies });
       result.built += installed.built;
       result.restored += installed.restored;
     }
@@ -28,7 +36,7 @@ async function main() {
     const result = { built: 0, restored: 0 };
     const preparedTargets = [];
     for (const formula of formulae) {
-      const installed = await install({ formula, cache, context, skipLink: true, preparedTargets,
+      const installed = await install({ formula, cache, context, skipLink: true, approvedDependencies, preparedTargets,
         forceSource: !!context.php.source_commit || process.env.BUILD !== 'release' || process.env.TS !== 'nts' || process.env['INPUT_FORCE-SOURCE'] === 'true' });
       preparedTargets.push(formula);
       result.built += installed.built;
@@ -48,7 +56,7 @@ async function main() {
   const formula = override || command('bash', ['-c',
     '. scripts/lib/lib.sh; requested=$(php_darwin_requested_formula "$PHP_VERSION" "$BUILD" "$TS") || exit 1; printf "%s/%s" "$(php_darwin_package_config tap)" "$requested"'
   ]).trim();
-  const result = await install({ formula, cache, forceSource: process.env['INPUT_FORCE-SOURCE'] === 'true' });
+  const result = await install({ formula, cache, approvedDependencies, forceSource: process.env['INPUT_FORCE-SOURCE'] === 'true' });
   if (!override) command('bash', ['scripts/build/build.sh', 'finalize'], { inherit: true });
   writeOutputs(result);
 }

@@ -11,6 +11,11 @@ pinned_source_output=$(GITHUB_OUTPUT='' PINNED_COMMIT=0123456789abcdef0123456789
 if GITHUB_OUTPUT='' PINNED_COMMIT=invalid bash "$script_dir/../../build/source-commit.sh" >/dev/null 2>&1; then
   php_darwin_die 'invalid pinned source commit was accepted'
 fi
+approved_core=$(node "$script_dir/../../cache/approved-dependencies.cjs" core)
+[ "$(GITHUB_OUTPUT='' PINNED_COMMIT='' PHP_DARWIN_UPDATE_DEPENDENCIES=false \
+  bash "$script_dir/../../build/source-commit.sh" core)" = "$approved_core" ] || \
+  php_darwin_die 'normal cache jobs did not retain the approved dependency snapshot'
+
 for json_file in "$script_dir"/../../../conf/*.json "$script_dir"/../../../templates/*.json; do
   jq -e . "$json_file" >/dev/null || php_darwin_die "invalid JSON: $json_file"
 done

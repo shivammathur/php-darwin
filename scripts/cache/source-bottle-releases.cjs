@@ -363,7 +363,7 @@ class ReleaseCache {
       const obsolete = this.versionsToPrune(related.map(entry => entry.identity.version));
       // Preparing a new dependency generation must not remove the bottles
       // still selected by ordinary cache jobs before promotion succeeds.
-      const protectedKeys = new Set();
+      const protectedKeys = require('./approved-dependencies.cjs').protectedSourceKeys(this.dependencyLockFile);
       if (obsolete.includes(metadata.inputs.version)) {
         // An older job can finish after a newer upload. Verify that replacement
         // too; its own uploader may have failed before completing read-back.
