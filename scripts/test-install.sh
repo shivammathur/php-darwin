@@ -25,6 +25,7 @@ fixture_id=${GITHUB_RUN_ID:-local}-${build}-${ts}-${arch}
 sentinel="$brew_prefix/etc/php-darwin-preserve-$fixture_id.conf"
 installed_before="${RUNNER_TEMP:?}/php-darwin-installed-before-$fixture_id.txt"
 installed_versions_before="${RUNNER_TEMP:?}/php-darwin-versions-before-$fixture_id.txt"
+preserved_homebrew="${RUNNER_TEMP:?}/php-darwin-preserved-$fixture_id.json"
 default_php_before="${RUNNER_TEMP:?}/php-darwin-default-php-before-$fixture_id.txt"
 extensions_before="${RUNNER_TEMP:?}/php-darwin-extensions-before-$fixture_id.txt"
 php_bin="$brew_prefix/opt/$formula/bin/php"
@@ -38,7 +39,16 @@ tap_trust_before="${RUNNER_TEMP:?}/php-darwin-tap-trust-before-$fixture_id.txt"
 php_darwin_configure_homebrew_environment
 
 php_darwin_record_formulae() {
-  brew list --formula > "$1" || php_darwin_die 'could not list installed Homebrew formulae'
+  local versions
+  versions=$(brew list --formula --versions) || php_darwin_die 'could not list installed Homebrew formulae'
+  # `brew list --formula` also reports empty racks left behind by earlier jobs.
+  awk 'NF > 1 { print $1 }' <<< "$versions" > "$1"
+}
+
+preserved_homebrew_state() {
+  bash "$script_dir/check-preserved-homebrew.sh" "$1" "$brew_prefix" "$preserved_homebrew" \
+    "$HOME/Library/LaunchAgents" /Library/LaunchAgents /Library/LaunchDaemons || \
+    php_darwin_die 'existing PHP or its service definitions were not preserved'
 }
 
 php_darwin_enable_test_cleanup() {
@@ -71,6 +81,7 @@ prepare_homebrew() {
     php_darwin_die 'the PEAR preservation fixture already exists'
   [ ! -e "$sentinel" ] && [ ! -L "$sentinel" ] || \
     php_darwin_die 'the Homebrew preservation fixture already exists'
+  preserved_homebrew_state snapshot
   tap_trust_state=$(php_darwin_test_tap_trust_state) || \
     php_darwin_die "could not read the initial $tap trust state"
   printf '%s\n' "$tap_trust_state" > "$tap_trust_before" || \
@@ -88,7 +99,7 @@ prepare_homebrew() {
     fi
   done < <(jq -r '(.extensions // [])[].path' "$cache_metadata")
   : > "$default_php_before" || php_darwin_die 'could not record the default PHP formula'
-  if [ -L "$brew_prefix/bin/php" ]; then
+  if [ -L "$brew_prefix/bin/php" ] && [ -x "$brew_prefix/bin/php" ]; then
     default_target=$(readlink "$brew_prefix/bin/php") || php_darwin_die 'could not read the default PHP link'
     case "$default_target" in ../Cellar/*/*/bin/php)
       previous_default=${default_target#../Cellar/}
@@ -125,6 +136,7 @@ install_cache() {
     php_darwin_die 'cache installation failed'
   local elapsed=$((SECONDS - started))
   printf 'Cache installation completed for %s in %ss\n' "$asset" "$elapsed"
+  preserved_homebrew_state check
   [ "$elapsed" -lt 10 ] || php_darwin_die "cache installation exceeded 10 seconds: ${elapsed}s"
 }
 
@@ -369,6 +381,7 @@ validate_homebrew() {
   [ "$missing_status" -eq 0 ] || [ -n "$missing" ] || php_darwin_die 'Homebrew dependency validation failed without diagnostics'
   [ -z "$missing" ] || php_darwin_die "Homebrew reports missing dependencies: $missing"
   brew linkage --test "$formula" || php_darwin_die 'Homebrew linkage validation failed'
+  preserved_homebrew_state check
   php_darwin_record_formulae "$installed_after"
   LC_ALL=C sort -u "$installed_after" -o "$installed_after" || \
     php_darwin_die 'could not sort the final Homebrew formulae'

@@ -17,6 +17,7 @@ bash "$script_dir/test-publish-run.sh" || php_darwin_die 'publish workflow-run v
 bash "$script_dir/test-extensions-source-hash.sh" || \
   php_darwin_die 'cached extension source hash validation failed'
 bash "$script_dir/test-build-inputs.sh" || php_darwin_die 'cache build input validation failed'
+node --test "$script_dir/test-preserved-homebrew.cjs" || php_darwin_die 'PHP preservation validation failed'
 node --test "$script_dir/test-upstream-bottle-cache.cjs" || php_darwin_die 'Cloudflare bottle cache validation failed'
 node --test "$script_dir/test-source-bottle-cache.cjs" || php_darwin_die 'source bottle cache validation failed'
 node --test "$script_dir/test-source-bottle-releases.cjs" "$script_dir/test-release-http.cjs" || php_darwin_die 'release source cache validation failed'

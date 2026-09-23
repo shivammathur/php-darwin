@@ -3440,4 +3440,4 @@ elif [ "$tap_path_backed_up" = true ]; then
       "$tap_path_backup" >&2
 fi
 printf 'Installed PHP %s (%s, %s, %s) from %s\n' \
-  "$installed_semver" "$build" "$ts" "$arch" "$asset"
+  "$expected_runtime_version" "$build" "$ts" "$arch" "$asset"

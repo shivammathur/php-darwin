@@ -143,7 +143,8 @@ records and caches only the missing dependencies, also one job per dependency.
 New digests get new immutable objects; the cache never substitutes an older version.
 Each job publishes checksum verification evidence, and build timing artifacts
 record Cloudflare hits, local hits, and misses. Persistent runners retain
-current bottle downloads across builds. Assets do not expire. After uploading
+current bottle downloads across builds. Source bottle release assets do not expire
+automatically. After uploading
 and downloading a replacement to verify its checksum, the builder deletes older
 package versions for the same architecture, macOS, and PHP variant. It preserves
 newer versions uploaded by concurrent runs and different build inputs for the

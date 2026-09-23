@@ -53,6 +53,7 @@ jobs:
           persist-credentials: false
       - name: Prepare current formula definitions without installing packages
         run: |
+          bash scripts/cleanup-taps.sh
           brew tap --force homebrew/core
           for tap in shivammathur/php shivammathur/extensions; do
             brew tap "$tap"
