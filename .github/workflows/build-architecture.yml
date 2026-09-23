@@ -81,6 +81,9 @@ jobs:
       - name: Clean runner before building PHP
         run: brew test-bot --only-cleanup-before
 
+      - name: Restore Homebrew build tools
+        run: brew install jq zstd
+
       - name: Remove unused Homebrew taps
         run: bash scripts/cleanup-taps.sh
 
