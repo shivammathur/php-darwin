@@ -8,9 +8,9 @@ Formulary.enable_factory_cache!
 mode = ARGV.fetch(0)
 formulae = JSON.parse(ARGV.fetch(1))
 force_source = ARGV[2] == "true"
-raise "Invalid source bottle mode" unless %w[plan inputs archive].include?(mode)
+raise "Invalid source bottle mode" unless %w[plan seed inputs archive].include?(mode)
 
-def source_dependencies(formula, planning:, force_source: false, runtime_only: false)
+def source_dependencies(formula, planning:, force_source: false, runtime_only: false, ignore_installed: false)
   Dependency.expand(formula) do |dependent, dep|
     next Dependable::PRUNE if dep.optional? || (dep.test? && !dep.build?) ||
                              (dep.uses_from_macos? && dep.use_macos_install?)
@@ -18,7 +18,7 @@ def source_dependencies(formula, planning:, force_source: false, runtime_only: f
     if dep.build?
       next Dependable::PRUNE if runtime_only
       building = if planning
-        !dependent.any_version_installed? &&
+        (ignore_installed || !dependent.any_version_installed?) &&
           ((dependent == formula && force_source) || !FormulaInstaller.new(dependent).pour_bottle?)
       else
         # Inputs describe a source build of this formula. Its dependencies are
@@ -45,13 +45,15 @@ def installed_inputs(dependency)
 end
 
 resolved = formulae.map { |name| Formulary.factory(name) }
-if mode == "plan"
+if %w[plan seed].include?(mode)
   resolved = resolved.flat_map do |formula|
-    source_dependencies(formula, planning: true, force_source:).map(&:to_formula) + [formula]
+    source_dependencies(formula, planning: true, force_source:, ignore_installed: mode == "seed")
+      .map(&:to_formula) + [formula]
   end.uniq(&:full_name)
 end
 
 records = resolved.map do |formula|
+  installer = FormulaInstaller.new(formula)
   record = {
     name: formula.name,
     full_name: formula.full_name,
@@ -59,9 +61,17 @@ records = resolved.map do |formula|
     prefix: formula.prefix.to_s,
     recipe: formula.path.to_s,
     installed: formula.any_version_installed?,
-    bottled: FormulaInstaller.new(formula).pour_bottle?,
+    bottled: installer.pour_bottle?,
     post_install: formula.post_install_defined? || formula.post_install_steps_defined?,
   }
+  if %w[plan seed].include?(mode) && record[:bottled]
+    bottle = installer.selected_bottle
+    record[:bottle] = {
+      formula: formula.full_name, version: formula.pkg_version.to_s, tag: bottle.tag.to_s,
+      sha256: bottle.resource.checksum.hexdigest, url: bottle.url,
+      cached_download: bottle.cached_download.to_s,
+    }
+  end
   if mode == "archive"
     record[:packages] = (source_dependencies(formula, planning: false, runtime_only: true)
       .map(&:to_formula) + [formula]).uniq(&:full_name).map do |dependency|

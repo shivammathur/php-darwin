@@ -224,3 +224,18 @@ test('extension keys include the patched base recipe and actual PHP ABI/configur
   fs.writeFileSync(abstract, 'patched recipe');
   assert.notEqual(keyFor(first), keyFor(extensionInputs(abstract, '/opt/php', 'release', 'nts', run)));
 });
+
+test('Cloudflare prefetch completes before upstream fetch and leaves normal installation intact', async t => {
+  const f = fixture(t);
+  const bottles = [{ full_name: 'libxml2', name: 'libxml2', installed: false, bottled: true,
+    bottle: { formula: 'libxml2', sha256: 'fixture-digest' } },
+  { full_name: f.args.formula, name: 'php@8.4', installed: true }];
+  f.args.query = () => bottles;
+  f.args.prefetch = async records => {
+    assert.deepEqual(records, [bottles[0].bottle]);
+    assert.equal(f.events.length, 0);
+    f.events.push(['cloudflare']);
+  };
+  await install(f.args);
+  assert.deepEqual(f.events, [['cloudflare'], ['install', '--formula', '--verbose', 'libxml2']]);
+});

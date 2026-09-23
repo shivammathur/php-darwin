@@ -3,6 +3,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { recordMetric } = require('./build-metrics.cjs');
+const { prefetch: prefetchBottles } = require('./upstream-bottle-cache.cjs');
 
 function command(program, args, { inherit = false, cwd, env } = {}) {
   const result = spawnSync(program, args, {
@@ -80,7 +81,7 @@ function readBottle(directory, key) {
 async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
   forceSource = false, skipLink = false, context,
   run = command, query = inspect, inputs = buildInputs, buildEnvironment = environment,
-  log = console.log, warn = console.warn }) {
+  log = console.log, warn = console.warn, prefetch = prefetchBottles }) {
   if (!/^(?:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/)?[A-Za-z0-9@+_.-]+$/.test(formula)) {
     throw new Error(`Invalid source cache formula: ${formula}`);
   }
@@ -98,6 +99,7 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
   // upstream bottles in one command so its download queue can run concurrently.
   const bottled = plan.filter((item, index) => !item.installed && item.bottled &&
     !(index === plan.length - 1 && forceSource)).map(item => item.full_name);
+  await prefetch(plan.filter(item => bottled.includes(item.full_name) && item.bottle).map(item => item.bottle), { log, warn });
   if (bottled.length > 1) {
     const started = Date.now();
     log(`Prefetching ${bottled.length} upstream bottles`);

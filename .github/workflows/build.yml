@@ -154,6 +154,19 @@ jobs:
       reuse-archives: ${{ inputs.reuse-archives }}
       force-source: ${{ inputs.force-source }}
 
+  cache-bottles:
+    name: Cache missing dependency bottles in Cloudflare
+    if: ${{ always() && !cancelled() && needs.matrix.outputs.build-required == 'true' }}
+    needs: [matrix, architecture]
+    uses: ./.github/workflows/cache-bottles.yml
+    permissions:
+      contents: read
+      actions: read
+    secrets:
+      CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
+      CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
+      CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
+
   publish:
     name: Publish PHP ${{ inputs.php-version }} release assets
     if: ${{ inputs.publish && needs.matrix.outputs.build-required == 'true' }}
@@ -219,7 +232,7 @@ jobs:
   report:
     name: Report cache work and workflow timings
     if: ${{ always() }}
-    needs: [matrix, architecture, publish, e2e]
+    needs: [matrix, architecture, cache-bottles, publish, e2e]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

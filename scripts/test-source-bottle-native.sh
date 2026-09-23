@@ -62,9 +62,16 @@ class PhpDarwinCacheApp < Formula
            "-lcachedvalue", "-o", "php-darwin-cache-app"
     bin.install "php-darwin-cache-app"
   end
-  def post_install
-    (var/"php-darwin-source-cache-test").mkpath
-    (var/"php-darwin-source-cache-test/postinstall").write "ready"
+  if respond_to?(:post_install_steps)
+    post_install_steps do
+      mkdir_p "php-darwin-source-cache-test", base: :var
+      write_file "php-darwin-source-cache-test/postinstall", "ready", base: :var
+    end
+  else
+    def post_install
+      (var/"php-darwin-source-cache-test").mkpath
+      (var/"php-darwin-source-cache-test/postinstall").write "ready"
+    end
   end
 end
 EOF

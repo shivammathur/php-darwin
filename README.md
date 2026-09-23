@@ -121,8 +121,28 @@ versions/recipes/options, architecture, macOS major, Homebrew major, compiler,
 and SDK. Extension keys also cover the patched shared base formula and the
 installed PHP version, API, and configure options. Unrelated bottle updates do not invalidate source builds. Existing
 runner dependencies and usable upstream bottles retain priority; debug/ZTS
-extensions use their own source bottles. Missing upstream bottles are prefetched
-through Homebrew's concurrent download queue, and persistent runners retain
+extensions use their own source bottles. Upstream GHCR bottles are first read
+from the Cloudflare R2 `php-darwin` bucket under
+`homebrew/bottles/sha256/<digest>.tar.gz`. The builder verifies the formula's exact
+SHA-256 and atomically places each bottle in Homebrew's own download cache;
+Homebrew retains responsibility for metadata, relocation, receipts, and linking.
+Eight concurrent reads avoid serial downloads. Existing verified local bottles
+are retained, and cache misses or invalid objects fall back to Homebrew's normal
+concurrent upstream fetch. This only changes build preparation, not the PHP
+package installer.
+
+Run `cache-bottles.yml` with `seed=true` to resolve all configured PHP versions,
+four variants, cached extensions, and build tools on both minimum macOS platforms.
+Resolution ignores preinstalled packages and includes transitive source-build
+dependencies. One Ubuntu job per dependency copies its exact ARM/Intel bottles
+and verifies their public Cloudflare downloads. No package installation is needed
+to seed the mirror. Formulae without upstream bottles continue through the existing
+source-bottle cache described above. Builders record misses as artifacts; at the
+end of each package workflow the same reusable bottle workflow deduplicates those
+records and caches only the missing dependencies, also one job per dependency.
+New digests get new immutable objects; the cache never substitutes an older version.
+Each job publishes checksum verification evidence, and build timing artifacts
+record Cloudflare hits, local hits, and misses. Persistent runners retain
 current bottle downloads across builds. Assets do not expire. After uploading
 and downloading a replacement to verify its checksum, the builder deletes older
 package versions for the same architecture, macOS, and PHP variant. It preserves
