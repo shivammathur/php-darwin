@@ -78,6 +78,7 @@ done
 [ -s "$work_dir/port" ] || php_darwin_die 'download fixture server did not start'
 base=http://127.0.0.1:$(cat "$work_dir/port")
 export PHP_DARWIN_MIRROR_URL="$base/good"
+export PHP_DARWIN_PREFER_MIRROR=false
 for route in unavailable missing partial corrupt stall error-stall; do
   PHP_DARWIN_RELEASE_URL="$base/$route/archive"
   : > "$work_dir/requests"
@@ -90,7 +91,7 @@ PHP_DARWIN_RELEASE_URL="$base/error-stall/archive"
 download_error_started=$(date +%s)
 php_darwin_download_release_archive || php_darwin_die 'slow error body did not recover'
 [ "$(( $(date +%s) - download_error_started ))" -lt 3 ] || php_darwin_die 'waited for an HTTP error response body'
-export PHP_DARWIN_PREFER_MIRROR=true
+unset PHP_DARWIN_PREFER_MIRROR
 : > "$work_dir/requests"
 PHP_DARWIN_RELEASE_URL="$base/unavailable/archive"
 php_darwin_download_release_archive || php_darwin_die 'the healthy bootstrap origin was not reused'
@@ -98,7 +99,7 @@ php_darwin_download_release_archive || php_darwin_die 'the healthy bootstrap ori
 export PHP_DARWIN_MIRROR_URL="$base/corrupt"
 PHP_DARWIN_RELEASE_URL="$base/good/archive"
 php_darwin_download_release_archive || php_darwin_die 'preferred mirror did not fall back to GitHub'
-unset PHP_DARWIN_PREFER_MIRROR
+export PHP_DARWIN_PREFER_MIRROR=false
 export PHP_DARWIN_MIRROR_URL="$base/good"
 for route in unavailable missing partial corrupt; do
   status=$(php_darwin_fetch_release_manifest "$release_repository" "$version" "$work_dir/body" \

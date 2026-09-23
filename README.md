@@ -169,6 +169,14 @@ requiring valid digests. Workflow and script changes run the local validation
 suite automatically in CI; publication still requires successful builds and
 compatibility tests for every selected platform.
 
+PHP archive installs also prefer the Cloudflare mirror, with checksum-verified
+GitHub fallback. Set `PHP_DARWIN_PREFER_MIRROR=false` to prefer GitHub explicitly.
+Compatibility tests enforce installation below 10 seconds; direct release tests
+include bootstrap and archive downloads in that limit. Tests preserve installed
+PHP versions and compare PHP service definitions before and after installation.
+An explicit `use_package_cache: 'true'` in setup-php@develop selects the cache on both
+hosted and self-hosted runners, including when the PHP minor is already installed.
+
 ## Avoiding repeated work
 
 Queued cache workflows recheck the published inputs before allocating macOS

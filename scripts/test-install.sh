@@ -129,6 +129,7 @@ install_cache() {
     installer_bash="$brew_prefix/bin/bash"
     [ -x "$installer_bash" ] && "$installer_bash" -c '[ "$BASH_VERSINFO" -ge 4 ]' || \
       php_darwin_die 'install tracing requires Homebrew Bash 4 or newer'
+    exec 3>&2
     export PS4='+${SECONDS}s ${BASH_SOURCE}:${LINENO}: ' BASH_XTRACEFD=3
     bash_options=(-x)
   fi

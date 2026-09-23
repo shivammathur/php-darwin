@@ -45,6 +45,9 @@ jobs:
       - name: Remove unused Homebrew taps
         run: bash scripts/cleanup-taps.sh
 
+      - name: Record preinstalled PHP and services
+        run: bash scripts/prepare-e2e.sh
+
       - name: Run the published installer with visible output
         run: bash scripts/test-release.sh
 
@@ -74,7 +77,7 @@ jobs:
       - name: Remove unused Homebrew taps
         run: bash scripts/cleanup-taps.sh
 
-      - name: Remove preinstalled PHP from the E2E fixture
+      - name: Record preinstalled PHP and services
         run: bash scripts/prepare-e2e.sh
 
       - name: Configure the extension cache

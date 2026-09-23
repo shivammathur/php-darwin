@@ -9,6 +9,11 @@ php_darwin_validate_version "$version"
 channel=$(php_darwin_version_channel "$version") || exit 1
 arch=$(php_darwin_normalize_arch "$(uname -m)") || exit 1
 asset=$(php_darwin_asset "$version" release nts "$arch") || exit 1
+brew_prefix=$(brew --prefix) || exit 1
+bash "$script_dir/check-preserved-homebrew.sh" check "$brew_prefix" \
+  "${RUNNER_TEMP:?}/php-darwin-e2e-preserved.json" \
+  "$HOME/Library/LaunchAgents" /Library/LaunchAgents /Library/LaunchDaemons || \
+  php_darwin_die 'end-to-end installation changed existing PHP or its services'
 formula=$(php_darwin_formula "$version" release nts) || exit 1
 
 # shellcheck disable=SC2016
@@ -39,8 +44,11 @@ if [ "${PHP_DARWIN_REQUIRE_PCOV:-false}" = true ]; then
     }
   ' || php_darwin_die 'PCOV cache integration failed'
 fi
+# Defaults apply only to new configuration. Existing enabled extensions belong
+# to the runner and are intentionally preserved by a direct cache installation.
 if [ "${PHP_DARWIN_REQUIRE_XDEBUG:-false}" != true ] && \
-  [ "${PHP_DARWIN_REQUIRE_PCOV:-false}" != true ]; then
+  [ "${PHP_DARWIN_REQUIRE_PCOV:-false}" != true ] && \
+  [ "$(cat "${RUNNER_TEMP:?}/php-darwin-e2e-existing-config.txt")" = false ]; then
   while IFS= read -r extension; do
     php -r "if (extension_loaded('$extension')) { exit(1); }" || \
       php_darwin_die "$extension is enabled by default after a direct cache install"
@@ -99,10 +107,13 @@ if [ "${PHP_DARWIN_REQUIRE_CACHE:-false}" = true ]; then
   pecl list > "$pecl_packages" || php_darwin_die 'PECL could not list installed packages'
   while IFS= read -r cached_extension; do
     [ -n "$cached_extension" ] || continue
-    if awk -v extension="$cached_extension" 'tolower($1) == tolower(extension) { found=1 } END { exit !found }' \
-      "$pecl_packages"; then
+    before_package=$(awk -v extension="$cached_extension" \
+      'tolower($1) == tolower(extension) { print tolower($1), $2, $3 }' \
+      "${RUNNER_TEMP:?}/php-darwin-e2e-pecl-before.txt") || exit 1
+    after_package=$(awk -v extension="$cached_extension" \
+      'tolower($1) == tolower(extension) { print tolower($1), $2, $3 }' "$pecl_packages") || exit 1
+    [ -z "$after_package" ] || [ "$after_package" = "$before_package" ] || \
       php_darwin_die "setup-php rebuilt cached $cached_extension with PECL"
-    fi
   done < <(bash "$script_dir/cached-extensions.sh" "$version")
 fi
 

@@ -664,7 +664,7 @@ php_darwin_download_release_archive() {
   if [ -z "${PHP_DARWIN_RELEASE_URL:-}" ] || [ -n "${PHP_DARWIN_MIRROR_URL:-}" ]; then
     mirror_url=$(php_darwin_release_mirror "$release_repository" "$version") || return 1
     [ -z "$mirror_url" ] || urls+=("$mirror_url/$manifest_download_asset")
-    if [ -n "$mirror_url" ] && [ "${PHP_DARWIN_PREFER_MIRROR:-false}" = true ]; then
+    if [ -n "$mirror_url" ] && [ "${PHP_DARWIN_PREFER_MIRROR:-true}" = true ]; then
       urls=("$mirror_url/$manifest_download_asset" "$release_url")
     fi
   fi

@@ -20,10 +20,24 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-curl --fail --location --retry 3 --connect-timeout 10 \
-  --output "$installer" \
-  "https://github.com/$release_repository/releases/download/php-$version/install.sh" || \
-  php_darwin_die "could not download the PHP $version release installer"
+started=$SECONDS
+mirror=$(php_darwin_release_mirror "$release_repository" "$version") || exit 1
+urls=("https://github.com/$release_repository/releases/download/php-$version/install.sh")
+if [ -n "$mirror" ]; then
+  if [ "${PHP_DARWIN_PREFER_MIRROR:-true}" = true ]; then
+    urls=("$mirror/install.sh" "${urls[@]}")
+  else
+    urls+=("$mirror/install.sh")
+  fi
+fi
+status=000
+for url in "${urls[@]}"; do
+  status=$(php_darwin_request_release "$url" "$installer") || status=000
+  [ "$status" != 200 ] || break
+done
+[ "$status" = 200 ] || php_darwin_die "could not download the PHP $version release installer"
 bash "$installer" "$version" release nts || \
   php_darwin_die "the PHP $version release installer failed"
-
+elapsed=$((SECONDS - started))
+printf 'Published cache download and installation completed in %ss\n' "$elapsed"
+[ "$elapsed" -lt 10 ] || php_darwin_die "published cache installation exceeded 10 seconds: ${elapsed}s"
