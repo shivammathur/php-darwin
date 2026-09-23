@@ -22,7 +22,7 @@ while IFS= read -r installed_tap; do
 done <<< "$installed_taps"
 
 if [ "${#unused_taps[@]}" -gt 0 ]; then
-  if ! brew untap --force "${unused_taps[@]}" > "$untap_log" 2>&1; then
+  if ! HOMEBREW_DEVELOPER=1 brew untap "${unused_taps[@]}" > "$untap_log" 2>&1; then
     cat "$untap_log" >&2
     php_darwin_die 'could not remove unused Homebrew taps'
   fi

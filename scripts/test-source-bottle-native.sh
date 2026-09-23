@@ -150,7 +150,7 @@ JS
   cleanup)
     if brew tap | grep -Fxq "$tap"; then
       brew uninstall --force --ignore-dependencies "$app" "$library" || true
-      brew untap --force "$tap" || true
+      HOMEBREW_DEVELOPER=1 brew untap "$tap" || true
     fi
     rm -rf "$(brew --prefix)/var/php-darwin-source-cache-test"
     ;;

@@ -82,7 +82,7 @@ jobs:
 
       - name: Configure the extension cache
         id: cache-env
-        uses: shivammathur/cache-extensions@de3c642a5fce0ef91581a1c9831e229f525196d6 # v1
+        uses: shivammathur/cache-extensions@9ea160ee9ad63a0be2d72644fbfcefeff8a7be35 # main (rootless macOS cache)
         with:
           php-version: ${{ inputs.php-version }}
           extensions: ${{ env.EXTENSIONS }}
@@ -96,6 +96,8 @@ jobs:
           restore-keys: ${{ steps.cache-env.outputs.key }}
 
       - name: Install PHP and extensions through setup-php
+        env:
+          BASH_ENV: ${{ github.workspace }}/scripts/trace-install-phases.sh
         # Switch to the verbose tag after its next setup-php release.
         uses: shivammathur/setup-php@develop
         with:

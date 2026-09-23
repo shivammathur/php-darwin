@@ -17,7 +17,7 @@ case "${1:?}" in
     tap=$(php_darwin_package_config tap)
     tap_path=$(php_darwin_tap_repository_path "$tap")
     if [ -d "$tap_path" ]; then
-      brew untap --force "$tap"
+      HOMEBREW_DEVELOPER=1 brew untap "$tap"
     fi
     bash "$script_dir/install.sh" "$PHP_VERSION" "$BUILD" "$TS"
     brew pin "$formula"

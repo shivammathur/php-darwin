@@ -23,7 +23,10 @@ bash "$script_dir/check-preserved-homebrew.sh" snapshot "$brew_prefix" "$preserv
   php_darwin_die 'could not record existing PHP and services'
 # A prior job may leave a detached tap. The archive supplies its matching tap;
 # existing PHP kegs, PECL modules, configuration, and service definitions stay.
-brew untap --force "$tap" >/dev/null 2>&1 || true
+HOMEBREW_DEVELOPER=1 brew untap "$tap" >/dev/null 2>&1 || true
+bash "$script_dir/check-preserved-homebrew.sh" check "$brew_prefix" "$preserved_homebrew" \
+  "$HOME/Library/LaunchAgents" /Library/LaunchAgents /Library/LaunchDaemons || \
+  php_darwin_die 'E2E preparation changed existing PHP or its services'
 pecl_before="${RUNNER_TEMP:?}/php-darwin-e2e-pecl-before.txt"
 : > "$pecl_before"
 if command -v pecl >/dev/null 2>&1; then

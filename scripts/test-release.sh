@@ -36,7 +36,7 @@ for url in "${urls[@]}"; do
   [ "$status" != 200 ] || break
 done
 [ "$status" = 200 ] || php_darwin_die "could not download the PHP $version release installer"
-bash "$installer" "$version" release nts || \
+BASH_ENV="$script_dir/trace-install-phases.sh" bash "$installer" "$version" release nts || \
   php_darwin_die "the PHP $version release installer failed"
 elapsed=$((SECONDS - started))
 printf 'Published cache download and installation completed in %ss\n' "$elapsed"

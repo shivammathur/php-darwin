@@ -111,7 +111,7 @@ prepare_homebrew() {
       ;;
     esac
   fi
-  brew untap --force "$tap" >/dev/null 2>&1 || true
+  HOMEBREW_DEVELOPER=1 brew untap "$tap" >/dev/null 2>&1 || true
   mkdir -p "${pear_fixture%/*}" || php_darwin_die 'could not create the existing PEAR fixture'
   printf 'preserve-user-pear-package\n' > "$pear_fixture" || \
     php_darwin_die 'could not write the existing PEAR fixture'
