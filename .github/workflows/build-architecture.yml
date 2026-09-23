@@ -78,6 +78,9 @@ jobs:
       - name: Preserve Node before Homebrew cleanup
         uses: ./.github/actions/node-runtime
 
+      - name: Clean runner before building PHP
+        run: brew test-bot --only-cleanup-before
+
       - name: Remove unused Homebrew taps
         run: bash scripts/cleanup-taps.sh
 
