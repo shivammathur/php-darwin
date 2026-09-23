@@ -38,11 +38,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Preserve the Actions Node runtime
+        uses: ./.github/actions/node-runtime
       - name: Remove unused Homebrew taps
         run: bash scripts/cleanup-taps.sh
 
       - name: Verify concurrent ownership through the GitHub API
-        run: node scripts/test-source-build-lock-live.cjs
+        run: '"$PHP_DARWIN_NODE" scripts/test-source-build-lock-live.cjs'
       - name: Prepare source-only library and consumer
         run: bash scripts/test-source-bottle-native.sh prepare
       - name: Verify native bottle selection and dependency pruning

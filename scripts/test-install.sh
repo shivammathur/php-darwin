@@ -110,7 +110,14 @@ prepare_homebrew() {
 
 install_cache() {
   local started=$SECONDS
-  bash "$script_dir/install-package.sh" "$version" "$build" "$ts" "$archive" || \
+  local bash_options=()
+  if [ "${PHP_DARWIN_TRACE_INSTALL:-false}" = true ]; then
+    # Bash builtins keep tracing independent of external clocks and avoid
+    # adding any diagnostic work to the production installer.
+    export PS4='+${SECONDS}s ${BASH_SOURCE}:${LINENO}: '
+    bash_options=(-x)
+  fi
+  bash "${bash_options[@]}" "$script_dir/install-package.sh" "$version" "$build" "$ts" "$archive" || \
     php_darwin_die 'cache installation failed'
   local elapsed=$((SECONDS - started))
   printf 'Cache installation completed for %s in %ss\n' "$asset" "$elapsed"

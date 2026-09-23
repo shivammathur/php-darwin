@@ -88,7 +88,7 @@ EOF
   verify-plan)
     # This fixture is never installed. Its platform-default Cellar must be
     # recognized without fetching anything or including its source build tool.
-    node <<'JS'
+    "${PHP_DARWIN_NODE:-node}" <<'JS'
 const assert = require('node:assert/strict');
 const { brewSource } = require('./scripts/source-bottle-cache.cjs');
 const formula = 'php-darwin/source-cache-test/php-darwin-cache-bottled';
@@ -121,7 +121,7 @@ JS
     sed -i '' 's/version "1.0.0"/version "1.0.1"/' "$tap_path/Formula/php-darwin-cache-app.rb"
     ;;
   verify-release)
-    node <<'JS'
+    "${PHP_DARWIN_NODE:-node}" <<'JS'
 const fs = require('node:fs');
 const path = require('node:path');
 const assert = require('node:assert/strict');
