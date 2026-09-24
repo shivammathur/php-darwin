@@ -77,9 +77,9 @@ PY
     done
     ;;
   reset)
-    # Leave installed targets that cannot satisfy the requested PHP build.
-    # The warm pass must replace them from exact variant bottles, rather than
-    # trusting Homebrew's version-only installed check.
+    # Leave installed targets before the warm pass. Their names and versions
+    # do not establish the PHP variant: the next pass must select both exact
+    # bottles again instead of trusting Homebrew's installed check.
     python3 - <<'PY'
 import json, pathlib, subprocess
 modules = []
@@ -96,10 +96,7 @@ for file in pathlib.Path('.source-bottle-cache').glob('*/metadata.json'):
     assert module.is_file() and not module.is_symlink(), module
     modules.append(module)
 assert len(modules) == 2, modules
-for module in modules:
-    module.chmod(module.stat().st_mode | 0o200)
-    module.write_text('Unusable extension retained from an earlier PHP build\n')
-print('Installed two unusable extension kegs to verify exact variant restoration')
+print('Retained two installed extension kegs to verify exact variant restoration')
 PY
     # Clearing the working cache proves the next install reads release assets.
     rm -rf .source-bottle-cache
