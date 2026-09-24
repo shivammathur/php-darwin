@@ -6,6 +6,8 @@ when "info"
   require_relative "source-bottle-info"
 when "prune"
   require_relative "source-bottle-prune"
+when "install"
+  require_relative "source-bottle-install"
 else
   raise "Invalid source bottle command"
 end

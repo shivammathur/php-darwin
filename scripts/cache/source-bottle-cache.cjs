@@ -20,9 +20,9 @@ function digest(value) {
   return crypto.createHash('sha256').update(value).digest('hex');
 }
 
-function brewSource(mode, args) {
-  return command('brew', ['php-darwin-source', mode, ...args], {
-    env: { PATH: `${__dirname}${path.delimiter}${process.env.PATH}` },
+function brewSource(mode, args, { run = command, ...options } = {}) {
+  return run('brew', ['php-darwin-source', mode, ...args], {
+    ...options, env: { ...options.env, PATH: `${__dirname}${path.delimiter}${process.env.PATH}` },
   });
 }
 
@@ -197,7 +197,7 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
       let compileMs;
       let bottleStarted;
       withFreshConfiguration(platform.prefix, item.configuration_files, () => {
-        run('brew', ['install', '--formula', '--build-bottle', ...flags, item.full_name], { inherit: true });
+        brewSource('install', ['--formula', '--build-bottle', ...flags, item.full_name], { run, inherit: true });
         compileMs = Date.now() - compileStarted;
         bottleStarted = Date.now();
         run('brew', ['bottle', '--json', '--no-rebuild', item.full_name], {

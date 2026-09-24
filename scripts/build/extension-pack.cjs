@@ -66,7 +66,8 @@ function packageExtension({ name, php_version, build, thread_safety, architectur
     php_semver: command(php, ['-n', '-r', 'echo PHP_VERSION;']),
     minimum_macos: architecture === 'arm64' ? 14 : 15, modules: packs[name], environment: {},
     source_records: sourceRecords([...new Set([...references, ...runtime])]),
-    dependencies: info.map(formula => ({ name: formula.name, versions: formula.installed.map(item => item.version) })) };
+    dependencies: info.map(formula => ({ name: formula.name,
+      versions: [path.basename(fs.realpathSync(path.join(prefix, 'opt', formula.name)))] })) };
   const tap = command('brew', ['--repository', 'shivammathur/extensions']);
   metadata.source_records.push({ repository: 'shivammathur/homebrew-extensions', path: 'Abstract/abstract-php-extension.rb',
     sha256: digest(command('git', ['-C', tap, 'show', 'HEAD:Abstract/abstract-php-extension.rb']) + '\n') });

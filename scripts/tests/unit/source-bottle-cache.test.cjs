@@ -66,6 +66,11 @@ function fixture(t) {
     log: () => {}, warn: message => warnings.push(message),
     run: (program, argv, options = {}) => {
       assert.equal(program, 'brew');
+      if (argv.includes('--build-bottle')) {
+        assert.equal(argv[0], 'php-darwin-source', 'Source builds must preserve the compiler dependency environment');
+        assert.ok(options.env.PATH.startsWith(path.resolve(__dirname, '../../cache') + path.delimiter));
+        argv = argv.slice(1);
+      }
       if (argv[0] === 'install') assert.ok(argv.includes('--ignore-dependencies'),
         'Homebrew must not repeat dependency resolution after the cache installed its complete plan');
       if (argv[0] === 'install' && argv.at(-1).endsWith('.bottle.tar.gz')) {
