@@ -7,7 +7,9 @@ function builderHash() {
   const root = path.resolve(__dirname, '../..');
   const inputs = ['conf/extension-packs.json', 'conf/platforms.json',
     'scripts/build/extension-pack.cjs', 'scripts/build/build-extensions.sh',
-    'scripts/build/prepare-extension-pack.sh'];
+    'scripts/build/prepare-extension-pack.sh', 'scripts/cache/source-bottle-cache.cjs',
+    'scripts/cache/source-bottle-info.rb', 'scripts/cache/source-bottle-install.rb',
+    'scripts/cache/brew-php-darwin-source.rb'];
   return digest(JSON.stringify(inputs.map(file => [file, digest(fs.readFileSync(path.join(root, file)))])));
 }
 function isMachO(file) {

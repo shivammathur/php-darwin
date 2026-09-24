@@ -211,6 +211,29 @@ else:
     raise AssertionError('missing upgraded library bottle')
 print('Native source upgrade preserved existing configuration and keg; bottle contains clean defaults')
 PY
+    "${PHP_DARWIN_NODE:-node}" <<'JS'
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { install, command } = require('./scripts/cache/source-bottle-cache.cjs');
+(async () => {
+  const prefix = command('brew', ['--prefix']).trim();
+  const opt = path.join(prefix, 'opt/php-darwin-cache-lib');
+  const rack = path.join(prefix, 'Cellar/php-darwin-cache-lib');
+  const cache = { async restoreCache() { throw new Error('Unexpected cache download'); },
+    async saveCache() { throw new Error('Unexpected source build'); } };
+  for (const previous of ['1.0.0', null]) {
+    fs.unlinkSync(opt);
+    if (previous) fs.symlinkSync(path.join(rack, previous), opt);
+    const result = await install({ formula: 'php-darwin/source-cache-test/php-darwin-cache-lib', cache });
+    assert.deepEqual(result, { built: 0, restored: 0 });
+    assert.equal(fs.realpathSync(opt), path.join(rack, '1.0.1'));
+    assert.ok(fs.statSync(path.join(rack, '1.0.0')).isDirectory());
+    assert.equal(fs.readFileSync(path.join(prefix, 'etc/php-darwin-source-cache-test/library.conf'), 'utf8'), 'custom configuration\n');
+  }
+  console.log('Current installed keg selected from stale and missing opt links without removing old versions or changing configuration');
+})().catch(error => { console.error(error); process.exitCode = 1; });
+JS
     ;;
   cleanup)
     if brew tap | grep -Fxq "$tap"; then

@@ -179,6 +179,13 @@ test('existing dependencies and upstream bottles do not get rebuilt', async t =>
   assert.deepEqual(f.events.at(-1), ['install', '--formula', '--verbose', '--ignore-dependencies', 'shivammathur/php/php@8.4']);
 });
 
+test('an installed current keg is selected without rebuilding when opt points to an older version', async t => {
+  const f = fixture(t);
+  f.args.query = () => [{ full_name: f.args.formula, installed: true, select_current: true }];
+  assert.deepEqual(await install(f.args), { built: 0, restored: 0 });
+  assert.deepEqual(f.events, [['php-darwin-source', 'select', f.args.formula]]);
+});
+
 test('missing upstream bottles are prefetched together and install still retries after fetch failure', async t => {
   const f = fixture(t);
   f.args.query = () => [

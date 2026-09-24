@@ -131,7 +131,13 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
     // would otherwise demand upgrades to the installed PHP build tool's own
     // runtime libraries, which are unrelated to building an extension.
     const flags = ['--verbose', '--ignore-dependencies', ...(target && skipLink ? ['--skip-link'] : [])];
-    if (item.installed) { metric({ result: 'preinstalled' }); continue; }
+    if (item.installed) {
+      // A restored PHP cache can select an older keg while the current version
+      // remains installed. Point opt at the planned keg without deleting either.
+      if (item.select_current) brewSource('select', [item.full_name], { run, inherit: true });
+      metric({ result: 'preinstalled' });
+      continue;
+    }
     if (item.bottled && !(target && forceSource)) {
       run('brew', ['install', '--formula', ...flags, item.full_name], { inherit: true });
       metric({ result: 'upstream-bottle' });
