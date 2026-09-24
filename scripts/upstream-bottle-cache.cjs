@@ -54,7 +54,8 @@ async function transfer(url, file, { head = false, upstream = false } = {}) {
   if (head) args.push('--head');
   if (upstream) args.push('--header', 'Authorization: Bearer QQ==');
   args.push(url);
-  return Number(await exec('curl', args));
+  try { return Number(await exec('curl', args)); }
+  catch (error) { throw new Error(`Download failed: ${url}: ${error.message}`, { cause: error }); }
 }
 async function pool(items, concurrency, work) {
   let next = 0;
@@ -131,6 +132,7 @@ async function publish(records, { download = transfer, run = exec, env = process
     for (const raw of records) {
       const record = identity(raw);
       const publicUrl = `${DOMAIN}/${objectKey(record)}`;
+      console.log(`Checking Cloudflare: ${record.formula} ${record.version} ${record.sha256}`);
       const file = path.join(directory, record.sha256);
       let result = 'existing';
       // Check full bytes on both existing and newly published immutable objects.
@@ -139,17 +141,30 @@ async function publish(records, { download = transfer, run = exec, env = process
         if (status !== 200 && status !== 404) throw new Error(`Cloudflare read failed: HTTP ${status}`);
         status = await download(record.url, file, { upstream });
         if (status !== 200 || !await validFile(file, record.sha256)) throw new Error(`Invalid upstream bottle: ${record.formula}`);
-        await run('aws', ['--endpoint-url', endpoint, 's3', 'cp', file, `s3://php-darwin/${objectKey(record)}`,
-          '--cache-control', 'public,max-age=31536000,immutable', '--content-type', contentType,
-          '--cli-connect-timeout', '5', '--cli-read-timeout', '60', '--only-show-errors'], { env: {
+        const awsOptions = { env: {
           ...env, AWS_ACCESS_KEY_ID: env.CF_R2_AWS_ACCESS_KEY_ID,
           AWS_SECRET_ACCESS_KEY: env.CF_R2_AWS_SECRET_ACCESS_KEY, AWS_DEFAULT_REGION: 'auto',
           AWS_EC2_METADATA_DISABLED: 'true', AWS_MAX_ATTEMPTS: '1',
           AWS_REQUEST_CHECKSUM_CALCULATION: 'when_required', AWS_RESPONSE_CHECKSUM_VALIDATION: 'when_required',
-        } });
+        } };
+        await run('aws', ['--endpoint-url', endpoint, 's3', 'cp', file, `s3://php-darwin/${objectKey(record)}`,
+          '--cache-control', 'public,max-age=31536000,immutable', '--content-type', contentType,
+          '--cli-connect-timeout', '5', '--cli-read-timeout', '60', '--only-show-errors'], awsOptions);
         // Bypass any negative edge cache populated by the initial miss.
         status = await download(`${publicUrl}?verify=${crypto.randomUUID()}`, file);
-        if (status !== 200 || !await validFile(file, record.sha256)) throw new Error(`Published bottle verification failed: ${record.formula}`);
+        if (status !== 200 || !await validFile(file, record.sha256)) {
+          if (status === 404) {
+            // Diagnose stale public 404s against R2's strongly consistent API;
+            // do not retry an upload or accept an unverified public object.
+            const remote = JSON.parse(await run('aws', ['--endpoint-url', endpoint, 's3api', 'head-object',
+              '--bucket', 'php-darwin', '--key', objectKey(record),
+              '--cli-connect-timeout', '5', '--cli-read-timeout', '30'], awsOptions));
+            console.error(`R2 object exists behind public 404: ${objectKey(record)}; ` +
+              `${remote.ContentLength} bytes, ETag ${remote.ETag}`);
+          }
+          throw new Error(`Published bottle verification failed: ${record.formula} HTTP ${status}, ` +
+            `expected ${record.sha256}, received ${await sha256(file)} (${(await fsp.stat(file)).size} bytes)`);
+        }
         result = 'uploaded';
       }
       console.log(`Verified ${record.formula} ${record.version} ${record.tag}: ${result} ${record.sha256}`);

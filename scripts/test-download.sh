@@ -63,6 +63,9 @@ loop do
         next
       end
       sleep 5 if mode == 'stall'
+      # A healthy but moderate transfer must not be treated as a failed
+      # Cloudflare origin merely because it is below the GitHub cutoff.
+      sleep 2 if mode == 'moderate'
       status = {'missing'=>404,'unavailable'=>503}.fetch(mode, 200)
       body = File.read("#{directory}/#{route.end_with?('manifest.json') ? 'manifest' : 'fixture'}")
       body = 'invalid bytes' if mode == 'corrupt'
@@ -109,6 +112,13 @@ download_error_started=$(date +%s)
 php_darwin_download_release_archive || php_darwin_die 'slow error body did not recover'
 [ "$(( $(date +%s) - download_error_started ))" -lt 3 ] || php_darwin_die 'waited for an HTTP error response body'
 export PHP_DARWIN_PREFER_MIRROR=true
+export PHP_DARWIN_MIRROR_URL="$base/moderate"
+: > "$work_dir/requests"
+PHP_DARWIN_RELEASE_URL="$base/unavailable/archive"
+php_darwin_download_release_archive || php_darwin_die 'preferred Cloudflare transfer was abandoned prematurely'
+[ "$(wc -l < "$work_dir/requests" | tr -d ' ')" = 1 ] || \
+  php_darwin_die 'preferred Cloudflare transfer unnecessarily fell back to GitHub'
+export PHP_DARWIN_MIRROR_URL="$base/good"
 : > "$work_dir/requests"
 PHP_DARWIN_RELEASE_URL="$base/unavailable/archive"
 php_darwin_download_release_archive || php_darwin_die 'the healthy bootstrap origin was not reused'

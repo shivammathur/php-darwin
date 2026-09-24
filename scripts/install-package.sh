@@ -676,9 +676,11 @@ php_darwin_download_release_archive() {
   for release_url in "${urls[@]}"; do
     minimum_speed=1024
     low_speed_seconds=3
-    if [ "$origin_index" -eq 0 ] && [ "${#urls[@]}" -gt 1 ]; then
+    if [ "$origin_index" -eq 0 ] && [ "${#urls[@]}" -gt 1 ] && \
+      [ "${PHP_DARWIN_PREFER_MIRROR:-false}" != true ]; then
       # A trickling CDN can stay above 1 KiB/s for the entire 30-second limit.
-      # Try the fallback promptly; keep its normal budget for slower networks.
+      # Try Cloudflare promptly. A preferred Cloudflare read already uses the
+      # desired origin and keeps its normal budget for slower networks.
       minimum_speed=8388608
       low_speed_seconds=1
     fi

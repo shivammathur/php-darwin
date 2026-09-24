@@ -113,3 +113,22 @@ test('existing verified objects require no upstream request or upload', async ()
   }, run: async () => { assert.fail('unexpected upload'); } });
   assert.equal(result[0].result, 'existing');
 });
+
+test('public 404 after upload checks R2 directly and fails without another upload', async () => {
+  const calls = [];
+  await assert.rejects(publish([record()], { env, download: async (url, file) => {
+    const upstream = url.startsWith('https://ghcr.io/');
+    fs.writeFileSync(file, upstream ? bytes : 'not found');
+    return upstream ? 200 : 404;
+  }, run: async (program, args, options) => {
+    assert.equal(program, 'aws');
+    assert.equal(options.env.AWS_MAX_ATTEMPTS, '1');
+    calls.push(args[2]);
+    if (args[2] === 's3api') {
+      assert.ok(args.includes('head-object'));
+      assert.equal(args[args.indexOf('--key') + 1], key(record()));
+      return JSON.stringify({ ContentLength: bytes.length, ETag: 'fixture' });
+    }
+  } }), /verification failed: gcc HTTP 404/);
+  assert.deepEqual(calls, ['s3', 's3api']);
+});

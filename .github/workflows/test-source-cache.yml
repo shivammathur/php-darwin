@@ -22,7 +22,26 @@ permissions:
   actions: read
 
 jobs:
+  prepare:
+    name: Create the isolated source-cache release before parallel workers
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          CACHE_RELEASE: source-bottles-test-${{ github.run_id }}
+        run: |
+          node - <<'JS'
+          const { ReleaseCache } = require('./scripts/source-bottle-releases.cjs');
+          new ReleaseCache({ tag: process.env.CACHE_RELEASE }).release(true)
+            .catch(error => { console.error(error); process.exitCode = 1; });
+          JS
+
   source-cache:
+    needs: prepare
     name: Source bottles on ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -103,6 +122,7 @@ jobs:
         run: bash scripts/test-source-bottle-native.sh cleanup
 
   extensions:
+    needs: prepare
     name: Extension bottles on ${{ matrix.runner }} (${{ matrix.build }}/${{ matrix.ts }})
     strategy:
       fail-fast: false
@@ -164,10 +184,14 @@ jobs:
           retention-days: 2
           overwrite: true
 
+      - name: Restore the runner's dependency pins
+        if: ${{ always() }}
+        run: bash scripts/test-source-bottle-extensions.sh cleanup
+
   cleanup:
     name: Remove the isolated test release
     if: ${{ always() }}
-    needs: [source-cache, extensions]
+    needs: [prepare, source-cache, extensions]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:

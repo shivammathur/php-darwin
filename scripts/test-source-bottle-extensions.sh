@@ -8,6 +8,7 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 php_darwin_configure_homebrew_environment
 formula=$(php_darwin_formula "${PHP_VERSION:?}" "${BUILD:?}" "${TS:?}")
 brew_prefix=$(brew --prefix)
+pin_dir="${RUNNER_TEMP:?}/php-darwin-extension-test-pins"
 
 case "${1:?}" in
   prepare)
@@ -20,7 +21,20 @@ case "${1:?}" in
       HOMEBREW_DEVELOPER=1 brew untap "$tap"
     fi
     PHP_DARWIN_PREFER_MIRROR=true bash "$script_dir/install.sh" "$PHP_VERSION" "$BUILD" "$TS"
-    brew pin "$formula"
+    # Match build.sh: keep the installed dependency versions used by this PHP
+    # archive instead of letting extension installation upgrade the whole graph.
+    mkdir -p "$pin_dir"
+    brew list --pinned | LC_ALL=C sort -u > "$pin_dir/before"
+    {
+      brew deps --include-build --installed --formula "$formula"
+      printf '%s\n' "$formula" autoconf pkgconf
+    } | sed 's|.*/||' | LC_ALL=C sort -u > "$pin_dir/dependencies"
+    brew list --formula | LC_ALL=C sort -u > "$pin_dir/installed"
+    LC_ALL=C comm -12 "$pin_dir/dependencies" "$pin_dir/installed" > "$pin_dir/preserve"
+    LC_ALL=C comm -23 "$pin_dir/preserve" "$pin_dir/before" > "$pin_dir/added"
+    pins=()
+    while IFS= read -r dependency; do pins+=("$dependency"); done < "$pin_dir/added"
+    [ "${#pins[@]}" -eq 0 ] || brew pin --formula "${pins[@]}"
     brew tap shivammathur/extensions
     brew trust shivammathur/extensions
     tap_path=$(brew --repository shivammathur/extensions)
@@ -61,6 +75,16 @@ PY
     # build-extensions.sh already removed the temporary formulae. Clearing the
     # working cache ensures the next install reads the GitHub Release assets.
     rm -rf .source-bottle-cache
+    ;;
+  cleanup)
+    pins=()
+    if [ -f "$pin_dir/added" ]; then
+      while IFS= read -r dependency; do pins+=("$dependency"); done < "$pin_dir/added"
+      [ "${#pins[@]}" -eq 0 ] || brew unpin --formula "${pins[@]}"
+      brew list --pinned | LC_ALL=C sort -u > "$pin_dir/after"
+      cmp "$pin_dir/before" "$pin_dir/after"
+    fi
+    rm -rf "$pin_dir"
     ;;
   *) exit 1 ;;
 esac
