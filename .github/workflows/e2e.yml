@@ -14,7 +14,7 @@ permissions:
   contents: read
 jobs:
   self-hosted:
-    uses: shivammathur/test-setup-php/.github/workflows/extensions.yml@6dc81b2fdb24a37c50bb4b94d6dfcf8f13056683
+    uses: shivammathur/test-setup-php/.github/workflows/extensions.yml@6a532039f5d7ac5488715b8491a8f57f3467093b
     with:
       runners: '["macos-15-x86_64"]'
       php-versions: ${{ inputs.php-versions || format('["{0}"]', inputs.php-version) }}
