@@ -77,6 +77,7 @@ async function download(name, destination, { sha256, bytes, bases = origins } = 
   throw new Error(`Could not download ${name}: ${lastError.message}`);
 }
 async function prefetch(directory, context, requested, options = {}) {
+  const started = performance.now();
   validateContext(context);
   const names = [...new Set(requested)];
   if (!names.length || names.some(name => !Object.hasOwn(packs, name))) throw new Error('Invalid requested extensions');
@@ -98,6 +99,7 @@ async function prefetch(directory, context, requested, options = {}) {
   results.forEach((result, index) => {
     if (result.status === 'rejected') console.warn(`Extension cache ${names[index]}: ${result.reason.message}`);
   });
+  console.log(`Extension cache downloads completed in ${((performance.now() - started) / 1000).toFixed(3)} seconds`);
   return results.filter(result => result.status === 'fulfilled').map(result => result.value);
 }
 function phpApi(phpConfig = 'php-config') {
@@ -149,6 +151,7 @@ function relocateResources(metadata, stage, destination) {
   }
 }
 function install(directory, name, { phpConfig = 'php-config', php = 'php' } = {}) {
+  const started = performance.now();
   if (!Object.hasOwn(packs, name)) throw new Error('Unknown extension pack');
   const entry = validateEntry(JSON.parse(fs.readFileSync(path.join(directory, `${name}.json`), 'utf8')));
   const actual = runtimeContext(phpConfig, php);
@@ -210,7 +213,7 @@ function install(directory, name, { phpConfig = 'php-config', php = 'php' } = {}
     fs.writeFileSync(path.join(directory, `${name}.env`), Object.entries(environment).map(([variable, value]) => `${variable}=${value}\n`).join(''));
     fs.writeFileSync(path.join(directory, `${name}.modules`), metadata.modules.join('\n') + '\n');
     committed = true;
-    console.log(`Installed ${name} from its separate extension cache`);
+    console.log(`Installed ${name} from its separate extension cache in ${((performance.now() - started) / 1000).toFixed(3)} seconds`);
     return { modules: metadata.modules, environment, destination };
   } finally {
     if (!committed) for (const item of previous.reverse()) {
