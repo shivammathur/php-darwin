@@ -35,6 +35,7 @@ on:
       - scripts/cache/source-bottle-*
       - scripts/build/extension-pack.cjs
       - scripts/build/build-extensions.sh
+      - scripts/build/extension-formula.rb
       - scripts/build/prepare-extension-pack.sh
       - scripts/installer/install-extensions.cjs
       - scripts/release/extension-packs.cjs

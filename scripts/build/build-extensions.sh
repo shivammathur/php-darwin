@@ -19,7 +19,6 @@ brew_prefix=$(brew --prefix) || php_darwin_die 'could not resolve the Homebrew p
 work_dir="${RUNNER_TEMP:-/tmp}/php-darwin-build"
 paths_file="$work_dir/cached-extension-paths.txt"
 abstract_backup="$work_dir/abstract-php-extension.rb"
-abstract_patched="$work_dir/abstract-php-extension.patched.rb"
 abstract_file=
 extension_tap_path=
 extension_dir=
@@ -126,43 +125,14 @@ fi
 git -C "$extension_tap_path" checkout --detach "$source_commit" || \
   php_darwin_die "could not pin homebrew-extensions at $source_commit"
 
-if [ -n "$suffix" ]; then
-  abstract_file="$extension_tap_path/Abstract/abstract-php-extension.rb"
-  [ -f "$abstract_file" ] || php_darwin_die 'homebrew-extensions abstract formula is missing'
-  cp "$abstract_file" "$abstract_backup" || php_darwin_die 'could not back up the extension formula base'
-  sed -i '' \
-    -e "s|php@#{php_version}\"|php@#{php_version}$suffix\"|" \
-    -e "s|php@#{@php_version}\"|php@#{@php_version}$suffix\"|" \
-    -e "s|etc / \"php\" / php_version / \"conf.d\"|etc / \"php\" / \"#{php_version}$suffix\" / \"conf.d\"|" \
-    "$abstract_file" || php_darwin_die 'could not select the PHP build variant for extensions'
-  if ! grep -Fq "php@#{php_version}$suffix\"" "$abstract_file" || \
-    ! grep -Fq "php@#{@php_version}$suffix\"" "$abstract_file" || \
-    ! grep -Fq "\"#{php_version}$suffix\" / \"conf.d\"" "$abstract_file"; then
-    php_darwin_die 'homebrew-extensions variant patch did not apply'
-  fi
-fi
-
-case "$version" in
-  5.6|7.*)
-    if [ -z "$abstract_file" ]; then
-      abstract_file="$extension_tap_path/Abstract/abstract-php-extension.rb"
-      cp "$abstract_file" "$abstract_backup" || php_darwin_die 'could not back up the extension formula base'
-    fi
-    if ! grep -Fq 'ENV["ac_cv_prog_cc_c23"] = "no"' "$abstract_file"; then
-      awk '
-        { print }
-        /^[[:space:]]*def safe_phpize$/ {
-          print "    ENV[\"ac_cv_prog_cc_c23\"] = \"no\""
-          patched=1
-        }
-        END { if (!patched) exit 1 }
-      ' "$abstract_file" > "$abstract_patched" || \
-        php_darwin_die 'could not select a pre-C23 compiler mode for legacy extensions'
-      mv "$abstract_patched" "$abstract_file" || \
-        php_darwin_die 'could not apply the legacy extension compiler mode'
-    fi
-    ;;
-esac
+# PHP 8.5 is named php, not php@8.5; resolving the dependency alias is not
+# enough because Homebrew's formula_opt_bin uses the requested name literally.
+abstract_file="$extension_tap_path/Abstract/abstract-php-extension.rb"
+[ -f "$abstract_file" ] || php_darwin_die 'homebrew-extensions abstract formula is missing'
+cp "$abstract_file" "$abstract_backup" || php_darwin_die 'could not back up the extension formula base'
+php_darwin_select_ruby
+"$PHP_DARWIN_RUBY" "$script_dir/extension-formula.rb" "$abstract_file" "$formula" "$config_id" "$version" || \
+  php_darwin_die 'could not select the restored PHP formula for extensions'
 
 # Formula names do not encode the PHP debug/ZTS variant. A persistent runner
 # can retain a keg from another build, so let the bottle cache select the exact

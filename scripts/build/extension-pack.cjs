@@ -7,7 +7,7 @@ function builderHash() {
   const root = path.resolve(__dirname, '../..');
   const inputs = ['conf/extension-packs.json', 'conf/platforms.json',
     '.github/actions/source-cache/main.cjs',
-    'scripts/build/extension-pack.cjs', 'scripts/build/build-extensions.sh',
+    'scripts/build/extension-pack.cjs', 'scripts/build/build-extensions.sh', 'scripts/build/extension-formula.rb',
     'scripts/build/prepare-extension-pack.sh', 'scripts/cache/source-bottle-cache.cjs',
     'scripts/cache/source-bottle-info.rb', 'scripts/cache/source-bottle-install.rb',
     'scripts/cache/brew-php-darwin-source.rb'];

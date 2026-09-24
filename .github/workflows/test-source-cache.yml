@@ -10,6 +10,7 @@ on:
       - scripts/lib/**
       - scripts/build/formula-build-inputs.sh
       - scripts/build/build-extensions.sh
+      - scripts/build/extension-formula.rb
       - scripts/build/supervise-build.cjs
       - scripts/tests/native/source-bottle-*.test.sh
       - scripts/tests/e2e/source-build-lock-live.test.cjs
@@ -144,7 +145,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       HOMEBREW_DEVELOPER: '1'
-      PHP_VERSION: '8.4'
+      PHP_VERSION: '8.5'
       BUILD: ${{ matrix.build }}
       TS: ${{ matrix.ts }}
     steps:
