@@ -18,12 +18,14 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-mkdir -p "$fixture_root/conf" "$tap_path/Abstract" "$tap_path/Formula" || \
+mkdir -p "$fixture_root/conf/cached-extensions" "$tap_path/Abstract" "$tap_path/Formula" || \
   php_darwin_die 'could not create extension source hash fixture directories'
 cp "$script_dir/../../../conf/versions" "$fixture_root/conf/versions" || \
   php_darwin_die 'could not copy the version fixture'
-printf '8.5 alpha:extension beta:zend_extension\n' > "$fixture_root/conf/cached-extensions" || \
+printf 'alpha\nbeta\n' > "$fixture_root/conf/cached-extensions/8.5" || \
   php_darwin_die 'could not write the cached extension fixture'
+printf 'beta\n' > "$fixture_root/conf/zend-extensions" || \
+  php_darwin_die 'could not write the Zend extension fixture'
 printf 'shared source\n' > "$tap_path/Abstract/abstract-php-extension.rb" || \
   php_darwin_die 'could not write the shared extension fixture'
 printf 'alpha source\n' > "$tap_path/Formula/alpha@8.5.rb" || \
@@ -36,6 +38,14 @@ printf 'unrelated source\n' > "$tap_path/Formula/unrelated@8.5.rb" || \
 initial=$(PHP_DARWIN_ROOT="$fixture_root" HOMEBREW_EXTENSIONS_PATH="$tap_path" \
   bash "$script_dir/../../build/extensions-source-hash.sh" 8.5) || \
   php_darwin_die 'could not hash the configured extension fixtures'
+# Loading directives are part of the cache identity, even when source is unchanged.
+: > "$fixture_root/conf/zend-extensions"
+ordinary=$(PHP_DARWIN_ROOT="$fixture_root" HOMEBREW_EXTENSIONS_PATH="$tap_path" \
+  bash "$script_dir/../../build/extensions-source-hash.sh" 8.5) || \
+  php_darwin_die 'could not hash an ordinary extension configuration'
+[ "$ordinary" != "$initial" ] || php_darwin_die 'changing a loading directive did not invalidate the extension hash'
+printf 'beta\n' > "$fixture_root/conf/zend-extensions"
+
 printf 'changed unrelated source\n' > "$tap_path/Formula/unrelated@8.5.rb" || \
   php_darwin_die 'could not change the unrelated fixture'
 unrelated=$(PHP_DARWIN_ROOT="$fixture_root" HOMEBREW_EXTENSIONS_PATH="$tap_path" \
@@ -70,8 +80,8 @@ legacy=$(PHP_DARWIN_ROOT="$fixture_root" HOMEBREW_EXTENSIONS_PATH="$tap_path" \
   php_darwin_die 'could not resolve a legacy manifest extension hash'
 [ "$legacy" = "$initial" ] || php_darwin_die 'legacy extension provenance resolved the wrong source hash'
 
-printf '8.5 alpha:extension beta:zend_extension gamma:extension\n' > \
-  "$fixture_root/conf/cached-extensions" || php_darwin_die 'could not extend the cached extension fixture'
+printf 'alpha\nbeta\ngamma\n' > \
+  "$fixture_root/conf/cached-extensions/8.5" || php_darwin_die 'could not extend the cached extension fixture'
 printf 'gamma source\n' > "$tap_path/Formula/gamma@8.5.rb" || \
   php_darwin_die 'could not write the future cached extension fixture'
 legacy=$(PHP_DARWIN_ROOT="$fixture_root" HOMEBREW_EXTENSIONS_PATH="$tap_path" \

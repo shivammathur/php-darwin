@@ -39,6 +39,8 @@ while read -r channel version; do
   case " $seen_versions " in *" $version "*) php_darwin_die "duplicate PHP version: $version" ;; esac
   seen_versions="$seen_versions $version"
   php_darwin_validate_channel "$version" "$channel"
+  bash "$script_dir/../../build/cached-extensions.sh" "$version" records >/dev/null || \
+    php_darwin_die "invalid cached extensions for PHP $version"
   version_count=$((version_count + 1))
   [ "$channel" != nightly ] || nightly_count=$((nightly_count + 1))
   seen_variants=
@@ -51,6 +53,10 @@ while read -r channel version; do
     php_darwin_asset "$version" "$build" "$ts" x86_64 >/dev/null
   done < <(php_darwin_configured_variants)
 done < <(php_darwin_configured_versions)
+for extension_file in "$script_dir/../../../conf/cached-extensions/"*; do
+  [ -f "$extension_file" ] || php_darwin_die "invalid cached-extension file: $extension_file"
+  php_darwin_validate_version "${extension_file##*/}"
+done
 [ "$version_count" -gt 0 ] || php_darwin_die 'no PHP versions are configured'
 [ "$nightly_count" -gt 0 ] || php_darwin_die 'no nightly PHP versions are configured'
 configured_versions=$(php_darwin_configured_versions | awk '{print $2}' | jq -Rsc 'split("\n")[:-1] | sort') || \

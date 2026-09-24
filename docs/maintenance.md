@@ -56,6 +56,11 @@ changes, and inspect artifacts and logs as well as job conclusions.
 
 ## Build and cache
 
+Each `conf/cached-extensions/<PHP minor>` file contains plain extension names,
+one per line. `conf/zend-extensions` lists names requiring the `zend_extension`
+INI directive; other names use `extension`. These are build inputs, not runtime
+installer configuration.
+
 `conf/versions`, `conf/variants` and `conf/platforms.json` are authoritative.
 Builds pin both Homebrew taps, run each architecture/variant independently, then
 publish only after required compatibility jobs pass. Stable/nightly update
@@ -87,7 +92,16 @@ zero. Preserve runtime/development files and licenses under the archive policy.
 ## Publish and installer updates
 
 Each `php-X.Y` release contains eight architecture/variant archives, a manifest
-and `install.sh`. Archives have immutable checksum-addressed names. Verify
+and `install.sh`. The `tap_snapshot` setting is the archive path
+`var/php-darwin/homebrew-php`, relative to the Homebrew prefix. It contains a
+shallow Git copy of the exact PHP tap used to build the cache, including formulae
+and their shared definitions. The installer validates this snapshot, keeps a
+matching installed tap, or uses the bundled tap while preserving existing user
+state. This avoids a tap download and mismatched formula definitions during
+installation. The snapshot is generated during packaging, not stored in this
+repository.
+
+Archives have immutable checksum-addressed names. Verify
 checksums, metadata, the complete matrix and public Cloudflare copies before
 publishing the installer and manifest. Preserve the manifest schema and asset names.
 
@@ -135,6 +149,4 @@ runtime/extension probes during an installation.
 
 Use the `workflow-performance` and per-build timing artifacts to separate runner
 queueing, dependency fetching, source compilation and publication. Check cache
-miss records, archive metadata and actual links. Diagnose related failures
-together before retrying affected versions in parallel. Never change setup-php
-to compensate for this project's installer or cache behavior.
+miss records, archive metadata and actual links.

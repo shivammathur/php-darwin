@@ -16,8 +16,8 @@ services, and makes the cached PHP the default through Homebrew's `bin/php` link
 The cache covers ARM64 and Intel, with release/debug and NTS/ZTS variants.
 [conf/versions](conf/versions) lists stable and nightly PHP versions;
 [conf/platforms.json](conf/platforms.json) defines minimum macOS versions and
-build/test runners. [conf/cached-extensions](conf/cached-extensions) selects the
-extensions included for each PHP version.
+build/test runners. [conf/cached-extensions](conf/cached-extensions) contains one
+file per PHP minor, with one cached extension name per line.
 
 ## Installation
 
