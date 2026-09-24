@@ -33,6 +33,8 @@ on:
   push:
     paths:
       - .github/workflows/cache-extensions.yml
+      - .github/actions/source-cache/**
+      - scripts/cache/source-bottle-*
       - scripts/build/extension-pack.cjs
       - scripts/build/build-extensions.sh
       - scripts/build/prepare-extension-pack.sh
