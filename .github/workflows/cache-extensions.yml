@@ -129,9 +129,9 @@ jobs:
       - name: Clean stale build processes and locks
         run: brew test-bot --only-cleanup-before
       - name: Restore archive tools from the bottle cache
-        run: |
-          "$PHP_DARWIN_NODE" scripts/cache/upstream-bottle-cache.cjs tools
-          brew install --verbose jq zstd
+        uses: ./.github/actions/source-cache
+        with:
+          stage: tools
       - name: Restore the published PHP cache and pin extension sources
         run: bash scripts/build/prepare-extension-pack.sh
       - name: Use the planned Homebrew core recipes

@@ -8,6 +8,16 @@ async function main() {
     throw new Error('Source bottle installation requires a macOS Actions runner');
   }
   const cache = new ReleaseCache({ tag: process.env.INPUT_RELEASE || 'cache' });
+  if (process.env.INPUT_STAGE === 'tools') {
+    const result = { built: 0, restored: 0 };
+    for (const formula of ['jq', 'zstd']) {
+      const installed = await install({ formula, cache });
+      result.built += installed.built;
+      result.restored += installed.restored;
+    }
+    writeOutputs(result);
+    return;
+  }
   if (process.argv[2] === 'install-extensions') {
     const [abstract, phpPrefix, ...formulae] = process.argv.slice(3);
     const context = extensionInputs(abstract, phpPrefix, process.env.BUILD, process.env.TS);
