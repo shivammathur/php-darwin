@@ -93,6 +93,19 @@ begin
   names = names.map { |name| name.split('/').last }.uniq
   unsupported if names.empty?
   raise 'invalid formula name' unless names.all? { |name| !%w[. ..].include?(name) && name.match?(/\A[a-zA-Z0-9@+_.-]+\z/) }
+  selected_paths = nil
+  if ENV['PHP_DARWIN_UNLINK_PATHS_FILE']
+    selected_paths = {}
+    File.readlines(ENV.fetch('PHP_DARWIN_UNLINK_PATHS_FILE'), chomp: true).each do |relative|
+      raise 'invalid selected unlink path' unless relative.match?(%r{\A(?:bin|etc|include|lib|opt|sbin|share|var)/}) &&
+        !relative.match?(%r{(?:\A|/)\.\.?(/|\z)|//|[\r\n\t]}) && !relative.end_with?('/')
+      path = File.join(prefix, relative)
+      until path == prefix
+        selected_paths[path] = true
+        path = File.dirname(path)
+      end
+    end
+  end
   begin
     acquire = lambda { |name| acquire_lock(prefix, name, locks) }
     names.sort.each { |name| acquire.call(name) }
@@ -148,6 +161,11 @@ begin
         next unless File.exist?(root)
         Find.find(root) do |source|
           destination = File.join(prefix, source.delete_prefix(keg + '/'))
+          # Dependency upgrades only replace paths supplied by this archive.
+          # Keep old documentation and other links to the preserved old keg.
+          if selected_paths && !selected_paths.key?(destination)
+            Find.prune
+          end
           if File.symlink?(destination)
             if resolved(destination) == source
               unsupported if destination.match?(%r{info/(?:[^.].*?\.info(?:\.gz)?|dir)\z})

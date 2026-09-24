@@ -117,6 +117,13 @@ if [ "${PHP_DARWIN_REQUIRE_CACHE:-false}" = true ]; then
   done < <(bash "$script_dir/cached-extensions.sh" "$version")
 fi
 
+if [ "${PHP_DARWIN_REQUIRE_INSTALL_TIMING:-false}" = true ]; then
+  elapsed=$(cat "${RUNNER_TEMP:?}/php-darwin-setup-install-seconds.txt") || \
+    php_darwin_die 'setup-php did not record cache installer timing'
+  [[ "$elapsed" =~ ^[0-9]+$ ]] && [ "$elapsed" -lt 10 ] || \
+    php_darwin_die "setup-php cache installation exceeded 10 seconds: ${elapsed}s"
+fi
+
 printf 'Verified php-darwin cache installation for PHP %s' "$version"
 [ "${PHP_DARWIN_REQUIRE_XDEBUG:-false}" != true ] || printf ' with cache-extensions'
 printf '\n'

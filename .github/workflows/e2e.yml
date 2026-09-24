@@ -49,9 +49,11 @@ jobs:
         run: bash scripts/prepare-e2e.sh
 
       - name: Run the published installer with visible output
+        id: install
         run: bash scripts/test-release.sh
 
       - name: Verify the direct cache installation
+        if: ${{ !cancelled() && steps.install.outcome != 'skipped' }}
         run: bash scripts/test-setup-php.sh
 
   setup-php:
@@ -66,6 +68,7 @@ jobs:
       EXTENSIONS: ${{ (inputs.php-version == '5.6' || inputs.php-version == '7.0') && 'xdebug' || 'xdebug, pcov' }}
       PHP_DARWIN_REQUIRE_PCOV: ${{ (inputs.php-version == '5.6' || inputs.php-version == '7.0') && 'false' || 'true' }}
       PHP_DARWIN_REQUIRE_CACHE: 'true'
+      PHP_DARWIN_REQUIRE_INSTALL_TIMING: 'true'
       PHP_DARWIN_REQUIRE_XDEBUG: 'true'
       PHP_DARWIN_TEST_MAIN: 'true'
       PHP_VERSION: ${{ inputs.php-version }}

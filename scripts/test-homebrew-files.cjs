@@ -56,6 +56,60 @@ test('rollback never overwrites a new user file', t => {
   assert.ok(fs.readdirSync(f.journals).length);
 });
 
+test('cached dependency replacement preserves unshipped links and refreshes extraction exclusions', t => {
+  const f = fixture(t);
+  f.write('Cellar/php/1.0/share/man/man1/php.1', 'old documentation');
+  f.link('share/man/man1/php.1', '../../../Cellar/php/1.0/share/man/man1/php.1');
+  f.write('Cellar/php/1.0/share/info/php.info', 'old info');
+  f.link('share/info/php.info', '../../Cellar/php/1.0/share/info/php.info');
+  const selected = path.join(f.root, 'selected');
+  fs.writeFileSync(selected, 'bin/php\nopt/php\nvar/homebrew/linked/php\n');
+  const kegs = path.join(f.root, 'kegs'); fs.writeFileSync(kegs, 'Cellar/php/2.0\n');
+  const excluded = path.join(f.root, 'excluded');
+  const inventory = () => spawnSync('bash', [path.join(__dirname, 'existing-paths.sh'), f.prefix,
+    excluded, path.join(__dirname, '../conf/archive-paths'), path.join(f.root, 'existing-kegs'), selected, kegs], {encoding: 'utf8'});
+  assert.equal(inventory().status, 0);
+  assert.match(fs.readFileSync(excluded, 'utf8'), /^bin\/php$/m);
+  const result = spawnSync('bash', f.args('unlink'), {
+    encoding: 'utf8', env: {...process.env, PHP_DARWIN_UNLINK_PATHS_FILE: selected}
+  });
+  assert.equal(result.status, 0, result.stderr);
+  for (const file of ['share/man/man1/php.1', 'share/info/php.info', 'include/php']) {
+    assert.ok(fs.existsSync(path.join(f.prefix, file)), file);
+  }
+  assert.equal(inventory().status, 0);
+  assert.doesNotMatch(fs.readFileSync(excluded, 'utf8'), /^(bin\/php|var\/homebrew\/linked\/php)$/m);
+  // The refreshed list must let tar install the archived default and marker.
+  const staging = path.join(f.root, 'archive');
+  fs.mkdirSync(path.join(staging, 'Cellar/php/2.0/bin'), {recursive: true});
+  fs.writeFileSync(path.join(staging, 'Cellar/php/2.0/bin/php'), 'new cached PHP');
+  fs.mkdirSync(path.join(staging, 'bin'));
+  fs.symlinkSync('../Cellar/php/2.0/bin/php', path.join(staging, 'bin/php'));
+  fs.mkdirSync(path.join(staging, 'var/homebrew/linked'), {recursive: true});
+  fs.symlinkSync('../../../Cellar/php/2.0', path.join(staging, 'var/homebrew/linked/php'));
+  const archive = path.join(f.root, 'cache.tar');
+  assert.equal(spawnSync('tar', ['-cf', archive, '-C', staging, 'Cellar/php/2.0/bin/php', 'bin/php', 'var/homebrew/linked/php']).status, 0);
+  const extract = spawnSync('bash', [path.join(__dirname, 'extract.sh'), archive, f.prefix, excluded], {encoding: 'utf8'});
+  assert.equal(extract.status, 0, extract.stderr);
+  assert.equal(fs.readFileSync(path.join(f.prefix, 'bin/php'), 'utf8'), 'new cached PHP');
+  assert.equal(fs.readlinkSync(path.join(f.prefix, 'var/homebrew/linked/php')), '../../../Cellar/php/2.0');
+  assert.equal(fs.readFileSync(path.join(f.prefix, 'Cellar/php/1.0/bin/php'), 'utf8'), 'original');
+  assert.equal(fs.readFileSync(path.join(f.prefix, 'share/man/man1/php.1'), 'utf8'), 'old documentation');
+});
+
+test('selected dependency unlinking rejects unsafe paths before changing links', t => {
+  const f = fixture(t);
+  const selected = path.join(f.root, 'selected');
+  for (const invalid of ['../escape', 'bin/../escape', '/bin/php', 'bin//php']) {
+    fs.writeFileSync(selected, invalid + '\n');
+    const result = spawnSync('bash', f.args('unlink'), {
+      encoding: 'utf8', env: {...process.env, PHP_DARWIN_UNLINK_PATHS_FILE: selected}
+    });
+    assert.equal(result.status, 1, result.stderr);
+    f.check();
+  }
+});
+
 test('info-index maintenance delegates to Homebrew before any unlinking', t => {
   const f = fixture(t);
   f.write('Cellar/php/1.0/share/info/php.info', 'info fixture');

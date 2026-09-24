@@ -931,6 +931,26 @@ bash "$script_dir/existing-paths.sh" "$brew_prefix" "$exclude_file" \
   "$archive_roots_file" \
   "$existing_kegs" "$managed_paths_file" "$package_kegs_file" || \
   php_darwin_die 'could not record existing Homebrew paths'
+dependency_links_file="$tmp_dir/dependency-links.txt"
+bash "$script_dir/install-state.sh" plan "$brew_prefix" \
+  "$packages_file" "$existing_kegs" "$changed_formulae_file" "$dependency_links_file" || \
+  php_darwin_die 'could not plan cached Homebrew package changes'
+while IFS= read -r package_name; do
+  [ "$package_name" = "$formula" ] || linked_dependency_references+=("$package_name")
+done < "$dependency_links_file"
+[ -s "$changed_formulae_file" ] || php_darwin_die 'cache extraction would not add any Homebrew kegs'
+grep -Fxq "$formula" "$changed_formulae_file" || php_darwin_die "cache extraction would not add $formula"
+if [ "${#linked_dependency_references[@]}" -gt 0 ]; then
+  PHP_DARWIN_PHASE=homebrew.unlink
+  PHP_DARWIN_UNLINK_PATHS_FILE="$managed_paths_file" \
+    php_darwin_unlink_formulae "$dependency_unlink_mode_file" "${linked_dependency_references[@]}" >/dev/null || \
+    php_darwin_die 'could not unlink the existing Homebrew dependencies'
+  # Unlinked paths must be eligible for extraction and link verification.
+  bash "$script_dir/existing-paths.sh" "$brew_prefix" "$exclude_file" \
+    "$archive_roots_file" "$existing_kegs" "$managed_paths_file" "$package_kegs_file" || \
+    php_darwin_die 'could not refresh existing Homebrew paths after dependency unlinking'
+fi
+
 # Preserved PEAR and configuration files were moved aside for rollback. Do not
 # extract replacement copies that would immediately be discarded on success.
 if [ "$pear_backed_up" = true ]; then
@@ -956,20 +976,6 @@ awk -F '\t' '
 ' "$exclude_file" "$links_file" > "$installed_links_file" || \
   php_darwin_die 'could not select Homebrew links installed by the cache'
 [ -s "$installed_links_file" ] || php_darwin_die 'cache extraction would not add any Homebrew links'
-dependency_links_file="$tmp_dir/dependency-links.txt"
-bash "$script_dir/install-state.sh" plan "$brew_prefix" \
-  "$packages_file" "$existing_kegs" "$changed_formulae_file" "$dependency_links_file" || \
-  php_darwin_die 'could not plan cached Homebrew package changes'
-while IFS= read -r package_name; do
-  [ "$package_name" = "$formula" ] || linked_dependency_references+=("$package_name")
-done < "$dependency_links_file"
-[ -s "$changed_formulae_file" ] || php_darwin_die 'cache extraction would not add any Homebrew kegs'
-grep -Fxq "$formula" "$changed_formulae_file" || php_darwin_die "cache extraction would not add $formula"
-if [ "${#linked_dependency_references[@]}" -gt 0 ]; then
-  PHP_DARWIN_PHASE=homebrew.unlink
-  php_darwin_unlink_formulae "$dependency_unlink_mode_file" "${linked_dependency_references[@]}" >/dev/null || \
-    php_darwin_die 'could not unlink the existing Homebrew dependencies'
-fi
 
 PHP_DARWIN_PHASE=archive.extract
 archive_mutation_started=true

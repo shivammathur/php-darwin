@@ -1402,6 +1402,19 @@ begin
   names = names.map { |name| name.split('/').last }.uniq
   unsupported if names.empty?
   raise 'invalid formula name' unless names.all? { |name| !%w[. ..].include?(name) && name.match?(/\A[a-zA-Z0-9@+_.-]+\z/) }
+  selected_paths = nil
+  if ENV['PHP_DARWIN_UNLINK_PATHS_FILE']
+    selected_paths = {}
+    File.readlines(ENV.fetch('PHP_DARWIN_UNLINK_PATHS_FILE'), chomp: true).each do |relative|
+      raise 'invalid selected unlink path' unless relative.match?(%r{\A(?:bin|etc|include|lib|opt|sbin|share|var)/}) &&
+        !relative.match?(%r{(?:\A|/)\.\.?(/|\z)|//|[\r\n\t]}) && !relative.end_with?('/')
+      path = File.join(prefix, relative)
+      until path == prefix
+        selected_paths[path] = true
+        path = File.dirname(path)
+      end
+    end
+  end
   begin
     acquire = lambda { |name| acquire_lock(prefix, name, locks) }
     names.sort.each { |name| acquire.call(name) }
@@ -1457,6 +1470,11 @@ begin
         next unless File.exist?(root)
         Find.find(root) do |source|
           destination = File.join(prefix, source.delete_prefix(keg + '/'))
+          # Dependency upgrades only replace paths supplied by this archive.
+          # Keep old documentation and other links to the preserved old keg.
+          if selected_paths && !selected_paths.key?(destination)
+            Find.prune
+          end
           if File.symlink?(destination)
             if resolved(destination) == source
               unsupported if destination.match?(%r{info/(?:[^.].*?\.info(?:\.gz)?|dir)\z})
@@ -3256,6 +3274,26 @@ php_darwin_existing_paths "$brew_prefix" "$exclude_file" \
   "$archive_roots_file" \
   "$existing_kegs" "$managed_paths_file" "$package_kegs_file" || \
   php_darwin_die 'could not record existing Homebrew paths'
+dependency_links_file="$tmp_dir/dependency-links.txt"
+php_darwin_install_state plan "$brew_prefix" \
+  "$packages_file" "$existing_kegs" "$changed_formulae_file" "$dependency_links_file" || \
+  php_darwin_die 'could not plan cached Homebrew package changes'
+while IFS= read -r package_name; do
+  [ "$package_name" = "$formula" ] || linked_dependency_references+=("$package_name")
+done < "$dependency_links_file"
+[ -s "$changed_formulae_file" ] || php_darwin_die 'cache extraction would not add any Homebrew kegs'
+grep -Fxq "$formula" "$changed_formulae_file" || php_darwin_die "cache extraction would not add $formula"
+if [ "${#linked_dependency_references[@]}" -gt 0 ]; then
+  PHP_DARWIN_PHASE=homebrew.unlink
+  PHP_DARWIN_UNLINK_PATHS_FILE="$managed_paths_file" \
+    php_darwin_unlink_formulae "$dependency_unlink_mode_file" "${linked_dependency_references[@]}" >/dev/null || \
+    php_darwin_die 'could not unlink the existing Homebrew dependencies'
+  # Unlinked paths must be eligible for extraction and link verification.
+  php_darwin_existing_paths "$brew_prefix" "$exclude_file" \
+    "$archive_roots_file" "$existing_kegs" "$managed_paths_file" "$package_kegs_file" || \
+    php_darwin_die 'could not refresh existing Homebrew paths after dependency unlinking'
+fi
+
 # Preserved PEAR and configuration files were moved aside for rollback. Do not
 # extract replacement copies that would immediately be discarded on success.
 if [ "$pear_backed_up" = true ]; then
@@ -3281,20 +3319,6 @@ awk -F '\t' '
 ' "$exclude_file" "$links_file" > "$installed_links_file" || \
   php_darwin_die 'could not select Homebrew links installed by the cache'
 [ -s "$installed_links_file" ] || php_darwin_die 'cache extraction would not add any Homebrew links'
-dependency_links_file="$tmp_dir/dependency-links.txt"
-php_darwin_install_state plan "$brew_prefix" \
-  "$packages_file" "$existing_kegs" "$changed_formulae_file" "$dependency_links_file" || \
-  php_darwin_die 'could not plan cached Homebrew package changes'
-while IFS= read -r package_name; do
-  [ "$package_name" = "$formula" ] || linked_dependency_references+=("$package_name")
-done < "$dependency_links_file"
-[ -s "$changed_formulae_file" ] || php_darwin_die 'cache extraction would not add any Homebrew kegs'
-grep -Fxq "$formula" "$changed_formulae_file" || php_darwin_die "cache extraction would not add $formula"
-if [ "${#linked_dependency_references[@]}" -gt 0 ]; then
-  PHP_DARWIN_PHASE=homebrew.unlink
-  php_darwin_unlink_formulae "$dependency_unlink_mode_file" "${linked_dependency_references[@]}" >/dev/null || \
-    php_darwin_die 'could not unlink the existing Homebrew dependencies'
-fi
 
 PHP_DARWIN_PHASE=archive.extract
 archive_mutation_started=true
