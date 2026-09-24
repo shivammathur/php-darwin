@@ -13,7 +13,7 @@ raise "Invalid source bottle mode" unless %w[plan seed inputs archive].include?(
 def current_installation?(formula)
   # Homebrew requires the current formula version, even if an older keg is
   # still installed. Match Dependency#installed? before skipping an update.
-  formula.latest_version_installed? && formula.opt_prefix.exist?
+  formula.latest_version_installed?
 end
 
 def source_dependencies(formula, planning:, force_source: false, runtime_only: false, ignore_installed: false)
@@ -33,6 +33,14 @@ def source_dependencies(formula, planning:, force_source: false, runtime_only: f
         dependent == formula
       end
       next Dependable::PRUNE unless building
+      # An installed build tool (notably the PHP archive used by extensions)
+      # already runs with its installed libraries. Updating that tool's entire
+      # runtime graph here can rebuild curl/OpenSSL for an unrelated extension.
+      # Keep the tool itself, while direct extension runtime dependencies still
+      # follow the normal version checks below.
+      if planning && !ignore_installed && current_installation?(dep.to_formula)
+        next Dependable::KEEP_BUT_PRUNE_RECURSIVE_DEPS
+      end
     end
   end
 end
@@ -67,6 +75,8 @@ records = resolved.map do |formula|
     prefix: formula.prefix.to_s,
     recipe: formula.path.to_s,
     installed: current_installation?(formula),
+    select_current: current_installation?(formula) &&
+      (!formula.opt_prefix.exist? || formula.opt_prefix.realpath != formula.latest_installed_prefix.realpath),
     bottled: installer.pour_bottle?,
     post_install: formula.post_install_defined? || formula.post_install_steps_defined?,
   }

@@ -20,9 +20,9 @@ function digest(value) {
   return crypto.createHash('sha256').update(value).digest('hex');
 }
 
-function brewSource(mode, args) {
-  return command('brew', ['php-darwin-source', mode, ...args], {
-    env: { PATH: `${__dirname}${path.delimiter}${process.env.PATH}` },
+function brewSource(mode, args, { run = command, ...options } = {}) {
+  return run('brew', ['php-darwin-source', mode, ...args], {
+    ...options, env: { ...options.env, PATH: `${__dirname}${path.delimiter}${process.env.PATH}` },
   });
 }
 
@@ -126,8 +126,18 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
     const metric = values => recordMetric({ kind: 'source', formula: item.full_name,
       elapsedMs: Date.now() - started, ...values });
     const target = item === plan.at(-1);
-    const flags = ['--verbose', ...(target && skipLink ? ['--skip-link'] : [])];
-    if (item.installed) { metric({ result: 'preinstalled' }); continue; }
+    // The complete dependency plan is installed in topological order here.
+    // Do not let each subsequent brew install expand it again: --build-bottle
+    // would otherwise demand upgrades to the installed PHP build tool's own
+    // runtime libraries, which are unrelated to building an extension.
+    const flags = ['--verbose', '--ignore-dependencies', ...(target && skipLink ? ['--skip-link'] : [])];
+    if (item.installed) {
+      // A restored PHP cache can select an older keg while the current version
+      // remains installed. Point opt at the planned keg without deleting either.
+      if (item.select_current) brewSource('select', [item.full_name], { run, inherit: true });
+      metric({ result: 'preinstalled' });
+      continue;
+    }
     if (item.bottled && !(target && forceSource)) {
       run('brew', ['install', '--formula', ...flags, item.full_name], { inherit: true });
       metric({ result: 'upstream-bottle' });
@@ -154,7 +164,11 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
     }
     if (bottle) {
       log(`Restoring source bottle: ${item.full_name} ${item.version}`);
-      run('brew', ['install', '--formula', ...flags, path.resolve(bottle)], { inherit: true });
+      // Homebrew permits local bottle paths in developer mode. Scope this to
+      // installing the exact, checksum-verified bottle we just restored.
+      run('brew', ['install', '--formula', ...flags, path.resolve(bottle)], {
+        inherit: true, env: { HOMEBREW_DEVELOPER: '1' },
+      });
       result.restored++;
       metric({ result: 'restored', key });
       continue;
@@ -172,7 +186,9 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
           warn(`Source cache unavailable while owning ${item.full_name}: ${error.message}`);
         }
         if (cached) {
-          run('brew', ['install', '--formula', ...flags, path.resolve(cached)], { inherit: true });
+          run('brew', ['install', '--formula', ...flags, path.resolve(cached)], {
+            inherit: true, env: { HOMEBREW_DEVELOPER: '1' },
+          });
           result.restored++;
           log(`Restored source bottle after coordination: ${item.full_name} ${item.version}`);
           metric({ result: 'restored-after-wait', key, waitedMs });
@@ -187,7 +203,7 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
       let compileMs;
       let bottleStarted;
       withFreshConfiguration(platform.prefix, item.configuration_files, () => {
-        run('brew', ['install', '--formula', '--build-bottle', ...flags, item.full_name], { inherit: true });
+        brewSource('install', ['--formula', '--build-bottle', ...flags, item.full_name], { run, inherit: true });
         compileMs = Date.now() - compileStarted;
         bottleStarted = Date.now();
         run('brew', ['bottle', '--json', '--no-rebuild', item.full_name], {

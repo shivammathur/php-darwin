@@ -150,3 +150,25 @@ runtime/extension probes during an installation.
 Use the `workflow-performance` and per-build timing artifacts to separate runner
 queueing, dependency fetching, source compilation and publication. Check cache
 miss records, archive metadata and actual links.
+
+## Optional extension archives
+
+`cache-extensions.yml` restores published PHP caches and builds Imagick, MongoDB
+and Memcached independently. It never compiles PHP or adds these libraries to
+the PHP archives. `conf/extension-packs.json` defines the supported versions and
+the modules belonging to each pack.
+
+The workflow checks recipe changes every six hours. Unchanged packs are skipped;
+changed packs reuse the source-bottle cache. Manual runs can select PHP versions,
+extensions and build variants. Push runs validate PHP 8.4 release/NTS on both
+architectures without publishing. Publication requires native installation and
+functional tests on the build platforms, newer hosted macOS, and self-hosted Intel.
+Each pack must install in under 10 seconds and preserve PHP and services. Archives
+are published to the separate `extensions` release and Cloudflare only after all
+selected tests pass. Installer updates are published even when recipes are unchanged.
+
+Each archive carries private runtime libraries, relocated Mach-O load paths,
+licenses and module metadata. The standalone `scripts/installer/install-extensions.cjs`
+prefetches requested packs concurrently, then installs only packs matching the
+installed PHP API, architecture and build variant. Downloads prefer GitHub Releases
+and fall back to Cloudflare. No Homebrew commands run in the extension installer.

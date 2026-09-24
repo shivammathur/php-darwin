@@ -19,6 +19,10 @@ The cache covers ARM64 and Intel, with release/debug and NTS/ZTS variants.
 build/test runners. [conf/cached-extensions](conf/cached-extensions) contains one
 file per PHP minor, with one cached extension name per line.
 
+Imagick, MongoDB and Memcached have separate optional archives for PHP 8.2–8.5.
+They are built against published PHP caches and refreshed independently, so
+extension updates do not require rebuilding PHP or adding libraries to its cache.
+
 ## Installation
 
 Use setup-php normally:
@@ -46,6 +50,7 @@ Homebrew handles bottle installation, relocation and linking.
 | Workflow | Purpose |
 | --- | --- |
 | `cache-stable.yml` / `cache-nightly.yml` | Build, test and publish a PHP cache |
+| `cache-extensions.yml` | Refresh separate extension packs every six hours and validate before publishing |
 | `update.yml` / `update-nightly.yml` | Detect changes and dispatch builds |
 | `cache-bottles.yml` | Populate Cloudflare with exact upstream dependency bottles |
 | `cache-source-bottles.yml` | Mirror reusable bottles built from source |

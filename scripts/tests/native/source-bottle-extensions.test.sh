@@ -12,6 +12,7 @@ pin_dir="${RUNNER_TEMP:?}/php-darwin-extension-test-pins"
 
 case "${1:?}" in
   prepare)
+    brew install --verbose jq zstd
     # Reuse the published PHP archive so these tests compile only extensions.
     # Builds leave a detached tap at their pinned revision. Let the archive
     # supply its matching tap, while preserving every installed PHP keg.

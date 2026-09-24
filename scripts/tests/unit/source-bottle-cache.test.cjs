@@ -66,6 +66,16 @@ function fixture(t) {
     log: () => {}, warn: message => warnings.push(message),
     run: (program, argv, options = {}) => {
       assert.equal(program, 'brew');
+      if (argv.includes('--build-bottle')) {
+        assert.equal(argv[0], 'php-darwin-source', 'Source builds must preserve the compiler dependency environment');
+        assert.ok(options.env.PATH.startsWith(path.resolve(__dirname, '../../cache') + path.delimiter));
+        argv = argv.slice(1);
+      }
+      if (argv[0] === 'install') assert.ok(argv.includes('--ignore-dependencies'),
+        'Homebrew must not repeat dependency resolution after the cache installed its complete plan');
+      if (argv[0] === 'install' && argv.at(-1).endsWith('.bottle.tar.gz')) {
+        assert.equal(options.env.HOMEBREW_DEVELOPER, '1');
+      }
       events.push(argv);
       if (argv[0] === 'deps') return 'libxml2\n';
       if (argv[0] === 'bottle') {
@@ -166,7 +176,14 @@ test('existing dependencies and upstream bottles do not get rebuilt', async t =>
     { full_name: 'shivammathur/php/php@8.4', bottled: true },
   ];
   assert.deepEqual(await install(f.args), { built: 0, restored: 0 });
-  assert.deepEqual(f.events.at(-1), ['install', '--formula', '--verbose', 'shivammathur/php/php@8.4']);
+  assert.deepEqual(f.events.at(-1), ['install', '--formula', '--verbose', '--ignore-dependencies', 'shivammathur/php/php@8.4']);
+});
+
+test('an installed current keg is selected without rebuilding when opt points to an older version', async t => {
+  const f = fixture(t);
+  f.args.query = () => [{ full_name: f.args.formula, installed: true, select_current: true }];
+  assert.deepEqual(await install(f.args), { built: 0, restored: 0 });
+  assert.deepEqual(f.events, [['php-darwin-source', 'select', f.args.formula]]);
 });
 
 test('missing upstream bottles are prefetched together and install still retries after fetch failure', async t => {
@@ -184,7 +201,7 @@ test('missing upstream bottles are prefetched together and install still retries
   assert.deepEqual(await install(f.args), { built: 1, restored: 0 });
   assert.deepEqual(f.warnings, ['Upstream bottle prefetch incomplete: temporary download failure']);
   assert.deepEqual(f.events.filter(args => args[0] === 'install' && !args.includes('--build-bottle')),
-    [['install', '--formula', '--verbose', 'aspell'], ['install', '--formula', '--verbose', 'gcc']]);
+    [['install', '--formula', '--verbose', '--ignore-dependencies', 'aspell'], ['install', '--formula', '--verbose', '--ignore-dependencies', 'gcc']]);
   f.args.run = run;
   f.freshRunner();
   assert.deepEqual(await install(f.args), { built: 0, restored: 1 });
@@ -216,8 +233,8 @@ test('extension variants bypass upstream bottles, preserve skip-link, and isolat
   f.args.skipLink = true;
   f.args.context = { build: 'debug', ts: 'zts', abstract: 'original', php: { api: '20240924' } };
   assert.deepEqual(await install(f.args), { built: 1, restored: 0 });
-  assert.deepEqual(f.events.find(args => args.includes('--build-bottle')).slice(0, 5),
-    ['install', '--formula', '--build-bottle', '--verbose', '--skip-link']);
+  assert.deepEqual(f.events.find(args => args.includes('--build-bottle')).slice(0, 6),
+    ['install', '--formula', '--build-bottle', '--verbose', '--ignore-dependencies', '--skip-link']);
   assert.ok(!f.events.find(args => args.at(-1) === 'libxml2').includes('--skip-link'));
   f.freshRunner();
   assert.deepEqual(await install(f.args), { built: 0, restored: 1 });
@@ -264,5 +281,5 @@ test('Cloudflare prefetch completes before upstream fetch and leaves normal inst
     f.events.push(['cloudflare']);
   };
   await install(f.args);
-  assert.deepEqual(f.events, [['cloudflare'], ['install', '--formula', '--verbose', 'libxml2']]);
+  assert.deepEqual(f.events, [['cloudflare'], ['install', '--formula', '--verbose', '--ignore-dependencies', 'libxml2']]);
 });

@@ -5,6 +5,8 @@ See `README.md` for usage and `docs/maintenance.md` for workflow operations.
 - `conf/` defines versions, variants, platforms and archive policy.
 - `conf/cached-extensions/<PHP minor>` lists one extension name per line.
   `conf/zend-extensions` identifies names loaded with `zend_extension`.
+- `conf/extension-packs.json` defines optional packs, rebuilt independently from
+  published PHP by `cache-extensions.yml`.
 - Production code lives under `scripts/{build,cache,installer,release,lib}/`.
   Test suites and helpers live in `scripts/tests/`; templates live in `templates/`.
 - `scripts/install.sh` is generated from `conf/install-files`; its public path is
