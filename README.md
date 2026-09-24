@@ -137,7 +137,12 @@ Resolution ignores preinstalled packages and includes transitive source-build
 dependencies. One Ubuntu job per dependency copies its exact ARM/Intel bottles
 and verifies their public Cloudflare downloads. No package installation is needed
 to seed the mirror. Formulae without upstream bottles continue through the existing
-source-bottle cache described above. Builders record misses as artifacts; at the
+source-bottle cache described above. Those source bundles are also mirrored to
+`homebrew/source-bottles/sha256/<digest>.tar` and read from Cloudflare first,
+verified against GitHub's asset digest and the embedded bottle checksum. GitHub
+provides the source-cache index and build locks; its bundle download is the
+fallback. `cache-source-bottles.yml` can seed these existing bundles independently,
+with one job per dependency. Builders record misses as artifacts; at the
 end of each package workflow the same reusable bottle workflow deduplicates those
 records and caches only the missing dependencies, also one job per dependency.
 New digests get new immutable objects; the cache never substitutes an older version.
@@ -171,7 +176,9 @@ compatibility tests for every selected platform.
 
 PHP archive installs, including setup-php, prefer GitHub Releases and fall back
 to the checksum-verified Cloudflare mirror. Set `PHP_DARWIN_PREFER_MIRROR=true`
-to prefer Cloudflare explicitly. Build dependency bottles use Cloudflare first.
+to prefer Cloudflare explicitly. Cache construction uses Cloudflare first for
+upstream bottles, source-built bottles, and published PHP archives reused by
+partial architecture rebuilds, falling back to GitHub on a miss or invalid data.
 Compatibility tests enforce installation below 10 seconds; direct release tests
 include bootstrap and archive downloads in that limit. Tests preserve installed
 PHP versions and compare PHP service definitions before and after installation.

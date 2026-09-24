@@ -8,6 +8,7 @@ const { pipeline } = require('node:stream/promises');
 const { spawnSync } = require('node:child_process');
 const { setTimeout: pause } = require('node:timers/promises');
 const { command, brewSource, readBottle } = require('./source-bottle-cache.cjs');
+const mirror = require('./source-bottle-mirror.cjs');
 
 const sha256 = value => crypto.createHash('sha256').update(value).digest('hex');
 
@@ -69,6 +70,8 @@ function unpack(archive, directory, key) {
 class ReleaseCache {
   constructor({ repository = process.env.GITHUB_REPOSITORY, token = process.env.GH_TOKEN,
     tag = 'cache', request = fetch, fallbackRequest = request === fetch ? curlRequest : undefined,
+    mirrorDownload = request === fetch ? mirror.transfer : undefined,
+    mirrorMissFile = process.env.PHP_DARWIN_SOURCE_BOTTLE_MISSES,
     versionsToPrune = olderVersions, wait = pause, warn = console.warn } = {}) {
     if (!/^shivammathur\/[A-Za-z0-9_.-]+$/.test(repository || '') || !token) {
       throw new Error('Release source cache requires a shivammathur repository and GH_TOKEN');
@@ -78,6 +81,8 @@ class ReleaseCache {
     this.tag = tag;
     this.request = request;
     this.fallbackRequest = fallbackRequest;
+    this.mirrorDownload = mirrorDownload;
+    this.mirrorMissFile = mirrorMissFile;
     this.versionsToPrune = versionsToPrune;
     this.wait = wait;
     this.warn = warn;
@@ -189,10 +194,27 @@ class ReleaseCache {
     }
   }
 
-  async download(asset, directory, key) {
+  async download(asset, directory, key, { useMirror = true } = {}) {
     const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'source-bottle-download-'));
     try {
       const archive = path.join(temporary, 'bundle.tar');
+      const mirrored = useMirror && this.mirrorDownload && mirror.record(asset, this.repository, this.tag);
+      if (mirrored) {
+        try {
+          const status = await this.mirrorDownload(mirror.publicURL(mirrored), archive);
+          if (status === 200 && await mirror.validFile(archive, mirrored.sha256)) {
+            unpack(archive, directory, key);
+            console.log(`Cloudflare source bottle HIT: ${mirrored.formula} ${mirrored.version}`);
+            return;
+          }
+          if (status !== 404) this.warn(`Cloudflare source bottle rejected: ${mirrored.formula} (HTTP ${status})`);
+        } catch (error) {
+          this.warn(`Cloudflare source bottle unavailable: ${mirrored.formula}: ${errorDetails(error)}`);
+        }
+        mirror.queue(mirrored, this.mirrorMissFile);
+        console.log(`Cloudflare source bottle MISS: ${mirrored.formula}; using GitHub fallback and queued for caching`);
+        fs.rmSync(archive, { force: true });
+      }
       await this.api(`releases/assets/${asset.id}`, { binary: true, consume: response =>
         pipeline(Readable.fromWeb(response.body), fs.createWriteStream(archive)) });
       if (asset.digest && asset.digest !== `sha256:${sha256(fs.readFileSync(archive))}`) {
@@ -259,7 +281,9 @@ class ReleaseCache {
       const saved = assets.find(asset => asset.name === name);
       if (!saved) throw new Error('Uploaded source bottle is missing');
       // Read back the actual remote bytes before removing superseded versions.
-      await this.download(saved, path.join(temporary, 'verified'), key);
+      await this.download(saved, path.join(temporary, 'verified'), key, { useMirror: false });
+      const mirrored = mirror.record(saved, this.repository, this.tag);
+      if (mirrored) mirror.queue(mirrored, this.mirrorMissFile);
       const related = assets.map(asset => ({ asset, identity: assetIdentity(asset) }))
         .filter(entry => entry.identity?.group === group);
       const obsolete = this.versionsToPrune(related.map(entry => entry.identity.version));
@@ -267,7 +291,7 @@ class ReleaseCache {
         // An older job can finish after a newer upload. Verify that replacement
         // too; its own uploader may have failed before completing read-back.
         const newer = related.find(entry => !obsolete.includes(entry.identity.version));
-        await this.download(newer.asset, path.join(temporary, 'replacement'), newer.identity.key);
+        await this.download(newer.asset, path.join(temporary, 'replacement'), newer.identity.key, { useMirror: false });
       }
       for (const { asset, identity } of related) {
         if (obsolete.includes(identity.version)) {

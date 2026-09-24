@@ -46,7 +46,7 @@ trap 'exit 143' TERM
 [[ "$extension_source_commit" =~ ^[0-9a-f]{40}$ ]] || \
   php_darwin_die 'invalid pinned homebrew-extensions source commit'
 mkdir -p "$builds_dir" || php_darwin_die 'could not create the cache restore directory'
-http_status=$(php_darwin_fetch_release_manifest "$release_repository" "$version" "$manifest") || \
+http_status=$(PHP_DARWIN_PREFER_MIRROR=true php_darwin_fetch_release_manifest "$release_repository" "$version" "$manifest") || \
   php_darwin_die "could not request the PHP $version release manifest"
 [ "$http_status" = 200 ] || \
   php_darwin_die "could not fetch the PHP $version release manifest (HTTP $http_status)"
@@ -82,10 +82,21 @@ while IFS=$'\t' read -r asset download_asset expected_hash expected_bytes; do
   metadata="$builds_dir/${asset%.tar.zst}.json"
   restore_files+=("$archive" "$archive.sha256" "$metadata")
   (
-    curl --fail --location --retry 3 --connect-timeout 10 \
-      --output "$archive.part" \
-      "https://github.com/$release_repository/releases/download/php-$version/$download_asset" && \
-      mv "$archive.part" "$archive"
+    mirror=$(php_darwin_release_mirror "$release_repository" "$version") || exit 1
+    urls=()
+    [ -z "$mirror" ] || urls+=("$mirror/$download_asset")
+    urls+=("https://github.com/$release_repository/releases/download/php-$version/$download_asset")
+    for url in "${urls[@]}"; do
+      # Cache construction prefers Cloudflare. Each origin gets one bounded
+      # attempt; only a complete, authenticated archive becomes a build input.
+      status=$(php_darwin_request_release "$url" "$archive.part") || continue
+      [ "$status" = 200 ] || continue
+      [ "$(wc -c < "$archive.part" | tr -d '[:space:]')" = "$expected_bytes" ] || continue
+      [ "$(php_darwin_sha256 "$archive.part")" = "$expected_hash" ] || continue
+      mv "$archive.part" "$archive" || exit 1
+      exit 0
+    done
+    exit 1
   ) &
   download_pids+=("$!")
 done < "$downloads"

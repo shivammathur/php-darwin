@@ -120,7 +120,8 @@ function readRecords(directory) {
   }
   return records;
 }
-async function publish(records, { download = transfer, run = exec, env = process.env } = {}) {
+async function publish(records, { download = transfer, run = exec, env = process.env,
+  identity = portable, objectKey = key, contentType = 'application/gzip', upstream = true } = {}) {
   const endpoint = env.CF_R2_AWS_S3_ENDPOINT;
   if (!/^https:\/\/[a-f0-9]+\.r2\.cloudflarestorage\.com\/?$/.test(endpoint || '') ||
       !env.CF_R2_AWS_ACCESS_KEY_ID || !env.CF_R2_AWS_SECRET_ACCESS_KEY) throw new Error('Missing R2 configuration');
@@ -128,17 +129,18 @@ async function publish(records, { download = transfer, run = exec, env = process
   const results = [];
   try {
     for (const raw of records) {
-      const record = portable(raw);
+      const record = identity(raw);
+      const publicUrl = `${DOMAIN}/${objectKey(record)}`;
       const file = path.join(directory, record.sha256);
       let result = 'existing';
       // Check full bytes on both existing and newly published immutable objects.
-      let status = await download(publicURL(record), file);
+      let status = await download(publicUrl, file);
       if (status !== 200 || !await validFile(file, record.sha256)) {
         if (status !== 200 && status !== 404) throw new Error(`Cloudflare read failed: HTTP ${status}`);
-        status = await download(record.url, file, { upstream: true });
+        status = await download(record.url, file, { upstream });
         if (status !== 200 || !await validFile(file, record.sha256)) throw new Error(`Invalid upstream bottle: ${record.formula}`);
-        await run('aws', ['--endpoint-url', endpoint, 's3', 'cp', file, `s3://php-darwin/${key(record)}`,
-          '--cache-control', 'public,max-age=31536000,immutable', '--content-type', 'application/gzip',
+        await run('aws', ['--endpoint-url', endpoint, 's3', 'cp', file, `s3://php-darwin/${objectKey(record)}`,
+          '--cache-control', 'public,max-age=31536000,immutable', '--content-type', contentType,
           '--cli-connect-timeout', '5', '--cli-read-timeout', '60', '--only-show-errors'], { env: {
           ...env, AWS_ACCESS_KEY_ID: env.CF_R2_AWS_ACCESS_KEY_ID,
           AWS_SECRET_ACCESS_KEY: env.CF_R2_AWS_SECRET_ACCESS_KEY, AWS_DEFAULT_REGION: 'auto',
@@ -146,7 +148,7 @@ async function publish(records, { download = transfer, run = exec, env = process
           AWS_REQUEST_CHECKSUM_CALCULATION: 'when_required', AWS_RESPONSE_CHECKSUM_VALIDATION: 'when_required',
         } });
         // Bypass any negative edge cache populated by the initial miss.
-        status = await download(`${publicURL(record)}?verify=${crypto.randomUUID()}`, file);
+        status = await download(`${publicUrl}?verify=${crypto.randomUUID()}`, file);
         if (status !== 200 || !await validFile(file, record.sha256)) throw new Error(`Published bottle verification failed: ${record.formula}`);
         result = 'uploaded';
       }

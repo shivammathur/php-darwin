@@ -62,6 +62,14 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 [ -n "$destination" ] && [ -n "$url" ] || exit 1
+printf '%s\n' "$url" >> "${PHP_DARWIN_TEST_REQUESTS:?}"
+case "$url" in https://artifacts.php-darwin.setup-php.com/*)
+  case "${PHP_DARWIN_TEST_MIRROR_MODE:-hit}" in
+    missing) printf '404'; exit 22 ;;
+    corrupt) printf 'corrupt' > "$destination"; printf '200'; exit 0 ;;
+  esac
+  ;;
+esac
 case "$url" in
   *-manifest.json*)
     cp "${PHP_DARWIN_TEST_MANIFEST:?}" "$destination" || exit 1
@@ -69,17 +77,30 @@ case "$url" in
     ;;
   *)
     source_file="${PHP_DARWIN_TEST_FIXTURES:?}/${url##*/}"
-    cp "$source_file" "$destination"
+    if [ "${PHP_DARWIN_TEST_MIRROR_MODE:-hit}" = corrupt-all-archives ]; then
+      printf 'corrupt' > "$destination"
+    else
+      cp "$source_file" "$destination" || exit 1
+    fi
+    printf '200'
     ;;
 esac
 EOF
 chmod 0755 "$fake_bin/curl" || php_darwin_die 'could not prepare the restore curl fixture'
 
-ARCH=arm64 HOMEBREW_EXTENSIONS_COMMIT="$extension_source_commit" \
-  HOMEBREW_PHP_COMMIT="$source_commit" PHP_VERSION=8.5 \
-  PHP_DARWIN_TEST_FIXTURES="$fixtures" PHP_DARWIN_TEST_MANIFEST="$manifest" \
-  PATH="$fake_bin:$PATH" bash "$script_dir/restore-published-architecture.sh" "$builds" >/dev/null || \
-  php_darwin_die 'published cache restore validation failed'
+restore() {
+  ARCH=arm64 HOMEBREW_EXTENSIONS_COMMIT="$extension_source_commit" \
+    HOMEBREW_PHP_COMMIT="$source_commit" PHP_VERSION=8.5 \
+    PHP_DARWIN_TEST_FIXTURES="$fixtures" PHP_DARWIN_TEST_MANIFEST="$manifest" \
+    PHP_DARWIN_TEST_REQUESTS="$work_dir/requests" PHP_DARWIN_TEST_MIRROR_MODE="$1" \
+    PATH="$fake_bin:$PATH" bash "$script_dir/restore-published-architecture.sh" "$2"
+}
+restore hit "$builds" >/dev/null || php_darwin_die 'published cache restore validation failed'
+[ "$(wc -l < "$work_dir/requests" | tr -d '[:space:]')" = 5 ] || \
+  php_darwin_die 'mirror hit made unexpected requests'
+if grep -q '^https://github.com/' "$work_dir/requests"; then
+  php_darwin_die 'cache construction contacted GitHub despite Cloudflare hits'
+fi
 
 while read -r build ts; do
   asset=$(php_darwin_asset 8.5 "$build" "$ts" arm64) || exit 1
@@ -92,4 +113,17 @@ while read -r build ts; do
     php_darwin_die "restored checksum does not match $asset"
 done < <(php_darwin_configured_variants)
 
-printf 'Published architecture restore validation passed\n'
+for mode in missing corrupt; do
+  : > "$work_dir/requests"
+  restore "$mode" "$work_dir/$mode" >/dev/null || php_darwin_die "$mode Cloudflare cache did not use GitHub fallback"
+  [ "$(grep -c '^https://github.com/' "$work_dir/requests")" = 5 ] || \
+    php_darwin_die 'fallback did not download the manifest and four archives once'
+  [ "$(grep -c '^https://artifacts.php-darwin.setup-php.com/' "$work_dir/requests")" = 5 ] || \
+    php_darwin_die 'cache restore retried Cloudflare'
+done
+if restore corrupt-all-archives "$work_dir/corrupt-all" > /dev/null 2>&1; then
+  php_darwin_die 'cache construction accepted corrupt archives'
+fi
+[ -z "$(ls -A "$work_dir/corrupt-all")" ] || php_darwin_die 'failed restore retained partial archive outputs'
+
+printf 'Published archive restore verified Cloudflare-first, GitHub fallback, checksums and partial-file cleanup\n'

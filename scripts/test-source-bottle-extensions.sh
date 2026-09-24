@@ -19,7 +19,7 @@ case "${1:?}" in
     if [ -d "$tap_path" ]; then
       HOMEBREW_DEVELOPER=1 brew untap "$tap"
     fi
-    bash "$script_dir/install.sh" "$PHP_VERSION" "$BUILD" "$TS"
+    PHP_DARWIN_PREFER_MIRROR=true bash "$script_dir/install.sh" "$PHP_VERSION" "$BUILD" "$TS"
     brew pin "$formula"
     brew tap shivammathur/extensions
     brew trust shivammathur/extensions

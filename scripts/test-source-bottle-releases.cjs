@@ -7,6 +7,7 @@ const crypto = require('node:crypto');
 const { ReleaseCache, family, releaseAsset, assetIdentity } = require('./source-bottle-releases.cjs');
 const { keyFor, readBottle } = require('./source-bottle-cache.cjs');
 const { SourceBuildLock } = require('./source-build-lock.cjs');
+const mirror = require('./source-bottle-mirror.cjs');
 const digest = value => crypto.createHash('sha256').update(value).digest('hex');
 
 function fixture(t, tag = 'cache') {
@@ -99,6 +100,113 @@ test('persistent release round-trip and pruning only older versions in the same 
   await f.cache.saveCache([old.directory], old.key);
   assert.ok(f.state.assets.some(asset => asset.name === current.name));
   assert.ok(!f.state.assets.some(asset => asset.name === old.name));
+});
+
+test('source restores prefer verified Cloudflare bytes and upload readback still checks GitHub', async t => {
+  const f = fixture(t);
+  const bottle = f.bottle('1');
+  f.cache.mirrorMissFile = path.join(f.root, 'misses.jsonl');
+  f.cache.mirrorDownload = async () => assert.fail('upload readback must use GitHub');
+  await f.cache.saveCache([bottle.directory], bottle.key);
+  const asset = f.state.assets[0];
+  const record = mirror.record(asset);
+  assert.deepEqual(JSON.parse(fs.readFileSync(f.cache.mirrorMissFile)), record);
+  fs.unlinkSync(f.cache.mirrorMissFile);
+  f.cache.mirrorDownload = async (url, file) => {
+    assert.equal(url, mirror.publicURL(record));
+    fs.writeFileSync(file, asset.data);
+    return 200;
+  };
+  f.state.intercept = (endpoint, options) => {
+    assert.notEqual(options.headers.Accept, 'application/octet-stream', 'mirror hit downloaded GitHub payload');
+  };
+  const restored = path.join(f.root, 'mirror-restore');
+  assert.equal(await f.cache.restoreCache([restored], bottle.key), bottle.key);
+  assert.ok(readBottle(restored, bottle.key));
+  assert.equal(fs.existsSync(f.cache.mirrorMissFile), false);
+});
+
+test('missing, corrupt and unavailable Cloudflare source bottles fall back once and queue the exact digest', async t => {
+  for (const failure of ['missing', 'corrupt', 'unavailable']) {
+    const f = fixture(t);
+    const bottle = f.bottle('1');
+    await f.cache.saveCache([bottle.directory], bottle.key);
+    f.cache.mirrorMissFile = path.join(f.root, 'misses.jsonl');
+    let attempts = 0, githubDownloads = 0;
+    f.cache.mirrorDownload = async (url, file) => {
+      attempts++;
+      if (failure === 'unavailable') throw new Error('network unavailable');
+      fs.writeFileSync(file, 'wrong bytes');
+      return failure === 'missing' ? 404 : 200;
+    };
+    f.state.intercept = (endpoint, options) => {
+      if (options.headers.Accept === 'application/octet-stream') githubDownloads++;
+    };
+    const restored = path.join(f.root, 'mirror-fallback');
+    assert.equal(await f.cache.restoreCache([restored], bottle.key), bottle.key);
+    assert.ok(readBottle(restored, bottle.key));
+    assert.equal(attempts, 1);
+    assert.equal(githubDownloads, 1);
+    assert.deepEqual(JSON.parse(fs.readFileSync(f.cache.mirrorMissFile)), mirror.record(f.state.assets[0]));
+  }
+});
+
+test('source mirror identities stay scoped to production and group one job per dependency', async t => {
+  const f = fixture(t);
+  const first = f.bottle('1');
+  await f.cache.saveCache([first.directory], first.key);
+  const asset = f.state.assets[0];
+  const value = mirror.record(asset);
+  assert.equal(mirror.record(asset, 'shivammathur/another-repo'), undefined);
+  assert.equal(mirror.record(asset, 'shivammathur/php-darwin', 'source-bottles-test-1'), undefined);
+  assert.equal(mirror.record({ ...asset, digest: null }), undefined);
+  assert.equal(mirror.record({ ...asset, state: 'starter' }), undefined);
+  for (const override of [{ name: '../outside.tar' }, { url: 'https://example.com/bottle' },
+    { sha256: '../object' }, { formula: 'different' }, { version: 'other' },
+    { source_key: `php-darwin-source-v1-${'b'.repeat(64)}` }]) {
+    assert.throws(() => mirror.portable({ ...value, ...override }));
+  }
+  const changed = { ...value, sha256: 'a'.repeat(64) };
+  const result = mirror.matrix([value, value, changed]);
+  assert.equal(result.include.length, 1);
+  assert.equal(result.include[0].bottles.length, 2);
+  assert.match(mirror.key(value), /^homebrew\/source-bottles\/sha256\/[a-f0-9]{64}\.tar$/);
+});
+
+test('source publication verifies Cloudflare bytes and uses the source prefix without GHCR authorization', async t => {
+  const f = fixture(t);
+  const bottle = f.bottle('1');
+  await f.cache.saveCache([bottle.directory], bottle.key);
+  const asset = f.state.assets[0];
+  const value = mirror.record(asset);
+  let uploaded = false, githubDownloads = 0, publicReads = 0;
+  const options = {
+    identity: mirror.portable, objectKey: mirror.key, contentType: 'application/x-tar', upstream: false,
+    env: { CF_R2_AWS_S3_ENDPOINT: `https://${'a'.repeat(32)}.r2.cloudflarestorage.com`,
+      CF_R2_AWS_ACCESS_KEY_ID: 'fixture', CF_R2_AWS_SECRET_ACCESS_KEY: 'fixture' },
+    download: async (url, file, options) => {
+      if (url === value.url) { assert.equal(options.upstream, false); githubDownloads++; }
+      else {
+        assert.ok(url.startsWith(mirror.publicURL(value)));
+        publicReads++;
+        if (!uploaded) return 404;
+      }
+      fs.writeFileSync(file, asset.data);
+      return 200;
+    },
+    run: async (program, args) => {
+      assert.equal(program, 'aws');
+      assert.ok(args.includes(`s3://php-darwin/${mirror.key(value)}`));
+      assert.equal(args[args.indexOf('--content-type') + 1], 'application/x-tar');
+      assert.equal(uploaded, false);
+      uploaded = true;
+    },
+  };
+  const { publish } = require('./upstream-bottle-cache.cjs');
+  assert.equal((await publish([value], options))[0].result, 'uploaded');
+  assert.equal((await publish([value], options))[0].result, 'existing');
+  assert.equal(githubDownloads, 1);
+  assert.equal(publicReads, 3);
 });
 
 test('source build ownership permits one builder at a time and releases failed work', async t => {
