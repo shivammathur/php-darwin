@@ -40,7 +40,7 @@ try {
   const load = result.modules.flatMap(module => ['-d', `extension=${extensionDirectory}/${module}.so`]);
   const checks = {
     imagick: '$i=new Imagick(); $i->newImage(16,16,"white"); foreach (["PNG","JPEG","WEBP"] as $f) { $i->setImageFormat($f); if (strlen($i->getImageBlob())<10) { exit(1); } } echo "PNG JPEG WEBP passed\\n";',
-    mongodb: '$b=MongoDB\\BSON\\fromPHP(["cache"=>42]); $r=MongoDB\\BSON\\toPHP($b); if ($r->cache!==42) { exit(1); } echo "BSON roundtrip passed\\n";',
+    mongodb: '$b=MongoDB\\BSON\\Document::fromPHP(["cache"=>42]); $r=$b->toPHP(); if ($r->cache!==42) { exit(1); } echo "BSON roundtrip passed\\n";',
     memcached: '$m=new Memcached(); foreach ([Memcached::SERIALIZER_PHP,Memcached::SERIALIZER_IGBINARY,Memcached::SERIALIZER_MSGPACK] as $s) { if (!$m->setOption(Memcached::OPT_SERIALIZER,$s)) { exit(1); } } echo "PHP igbinary msgpack serializers passed\\n";',
   };
   console.log(command(php, ['-n', ...load, '-r', checks[name]], { env: { ...process.env, ...result.environment } }));

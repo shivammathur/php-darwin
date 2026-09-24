@@ -126,7 +126,11 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
     const metric = values => recordMetric({ kind: 'source', formula: item.full_name,
       elapsedMs: Date.now() - started, ...values });
     const target = item === plan.at(-1);
-    const flags = ['--verbose', ...(target && skipLink ? ['--skip-link'] : [])];
+    // The complete dependency plan is installed in topological order here.
+    // Do not let each subsequent brew install expand it again: --build-bottle
+    // would otherwise demand upgrades to the installed PHP build tool's own
+    // runtime libraries, which are unrelated to building an extension.
+    const flags = ['--verbose', '--ignore-dependencies', ...(target && skipLink ? ['--skip-link'] : [])];
     if (item.installed) { metric({ result: 'preinstalled' }); continue; }
     if (item.bottled && !(target && forceSource)) {
       run('brew', ['install', '--formula', ...flags, item.full_name], { inherit: true });
