@@ -5,10 +5,10 @@ const os = require('node:os');
 const path = require('node:path');
 const { planRecovery, verifySelection } = require('../../release/extension-recovery.cjs');
 const { key } = require('../../installer/install-extensions.cjs');
-const { retryPolicy, httpError } = require('../../release/extension-transfers.cjs');
+const { retryPolicy, httpError, workflowJobs } = require('../../release/extension-transfers.cjs');
 
 test('recovery binds successful main builds to exact live artifact IDs and every compatibility platform', async () => {
-  const source = { status: 'completed', conclusion: 'failure', head_branch: 'main', head_sha: 'a'.repeat(40),
+  const source = { status: 'completed', conclusion: 'failure', head_branch: 'main', run_attempt: 1, head_sha: 'a'.repeat(40),
     head_repository: { full_name: 'shivammathur/php-darwin' }, path: '.github/workflows/cache-extensions.yml' };
   const jobs = ['mongodb', 'imagick'].map(name => ({ name: `${name} / PHP 8.2 / debug-zts / arm64`,
     status: 'completed', conclusion: name === 'mongodb' ? 'success' : 'failure' }));
@@ -52,6 +52,19 @@ test('recovery binds successful main builds to exact live artifact IDs and every
   source.head_repository.full_name = 'other/php-darwin';
   await assert.rejects(planRecovery('123', run), /Untrusted/);
   await assert.rejects(planRecovery('../123', run), /Invalid/);
+});
+
+test('partial reruns retain passing jobs from earlier attempts and respect newer failures', async () => {
+  const jobs = [[{ name: 'imagick', conclusion: 'success' }, { name: 'mongodb', conclusion: 'failure' }],
+    [{ name: 'mongodb', conclusion: 'success' }], [{ name: 'imagick', conclusion: 'failure' }]];
+  const run = (_program, args) => {
+    const match = /\/attempts\/([1-3])\/jobs\?per_page=100$/.exec(args.at(-1));
+    assert.ok(match, 'Jobs must come from a specific attempt');
+    return JSON.stringify([{ jobs: jobs[Number(match[1]) - 1] }]);
+  };
+  assert.deepEqual(await workflowJobs('fixture', 2, { run }), [jobs[0][0], jobs[1][0]]);
+  assert.deepEqual(await workflowJobs('fixture', 3, { run }), [jobs[2][0], jobs[1][0]]);
+  await assert.rejects(workflowJobs('fixture', undefined, { run }), /Invalid source run attempt/);
 });
 
 test('publication rejects missing, extra or duplicated variants after recovery tests', t => {

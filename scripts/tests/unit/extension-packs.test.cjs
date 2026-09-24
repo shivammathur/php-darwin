@@ -10,7 +10,7 @@ const { copyRuntime } = require('../../build/extension-pack.cjs');
 
 const context = { php_version: '8.4', build: 'release', thread_safety: 'nts', architecture: 'arm64' };
 test('publication recovery accepts only completed main builds with every compatibility job passing', async () => {
-  const source = { status: 'completed', conclusion: 'failure', head_branch: 'main',
+  const source = { status: 'completed', conclusion: 'failure', head_branch: 'main', run_attempt: 1,
     head_repository: { full_name: 'shivammathur/php-darwin' }, path: '.github/workflows/cache-extensions.yml' };
   const jobs = ['imagick / PHP 8.4 / release-nts / arm64', 'Test PHP 8.4 release-nts on macos-26', 'publish']
     .map(name => ({ name, status: 'completed', conclusion: name === 'publish' ? 'failure' : 'success' }));

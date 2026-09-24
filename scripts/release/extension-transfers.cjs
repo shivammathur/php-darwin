@@ -45,6 +45,17 @@ async function githubJSON(route, { run = command, retry = retryPolicy(), paginat
   const result = await retry(`Read ${route}`, () => run('gh', ['api', ...(paginate ? ['--paginate', '--slurp'] : []), route]));
   return JSON.parse(result);
 }
+async function workflowJobs(route, attempts, options = {}) {
+  if (!Number.isSafeInteger(attempts) || attempts < 1) throw new Error('Invalid source run attempt');
+  const jobs = new Map();
+  // The run-wide jobs endpoint can return 502 for large cancelled matrices.
+  // Explicit attempts also retain successful jobs omitted from partial reruns.
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const pages = await githubJSON(`${route}/attempts/${attempt}/jobs?per_page=100`, { ...options, paginate: true });
+    for (const job of pages.flatMap(page => page.jobs)) jobs.set(job.name, job);
+  }
+  return [...jobs.values()];
+}
 function transfers({ directory, env, endpoint, run = command, retry = retryPolicy() }) {
   const repo = 'shivammathur/php-darwin', release = 'extensions';
   let assets;
@@ -124,4 +135,4 @@ function transfers({ directory, env, endpoint, run = command, retry = retryPolic
   }
   return { github, mirror, report };
 }
-module.exports = { command, retryPolicy, httpError, githubJSON, transfers };
+module.exports = { command, retryPolicy, httpError, githubJSON, workflowJobs, transfers };

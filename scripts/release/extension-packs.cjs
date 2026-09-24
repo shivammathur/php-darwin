@@ -4,7 +4,7 @@ const { command, digest, key, validateEntry, origins } = require('../installer/i
 const configuration = require('../../conf/extension-packs.json');
 const platforms = require('../../conf/platforms.json');
 const { builderHash } = require('../build/extension-pack.cjs');
-const { command: transferCommand, retryPolicy, httpError, githubJSON, transfers } = require('./extension-transfers.cjs');
+const { command: transferCommand, retryPolicy, httpError, githubJSON, workflowJobs, transfers } = require('./extension-transfers.cjs');
 const root = path.resolve(__dirname, '../..');
 
 function versionBatches(value = configuration.versions.join(' ')) {
@@ -125,7 +125,7 @@ async function validatePublishRun(id, run = transferCommand, retry = retryPolicy
   if (source.status !== 'completed' || source.head_branch !== 'main' ||
       source.head_repository?.full_name !== 'shivammathur/php-darwin' ||
       source.path !== '.github/workflows/cache-extensions.yml') throw new Error('Untrusted extension source run');
-  const jobs = (await githubJSON(`${route}/jobs?per_page=100`, { run, retry, paginate: true })).flatMap(page => page.jobs);
+  const jobs = await workflowJobs(route, source.run_attempt, { run, retry });
   const builds = jobs.filter(job => /^(imagick|mongodb|memcached) \/ PHP /.test(job.name));
   const tests = jobs.filter(job => /^Test PHP /.test(job.name));
   if (!builds.length || !tests.length || [...builds, ...tests].some(job => job.status !== 'completed' || job.conclusion !== 'success')) {

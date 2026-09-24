@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { key, validateContext, validateEntry } = require('../installer/install-extensions.cjs');
-const { command, retryPolicy, githubJSON } = require('./extension-transfers.cjs');
+const { command, retryPolicy, githubJSON, workflowJobs } = require('./extension-transfers.cjs');
 const { compatibilityMatrix } = require('./extension-packs.cjs');
 
 async function planRecovery(id, run = command, retry = retryPolicy()) {
@@ -14,7 +14,7 @@ async function planRecovery(id, run = command, retry = retryPolicy()) {
   const list = async kind => (await githubJSON(`${route}/${kind}?per_page=100`, { run, retry, paginate: true })).flatMap(page => page[kind]);
   const artifacts = await list('artifacts');
   const entries = [];
-  for (const job of await list('jobs')) {
+  for (const job of await workflowJobs(route, source.run_attempt, { run, retry })) {
     const match = /^(imagick|mongodb|memcached) \/ PHP ([0-9.]+) \/ (debug|release)-(nts|zts) \/ (arm64|x86_64)$/.exec(job.name);
     if (!match || job.status !== 'completed' || job.conclusion !== 'success') continue;
     const [, name, php_version, build, thread_safety, architecture] = match;
