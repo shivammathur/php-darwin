@@ -83,6 +83,7 @@ jobs:
           run-id: ${{ inputs.run-id }}
 
       - name: Prepare release/NTS Homebrew formula source
+        id: prepare-release-nts
         env: &release-nts
           BUILD: release
           TS: nts
@@ -101,11 +102,12 @@ jobs:
         run: bash scripts/test-install.sh homebrew
 
       - name: Reset runner after release/NTS validation
-        if: ${{ always() }}
+        if: ${{ always() && steps.prepare-release-nts.outcome != 'skipped' && steps.prepare-release-nts.outcome != '' }}
         env: *release-nts
         run: bash scripts/test-install.sh reset
 
       - name: Prepare release/ZTS Homebrew formula source
+        id: prepare-release-zts
         env: &release-zts
           BUILD: release
           TS: zts
@@ -124,11 +126,12 @@ jobs:
         run: bash scripts/test-install.sh homebrew
 
       - name: Reset runner after release/ZTS validation
-        if: ${{ always() }}
+        if: ${{ always() && steps.prepare-release-zts.outcome != 'skipped' && steps.prepare-release-zts.outcome != '' }}
         env: *release-zts
         run: bash scripts/test-install.sh reset
 
       - name: Prepare debug/NTS Homebrew formula source
+        id: prepare-debug-nts
         env: &debug-nts
           BUILD: debug
           TS: nts
@@ -147,11 +150,12 @@ jobs:
         run: bash scripts/test-install.sh homebrew
 
       - name: Reset runner after debug/NTS validation
-        if: ${{ always() }}
+        if: ${{ always() && steps.prepare-debug-nts.outcome != 'skipped' && steps.prepare-debug-nts.outcome != '' }}
         env: *debug-nts
         run: bash scripts/test-install.sh reset
 
       - name: Prepare debug/ZTS Homebrew formula source
+        id: prepare-debug-zts
         env: &debug-zts
           BUILD: debug
           TS: zts
@@ -170,6 +174,6 @@ jobs:
         run: bash scripts/test-install.sh homebrew
 
       - name: Reset runner after debug/ZTS validation
-        if: ${{ always() }}
+        if: ${{ always() && steps.prepare-debug-zts.outcome != 'skipped' && steps.prepare-debug-zts.outcome != '' }}
         env: *debug-zts
         run: bash scripts/test-install.sh reset

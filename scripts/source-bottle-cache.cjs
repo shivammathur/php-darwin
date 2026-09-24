@@ -95,6 +95,11 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
   process.env.HOMEBREW_VERBOSE_USING_DOTS = '0';
   const plan = query('plan', [formula], forceSource);
   const platform = buildEnvironment();
+  log(`Dependency plan for ${formula} (${platform.arch || "unknown arch"}, macOS ${platform.macos || "unknown"}):`);
+  for (const item of plan) {
+    log(`  ${item.full_name} ${item.version}: ${item.installed ? "current keg" :
+      item.bottled && !(item === plan.at(-1) && forceSource) ? "upstream bottle" : "exact source cache or cold source build"}`);
+  }
   const result = { built: 0, restored: 0 };
   // Homebrew installs the plan one formula at a time. Fetch all missing
   // upstream bottles in one command so its download queue can run concurrently.
@@ -176,7 +181,8 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
       }
       fs.rmSync(directory, { recursive: true, force: true });
       fs.mkdirSync(directory, { recursive: true });
-      log(`Building source bottle: ${item.full_name} ${item.version}`);
+      log(`Building source bottle: ${item.full_name} ${item.version} (${missReason}; ${key})`);
+      metric({ result: 'build-started', key, missReason });
       const compileStarted = Date.now();
       let compileMs;
       let bottleStarted;

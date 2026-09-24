@@ -133,7 +133,7 @@ install_cache() {
     export PS4='+${SECONDS}s ${BASH_SOURCE}:${LINENO}: ' BASH_XTRACEFD=3
     bash_options=(-x)
   fi
-  "$installer_bash" "${bash_options[@]}" "$script_dir/install-package.sh" "$version" "$build" "$ts" "$archive" 3>&2 || \
+  BASH_ENV="$script_dir/trace-install-phases.sh" "$installer_bash" "${bash_options[@]}" "$script_dir/install-package.sh" "$version" "$build" "$ts" "$archive" 3>&2 || \
     php_darwin_die 'cache installation failed'
   local elapsed=$((SECONDS - started))
   printf 'Cache installation completed for %s in %ss\n' "$asset" "$elapsed"

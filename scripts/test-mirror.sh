@@ -6,6 +6,7 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 work_dir=$(mktemp -d "${RUNNER_TEMP:-/tmp}/php-darwin-test-mirror.XXXXXX")
 trap 'rm -rf "$work_dir"' EXIT
 mkdir "$work_dir/bin" "$work_dir/staging" "$work_dir/objects"
+export PHP_DARWIN_TEST_READS="$work_dir/reads"
 export PHP_DARWIN_TEST_R2="$work_dir/objects" PHP_DARWIN_TEST_UPLOADS="$work_dir/uploads"
 export CF_R2_AWS_ACCESS_KEY_ID=fixture CF_R2_AWS_SECRET_ACCESS_KEY=fixture CF_R2_AWS_S3_ENDPOINT=https://fixture.invalid
 export PHP_DARWIN_MIRROR_URL=https://mirror.invalid PHP_VERSION=8.3
@@ -23,10 +24,16 @@ cat > "$work_dir/bin/curl" <<'MOCK'
 #!/usr/bin/env bash
 set -eu
 while [ "$#" -gt 0 ]; do
-  case "$1" in https://mirror.invalid/*) name=${1#https://mirror.invalid/} ;; -o) shift; output=$1 ;; esac
+  case "$1" in https://mirror.invalid/*) url=$1; name=${1#https://mirror.invalid/}; name=${name%%\?*} ;; --retry) shift; [ "$1" = 0 ] ;; -o) shift; output=$1 ;; esac
   shift
 done
-[ -f "$PHP_DARWIN_TEST_R2/$name" ] || exit 22
+printf '%s\n' "$url" >> "$PHP_DARWIN_TEST_READS"
+if [ "${PHP_DARWIN_TEST_FAIL_READ:-}" = "$name" ]; then printf '200'; exit 28; fi
+if [ "${PHP_DARWIN_TEST_STALE_READ:-}" = "$name" ] && [[ "$url" != *'?verify='* ]]; then
+  printf '404'; exit 22
+fi
+[ -f "$PHP_DARWIN_TEST_R2/$name" ] || { printf '404'; exit 22; }
+printf '200'
 cp "$PHP_DARWIN_TEST_R2/$name" "$output"
 MOCK
 chmod +x "$work_dir/bin/"*
@@ -70,6 +77,20 @@ if bash "$script_dir/mirror-release.sh" "$work_dir/staging" installer-only > "$w
 fi
 [ ! -s "$work_dir/uploads" ] || php_darwin_die 'unverified generation mutated the mirror'
 mv "$work_dir/saved-manifest" "$work_dir/staging/php-8.3-manifest.json"
+# A transport failure must neither trigger an upload nor retry the same origin.
+: > "$work_dir/uploads"
+: > "$work_dir/reads"
+export PHP_DARWIN_TEST_FAIL_READ=php-8.3/$name
+if bash "$script_dir/mirror-release.sh" "$work_dir/staging" > "$work_dir/log" 2>&1; then
+  php_darwin_die 'mirror accepted a transport failure'
+fi
+[ "$(grep -c "$name" "$work_dir/reads")" = 1 ] || php_darwin_die 'mirror retried a stalled object'
+! grep -Eq '(install.sh|manifest.json|\.tar\.zst)$' "$work_dir/uploads" || php_darwin_die 'read failure mutated release data'
+unset PHP_DARWIN_TEST_FAIL_READ
+# A cached negative response after upload must not block public byte verification.
+export PHP_DARWIN_TEST_STALE_READ=php-8.3/$name
+bash "$script_dir/mirror-release.sh" "$work_dir/staging" > "$work_dir/log" 2>&1
+unset PHP_DARWIN_TEST_STALE_READ
 # Invalid local input must not replace the public installer or manifest.
 printf 'corrupt' > "$work_dir/staging/$name"
 : > "$work_dir/uploads"

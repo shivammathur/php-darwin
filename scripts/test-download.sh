@@ -49,7 +49,9 @@ loop do
       request = connection.gets
       next unless request
       route = request.split[1]
-      while (line = connection.gets) && line != "\r\n"; end
+      headers = []
+      while (line = connection.gets) && line != "\r\n"; headers << line; end
+      range = headers.join.match(/Range: bytes=(\d+)-/i)&.captures&.first&.to_i
       File.open("#{directory}/requests", 'a') { |f| f.puts(route) }
       mode = route.split('/')[1]
       if mode == 'error-stall'
@@ -67,9 +69,23 @@ loop do
       # Cloudflare origin merely because it is below the GitHub cutoff.
       sleep 2 if mode == 'moderate'
       status = {'missing'=>404,'unavailable'=>503}.fetch(mode, 200)
+      if mode == 'burst'
+        body = 'x' * (32 * 1024 * 1024)
+        connection.write("HTTP/1.1 200 Fixture\r\nContent-Length: #{body.bytesize + 1}\r\nConnection: close\r\n\r\n#{body}")
+        sleep 10
+        next
+      end
       body = File.read("#{directory}/#{route.end_with?('manifest.json') ? 'manifest' : 'fixture'}")
       body = 'invalid bytes' if mode == 'corrupt'
-      length = mode == 'partial' ? body.bytesize + 20 : body.bytesize
+      length = body.bytesize
+      body = body.byteslice(0, 5) if mode == 'partial'
+      if ['range', 'wrong-range'].include?(mode) && range
+        File.write("#{directory}/range", range.to_s)
+        status = 206
+        body = body.byteslice(range..-1)
+        body = 'wrong bytes' if mode == 'wrong-range'
+        length = body.bytesize
+      end
       connection.write("HTTP/1.1 #{status} Fixture\r\nContent-Length: #{length}\r\nConnection: close\r\n\r\n#{body}")
     rescue IOError, SystemCallError
     ensure
@@ -106,6 +122,24 @@ for route in unavailable missing partial corrupt stall error-stall trickle; do
   cmp -s "$archive" "$work_dir/fixture" || php_darwin_die "$route retained invalid bytes"
   [ "$(wc -l < "$work_dir/requests" | tr -d ' ')" = 2 ] || php_darwin_die "$route retried the broken origin"
 done
+# Resume only the missing immutable bytes; verify the final, combined digest.
+export PHP_DARWIN_MIRROR_URL="$base/range"
+PHP_DARWIN_RELEASE_URL="$base/partial/archive"
+: > "$work_dir/requests"
+php_darwin_download_release_archive || php_darwin_die 'partial archive did not resume'
+[ "$(cat "$work_dir/range")" = 5 ] || php_darwin_die 'wrong resume offset'
+cmp -s "$archive" "$work_dir/fixture" || php_darwin_die 'resumed bytes differ'
+[ "$(wc -l < "$work_dir/requests" | tr -d ' ')" = 2 ] || php_darwin_die 'resume retried an origin'
+export PHP_DARWIN_MIRROR_URL="$base/wrong-range"
+if php_darwin_download_release_archive; then php_darwin_die 'accepted corrupt range response'; fi
+[ "$release_archive_error" = checksum ] || php_darwin_die 'corrupt resumed bytes lost their checksum error'
+# A high initial throughput must not mask a later stall for tens of seconds.
+export PHP_DARWIN_MIRROR_URL="$base/good"
+PHP_DARWIN_RELEASE_URL="$base/burst/archive"
+download_started=$SECONDS
+php_darwin_download_release_archive || php_darwin_die 'burst then stall did not recover'
+[ "$((SECONDS - download_started))" -lt 5 ] || php_darwin_die 'primary exceeded its absolute time budget'
+cmp -s "$archive" "$work_dir/fixture" || php_darwin_die 'ignored range appended a full response'
 # An error response must fail over on its headers, without waiting for its body.
 PHP_DARWIN_RELEASE_URL="$base/error-stall/archive"
 download_error_started=$(date +%s)

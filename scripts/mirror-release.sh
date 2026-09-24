@@ -15,7 +15,7 @@ php_darwin_validate_release_manifest "$manifest" "$version" >/dev/null
 bash -n "$staging/install.sh"
 export AWS_ACCESS_KEY_ID=${CF_R2_AWS_ACCESS_KEY_ID:?}
 export AWS_SECRET_ACCESS_KEY=${CF_R2_AWS_SECRET_ACCESS_KEY:?}
-export AWS_DEFAULT_REGION=auto AWS_EC2_METADATA_DISABLED=true AWS_MAX_ATTEMPTS=5 AWS_RETRY_MODE=standard
+export AWS_DEFAULT_REGION=auto AWS_EC2_METADATA_DISABLED=true AWS_MAX_ATTEMPTS=1 AWS_RETRY_MODE=standard
 export AWS_REQUEST_CHECKSUM_CALCULATION=when_required AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
 endpoint=${CF_R2_AWS_S3_ENDPOINT:?}
 mirror=$(php_darwin_release_mirror shivammathur/php-darwin "$version")
@@ -33,10 +33,21 @@ upload() {
     --cache-control "$cache_control" --only-show-errors
 }
 
+read_public() {
+  # A freshly uploaded object must not inherit a cached 404. A transport error
+  # is not evidence that an immutable object is missing: never reupload it or
+  # multiply a stall through nested retry loops.
+  local name=$1 destination=$2 fresh=${3:-false} url="$mirror/$1"
+  [ "$fresh" != true ] || url="$url?verify=$(basename "$work_dir")"
+  curl -fsSL --retry 0 --connect-timeout 5 --max-time 45 \
+    --speed-limit 1024 --speed-time 5 -w '%{http_code}' "$url" -o "$destination"
+}
+
 if [ "$mode" = installer-only ]; then
   # An unchanged, committed mirror manifest proves this exact artifact set was
   # already verified. Refreshing installer code needs no archive transfer.
-  curl -fsSL --retry 3 --connect-timeout 5 --max-time 30 "$mirror/$tag-manifest.json" -o "$work_dir/current-manifest"
+  read_public "$tag-manifest.json" "$work_dir/current-manifest" true >/dev/null || \
+    php_darwin_die 'could not verify the committed mirror manifest'
   cmp -s "$manifest" "$work_dir/current-manifest" || php_darwin_die 'mirror manifest changed before installer refresh'
 else
   # Validate every file before mutating either of the public commit points.
@@ -50,10 +61,15 @@ else
   while IFS=$'\t' read -r name hash bytes; do
     # A public read both verifies the delivered bytes and warms the CDN. Existing
     # immutable objects are reused only after verifying their actual contents.
-    if ! curl -fsSL --retry 2 --connect-timeout 5 --max-time 120 "$mirror/$name" -o "$work_dir/archive" 2>/dev/null || \
-      [ "$(php_darwin_sha256 "$work_dir/archive")" != "$hash" ]; then
+    status=0
+    http=$(read_public "$name" "$work_dir/archive") || status=$?
+    if [ "$status" -ne 0 ] && { [ "$status" -ne 22 ] || [ "$http" != 404 ]; }; then
+      php_darwin_die "R2 read failed without reuploading $name (curl $status, HTTP $http)"
+    fi
+    if [ "$http" = 404 ] || [ "$(php_darwin_sha256 "$work_dir/archive")" != "$hash" ]; then
       upload "$name" 'public, max-age=31536000, immutable'
-      curl -fsSL --retry 3 --connect-timeout 5 --max-time 120 "$mirror/$name" -o "$work_dir/archive"
+      read_public "$name" "$work_dir/archive" true >/dev/null || \
+        php_darwin_die "could not read the uploaded R2 archive: $name"
       [ "$(php_darwin_sha256 "$work_dir/archive")" = "$hash" ] || php_darwin_die "R2 verification failed: $name"
     fi
     upload "$name.sha256" 'public, max-age=31536000, immutable'
@@ -67,7 +83,8 @@ if [ "$mode" = all ]; then
   upload "$tag-manifest.json" 'no-cache, max-age=0, must-revalidate'
 fi
 for name in install.sh "$tag-manifest.json"; do
-  curl -fsSL --retry 3 --connect-timeout 5 --max-time 30 "$mirror/$name" -o "$work_dir/verified"
+  read_public "$name" "$work_dir/verified" true >/dev/null || \
+    php_darwin_die "could not verify the public R2 commit point: $name"
   cmp -s "$staging/$name" "$work_dir/verified" || php_darwin_die "R2 verification failed: $name"
 done
 printf 'Verified R2 release: %s\n' "$tag"

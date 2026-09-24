@@ -83,8 +83,9 @@ jobs:
             echo "PHP_DARWIN_BOTTLE_MISSES=$RUNNER_TEMP/bottle-misses.jsonl"
             echo "PHP_DARWIN_SOURCE_BOTTLE_MISSES=$RUNNER_TEMP/source-bottle-misses.jsonl"
           } >> "$GITHUB_ENV"
-          touch "$RUNNER_TEMP/bottle-misses.jsonl"
-          touch "$RUNNER_TEMP/source-bottle-misses.jsonl"
+          : > "$RUNNER_TEMP/php-darwin-metrics.jsonl"
+          : > "$RUNNER_TEMP/bottle-misses.jsonl"
+          : > "$RUNNER_TEMP/source-bottle-misses.jsonl"
 
       - name: Preserve Node before Homebrew cleanup
         uses: ./.github/actions/node-runtime
@@ -225,6 +226,7 @@ jobs:
           path: ${{ runner.temp }}/php-darwin
 
       - name: Prepare release/NTS Homebrew formula source
+        id: prepare-release-nts
         if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
         env: &release-nts
           BUILD: release
@@ -247,11 +249,12 @@ jobs:
         run: bash scripts/test-install.sh homebrew
 
       - name: Reset runner after release/NTS validation
-        if: ${{ always() && contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
+        if: ${{ always() && steps.prepare-release-nts.outcome != 'skipped' && steps.prepare-release-nts.outcome != '' }}
         env: *release-nts
         run: bash scripts/test-install.sh reset
 
       - name: Prepare release/ZTS Homebrew formula source
+        id: prepare-release-zts
         if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') }}
         env: &release-zts
           BUILD: release
@@ -274,11 +277,12 @@ jobs:
         run: bash scripts/test-install.sh homebrew
 
       - name: Reset runner after release/ZTS validation
-        if: ${{ always() && contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') }}
+        if: ${{ always() && steps.prepare-release-zts.outcome != 'skipped' && steps.prepare-release-zts.outcome != '' }}
         env: *release-zts
         run: bash scripts/test-install.sh reset
 
       - name: Prepare debug/NTS Homebrew formula source
+        id: prepare-debug-nts
         if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') }}
         env: &debug-nts
           BUILD: debug
@@ -301,11 +305,12 @@ jobs:
         run: bash scripts/test-install.sh homebrew
 
       - name: Reset runner after debug/NTS validation
-        if: ${{ always() && contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') }}
+        if: ${{ always() && steps.prepare-debug-nts.outcome != 'skipped' && steps.prepare-debug-nts.outcome != '' }}
         env: *debug-nts
         run: bash scripts/test-install.sh reset
 
       - name: Prepare debug/ZTS Homebrew formula source
+        id: prepare-debug-zts
         if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') }}
         env: &debug-zts
           BUILD: debug
@@ -328,6 +333,6 @@ jobs:
         run: bash scripts/test-install.sh homebrew
 
       - name: Reset runner after debug/ZTS validation
-        if: ${{ always() && contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') }}
+        if: ${{ always() && steps.prepare-debug-zts.outcome != 'skipped' && steps.prepare-debug-zts.outcome != '' }}
         env: *debug-zts
         run: bash scripts/test-install.sh reset

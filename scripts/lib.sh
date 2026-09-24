@@ -684,13 +684,16 @@ php_darwin_release_mirror() {
 php_darwin_request_release() {
   local status
   local result=0
+  local range=()
+  [ -z "${6:-}" ] || range=(--range "$6-")
 
   # Fail over before retrying the same broken origin. Bound connection and
   # stalled-transfer time while allowing large legacy archives to finish.
   status=$(curl --config <(php_darwin_read_config download.conf) \
     --retry 0 --connect-timeout 2 --speed-time "${4:-3}" --speed-limit "${3:-1024}" \
+    --max-time "${5:-30}" ${range[@]+"${range[@]}"} \
     -fsSL -w '%{http_code}' "$1" -o "$2") || result=$?
-  if [ "$result" -ne 0 ] || [ "$status" != 200 ]; then
+  if [ "$result" -ne 0 ] || { [ "$status" != 200 ] && [ "$status" != 206 ]; }; then
     printf 'php-darwin: download failed (curl %s, HTTP %s): %s\n' \
       "$result" "${status:-000}" "$1" >&2
   fi

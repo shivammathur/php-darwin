@@ -660,7 +660,8 @@ php_darwin_download_release_archive() {
   local archive_http_status
   local mirror_url
   local urls=()
-  local origin_index=0 minimum_speed low_speed_seconds
+  local origin_index=0 minimum_speed low_speed_seconds max_time destination
+  local resume_bytes='' request_result
 
   release_archive_error=
   release_url=${PHP_DARWIN_RELEASE_URL:-https://github.com/$release_repository/releases/download/php-$version/$manifest_download_asset}
@@ -676,6 +677,7 @@ php_darwin_download_release_archive() {
   for release_url in "${urls[@]}"; do
     minimum_speed=1024
     low_speed_seconds=3
+    max_time=30
     if [ "$origin_index" -eq 0 ] && [ "${#urls[@]}" -gt 1 ] && \
       [ "${PHP_DARWIN_PREFER_MIRROR:-false}" != true ]; then
       # A trickling CDN can stay above 1 KiB/s for the entire 30-second limit.
@@ -683,14 +685,37 @@ php_darwin_download_release_archive() {
       # desired origin and keeps its normal budget for slower networks.
       minimum_speed=8388608
       low_speed_seconds=1
+      # A fast initial burst can evade curl's low-speed timer. Bound that first
+      # attempt and continue its immutable bytes from the fallback if needed.
+      max_time=3
     fi
     origin_index=$((origin_index + 1))
-    if ! archive_http_status=$(php_darwin_request_release "$release_url" "$archive" \
-      "$minimum_speed" "$low_speed_seconds"); then
+    destination=$archive
+    [ -z "$resume_bytes" ] || destination="$archive.remaining"
+    request_result=0
+    archive_http_status=$(php_darwin_request_release "$release_url" "$destination" \
+      "$minimum_speed" "$low_speed_seconds" "$max_time" "$resume_bytes") || request_result=$?
+    if [ "$request_result" -ne 0 ]; then
       [ "$release_archive_error" = checksum ] || release_archive_error=download
+      if [ "$archive_http_status" = 200 ] && [ -s "$archive" ] && [ -z "$resume_bytes" ]; then
+        # A timeout can arrive after the last byte. Only the expected digest
+        # makes that a complete archive; otherwise preserve the prefix to resume.
+        php_darwin_start_archive_hash "$archive"
+        php_darwin_wait_for_archive_hash
+        if [ "$actual_hash" = "$expected_hash" ]; then release_archive_error=; return 0; fi
+        resume_bytes=$(wc -c < "$archive" | tr -d '[:space:]')
+      fi
       continue
     fi
-    if [ "$archive_http_status" != 200 ]; then
+    if [ -n "$resume_bytes" ]; then
+      case "$archive_http_status" in
+        206) cat "$destination" >> "$archive" || return 1 ;;
+        # Range is optional at the origin. A full response replaces the prefix.
+        200) mv "$destination" "$archive" || return 1 ;;
+      esac
+    fi
+    if [ "$archive_http_status" != 200 ] && \
+      { [ "$archive_http_status" != 206 ] || [ -z "$resume_bytes" ]; }; then
       if [ "$archive_http_status" != 404 ] && [ "$release_archive_error" != checksum ]; then
         release_archive_error=download
       fi
@@ -704,6 +729,7 @@ php_darwin_download_release_archive() {
     fi
     printf 'php-darwin: checksum mismatch from %s; trying the next origin\n' "$release_url" >&2
     release_archive_error=checksum
+    resume_bytes=
   done
   return 1
 }

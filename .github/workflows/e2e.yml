@@ -104,11 +104,26 @@ jobs:
           key: ${{ steps.cache-env.outputs.key }}
           restore-keys: ${{ steps.cache-env.outputs.key }}
 
-      - name: Install PHP and extensions through setup-php
-        uses: shivammathur/setup-php@f3d967b8bc6d6fbb17cb0e2ffd56cf304d0290ba # develop, unchanged PHP 8.7 support
+      - name: Check out unchanged setup-php
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          php-version: ${{ inputs.php-version }}
-          extensions: ${{ env.EXTENSIONS }}
+          repository: shivammathur/setup-php
+          ref: f3d967b8bc6d6fbb17cb0e2ffd56cf304d0290ba
+          path: .setup-php
+          persist-credentials: false
+
+      - name: Preserve the Actions Node runtime
+        uses: ./.github/actions/node-runtime
+
+      - name: Install PHP and extensions through unchanged setup-php
+        # Stock setup-php needs a parent directory without "darwin". The helper
+        # copies its dist/src verbatim; the repository and action stay unchanged.
+        env:
+          INPUT_PHP-VERSION: ${{ inputs.php-version }}
+          INPUT_EXTENSIONS: ${{ env.EXTENSIONS }}
+          INPUT_INI-FILE: production
+          INPUT_GITHUB-TOKEN: ${{ github.token }}
+        run: '"$PHP_DARWIN_NODE" scripts/run-setup-php.cjs .setup-php'
 
       - name: Verify the php-darwin cache installation
         run: bash scripts/test-setup-php.sh
