@@ -44,6 +44,10 @@ class PhpDarwinCacheLib < Formula
            "-install_name", "#{opt_lib}/libcachedvalue.dylib"
     lib.install "libcachedvalue.dylib"
     include.install "library.h"
+    config = etc/"php-darwin-source-cache-test/library.conf"
+    config.dirname.mkpath
+    config.write "#{prefix}\\n" unless config.exist?
+    inreplace config, prefix.to_s, opt_prefix.to_s, audit_result: build.bottle?
   end
 end
 EOF
@@ -169,12 +173,40 @@ const { ReleaseCache, family, assetIdentity } = require('./scripts/source-bottle
 })().catch(error => { console.error(error); process.exitCode = 1; });
 JS
     ;;
+  prepare-config-upgrade)
+    # Reproduce an install audit such as OpenLDAP's with an older, customized
+    # config already present. Keep the installed keg so its bottle owns it.
+    tap_path=$(brew --repository "$tap")
+    printf 'custom configuration\n' > "$(brew --prefix)/etc/php-darwin-source-cache-test/library.conf"
+    sed -i '' 's/version "1.0.0"/version "1.0.1"/' "$tap_path/Formula/php-darwin-cache-lib.rb"
+    ;;
+  verify-config-upgrade)
+    [ "$(cat "$(brew --prefix)/etc/php-darwin-source-cache-test/library.conf")" = 'custom configuration' ]
+    [ -d "$(brew --cellar)/php-darwin-cache-lib/1.0.0" ]
+    [ -d "$(brew --cellar)/php-darwin-cache-lib/1.0.1" ]
+    python3 - <<'PY'
+import json, pathlib, tarfile
+for file in pathlib.Path('.source-bottle-cache').glob('*/metadata.json'):
+    data = json.loads(file.read_text())
+    if not data['inputs']['formula'].endswith('/php-darwin-cache-lib') or data['inputs']['version'] != '1.0.1':
+        continue
+    with tarfile.open(file.parent / data['file']) as archive:
+        member = next(m for m in archive if m.name.endswith('/.bottle/etc/php-darwin-source-cache-test/library.conf'))
+        contents = archive.extractfile(member).read()
+        assert b'custom configuration' not in contents and b'/opt/php-darwin-cache-lib' in contents
+    break
+else:
+    raise AssertionError('missing upgraded library bottle')
+print('Native source upgrade preserved existing configuration and keg; bottle contains clean defaults')
+PY
+    ;;
   cleanup)
     if brew tap | grep -Fxq "$tap"; then
       brew uninstall --force --ignore-dependencies "$app" "$library" || true
       HOMEBREW_DEVELOPER=1 brew untap "$tap" || true
     fi
     rm -rf "$(brew --prefix)/var/php-darwin-source-cache-test"
+    rm -rf "$(brew --prefix)/etc/php-darwin-source-cache-test"
     ;;
   *) exit 1 ;;
 esac

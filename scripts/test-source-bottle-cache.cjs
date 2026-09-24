@@ -4,6 +4,33 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { install, keyFor, readBottle, extensionInputs } = require('./source-bottle-cache.cjs');
+const { withFreshConfiguration } = require('./source-bottle-config.cjs');
+
+test('source builds bottle clean defaults and restore existing configuration on success or failure', t => {
+  const prefix = fs.mkdtempSync(path.join(os.tmpdir(), 'php-darwin-source-config-'));
+  t.after(() => fs.rmSync(prefix, { recursive: true, force: true }));
+  const relative = 'etc/openldap/slapd.conf';
+  const target = path.join(prefix, relative);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, 'user configuration', { mode: 0o600 });
+  fs.writeFileSync(path.join(prefix, 'etc/unrelated'), 'unrelated');
+  for (const failure of [false, true]) {
+    const build = () => withFreshConfiguration(prefix, [relative], () => {
+      assert.equal(fs.existsSync(target), false);
+      fs.writeFileSync(target, 'new default configuration');
+      assert.equal(fs.readFileSync(path.join(prefix, 'etc/unrelated'), 'utf8'), 'unrelated');
+      if (failure) throw new Error('build failed');
+    });
+    if (failure) assert.throws(build, /build failed/); else build();
+    assert.equal(fs.readFileSync(target, 'utf8'), 'user configuration');
+    assert.equal(fs.statSync(target).mode & 0o777, 0o600);
+    assert.equal(fs.readdirSync(path.join(prefix, 'etc')).filter(name => name.startsWith('.php-darwin')).length, 0);
+  }
+  fs.symlinkSync('/missing-config-directory', path.join(prefix, 'etc/redirect'));
+  assert.throws(() => withFreshConfiguration(prefix, ['etc/redirect/config'], () => {}), /Unsafe/);
+  assert.throws(() => withFreshConfiguration(prefix, ['etc/../outside'], () => {}), /Invalid/);
+  assert.throws(() => withFreshConfiguration(prefix, ['var/service-data'], () => {}), /Invalid/);
+});
 
 function fixture(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'php-darwin-source-cache-'));

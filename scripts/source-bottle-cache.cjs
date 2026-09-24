@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { recordMetric } = require('./build-metrics.cjs');
 const { prefetch: prefetchBottles } = require('./upstream-bottle-cache.cjs');
+const { withFreshConfiguration } = require('./source-bottle-config.cjs');
 
 function command(program, args, { inherit = false, cwd, env } = {}) {
   const result = spawnSync(program, args, {
@@ -177,11 +178,15 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
       fs.mkdirSync(directory, { recursive: true });
       log(`Building source bottle: ${item.full_name} ${item.version}`);
       const compileStarted = Date.now();
-      run('brew', ['install', '--formula', '--build-bottle', ...flags, item.full_name], { inherit: true });
-      const compileMs = Date.now() - compileStarted;
-      const bottleStarted = Date.now();
-      run('brew', ['bottle', '--json', '--no-rebuild', item.full_name], {
-        inherit: true, cwd: path.resolve(directory),
+      let compileMs;
+      let bottleStarted;
+      withFreshConfiguration(platform.prefix, item.configuration_files, () => {
+        run('brew', ['install', '--formula', '--build-bottle', ...flags, item.full_name], { inherit: true });
+        compileMs = Date.now() - compileStarted;
+        bottleStarted = Date.now();
+        run('brew', ['bottle', '--json', '--no-rebuild', item.full_name], {
+          inherit: true, cwd: path.resolve(directory),
+        });
       });
       const files = fs.readdirSync(directory).filter(file => file.endsWith('.tar.gz'));
       if (files.length !== 1) throw new Error(`Expected one bottle for ${item.full_name}`);

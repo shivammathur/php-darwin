@@ -70,6 +70,16 @@ records = resolved.map do |formula|
     bottled: installer.pour_bottle?,
     post_install: formula.post_install_defined? || formula.post_install_steps_defined?,
   }
+  if mode == "plan"
+    # Only configuration files recorded in this formula's installed bottles
+    # belong to its source-build transaction. Never stage service data in var.
+    record[:configuration_files] = formula.installed_kegs.flat_map do |keg|
+      root = keg/".bottle"
+      (root/"etc").glob("**/*", File::FNM_DOTMATCH)
+        .select { |file| file.file? || file.symlink? }
+        .map { |file| file.relative_path_from(root).to_s }
+    end.uniq.sort
+  end
   if %w[plan seed].include?(mode) && record[:bottled]
     # Older hosted Homebrew versions select directly from the formula. Newer
     # versions can also select an internal-API bottle through the installer.
