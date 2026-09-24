@@ -4,7 +4,7 @@ const { command, digest, key, validateEntry, origins } = require('../installer/i
 const configuration = require('../../conf/extension-packs.json');
 const platforms = require('../../conf/platforms.json');
 const { builderHash } = require('../build/extension-pack.cjs');
-const { command: transferCommand, retryPolicy, httpError, transfers } = require('./extension-transfers.cjs');
+const { command: transferCommand, retryPolicy, httpError, githubJSON, transfers } = require('./extension-transfers.cjs');
 const root = path.resolve(__dirname, '../..');
 
 function versionBatches(value = configuration.versions.join(' ')) {
@@ -118,14 +118,14 @@ function scan(directory) {
     return item.isDirectory() ? scan(file) : [file];
   });
 }
-function validatePublishRun(id, run = command) {
+async function validatePublishRun(id, run = transferCommand, retry = retryPolicy()) {
   if (!/^[1-9][0-9]*$/.test(id || '')) throw new Error('Invalid source workflow run');
   const route = `repos/shivammathur/php-darwin/actions/runs/${id}`;
-  const source = JSON.parse(run('gh', ['api', route]));
+  const source = await githubJSON(route, { run, retry });
   if (source.status !== 'completed' || source.head_branch !== 'main' ||
       source.head_repository?.full_name !== 'shivammathur/php-darwin' ||
       source.path !== '.github/workflows/cache-extensions.yml') throw new Error('Untrusted extension source run');
-  const jobs = JSON.parse(run('gh', ['api', '--paginate', '--slurp', `${route}/jobs?per_page=100`])).flatMap(page => page.jobs);
+  const jobs = (await githubJSON(`${route}/jobs?per_page=100`, { run, retry, paginate: true })).flatMap(page => page.jobs);
   const builds = jobs.filter(job => /^(imagick|mongodb|memcached) \/ PHP /.test(job.name));
   const tests = jobs.filter(job => /^Test PHP /.test(job.name));
   if (!builds.length || !tests.length || [...builds, ...tests].some(job => job.status !== 'completed' || job.conclusion !== 'success')) {
@@ -212,6 +212,6 @@ if (require.main === module) (async () => {
   if (process.argv[2] === 'dispatch') await dispatch();
   else if (process.argv[2] === 'plan') await plan();
   else if (process.argv[2] === 'publish') await publish(process.argv[3]);
-  else if (process.argv[2] === 'validate-publish-run') validatePublishRun(process.argv[3]);
+  else if (process.argv[2] === 'validate-publish-run') await validatePublishRun(process.argv[3]);
   else throw new Error('Usage: extension-packs.cjs plan|publish|dispatch|validate-publish-run');
 })().catch(error => { console.error(error); process.exitCode = 1; });

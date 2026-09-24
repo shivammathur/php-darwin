@@ -178,6 +178,8 @@ successful builds, pins their artifact IDs, tests those archives on every requir
 compatibility platform using the current checks, and publishes exactly that set.
 Failed builds remain excluded and can be rebuilt separately. Missing or expired
 artifacts stop recovery; rerunning failed recovery jobs preserves passing work.
+Recovery API reads use the same bounded service-error policy as publication;
+authentication failures and invalid responses stop immediately.
 Publication resumes by reusing GitHub assets with matching SHA256 digests and
 Cloudflare objects whose downloaded bytes pass SHA256 verification. Small archives
 use single-object uploads. A transient timeout, connection failure or service error

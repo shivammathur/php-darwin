@@ -3,7 +3,7 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { digest, origins } = require('../installer/install-extensions.cjs');
 
-// Publication only: no retries or added work in the installation fast path.
+// Release and recovery only: no added work in the installation fast path.
 function command(program, args, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(program, args, { ...options, stdio: ['ignore', 'pipe', 'pipe'], timeout: 180000 });
@@ -40,6 +40,10 @@ function httpError(status, label) {
   const error = new Error(`${label}: HTTP ${status}`);
   error.transient = [408, 429, 500, 502, 503, 504].includes(Number(status));
   return error;
+}
+async function githubJSON(route, { run = command, retry = retryPolicy(), paginate = false } = {}) {
+  const result = await retry(`Read ${route}`, () => run('gh', ['api', ...(paginate ? ['--paginate', '--slurp'] : []), route]));
+  return JSON.parse(result);
 }
 function transfers({ directory, env, endpoint, run = command, retry = retryPolicy() }) {
   const repo = 'shivammathur/php-darwin', release = 'extensions';
@@ -120,4 +124,4 @@ function transfers({ directory, env, endpoint, run = command, retry = retryPolic
   }
   return { github, mirror, report };
 }
-module.exports = { command, retryPolicy, httpError, transfers };
+module.exports = { command, retryPolicy, httpError, githubJSON, transfers };

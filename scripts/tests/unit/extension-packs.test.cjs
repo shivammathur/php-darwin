@@ -9,22 +9,22 @@ const { unchanged, builderHash, compatibilityMatrix, versionBatches, dispatch, p
 const { copyRuntime } = require('../../build/extension-pack.cjs');
 
 const context = { php_version: '8.4', build: 'release', thread_safety: 'nts', architecture: 'arm64' };
-test('publication recovery accepts only completed main builds with every compatibility job passing', () => {
+test('publication recovery accepts only completed main builds with every compatibility job passing', async () => {
   const source = { status: 'completed', conclusion: 'failure', head_branch: 'main',
     head_repository: { full_name: 'shivammathur/php-darwin' }, path: '.github/workflows/cache-extensions.yml' };
   const jobs = ['imagick / PHP 8.4 / release-nts / arm64', 'Test PHP 8.4 release-nts on macos-26', 'publish']
     .map(name => ({ name, status: 'completed', conclusion: name === 'publish' ? 'failure' : 'success' }));
   const run = (_program, args) => JSON.stringify(args.includes('--paginate') ? [{ jobs }] : source);
-  validatePublishRun('123', run);
+  await validatePublishRun('123', run);
   for (const name of ['head_branch', 'path']) {
     const previous = source[name]; source[name] = 'untrusted';
-    assert.throws(() => validatePublishRun('123', run)); source[name] = previous;
+    await assert.rejects(validatePublishRun('123', run)); source[name] = previous;
   }
   for (const job of jobs.slice(0, 2)) {
-    job.conclusion = 'failure'; assert.throws(() => validatePublishRun('123', run)); job.conclusion = 'success';
+    job.conclusion = 'failure'; await assert.rejects(validatePublishRun('123', run)); job.conclusion = 'success';
   }
-  source.status = 'in_progress'; assert.throws(() => validatePublishRun('123', run));
-  assert.throws(() => validatePublishRun('../invalid', run));
+  source.status = 'in_progress'; await assert.rejects(validatePublishRun('123', run));
+  await assert.rejects(validatePublishRun('../invalid', run));
 });
 test('publication verifies bytes and commits manifests last without retrying permanent failures', async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-publish-'));

@@ -1,19 +1,20 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { command, key, validateContext, validateEntry } = require('../installer/install-extensions.cjs');
+const { key, validateContext, validateEntry } = require('../installer/install-extensions.cjs');
+const { command, retryPolicy, githubJSON } = require('./extension-transfers.cjs');
 const { compatibilityMatrix } = require('./extension-packs.cjs');
 
-function planRecovery(id, run = command) {
+async function planRecovery(id, run = command, retry = retryPolicy()) {
   if (!/^[1-9][0-9]*$/.test(id || '')) throw new Error('Invalid source workflow run');
   const route = `repos/shivammathur/php-darwin/actions/runs/${id}`;
-  const source = JSON.parse(run('gh', ['api', route]));
+  const source = await githubJSON(route, { run, retry });
   if (source.status !== 'completed' || source.head_branch !== 'main' ||
       source.head_repository?.full_name !== 'shivammathur/php-darwin' ||
       source.path !== '.github/workflows/cache-extensions.yml') throw new Error('Untrusted or unfinished extension source run');
-  const list = kind => JSON.parse(run('gh', ['api', '--paginate', '--slurp', `${route}/${kind}?per_page=100`])).flatMap(page => page[kind]);
-  const artifacts = list('artifacts');
+  const list = async kind => (await githubJSON(`${route}/${kind}?per_page=100`, { run, retry, paginate: true })).flatMap(page => page[kind]);
+  const artifacts = await list('artifacts');
   const entries = [];
-  for (const job of list('jobs')) {
+  for (const job of await list('jobs')) {
     const match = /^(imagick|mongodb|memcached) \/ PHP ([0-9.]+) \/ (debug|release)-(nts|zts) \/ (arm64|x86_64)$/.exec(job.name);
     if (!match || job.status !== 'completed' || job.conclusion !== 'success') continue;
     const [, name, php_version, build, thread_safety, architecture] = match;
@@ -46,9 +47,9 @@ function verifySelection(directory, keys) {
 }
 
 module.exports = { planRecovery, verifySelection };
-if (require.main === module) {
+if (require.main === module) (async () => {
   if (process.argv[2] === 'plan') {
-    const result = planRecovery(process.argv[3]);
+    const result = await planRecovery(process.argv[3]);
     console.log(JSON.stringify(result, null, 2));
     if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT,
       `matrix=${JSON.stringify(result.matrix)}\nartifact-ids=${result.entries.map(entry => entry.artifact_id).join(',')}\n` +
@@ -58,4 +59,4 @@ if (require.main === module) {
       `${result.matrix.include.length} native compatibility jobs must pass before publication. Failed builds are excluded.\n`);
   } else if (process.argv[2] === 'verify') verifySelection(process.argv[3], JSON.parse(process.env.EXTENSION_RECOVERY_KEYS));
   else throw new Error('Usage: extension-recovery.cjs plan <run-id>|verify <directory>');
-}
+})().catch(error => { console.error(error); process.exitCode = 1; });

@@ -17,6 +17,7 @@ jobs:
   plan:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       artifact-ids: ${{ steps.plan.outputs.artifact-ids }}
