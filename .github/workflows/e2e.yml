@@ -68,9 +68,7 @@ jobs:
       EXTENSIONS: ${{ (inputs.php-version == '5.6' || inputs.php-version == '7.0') && 'xdebug' || 'xdebug, pcov' }}
       PHP_DARWIN_REQUIRE_PCOV: ${{ (inputs.php-version == '5.6' || inputs.php-version == '7.0') && 'false' || 'true' }}
       PHP_DARWIN_REQUIRE_CACHE: 'true'
-      PHP_DARWIN_REQUIRE_INSTALL_TIMING: 'true'
       PHP_DARWIN_REQUIRE_XDEBUG: 'true'
-      PHP_DARWIN_TEST_MAIN: 'true'
       PHP_VERSION: ${{ inputs.php-version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -82,6 +80,14 @@ jobs:
 
       - name: Record preinstalled PHP and services
         run: bash scripts/prepare-e2e.sh
+
+      - name: Install the published cache before setup-php
+        # setup-php's self-hosted path uses preinstalled PHP or Homebrew. Test
+        # the cache explicitly, including downloads and the strict <10s limit.
+        run: bash scripts/test-release.sh
+
+      - name: Check setup-php's passwordless sudo prerequisite
+        run: sudo -n true
 
       - name: Configure the extension cache
         id: cache-env
@@ -99,10 +105,7 @@ jobs:
           restore-keys: ${{ steps.cache-env.outputs.key }}
 
       - name: Install PHP and extensions through setup-php
-        env:
-          BASH_ENV: ${{ github.workspace }}/scripts/trace-install-phases.sh
-        # Switch to the verbose tag after its next setup-php release.
-        uses: shivammathur/setup-php@develop
+        uses: shivammathur/setup-php@f3d967b8bc6d6fbb17cb0e2ffd56cf304d0290ba # develop, unchanged PHP 8.7 support
         with:
           php-version: ${{ inputs.php-version }}
           extensions: ${{ env.EXTENSIONS }}
