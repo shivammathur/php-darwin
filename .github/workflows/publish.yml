@@ -35,7 +35,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ inputs.run-id }}
-        run: bash scripts/validate-publish-run.sh "$RUN_ID"
+        run: bash scripts/release/validate-publish-run.sh "$RUN_ID"
 
       - name: Download validated architecture caches
         uses: ./.github/actions/download-artifacts
@@ -55,4 +55,4 @@ jobs:
           CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
           GH_TOKEN: ${{ github.token }}
           PHP_VERSION: ${{ inputs.php-version }}
-        run: bash scripts/publish.sh builds
+        run: bash scripts/release/publish.sh builds

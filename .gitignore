@@ -2,3 +2,5 @@ builds/
 .source-bottle-cache/
 .source-cache-fixtures/
 node_modules/
+.setup-php/
+test-results/

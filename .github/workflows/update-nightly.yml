@@ -27,4 +27,4 @@ jobs:
       - name: Start one cache workflow per nightly PHP version
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bash scripts/dispatch-nightly.sh
+        run: bash scripts/release/dispatch-nightly.sh

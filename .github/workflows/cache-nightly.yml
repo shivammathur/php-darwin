@@ -100,7 +100,7 @@ jobs:
           HOMEBREW_EXTENSIONS_PATH: ${{ github.workspace }}/homebrew-extensions
           HOMEBREW_PHP_PATH: ${{ github.workspace }}/homebrew-php
           PHP_VERSION: ${{ inputs.php-version }}
-        run: bash scripts/update-nightly.sh
+        run: bash scripts/release/update-nightly.sh
 
   cache:
     needs: freshness

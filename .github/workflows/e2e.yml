@@ -43,18 +43,18 @@ jobs:
           persist-credentials: false
 
       - name: Remove unused Homebrew taps
-        run: bash scripts/cleanup-taps.sh
+        run: bash scripts/build/cleanup-taps.sh
 
       - name: Record preinstalled PHP and services
-        run: bash scripts/prepare-e2e.sh
+        run: bash scripts/tests/helpers/prepare-e2e.sh
 
       - name: Run the published installer with visible output
         id: install
-        run: bash scripts/test-release.sh
+        run: bash scripts/tests/e2e/release.test.sh
 
       - name: Verify the direct cache installation
         if: ${{ !cancelled() && steps.install.outcome != 'skipped' }}
-        run: bash scripts/test-setup-php.sh
+        run: bash scripts/tests/e2e/setup-php.test.sh
 
   setup-php:
     name: Install PHP ${{ inputs.php-version }} through setup-php on ${{ matrix.runner }}
@@ -76,15 +76,15 @@ jobs:
           persist-credentials: false
 
       - name: Remove unused Homebrew taps
-        run: bash scripts/cleanup-taps.sh
+        run: bash scripts/build/cleanup-taps.sh
 
       - name: Record preinstalled PHP and services
-        run: bash scripts/prepare-e2e.sh
+        run: bash scripts/tests/helpers/prepare-e2e.sh
 
       - name: Install the published cache before setup-php
         # setup-php's self-hosted path uses preinstalled PHP or Homebrew. Test
         # the cache explicitly, including downloads and the strict <10s limit.
-        run: bash scripts/test-release.sh
+        run: bash scripts/tests/e2e/release.test.sh
 
       - name: Check setup-php's passwordless sudo prerequisite
         run: sudo -n true
@@ -123,10 +123,10 @@ jobs:
           INPUT_EXTENSIONS: ${{ env.EXTENSIONS }}
           INPUT_INI-FILE: production
           INPUT_GITHUB-TOKEN: ${{ github.token }}
-        run: '"$PHP_DARWIN_NODE" scripts/run-setup-php.cjs .setup-php'
+        run: '"$PHP_DARWIN_NODE" scripts/tests/helpers/run-setup-php.cjs .setup-php'
 
       - name: Verify the php-darwin cache installation
-        run: bash scripts/test-setup-php.sh
+        run: bash scripts/tests/e2e/setup-php.test.sh
 
       - name: Update Homebrew after the cache installation
         run: brew update

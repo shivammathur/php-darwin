@@ -100,17 +100,17 @@ jobs:
 
       - name: Restore Homebrew build tools
         run: |
-          "$PHP_DARWIN_NODE" scripts/upstream-bottle-cache.cjs tools
+          "$PHP_DARWIN_NODE" scripts/cache/upstream-bottle-cache.cjs tools
           brew install --verbose jq zstd
 
       - name: Remove unused Homebrew taps
-        run: bash scripts/cleanup-taps.sh
+        run: bash scripts/build/cleanup-taps.sh
 
       - name: Prepare ${{ matrix.build }}/${{ matrix.ts }} Homebrew tap
-        run: bash scripts/build.sh prepare
+        run: bash scripts/build/build.sh prepare
 
       - name: Clean runner for ${{ matrix.build }}/${{ matrix.ts }}
-        run: bash scripts/build.sh cleanup
+        run: bash scripts/build/build.sh cleanup
 
       - name: Install ${{ matrix.build }}/${{ matrix.ts }} PHP formula
         uses: ./.github/actions/source-cache
@@ -127,18 +127,18 @@ jobs:
 
       - name: Restore verified ${{ matrix.build }}/${{ matrix.ts }} archive checkpoint
         id: checkpoint
-        run: '"$PHP_DARWIN_NODE" scripts/archive-checkpoint.cjs restore'
+        run: '"$PHP_DARWIN_NODE" scripts/cache/archive-checkpoint.cjs restore'
 
       - name: Package ${{ matrix.build }}/${{ matrix.ts }} Homebrew cache
         if: ${{ steps.checkpoint.outputs.hit != 'true' }}
-        run: bash scripts/build.sh package
+        run: bash scripts/build/build.sh package
 
       - name: Verify ${{ matrix.build }}/${{ matrix.ts }} archive
-        run: bash scripts/build.sh verify
+        run: bash scripts/build/build.sh verify
 
       - name: Stage verified ${{ matrix.build }}/${{ matrix.ts }} checkpoint
         id: stage
-        run: '"$PHP_DARWIN_NODE" scripts/archive-checkpoint.cjs stage'
+        run: '"$PHP_DARWIN_NODE" scripts/cache/archive-checkpoint.cjs stage'
 
       - name: Upload verified ${{ matrix.build }}/${{ matrix.ts }} checkpoint
         if: ${{ steps.checkpoint.outputs.current != 'true' }}
@@ -152,15 +152,15 @@ jobs:
           overwrite: true
 
       - name: Remove superseded ${{ matrix.build }}/${{ matrix.ts }} checkpoints from this run
-        run: '"$PHP_DARWIN_NODE" scripts/archive-checkpoint.cjs prune'
+        run: '"$PHP_DARWIN_NODE" scripts/cache/archive-checkpoint.cjs prune'
 
       - name: Reset runner after ${{ matrix.build }}/${{ matrix.ts }}
         if: ${{ always() }}
-        run: bash scripts/build.sh reset
+        run: bash scripts/build/build.sh reset
 
       - name: Summarize source builds and checkpoints
         if: ${{ always() }}
-        run: '"$PHP_DARWIN_NODE" scripts/workflow-report.cjs local'
+        run: '"$PHP_DARWIN_NODE" scripts/build/workflow-report.cjs local'
 
       - name: Queue missing Cloudflare bottles
         if: ${{ always() }}
@@ -215,7 +215,7 @@ jobs:
           persist-credentials: false
 
       - name: Remove unused Homebrew taps
-        run: bash scripts/cleanup-taps.sh
+        run: bash scripts/build/cleanup-taps.sh
 
       - name: Download architecture caches built on the minimum macOS version
         uses: ./.github/actions/download-artifacts
@@ -231,27 +231,27 @@ jobs:
         env: &release-nts
           BUILD: release
           TS: nts
-        run: bash scripts/test-install.sh prepare
+        run: bash scripts/tests/native/install.test.sh prepare
 
       - name: Install release/NTS Homebrew cache
         if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
         env: *release-nts
-        run: bash scripts/test-install.sh install
+        run: bash scripts/tests/native/install.test.sh install
 
       - name: Validate release/NTS PHP runtime and build flags
         if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
         env: *release-nts
-        run: bash scripts/test-install.sh runtime
+        run: bash scripts/tests/native/install.test.sh runtime
 
       - name: Validate release/NTS Homebrew state and operations
         if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
         env: *release-nts
-        run: bash scripts/test-install.sh homebrew
+        run: bash scripts/tests/native/install.test.sh homebrew
 
       - name: Reset runner after release/NTS validation
         if: ${{ always() && steps.prepare-release-nts.outcome != 'skipped' && steps.prepare-release-nts.outcome != '' }}
         env: *release-nts
-        run: bash scripts/test-install.sh reset
+        run: bash scripts/tests/native/install.test.sh reset
 
       - name: Prepare release/ZTS Homebrew formula source
         id: prepare-release-zts
@@ -259,27 +259,27 @@ jobs:
         env: &release-zts
           BUILD: release
           TS: zts
-        run: bash scripts/test-install.sh prepare
+        run: bash scripts/tests/native/install.test.sh prepare
 
       - name: Install release/ZTS Homebrew cache
         if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') }}
         env: *release-zts
-        run: bash scripts/test-install.sh install
+        run: bash scripts/tests/native/install.test.sh install
 
       - name: Validate release/ZTS PHP runtime and build flags
         if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') }}
         env: *release-zts
-        run: bash scripts/test-install.sh runtime
+        run: bash scripts/tests/native/install.test.sh runtime
 
       - name: Validate release/ZTS Homebrew state and operations
         if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'zts') }}
         env: *release-zts
-        run: bash scripts/test-install.sh homebrew
+        run: bash scripts/tests/native/install.test.sh homebrew
 
       - name: Reset runner after release/ZTS validation
         if: ${{ always() && steps.prepare-release-zts.outcome != 'skipped' && steps.prepare-release-zts.outcome != '' }}
         env: *release-zts
-        run: bash scripts/test-install.sh reset
+        run: bash scripts/tests/native/install.test.sh reset
 
       - name: Prepare debug/NTS Homebrew formula source
         id: prepare-debug-nts
@@ -287,27 +287,27 @@ jobs:
         env: &debug-nts
           BUILD: debug
           TS: nts
-        run: bash scripts/test-install.sh prepare
+        run: bash scripts/tests/native/install.test.sh prepare
 
       - name: Install debug/NTS Homebrew cache
         if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') }}
         env: *debug-nts
-        run: bash scripts/test-install.sh install
+        run: bash scripts/tests/native/install.test.sh install
 
       - name: Validate debug/NTS PHP runtime and build flags
         if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') }}
         env: *debug-nts
-        run: bash scripts/test-install.sh runtime
+        run: bash scripts/tests/native/install.test.sh runtime
 
       - name: Validate debug/NTS Homebrew state and operations
         if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'nts') }}
         env: *debug-nts
-        run: bash scripts/test-install.sh homebrew
+        run: bash scripts/tests/native/install.test.sh homebrew
 
       - name: Reset runner after debug/NTS validation
         if: ${{ always() && steps.prepare-debug-nts.outcome != 'skipped' && steps.prepare-debug-nts.outcome != '' }}
         env: *debug-nts
-        run: bash scripts/test-install.sh reset
+        run: bash scripts/tests/native/install.test.sh reset
 
       - name: Prepare debug/ZTS Homebrew formula source
         id: prepare-debug-zts
@@ -315,24 +315,24 @@ jobs:
         env: &debug-zts
           BUILD: debug
           TS: zts
-        run: bash scripts/test-install.sh prepare
+        run: bash scripts/tests/native/install.test.sh prepare
 
       - name: Install debug/ZTS Homebrew cache
         if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') }}
         env: *debug-zts
-        run: bash scripts/test-install.sh install
+        run: bash scripts/tests/native/install.test.sh install
 
       - name: Validate debug/ZTS PHP runtime and build flags
         if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') }}
         env: *debug-zts
-        run: bash scripts/test-install.sh runtime
+        run: bash scripts/tests/native/install.test.sh runtime
 
       - name: Validate debug/ZTS Homebrew state and operations
         if: ${{ contains(inputs.builds, 'debug') && contains(inputs.ts, 'zts') }}
         env: *debug-zts
-        run: bash scripts/test-install.sh homebrew
+        run: bash scripts/tests/native/install.test.sh homebrew
 
       - name: Reset runner after debug/ZTS validation
         if: ${{ always() && steps.prepare-debug-zts.outcome != 'skipped' && steps.prepare-debug-zts.outcome != '' }}
         env: *debug-zts
-        run: bash scripts/test-install.sh reset
+        run: bash scripts/tests/native/install.test.sh reset

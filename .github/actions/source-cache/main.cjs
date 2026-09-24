@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { install, command, extensionInputs } = require('../../../scripts/source-bottle-cache.cjs');
-const { ReleaseCache } = require('../../../scripts/source-bottle-releases.cjs');
+const { install, command, extensionInputs } = require('../../../scripts/cache/source-bottle-cache.cjs');
+const { ReleaseCache } = require('../../../scripts/cache/source-bottle-releases.cjs');
 
 async function main() {
   if (process.platform !== 'darwin' || process.env.GITHUB_ACTIONS !== 'true') {
@@ -22,7 +22,7 @@ async function main() {
     return;
   }
   if (process.env.INPUT_STAGE === 'extensions') {
-    command('bash', ['scripts/build-extensions.sh'], { inherit: true,
+    command('bash', ['scripts/build/build-extensions.sh'], { inherit: true,
       env: { PHP_DARWIN_SOURCE_CACHE_NODE: process.execPath,
         PHP_DARWIN_SOURCE_CACHE_ACTION: path.join(__dirname, 'main.cjs') } });
     return;
@@ -30,10 +30,10 @@ async function main() {
   if (process.env.INPUT_STAGE && process.env.INPUT_STAGE !== 'php') throw new Error('Invalid source cache stage');
   const override = process.env.INPUT_FORMULA;
   const formula = override || command('bash', ['-c',
-    '. scripts/lib.sh; requested=$(php_darwin_requested_formula "$PHP_VERSION" "$BUILD" "$TS") || exit 1; printf "%s/%s" "$(php_darwin_package_config tap)" "$requested"'
+    '. scripts/lib/lib.sh; requested=$(php_darwin_requested_formula "$PHP_VERSION" "$BUILD" "$TS") || exit 1; printf "%s/%s" "$(php_darwin_package_config tap)" "$requested"'
   ]).trim();
   const result = await install({ formula, cache, forceSource: process.env['INPUT_FORCE-SOURCE'] === 'true' });
-  if (!override) command('bash', ['scripts/build.sh', 'install'], { inherit: true });
+  if (!override) command('bash', ['scripts/build/build.sh', 'install'], { inherit: true });
   writeOutputs(result);
 }
 
@@ -50,6 +50,6 @@ if (process.argv[2] === '--worker') {
     process.exitCode = 1;
   });
 } else {
-  require('../../../scripts/supervise-build.cjs').supervise(process.execPath,
+  require('../../../scripts/build/supervise-build.cjs').supervise(process.execPath,
     [__filename, '--worker', ...process.argv.slice(2)]);
 }

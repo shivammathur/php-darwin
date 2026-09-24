@@ -6,18 +6,15 @@ on:
     paths:
       - .github/actions/source-cache/**
       - .github/workflows/test-source-cache.yml
-      - scripts/source-bottle-*
-      - scripts/source-build-lock.cjs
-      - scripts/release-http.cjs
-      - scripts/test-release-http.cjs
-      - scripts/build-metrics.cjs
-      - scripts/test-source-build-lock-live.cjs
-      - scripts/supervise-build.cjs
-      - scripts/test-supervise-build.cjs
-      - scripts/brew-php-darwin-source.rb
-      - scripts/test-source-bottle-*
-      - scripts/formula-build-inputs.sh
-      - scripts/build-extensions.sh
+      - scripts/cache/**
+      - scripts/lib/**
+      - scripts/build/formula-build-inputs.sh
+      - scripts/build/build-extensions.sh
+      - scripts/build/supervise-build.cjs
+      - scripts/tests/native/source-bottle-*.test.sh
+      - scripts/tests/e2e/source-build-lock-live.test.cjs
+      - scripts/tests/helpers/**
+      - conf/**
 
 permissions:
   contents: write
@@ -37,7 +34,7 @@ jobs:
           CACHE_RELEASE: source-bottles-test-${{ github.run_id }}
         run: |
           node - <<'JS'
-          const { ReleaseCache } = require('./scripts/source-bottle-releases.cjs');
+          const { ReleaseCache } = require('./scripts/cache/source-bottle-releases.cjs');
           new ReleaseCache({ tag: process.env.CACHE_RELEASE }).release(true)
             .catch(error => { console.error(error); process.exitCode = 1; });
           JS
@@ -62,14 +59,14 @@ jobs:
       - name: Preserve the Actions Node runtime
         uses: ./.github/actions/node-runtime
       - name: Remove unused Homebrew taps
-        run: bash scripts/cleanup-taps.sh
+        run: bash scripts/build/cleanup-taps.sh
 
       - name: Verify concurrent ownership through the GitHub API
-        run: '"$PHP_DARWIN_NODE" scripts/test-source-build-lock-live.cjs'
+        run: '"$PHP_DARWIN_NODE" scripts/tests/e2e/source-build-lock-live.test.cjs'
       - name: Prepare source-only library and consumer
-        run: bash scripts/test-source-bottle-native.sh prepare
+        run: bash scripts/tests/native/source-bottle-native.test.sh prepare
       - name: Verify native bottle selection and dependency pruning
-        run: bash scripts/test-source-bottle-native.sh verify-plan
+        run: bash scripts/tests/native/source-bottle-native.test.sh verify-plan
       - name: Build or restore source bottles
         uses: ./.github/actions/source-cache
         with:
@@ -77,9 +74,9 @@ jobs:
           release: source-bottles-test-${{ github.run_id }}
       - name: Verify first installation and clear local packages
         run: |
-          bash scripts/test-source-bottle-native.sh verify
-          bash scripts/test-source-bottle-native.sh verify-outdated
-          bash scripts/test-source-bottle-native.sh reset
+          bash scripts/tests/native/source-bottle-native.test.sh verify
+          bash scripts/tests/native/source-bottle-native.test.sh verify-outdated
+          bash scripts/tests/native/source-bottle-native.test.sh reset
       - name: Restore both packages from the release cache
         id: warm
         uses: ./.github/actions/source-cache
@@ -93,9 +90,9 @@ jobs:
         run: |
           test "$BUILT" = 0
           test "$RESTORED" = 2
-          bash scripts/test-source-bottle-native.sh verify
-          bash scripts/test-source-bottle-native.sh reset
-          bash scripts/test-source-bottle-native.sh bump
+          bash scripts/tests/native/source-bottle-native.test.sh verify
+          bash scripts/tests/native/source-bottle-native.test.sh reset
+          bash scripts/tests/native/source-bottle-native.test.sh bump
       - name: Build a new consumer with the cached library
         id: changed
         uses: ./.github/actions/source-cache
@@ -107,17 +104,17 @@ jobs:
           RESTORED: ${{ steps.changed.outputs.restored }}
         run: |
           test "$RESTORED" -ge 1
-          bash scripts/test-source-bottle-native.sh verify
-          bash scripts/test-source-bottle-native.sh verify-release
+          bash scripts/tests/native/source-bottle-native.test.sh verify
+          bash scripts/tests/native/source-bottle-native.test.sh verify-release
       - name: Prepare an older installed library with customized configuration
-        run: bash scripts/test-source-bottle-native.sh prepare-config-upgrade
+        run: bash scripts/tests/native/source-bottle-native.test.sh prepare-config-upgrade
       - name: Build a new source bottle beside existing configuration
         uses: ./.github/actions/source-cache
         with:
           formula: php-darwin/source-cache-test/php-darwin-cache-lib
           release: source-bottles-test-${{ github.run_id }}
       - name: Verify clean bottle defaults and preservation of existing files
-        run: bash scripts/test-source-bottle-native.sh verify-config-upgrade
+        run: bash scripts/tests/native/source-bottle-native.test.sh verify-config-upgrade
       - name: Upload native bottles and build inputs
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -131,7 +128,7 @@ jobs:
           overwrite: true
       - name: Remove source bottle fixtures
         if: ${{ always() }}
-        run: bash scripts/test-source-bottle-native.sh cleanup
+        run: bash scripts/tests/native/source-bottle-native.test.sh cleanup
 
   extensions:
     needs: prepare
@@ -155,9 +152,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Remove unused Homebrew taps
-        run: bash scripts/cleanup-taps.sh
+        run: bash scripts/build/cleanup-taps.sh
       - name: Install published PHP and prepare extension source
-        run: bash scripts/test-source-bottle-extensions.sh prepare
+        run: bash scripts/tests/native/source-bottle-extensions.test.sh prepare
       - name: Build source extension bottles
         uses: ./.github/actions/source-cache
         with:
@@ -166,8 +163,8 @@ jobs:
           release: source-bottles-test-${{ github.run_id }}
       - name: Verify modules and clear the local cache
         run: |
-          bash scripts/test-source-bottle-extensions.sh verify > "$RUNNER_TEMP/extensions-cold.txt"
-          bash scripts/test-source-bottle-extensions.sh reset
+          bash scripts/tests/native/source-bottle-extensions.test.sh verify > "$RUNNER_TEMP/extensions-cold.txt"
+          bash scripts/tests/native/source-bottle-extensions.test.sh reset
       - name: Restore extension bottles from the release
         id: warm
         uses: ./.github/actions/source-cache
@@ -182,7 +179,7 @@ jobs:
         run: |
           test "$BUILT" = 0
           test "$RESTORED" = 2
-          bash scripts/test-source-bottle-extensions.sh verify > "$RUNNER_TEMP/extensions-warm.txt"
+          bash scripts/tests/native/source-bottle-extensions.test.sh verify > "$RUNNER_TEMP/extensions-warm.txt"
           diff -u "$RUNNER_TEMP/extensions-cold.txt" "$RUNNER_TEMP/extensions-warm.txt"
       - name: Upload extension bottles and build inputs
         if: ${{ always() }}
@@ -198,7 +195,7 @@ jobs:
 
       - name: Restore the runner's dependency pins
         if: ${{ always() }}
-        run: bash scripts/test-source-bottle-extensions.sh cleanup
+        run: bash scripts/tests/native/source-bottle-extensions.test.sh cleanup
 
   cleanup:
     name: Remove the isolated test release

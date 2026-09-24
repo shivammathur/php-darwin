@@ -87,20 +87,20 @@ jobs:
           PUBLISH: ${{ inputs.publish }}
           TS: ${{ inputs.ts }}
         run: |
-          bash scripts/validate.sh
-          bash scripts/get-matrix.sh
+          bash scripts/tests/run.sh check
+          bash scripts/build/get-matrix.sh
 
       - name: Pin the homebrew-php source commit
         id: source
         env:
           PINNED_COMMIT: ${{ inputs.homebrew-php-commit }}
-        run: bash scripts/source-commit.sh
+        run: bash scripts/build/source-commit.sh
 
       - name: Pin the homebrew-extensions source commit
         id: extensions-source
         env:
           PINNED_COMMIT: ${{ inputs.homebrew-extensions-commit }}
-        run: bash scripts/source-commit.sh extensions
+        run: bash scripts/build/source-commit.sh extensions
 
       - name: Check out the pinned PHP formulae for freshness
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -127,7 +127,7 @@ jobs:
           PUBLISH: ${{ inputs.publish }}
           HOMEBREW_PHP_PATH: ${{ github.workspace }}/homebrew-php
           HOMEBREW_EXTENSIONS_PATH: ${{ github.workspace }}/homebrew-extensions
-        run: bash scripts/check-build-freshness.sh
+        run: bash scripts/build/check-build-freshness.sh
 
   architecture:
     name: ${{ matrix.arch }}
@@ -198,7 +198,7 @@ jobs:
           HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.matrix.outputs.extensions-source-commit }}
           HOMEBREW_PHP_COMMIT: ${{ needs.matrix.outputs.source-commit }}
           PHP_VERSION: ${{ inputs.php-version }}
-        run: bash scripts/restore-published-architecture.sh builds
+        run: bash scripts/cache/restore-published-architecture.sh builds
 
       - name: Restore published Intel caches not rebuilt in this run
         if: ${{ !contains(inputs.architectures, 'x86_64') }}
@@ -207,7 +207,7 @@ jobs:
           HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.matrix.outputs.extensions-source-commit }}
           HOMEBREW_PHP_COMMIT: ${{ needs.matrix.outputs.source-commit }}
           PHP_VERSION: ${{ inputs.php-version }}
-        run: bash scripts/restore-published-architecture.sh builds
+        run: bash scripts/cache/restore-published-architecture.sh builds
 
       - name: Replace versioned release assets
         env:
@@ -219,7 +219,7 @@ jobs:
           HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.matrix.outputs.extensions-source-commit }}
           HOMEBREW_PHP_COMMIT: ${{ needs.matrix.outputs.source-commit }}
           PHP_VERSION: ${{ inputs.php-version }}
-        run: bash scripts/publish.sh builds
+        run: bash scripts/release/publish.sh builds
 
   e2e:
     name: Test the published PHP ${{ inputs.php-version }} cache through setup-php
@@ -252,7 +252,7 @@ jobs:
       - name: Report build, packaging, testing, and queue time
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/workflow-report.cjs workflow
+        run: node scripts/build/workflow-report.cjs workflow
       - name: Upload workflow performance report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

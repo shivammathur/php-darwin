@@ -27,7 +27,7 @@ jobs:
         env:
           PHP_VERSION: ${{ inputs.php-version || 'all' }}
         run: |
-          source scripts/lib.sh
+          source scripts/lib/lib.sh
           if [ "$PHP_VERSION" = all ]; then
             versions=$(php_darwin_configured_versions | cut -d ' ' -f2 | jq -Rsc 'split("\n") | map(select(length > 0))')
           else
@@ -61,4 +61,4 @@ jobs:
           CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
           CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
           CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
-        run: bash scripts/sync-release.sh
+        run: bash scripts/release/sync-release.sh

@@ -64,7 +64,7 @@ jobs:
           persist-credentials: false
       - name: Prepare current formula definitions without installing packages
         run: |
-          bash scripts/cleanup-taps.sh
+          bash scripts/build/cleanup-taps.sh
           brew tap --force homebrew/core
           for tap in shivammathur/php shivammathur/extensions; do
             brew tap "$tap"
@@ -74,7 +74,7 @@ jobs:
             git -C "$repository" checkout --detach FETCH_HEAD
           done
       - name: Resolve runtime and source-build dependencies
-        run: bash scripts/seed-bottle-plan.sh
+        run: bash scripts/cache/seed-bottle-plan.sh
       - name: Save the exact dependency plan
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -109,7 +109,7 @@ jobs:
         id: matrix
         run: |
           mkdir -p bottle-records
-          node scripts/upstream-bottle-cache.cjs matrix bottle-records
+          node scripts/cache/upstream-bottle-cache.cjs matrix bottle-records
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: bottle-matrix
@@ -136,7 +136,7 @@ jobs:
           CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
           CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
           CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
-        run: node scripts/upstream-bottle-cache.cjs publish
+        run: node scripts/cache/upstream-bottle-cache.cjs publish
       - name: Summarize verified dependency bottles
         run: |
           jq -r '.[] | "- \(.formula) \(.version) / \(.tag): \(.result), SHA-256 `\(.sha256)`"' bottle-verification.json >> "$GITHUB_STEP_SUMMARY"

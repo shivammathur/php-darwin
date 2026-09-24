@@ -3,7 +3,7 @@
 # This file is generated from the named source files below. It is deliberately
 # plain shell code so the standalone installer can be audited before execution.
 
-# Source: scripts/lib.sh
+# Source: scripts/lib/lib.sh
 
 unset php_darwin_configured_versions_data php_darwin_configured_variants_data
 
@@ -1132,7 +1132,7 @@ PHP_DARWIN_RELEASE_MANIFEST
 }
 
 
-# Source: scripts/trust-store.sh
+# Source: scripts/installer/trust-store.sh
 php_darwin_trust_store() (
 
 
@@ -1271,7 +1271,7 @@ end
 PHP_DARWIN_TRUST_RUBY
 )
 
-# Source: scripts/check-dependencies.sh
+# Source: scripts/installer/check-dependencies.sh
 php_darwin_check_dependencies() (
 
 
@@ -1312,7 +1312,7 @@ end
 PHP_DARWIN_DEPENDENCIES_RUBY
 )
 
-# Source: scripts/unlink-kegs.sh
+# Source: scripts/installer/unlink-kegs.sh
 php_darwin_unlink_kegs() (
 
 
@@ -1527,7 +1527,7 @@ end
 PHP_DARWIN_UNLINK_RUBY
 )
 
-# Source: scripts/read-metadata.sh
+# Source: scripts/installer/read-metadata.sh
 php_darwin_read_metadata() (
 
 archive=${1:?}
@@ -1571,7 +1571,7 @@ if [ ! -s "$output" ]; then
 fi
 )
 
-# Source: scripts/source-hash.sh
+# Source: scripts/lib/source-hash.sh
 php_darwin_source_hash() (
 
 
@@ -1602,7 +1602,7 @@ LC_ALL=C sort -u "$hashes" -o "$hashes" || php_darwin_die 'could not sort formul
 php_darwin_sha256 "$hashes" || php_darwin_die 'could not hash formula metadata'
 )
 
-# Source: scripts/validate-tap.sh
+# Source: scripts/installer/validate-tap.sh
 php_darwin_validate_tap() (
 
 
@@ -1678,7 +1678,7 @@ fi
 [ -z "$expected_hash" ] || printf '%s\n' "$actual_hash"
 )
 
-# Source: scripts/tap-action.sh
+# Source: scripts/installer/tap-action.sh
 php_darwin_tap_action() (
 
 
@@ -1785,7 +1785,7 @@ else
 fi
 )
 
-# Source: scripts/verify-links.sh
+# Source: scripts/installer/verify-links.sh
 php_darwin_verify_links() (
 
 prefix=${1:?}
@@ -1842,7 +1842,7 @@ if ! cmp -s "$verify_links_file" "$actual_links"; then
 fi
 )
 
-# Source: scripts/existing-paths.sh
+# Source: scripts/installer/existing-paths.sh
 php_darwin_existing_paths() (
 
 prefix=${1:?}
@@ -1980,7 +1980,7 @@ LC_ALL=C sort -u "$output" -o "$output" || exit 1
 LC_ALL=C sort -u "$kegs_output" -o "$kegs_output" || exit 1
 )
 
-# Source: scripts/extract.sh
+# Source: scripts/installer/extract.sh
 php_darwin_extract() (
 
 
@@ -2223,7 +2223,7 @@ restore_permissions || exit 1
 exit "$extract_status"
 )
 
-# Source: scripts/install-state.sh
+# Source: scripts/installer/install-state.sh
 php_darwin_install_state() (
 
 
@@ -2294,7 +2294,7 @@ end
 PHP_DARWIN_INSTALL_STATE_RUBY
 )
 
-# Source: scripts/verify-runtime.sh
+# Source: scripts/installer/verify-runtime.sh
 php_darwin_verify_runtime() (
 
 prefix=${1:?}
@@ -2355,7 +2355,7 @@ if [ "${PHP_DARWIN_VERIFY_RUNTIME:-false}" = true ]; then
 fi
 )
 
-# Source: scripts/install-package.sh
+# Source: scripts/installer/install-package.sh
 
 
 
@@ -3209,6 +3209,8 @@ while IFS= read -r state_path; do
       php_darwin_die "could not record new Homebrew state path: $state_path"
   fi
 done < "$state_paths_inventory"
+# The first two metadata columns are validated above; only the path is needed here.
+# shellcheck disable=SC2034
 while IFS=$'\t' read -r extension extension_type extension_path; do
   [ -n "$extension_path" ] || continue
   if [ ! -e "$brew_prefix/$extension_path" ] && [ ! -L "$brew_prefix/$extension_path" ]; then
