@@ -23,7 +23,7 @@ function safePath(value) {
     !value.startsWith('/') && value.split('/').every(part => part && part !== '.' && part !== '..');
 }
 function validateContext(context) {
-  if (!context || !/^8\.[2-5]$/.test(context.php_version) ||
+  if (!context || !/^(?:5\.6|7\.[0-4]|8\.[0-7])$/.test(context.php_version) ||
       !['arm64', 'x86_64'].includes(context.architecture) ||
       !['release', 'debug'].includes(context.build) || !['nts', 'zts'].includes(context.thread_safety)) {
     throw new Error('Unsupported extension cache configuration');

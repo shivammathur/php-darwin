@@ -19,7 +19,7 @@ The cache covers ARM64 and Intel, with release/debug and NTS/ZTS variants.
 build/test runners. [conf/cached-extensions](conf/cached-extensions) contains one
 file per PHP minor, with one cached extension name per line.
 
-Imagick, MongoDB and Memcached have separate optional archives for PHP 8.2–8.5.
+Imagick, MongoDB and Memcached have separate optional archives for PHP 5.6–8.7.
 They are built against published PHP caches and refreshed independently, so
 extension updates do not require rebuilding PHP or adding libraries to its cache.
 

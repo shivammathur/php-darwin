@@ -6,11 +6,44 @@ const platforms = require('../../conf/platforms.json');
 const { builderHash } = require('../build/extension-pack.cjs');
 const root = path.resolve(__dirname, '../..');
 
+function versionBatches(value = configuration.versions.join(' ')) {
+  const versions = [...new Set(value.trim().split(/\s+/))];
+  if (versions.some(version => !configuration.versions.includes(version))) throw new Error('Unsupported PHP version');
+  // Eight versions produce at most 192 build and 160 compatibility jobs.
+  return Array.from({ length: Math.ceil(versions.length / 8) }, (_, index) => versions.slice(index * 8, index * 8 + 8));
+}
+async function dispatch({ versions = process.env.PHP_VERSIONS || undefined, afterRun = process.env.AFTER_RUN,
+  repository = process.env.GITHUB_REPOSITORY || 'shivammathur/php-darwin', ref = process.env.GITHUB_REF_NAME || 'main',
+  run = command, wait = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now } = {}) {
+  if (repository !== 'shivammathur/php-darwin') throw new Error('Unexpected extension cache repository');
+  const batches = versionBatches(versions);
+  if (afterRun) {
+    if (!/^[1-9][0-9]*$/.test(afterRun) || afterRun === process.env.GITHUB_RUN_ID) throw new Error('Invalid prerequisite run');
+    const started = now();
+    console.log(`Waiting for successful workflow run ${afterRun}`);
+    while (true) {
+      const result = JSON.parse(run('gh', ['api', `repos/${repository}/actions/runs/${afterRun}`]));
+      if (result.status === 'completed') {
+        if (result.conclusion !== 'success') throw new Error(`Prerequisite run ${afterRun} concluded ${result.conclusion}`);
+        break;
+      }
+      if (now() - started >= 5 * 60 * 60 * 1000) throw new Error('Prerequisite run did not finish within five hours');
+      await wait(60000);
+    }
+  }
+  for (const batch of batches) {
+    run('gh', ['workflow', 'run', 'cache-extensions.yml', '--repo', repository, '--ref', ref,
+      '-f', `php-versions=${batch.join(' ')}`, '-f', 'builds=debug release', '-f', 'ts=nts zts', '-f', 'publish=true'], { inherit: true });
+    console.log(`Dispatched optional extension caches for PHP ${batch.join(', ')}`);
+  }
+}
 function unchanged(entry, repositories, phpManifest) {
   try {
     validateEntry(entry);
-    if (entry.builder_sha256 !== builderHash() || entry.php_semver !== phpManifest.php_semver ||
+    const phpVersion = phpManifest.php_src_commit ? entry.php_semver?.split('-')[0] : entry.php_semver;
+    if (entry.builder_sha256 !== builderHash() || phpVersion !== phpManifest.php_semver ||
         !entry.source_records?.length) return false;
+    if ((phpManifest.php_src_commit || '') !== (entry.php_src_commit || '')) return false;
     return entry.source_records.every(record => {
       const repository = repositories[record.repository];
       if (!repository || !record.path || record.path.includes('..') || path.isAbsolute(record.path)) return false;
@@ -29,11 +62,10 @@ async function readManifest(version) {
   return manifest;
 }
 async function plan() {
-  const scheduled = process.env.GITHUB_EVENT_NAME === 'schedule';
-  const versions = (process.env.PHP_VERSIONS || (scheduled ? configuration.versions.join(' ') : '8.4')).split(/\s+/);
+  const versions = (process.env.PHP_VERSIONS || '8.4').split(/\s+/);
   const selectedPacks = (process.env.EXTENSION_PACKS || Object.keys(configuration.packs).join(' ')).split(/\s+/);
-  const builds = (process.env.BUILDS || (scheduled ? 'debug release' : 'release')).split(/\s+/);
-  const modes = (process.env.THREAD_SAFETY || (scheduled ? 'nts zts' : 'nts')).split(/\s+/);
+  const builds = (process.env.BUILDS || 'release').split(/\s+/);
+  const modes = (process.env.THREAD_SAFETY || 'nts').split(/\s+/);
   const repositories = { 'shivammathur/homebrew-extensions': path.resolve('homebrew-extensions'), 'Homebrew/homebrew-core': path.resolve('homebrew-core') };
   const include = [];
   for (const php_version of versions) {
@@ -136,9 +168,10 @@ async function publish(directory) {
     command('gh', ['release', 'upload', release, installer, '--repo', repo, '--clobber']);
   } finally { fs.rmSync(staging, { recursive: true, force: true }); }
 }
-module.exports = { unchanged, builderHash, readManifest, plan, publish, compatibilityMatrix };
+module.exports = { unchanged, builderHash, readManifest, plan, publish, compatibilityMatrix, versionBatches, dispatch };
 if (require.main === module) (async () => {
-  if (process.argv[2] === 'plan') await plan();
+  if (process.argv[2] === 'dispatch') await dispatch();
+  else if (process.argv[2] === 'plan') await plan();
   else if (process.argv[2] === 'publish') await publish(process.argv[3]);
-  else throw new Error('Usage: extension-packs.cjs plan|publish');
+  else throw new Error('Usage: extension-packs.cjs plan|publish|dispatch');
 })().catch(error => { console.error(error); process.exitCode = 1; });

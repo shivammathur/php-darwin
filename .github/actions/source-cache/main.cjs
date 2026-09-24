@@ -11,10 +11,14 @@ async function main() {
   if (process.argv[2] === 'install-extensions') {
     const [abstract, phpPrefix, ...formulae] = process.argv.slice(3);
     const context = extensionInputs(abstract, phpPrefix, process.env.BUILD, process.env.TS);
+    if (process.env.PHP_DARWIN_PHP_SRC_COMMIT) {
+      if (!/^[0-9a-f]{40}$/.test(process.env.PHP_DARWIN_PHP_SRC_COMMIT)) throw new Error('Invalid PHP source commit');
+      context.php.source_commit = process.env.PHP_DARWIN_PHP_SRC_COMMIT;
+    }
     const result = { built: 0, restored: 0 };
     for (const formula of formulae) {
       const installed = await install({ formula, cache, context, skipLink: true,
-        forceSource: process.env.BUILD !== 'release' || process.env.TS !== 'nts' || process.env['INPUT_FORCE-SOURCE'] === 'true' });
+        forceSource: !!context.php.source_commit || process.env.BUILD !== 'release' || process.env.TS !== 'nts' || process.env['INPUT_FORCE-SOURCE'] === 'true' });
       result.built += installed.built;
       result.restored += installed.restored;
     }

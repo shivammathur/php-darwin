@@ -135,29 +135,34 @@ if [ -n "$suffix" ]; then
     -e "s|php@#{@php_version}\"|php@#{@php_version}$suffix\"|" \
     -e "s|etc / \"php\" / php_version / \"conf.d\"|etc / \"php\" / \"#{php_version}$suffix\" / \"conf.d\"|" \
     "$abstract_file" || php_darwin_die 'could not select the PHP build variant for extensions'
-  case "$version" in
-    5.6|7.*)
-      if ! grep -Fq 'ENV["ac_cv_prog_cc_c23"] = "no"' "$abstract_file"; then
-        awk '
-          { print }
-          /^[[:space:]]*def safe_phpize$/ {
-            print "    ENV[\"ac_cv_prog_cc_c23\"] = \"no\""
-            patched=1
-          }
-          END { if (!patched) exit 1 }
-        ' "$abstract_file" > "$abstract_patched" || \
-          php_darwin_die 'could not select a pre-C23 compiler mode for legacy extensions'
-        mv "$abstract_patched" "$abstract_file" || \
-          php_darwin_die 'could not apply the legacy extension compiler mode'
-      fi
-      ;;
-  esac
   if ! grep -Fq "php@#{php_version}$suffix\"" "$abstract_file" || \
     ! grep -Fq "php@#{@php_version}$suffix\"" "$abstract_file" || \
     ! grep -Fq "\"#{php_version}$suffix\" / \"conf.d\"" "$abstract_file"; then
     php_darwin_die 'homebrew-extensions variant patch did not apply'
   fi
 fi
+
+case "$version" in
+  5.6|7.*)
+    if [ -z "$abstract_file" ]; then
+      abstract_file="$extension_tap_path/Abstract/abstract-php-extension.rb"
+      cp "$abstract_file" "$abstract_backup" || php_darwin_die 'could not back up the extension formula base'
+    fi
+    if ! grep -Fq 'ENV["ac_cv_prog_cc_c23"] = "no"' "$abstract_file"; then
+      awk '
+        { print }
+        /^[[:space:]]*def safe_phpize$/ {
+          print "    ENV[\"ac_cv_prog_cc_c23\"] = \"no\""
+          patched=1
+        }
+        END { if (!patched) exit 1 }
+      ' "$abstract_file" > "$abstract_patched" || \
+        php_darwin_die 'could not select a pre-C23 compiler mode for legacy extensions'
+      mv "$abstract_patched" "$abstract_file" || \
+        php_darwin_die 'could not apply the legacy extension compiler mode'
+    fi
+    ;;
+esac
 
 # Formula names do not encode the PHP debug/ZTS variant. A persistent runner
 # can retain a keg from another build, so let the bottle cache select the exact

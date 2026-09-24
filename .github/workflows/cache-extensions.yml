@@ -1,11 +1,11 @@
 name: Cache optional PHP extensions
-run-name: Cache optional PHP extensions ${{ inputs.php-versions || (github.event_name == 'schedule' && '8.2–8.5') || '8.4' }}
+run-name: Cache optional PHP extensions ${{ inputs.php-versions || '8.4' }}
 
 on:
   workflow_dispatch:
     inputs:
       php-versions:
-        description: Space-separated PHP versions
+        description: Space-separated PHP versions (at most 10 per batch)
         default: '8.2 8.3 8.4 8.5'
         type: string
       extensions:
@@ -28,8 +28,6 @@ on:
         description: Publish verified optional archives
         default: true
         type: boolean
-  schedule:
-    - cron: '37 */6 * * *'
   push:
     paths:
       - .github/workflows/cache-extensions.yml
@@ -50,7 +48,7 @@ permissions:
 concurrency:
   # A focused build must not block seeding other PHP versions. Publication has
   # its own lock so concurrent batches still merge manifests in order.
-  group: extension-cache-${{ github.ref }}-${{ inputs.php-versions || (github.event_name == 'schedule' && '8.2 8.3 8.4 8.5') || '8.4' }}
+  group: extension-cache-${{ github.ref }}-${{ inputs.php-versions || '8.4' }}
   cancel-in-progress: false
 
 jobs:
@@ -232,7 +230,7 @@ jobs:
       always() && !cancelled() && needs.plan.result == 'success' &&
       (needs.build.result == 'success' || needs.build.result == 'skipped') &&
       (needs.compatibility.result == 'success' || needs.compatibility.result == 'skipped') &&
-      github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.publish)
+      github.ref == 'refs/heads/main' && inputs.publish
     runs-on: ubuntu-latest
     permissions:
       contents: write

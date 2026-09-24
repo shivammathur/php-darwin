@@ -1,0 +1,39 @@
+name: Update optional extension caches
+run-name: Update optional extension caches ${{ inputs.php-versions || '5.6–8.7' }}
+
+on:
+  schedule:
+    - cron: '37 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      php-versions:
+        description: Space-separated PHP versions (empty selects all configured versions)
+        type: string
+      after-run:
+        description: Optional workflow run ID which must succeed before dispatching
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: update-extension-caches-${{ inputs.after-run || 'scheduled' }}
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Dispatch bounded batches after the prerequisite succeeds
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PHP_VERSIONS: ${{ inputs.php-versions }}
+          AFTER_RUN: ${{ inputs.after-run }}
+        run: node scripts/release/extension-packs.cjs dispatch

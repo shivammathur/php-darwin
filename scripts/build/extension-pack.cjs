@@ -6,6 +6,7 @@ const macho = new Set(['cffaedfe', 'cefaedfe', 'feedfacf', 'feedface', 'cafebabe
 function builderHash() {
   const root = path.resolve(__dirname, '../..');
   const inputs = ['conf/extension-packs.json', 'conf/platforms.json',
+    '.github/actions/source-cache/main.cjs',
     'scripts/build/extension-pack.cjs', 'scripts/build/build-extensions.sh',
     'scripts/build/prepare-extension-pack.sh', 'scripts/cache/source-bottle-cache.cjs',
     'scripts/cache/source-bottle-info.rb', 'scripts/cache/source-bottle-install.rb',
@@ -66,6 +67,7 @@ function packageExtension({ name, php_version, build, thread_safety, architectur
   const metadata = { schema: 1, name, php_version, build, thread_safety, architecture,
     php_api: phpApi(path.join(path.dirname(php), 'php-config')),
     php_semver: command(php, ['-n', '-r', 'echo PHP_VERSION;']),
+    ...(process.env.PHP_DARWIN_PHP_SRC_COMMIT ? { php_src_commit: process.env.PHP_DARWIN_PHP_SRC_COMMIT } : {}),
     minimum_macos: architecture === 'arm64' ? 14 : 15, modules: packs[name], environment: {},
     source_records: sourceRecords([...new Set([...references, ...runtime])]),
     dependencies: info.map(formula => ({ name: formula.name,

@@ -4,11 +4,46 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const http = require('node:http');
-const { prefetch, download, digest, key, validateEntry, safePath, inspectTree, packEnvironment, relocateResources, phpApi } = require('../../installer/install-extensions.cjs');
-const { unchanged, builderHash, compatibilityMatrix } = require('../../release/extension-packs.cjs');
+const { prefetch, download, digest, key, validateEntry, validateContext, safePath, inspectTree, packEnvironment, relocateResources, phpApi } = require('../../installer/install-extensions.cjs');
+const { unchanged, builderHash, compatibilityMatrix, versionBatches, dispatch } = require('../../release/extension-packs.cjs');
 const { copyRuntime } = require('../../build/extension-pack.cjs');
 
 const context = { php_version: '8.4', build: 'release', thread_safety: 'nts', architecture: 'arm64' };
+test('scheduled batches cover every configured PHP version within both matrix limits', () => {
+  const versions = fs.readFileSync(path.resolve(__dirname, '../../../conf/versions'), 'utf8').split('\n')
+    .filter(line => /^(stable|nightly) /.test(line)).map(line => line.split(' ')[1]);
+  const batches = versionBatches();
+  assert.deepEqual(batches.flat(), versions);
+  for (const batch of batches) {
+    const entries = batch.flatMap(php_version => ['release', 'debug'].flatMap(build => ['nts', 'zts'].flatMap(thread_safety =>
+      ['arm64', 'x86_64'].flatMap(architecture => ['imagick', 'mongodb', 'memcached'].map(name =>
+        ({ php_version, build, thread_safety, architecture, name }))))));
+    entries.forEach(validateContext);
+    assert.ok(entries.length <= 256);
+    assert.ok(compatibilityMatrix(entries).include.length <= 256);
+  }
+  for (const version of ['5.5', '7.5', '8.8', '9.0']) {
+    assert.throws(() => versionBatches(version), /Unsupported/);
+    assert.throws(() => validateContext({ ...context, php_version: version }), /Unsupported/);
+  }
+});
+test('follow-up batches start only after a successful prerequisite', async () => {
+  const calls = [];
+  let ready = false;
+  const run = (_program, args) => {
+    calls.push(args);
+    if (args[0] === 'api') return JSON.stringify({ status: ready ? 'completed' : 'in_progress', conclusion: ready ? 'success' : null });
+    assert.ok(ready);
+  };
+  await dispatch({ afterRun: '123', run, wait: async delay => { assert.equal(delay, 60000); ready = true; } });
+  assert.equal(calls.filter(args => args[0] === 'workflow').length, 2);
+  for (const conclusion of ['failure', 'cancelled', 'timed_out']) {
+    await assert.rejects(dispatch({ afterRun: '123', run: (_program, args) => {
+      assert.equal(args[0], 'api');
+      return JSON.stringify({ status: 'completed', conclusion });
+    } }), /Prerequisite run/);
+  }
+});
 test('read the module API from the installed PHP headers using supported php-config options', t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-php-api-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
@@ -145,6 +180,10 @@ test('freshness tracks dependency recipes, PHP releases and builder changes', t 
   const repositories = { core: directory };
   assert.ok(unchanged(metadata, repositories, { php_semver: '8.4.26' }));
   assert.equal(unchanged(metadata, repositories, { php_semver: '8.4.27' }), false);
+  const nightly = { ...metadata, php_version: '8.7', php_semver: '8.7.0-dev', php_src_commit: 'a'.repeat(40) };
+  nightly.file = `${key(nightly)}-${nightly.sha256}.tar.zst`;
+  assert.ok(unchanged(nightly, repositories, { php_semver: '8.7.0', php_src_commit: nightly.php_src_commit }));
+  assert.equal(unchanged(nightly, repositories, { php_semver: '8.7.0', php_src_commit: 'b'.repeat(40) }), false);
   assert.equal(unchanged({ ...metadata, builder_sha256: '0'.repeat(64) }, repositories, { php_semver: '8.4.26' }), false);
   fs.writeFileSync(path.join(directory, 'formula.rb'), 'updated dependency');
   assert.equal(unchanged(metadata, repositories, { php_semver: '8.4.26' }), false);

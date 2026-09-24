@@ -158,7 +158,10 @@ and Memcached independently. It never compiles PHP or adds these libraries to
 the PHP archives. `conf/extension-packs.json` defines the supported versions and
 the modules belonging to each pack.
 
-The workflow checks recipe changes every six hours. Unchanged packs are skipped;
+`update-extensions.yml` checks every configured PHP version every six hours,
+dispatching batches of at most eight versions to stay within Actions matrix limits.
+Its optional `after-run` input waits for a successful prerequisite before dispatching;
+failed or cancelled prerequisites stop the follow-up. Unchanged packs are skipped;
 changed packs reuse the source-bottle cache. Manual runs can select PHP versions,
 extensions and build variants. Push runs validate PHP 8.4 release/NTS on both
 architectures without publishing. Publication requires native installation and
@@ -166,6 +169,8 @@ functional tests on the build platforms, newer hosted macOS, and self-hosted Int
 Each pack must install in under 10 seconds and preserve PHP and services. Archives
 are published to the separate `extensions` release and Cloudflare only after all
 selected tests pass. Installer updates are published even when recipes are unchanged.
+Nightly packs also track the PHP source commit, so a new nightly with the same
+version string rebuilds its extension modules while reusing dependency bottles.
 
 Each archive carries private runtime libraries, relocated Mach-O load paths,
 licenses and module metadata. The standalone `scripts/installer/install-extensions.cjs`
