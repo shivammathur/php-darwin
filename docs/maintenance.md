@@ -169,6 +169,9 @@ functional tests on the build platforms, newer hosted macOS, and self-hosted Int
 Each pack must install in under 10 seconds and preserve PHP and services. Archives
 are published to the separate `extensions` release and Cloudflare only after all
 selected tests pass. Installer updates are published even when recipes are unchanged.
+If publication fails after validation, run `publish-extensions.yml` with that run's
+`run-id`. It checks every source build and compatibility job before publishing the
+existing artifacts, without rebuilding PHP or extensions.
 Nightly packs also track the PHP source commit, so a new nightly with the same
 version string rebuilds its extension modules while reusing dependency bottles.
 

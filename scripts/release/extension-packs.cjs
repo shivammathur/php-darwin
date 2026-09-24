@@ -4,6 +4,7 @@ const { command, digest, key, validateEntry, origins } = require('../installer/i
 const configuration = require('../../conf/extension-packs.json');
 const platforms = require('../../conf/platforms.json');
 const { builderHash } = require('../build/extension-pack.cjs');
+const { exec } = require('../cache/upstream-bottle-cache.cjs');
 const root = path.resolve(__dirname, '../..');
 
 function versionBatches(value = configuration.versions.join(' ')) {
@@ -114,7 +115,22 @@ function scan(directory) {
     return item.isDirectory() ? scan(file) : [file];
   });
 }
-async function publish(directory) {
+function validatePublishRun(id, run = command) {
+  if (!/^[1-9][0-9]*$/.test(id || '')) throw new Error('Invalid source workflow run');
+  const route = `repos/shivammathur/php-darwin/actions/runs/${id}`;
+  const source = JSON.parse(run('gh', ['api', route]));
+  if (source.status !== 'completed' || source.head_branch !== 'main' ||
+      source.head_repository?.full_name !== 'shivammathur/php-darwin' ||
+      source.path !== '.github/workflows/cache-extensions.yml') throw new Error('Untrusted extension source run');
+  const jobs = JSON.parse(run('gh', ['api', '--paginate', '--slurp', `${route}/jobs?per_page=100`])).flatMap(page => page.jobs);
+  const builds = jobs.filter(job => /^(imagick|mongodb|memcached) \/ PHP /.test(job.name));
+  const tests = jobs.filter(job => /^Test PHP /.test(job.name));
+  if (!builds.length || !tests.length || [...builds, ...tests].some(job => job.status !== 'completed' || job.conclusion !== 'success')) {
+    throw new Error('Source extension builds and compatibility tests must all pass');
+  }
+  console.log(`Validated source run ${id}: ${builds.length} builds and ${tests.length} compatibility jobs`);
+}
+async function publish(directory, { run = exec } = {}) {
   const entries = scan(directory).filter(file => file.endsWith('.json')).map(file => {
     const entry = validateEntry(JSON.parse(fs.readFileSync(file)));
     const archive = path.join(path.dirname(file), entry.file);
@@ -137,35 +153,46 @@ async function publish(directory) {
     headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, 'X-GitHub-Api-Version': '2022-11-28' },
     signal: AbortSignal.timeout(15000),
   });
+  await response.body?.cancel();
   if (response.status === 404 && entries.length) {
-    command('gh', ['release', 'create', release, '--repo', repo, '--title', 'Optional PHP extension caches', '--notes', '', '--latest=false']);
+    await run('gh', ['release', 'create', release, '--repo', repo, '--title', 'Optional PHP extension caches', '--notes', '', '--latest=false']);
   } else if (!response.ok) throw new Error(`Cannot inspect extension release: HTTP ${response.status}`);
   const staging = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP || '/tmp', 'extension-release-'));
   async function mirror(file, immutable) {
     const name = path.basename(file);
-    command('aws', ['--endpoint-url', process.env.CF_R2_AWS_S3_ENDPOINT, 's3', 'cp', file, `s3://php-darwin/extensions/${name}`,
+    console.log(`Uploading Cloudflare object: ${name}`);
+    await run('aws', ['--endpoint-url', process.env.CF_R2_AWS_S3_ENDPOINT, 's3', 'cp', file, `s3://php-darwin/extensions/${name}`,
       '--cache-control', immutable ? 'public, max-age=31536000, immutable' : 'no-cache, max-age=0, must-revalidate',
       '--cli-connect-timeout', '5', '--cli-read-timeout', '60', '--only-show-errors'], { env });
-    const response = await fetch(`${origins[1]}/${name}?verify=${Date.now()}`, { signal: AbortSignal.timeout(45000) });
-    const received = Buffer.from(await response.arrayBuffer());
     const expected = digest(fs.readFileSync(file));
-    if (!response.ok || digest(received) !== expected) {
+    const downloaded = path.join(staging, `verify-${name}`);
+    let received;
+    try {
+      // Keep upload subprocesses asynchronous and use the same curl transport
+      // as dependency publication, without retaining a fetch socket between uploads.
+      const status = await run('curl', ['-q', '--silent', '--show-error', '--location',
+        '--proto', '=https', '--proto-redir', '=https', '--connect-timeout', '5', '--max-time', '45',
+        '--output', downloaded, '--write-out', '%{http_code}', `${origins[1]}/${name}?verify=${Date.now()}`]);
+      received = fs.readFileSync(downloaded);
+      if (status !== '200' || digest(received) !== expected) {
+        throw new Error(`HTTP ${status}, expected ${expected}, received ${digest(received)} (${received.length} bytes)`);
+      }
+    } catch (error) {
       // Distinguish a missing R2 object from a public-edge failure. Never
       // repeat an upload or publish a manifest after failed verification.
       try {
-        const object = JSON.parse(command('aws', ['--endpoint-url', process.env.CF_R2_AWS_S3_ENDPOINT,
+        const object = JSON.parse(await run('aws', ['--endpoint-url', process.env.CF_R2_AWS_S3_ENDPOINT,
           's3api', 'head-object', '--bucket', 'php-darwin', '--key', `extensions/${name}`,
           '--cli-connect-timeout', '5', '--cli-read-timeout', '30'], { env }));
         console.error(`R2 object exists: ${name}; ${object.ContentLength} bytes, ETag ${object.ETag}`);
       } catch { console.error(`R2 HeadObject could not confirm the uploaded object: ${name}`); }
-      throw new Error(`Mirror verification failed: ${name}; HTTP ${response.status}, expected ${expected}, ` +
-        `received ${digest(received)} (${received.length} bytes)`);
-    }
+      throw new Error(`Mirror verification failed: ${name}; ${error.message}`, { cause: error });
+    } finally { fs.rmSync(downloaded, { force: true }); }
     console.log(`Verified Cloudflare object: ${name}; ${received.length} bytes, SHA256 ${expected}`);
   }
   try {
     for (const { archive } of entries) {
-      command('gh', ['release', 'upload', release, archive, '--repo', repo, '--clobber']);
+      await run('gh', ['release', 'upload', release, archive, '--repo', repo, '--clobber']);
       await mirror(archive, true);
     }
     // Commit each PHP-version manifest only after every referenced archive is
@@ -177,17 +204,18 @@ async function publish(directory) {
       const manifest = path.join(staging, `extensions-${version}-manifest.json`);
       fs.writeFileSync(manifest, JSON.stringify({ schema: 1, assets: [...merged.values()].sort((a, b) => key(a).localeCompare(key(b))) }, null, 2) + '\n');
       await mirror(manifest, false);
-      command('gh', ['release', 'upload', release, manifest, '--repo', repo, '--clobber']);
+      await run('gh', ['release', 'upload', release, manifest, '--repo', repo, '--clobber']);
     }
     const installer = path.join(root, 'scripts/installer/install-extensions.cjs');
     await mirror(installer, false);
-    command('gh', ['release', 'upload', release, installer, '--repo', repo, '--clobber']);
+    await run('gh', ['release', 'upload', release, installer, '--repo', repo, '--clobber']);
   } finally { fs.rmSync(staging, { recursive: true, force: true }); }
 }
-module.exports = { unchanged, builderHash, readManifest, plan, publish, compatibilityMatrix, versionBatches, dispatch };
+module.exports = { unchanged, builderHash, readManifest, plan, publish, compatibilityMatrix, versionBatches, dispatch, validatePublishRun };
 if (require.main === module) (async () => {
   if (process.argv[2] === 'dispatch') await dispatch();
   else if (process.argv[2] === 'plan') await plan();
   else if (process.argv[2] === 'publish') await publish(process.argv[3]);
-  else throw new Error('Usage: extension-packs.cjs plan|publish|dispatch');
+  else if (process.argv[2] === 'validate-publish-run') validatePublishRun(process.argv[3]);
+  else throw new Error('Usage: extension-packs.cjs plan|publish|dispatch|validate-publish-run');
 })().catch(error => { console.error(error); process.exitCode = 1; });

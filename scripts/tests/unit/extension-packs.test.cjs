@@ -5,10 +5,74 @@ const path = require('node:path');
 const os = require('node:os');
 const http = require('node:http');
 const { prefetch, download, digest, key, validateEntry, validateContext, safePath, inspectTree, packEnvironment, relocateResources, phpApi } = require('../../installer/install-extensions.cjs');
-const { unchanged, builderHash, compatibilityMatrix, versionBatches, dispatch } = require('../../release/extension-packs.cjs');
+const { unchanged, builderHash, compatibilityMatrix, versionBatches, dispatch, publish, validatePublishRun } = require('../../release/extension-packs.cjs');
 const { copyRuntime } = require('../../build/extension-pack.cjs');
 
 const context = { php_version: '8.4', build: 'release', thread_safety: 'nts', architecture: 'arm64' };
+test('publication recovery accepts only completed main builds with every compatibility job passing', () => {
+  const source = { status: 'completed', conclusion: 'failure', head_branch: 'main',
+    head_repository: { full_name: 'shivammathur/php-darwin' }, path: '.github/workflows/cache-extensions.yml' };
+  const jobs = ['imagick / PHP 8.4 / release-nts / arm64', 'Test PHP 8.4 release-nts on macos-26', 'publish']
+    .map(name => ({ name, status: 'completed', conclusion: name === 'publish' ? 'failure' : 'success' }));
+  const run = (_program, args) => JSON.stringify(args.includes('--paginate') ? [{ jobs }] : source);
+  validatePublishRun('123', run);
+  for (const name of ['head_branch', 'path']) {
+    const previous = source[name]; source[name] = 'untrusted';
+    assert.throws(() => validatePublishRun('123', run)); source[name] = previous;
+  }
+  for (const job of jobs.slice(0, 2)) {
+    job.conclusion = 'failure'; assert.throws(() => validatePublishRun('123', run)); job.conclusion = 'success';
+  }
+  source.status = 'in_progress'; assert.throws(() => validatePublishRun('123', run));
+  assert.throws(() => validatePublishRun('../invalid', run));
+});
+test('publication awaits transfers, verifies bytes and commits manifests last without retrying failures', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-publish-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  for (const name of ['CF_R2_AWS_ACCESS_KEY_ID', 'CF_R2_AWS_SECRET_ACCESS_KEY', 'CF_R2_AWS_S3_ENDPOINT']) {
+    const previous = process.env[name]; process.env[name] = 'fixture';
+    t.after(() => { if (previous === undefined) delete process.env[name]; else process.env[name] = previous; });
+  }
+  t.mock.method(globalThis, 'fetch', async url => new Response('', { status: url.includes('api.github.com') ? 200 : 404 }));
+  const metadata = entry('imagick');
+  fs.writeFileSync(path.join(directory, 'pack.json'), JSON.stringify(metadata));
+  fs.writeFileSync(path.join(directory, metadata.file), 'imagick');
+  fs.writeFileSync(path.join(directory, 'validation.txt'), JSON.stringify({ name: metadata.name, sha256: metadata.sha256,
+    install_seconds: 1, php_preserved: true, services_preserved: true }));
+  for (const failure of ['', 'timeout', 'checksum', '404']) {
+    const calls = [], uploaded = new Map();
+    const run = async (program, args, options) => {
+      await new Promise(resolve => setImmediate(resolve));
+      calls.push({ program, args });
+      if (program === 'aws' && args.includes('cp')) {
+        assert.equal(options.env.AWS_MAX_ATTEMPTS, '1');
+        const file = args[args.indexOf('cp') + 1];
+        uploaded.set(path.basename(file), fs.readFileSync(file));
+      } else if (program === 'aws') return JSON.stringify({ ContentLength: 7, ETag: 'fixture' });
+      else if (program === 'curl') {
+        assert.equal(args[args.indexOf('--max-time') + 1], '45');
+        assert.ok(!args.includes('--retry'));
+        if (failure === 'timeout') throw new Error('curl exited 28');
+        const name = path.basename(new URL(args.at(-1)).pathname);
+        fs.writeFileSync(args[args.indexOf('--output') + 1], failure === 'checksum' ? 'corrupt' : uploaded.get(name));
+        return failure === '404' ? '404' : '200';
+      }
+      return '';
+    };
+    if (failure) {
+      await assert.rejects(publish(directory, { run }), /Mirror verification failed: imagick-/);
+      assert.equal(calls.filter(call => call.program === 'aws' && call.args.includes('cp')).length, 1);
+      assert.ok(!calls.some(call => call.args.some(arg => arg.endsWith('-manifest.json'))));
+    } else {
+      await publish(directory, { run });
+      assert.deepEqual(calls.filter(call => call.program === 'gh').map(call => path.basename(call.args[3])),
+        [metadata.file, 'extensions-8.4-manifest.json', 'install-extensions.cjs']);
+      const manifestUpload = calls.findIndex(call => call.program === 'aws' && call.args.some(arg => arg.endsWith('-manifest.json')));
+      const archiveCheck = calls.findIndex(call => call.program === 'curl');
+      assert.ok(manifestUpload > archiveCheck);
+    }
+  }
+});
 test('scheduled batches cover every configured PHP version within both matrix limits', () => {
   const versions = fs.readFileSync(path.resolve(__dirname, '../../../conf/versions'), 'utf8').split('\n')
     .filter(line => /^(stable|nightly) /.test(line)).map(line => line.split(' ')[1]);
