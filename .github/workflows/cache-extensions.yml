@@ -48,7 +48,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: extension-cache-${{ github.ref }}
+  # A focused build must not block seeding other PHP versions. Publication has
+  # its own lock so concurrent batches still merge manifests in order.
+  group: extension-cache-${{ github.ref }}-${{ inputs.php-versions || (github.event_name == 'schedule' && '8.2 8.3 8.4 8.5') || '8.4' }}
   cancel-in-progress: false
 
 jobs:
