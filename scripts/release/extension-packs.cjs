@@ -161,9 +161,12 @@ async function publish(directory, { run = exec } = {}) {
   async function mirror(file, immutable) {
     const name = path.basename(file);
     console.log(`Uploading Cloudflare object: ${name}`);
-    await run('aws', ['--endpoint-url', process.env.CF_R2_AWS_S3_ENDPOINT, 's3', 'cp', file, `s3://php-darwin/extensions/${name}`,
+    // Packs are capped at 180 MB, well below R2's 5 GiB single-PUT limit.
+    // Avoid the multipart lifecycle and its extra requests for these small files.
+    await run('aws', ['--endpoint-url', process.env.CF_R2_AWS_S3_ENDPOINT, 's3api', 'put-object',
+      '--bucket', 'php-darwin', '--key', `extensions/${name}`, '--body', file,
       '--cache-control', immutable ? 'public, max-age=31536000, immutable' : 'no-cache, max-age=0, must-revalidate',
-      '--cli-connect-timeout', '5', '--cli-read-timeout', '60', '--only-show-errors'], { env });
+      '--cli-connect-timeout', '5', '--cli-read-timeout', '60'], { env });
     const expected = digest(fs.readFileSync(file));
     const downloaded = path.join(staging, `verify-${name}`);
     let received;

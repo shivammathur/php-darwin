@@ -39,14 +39,16 @@ test('publication awaits transfers, verifies bytes and commits manifests last wi
   fs.writeFileSync(path.join(directory, metadata.file), 'imagick');
   fs.writeFileSync(path.join(directory, 'validation.txt'), JSON.stringify({ name: metadata.name, sha256: metadata.sha256,
     install_seconds: 1, php_preserved: true, services_preserved: true }));
-  for (const failure of ['', 'timeout', 'checksum', '404']) {
+  for (const failure of ['', 'upload', 'timeout', 'checksum', '404']) {
     const calls = [], uploaded = new Map();
     const run = async (program, args, options) => {
       await new Promise(resolve => setImmediate(resolve));
       calls.push({ program, args });
-      if (program === 'aws' && args.includes('cp')) {
+      if (program === 'aws' && args.includes('put-object')) {
         assert.equal(options.env.AWS_MAX_ATTEMPTS, '1');
-        const file = args[args.indexOf('cp') + 1];
+        const file = args[args.indexOf('--body') + 1];
+        assert.equal(args[args.indexOf('--key') + 1], `extensions/${path.basename(file)}`);
+        if (failure === 'upload') throw new Error('upload rejected');
         uploaded.set(path.basename(file), fs.readFileSync(file));
       } else if (program === 'aws') return JSON.stringify({ ContentLength: 7, ETag: 'fixture' });
       else if (program === 'curl') {
@@ -60,8 +62,8 @@ test('publication awaits transfers, verifies bytes and commits manifests last wi
       return '';
     };
     if (failure) {
-      await assert.rejects(publish(directory, { run }), /Mirror verification failed: imagick-/);
-      assert.equal(calls.filter(call => call.program === 'aws' && call.args.includes('cp')).length, 1);
+      await assert.rejects(publish(directory, { run }), failure === 'upload' ? /upload rejected/ : /Mirror verification failed: imagick-/);
+      assert.equal(calls.filter(call => call.program === 'aws' && call.args.includes('put-object')).length, 1);
       assert.ok(!calls.some(call => call.args.some(arg => arg.endsWith('-manifest.json'))));
     } else {
       await publish(directory, { run });
