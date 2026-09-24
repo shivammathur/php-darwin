@@ -4,10 +4,21 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const http = require('node:http');
-const { prefetch, download, digest, key, validateEntry, safePath, inspectTree, packEnvironment, relocateResources } = require('../../installer/install-extensions.cjs');
+const { prefetch, download, digest, key, validateEntry, safePath, inspectTree, packEnvironment, relocateResources, phpApi } = require('../../installer/install-extensions.cjs');
 const { unchanged, builderHash } = require('../../release/extension-packs.cjs');
 
 const context = { php_version: '8.4', build: 'release', thread_safety: 'nts', architecture: 'arm64' };
+test('read the module API from the installed PHP headers using supported php-config options', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-php-api-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(directory, 'Zend'));
+  fs.writeFileSync(path.join(directory, 'Zend/zend_modules.h'), '#define ZEND_MODULE_API_NO 20240924\n');
+  const config = path.join(directory, 'php-config');
+  fs.writeFileSync(config, '#!/bin/sh\n[ "$1" = --include-dir ] || exit 1\ndirname "$0"\n', { mode: 0o755 });
+  assert.equal(phpApi(config), '20240924');
+  fs.writeFileSync(path.join(directory, 'Zend/zend_modules.h'), 'invalid');
+  assert.throws(() => phpApi(config), /Missing PHP module API/);
+});
 function entry(name, content = Buffer.from(name)) {
   const metadata = { ...context, name, schema: 1, sha256: digest(content), inputs_sha256: '1'.repeat(64),
     php_api: '20240924', minimum_macos: 14, bytes: content.length };

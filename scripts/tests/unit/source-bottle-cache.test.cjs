@@ -66,6 +66,9 @@ function fixture(t) {
     log: () => {}, warn: message => warnings.push(message),
     run: (program, argv, options = {}) => {
       assert.equal(program, 'brew');
+      if (argv[0] === 'install' && argv.at(-1).endsWith('.bottle.tar.gz')) {
+        assert.equal(options.env.HOMEBREW_DEVELOPER, '1');
+      }
       events.push(argv);
       if (argv[0] === 'deps') return 'libxml2\n';
       if (argv[0] === 'bottle') {

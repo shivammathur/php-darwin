@@ -14,7 +14,7 @@ const origins = ['https://github.com/shivammathur/php-darwin/releases/download/e
 const hex = /^[a-f0-9]{64}$/;
 function command(program, args, options = {}) {
   const result = spawnSync(program, args, { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, ...options });
-  if (result.error || result.status !== 0) throw result.error || new Error(`${program} failed: ${result.stderr}`);
+  if (result.error || result.status !== 0) throw result.error || new Error(`${program} ${args.join(' ')} failed (${result.status}): ${result.stderr || result.stdout}`);
   return result.stdout.trim();
 }
 function digest(data) { return crypto.createHash('sha256').update(data).digest('hex'); }
@@ -100,12 +100,19 @@ async function prefetch(directory, context, requested, options = {}) {
   });
   return results.filter(result => result.status === 'fulfilled').map(result => result.value);
 }
+function phpApi(phpConfig = 'php-config') {
+  const include = command(phpConfig, ['--include-dir']);
+  const header = fs.readFileSync(path.join(include, 'Zend/zend_modules.h'), 'utf8');
+  const match = header.match(/^#define\s+ZEND_MODULE_API_NO\s+(\d{8})\b/m);
+  if (!match) throw new Error('Missing PHP module API in installed headers');
+  return match[1];
+}
 function runtimeContext(phpConfig = 'php-config', php = 'php') {
   const value = command(php, ['-n', '-r', 'echo PHP_MAJOR_VERSION,".",PHP_MINOR_VERSION," ",PHP_DEBUG," ",PHP_ZTS;']).split(' ');
   return { php_version: value[0], build: value[1] === '1' ? 'debug' : 'release',
     thread_safety: value[2] === '1' ? 'zts' : 'nts',
     architecture: process.arch === 'arm64' ? 'arm64' : 'x86_64',
-    php_api: command(phpConfig, ['--phpapi']), extension_dir: command(phpConfig, ['--extension-dir']) };
+    php_api: phpApi(phpConfig), extension_dir: command(phpConfig, ['--extension-dir']) };
 }
 function inspectTree(root) {
   function walk(directory) {
@@ -214,7 +221,7 @@ function install(directory, name, { phpConfig = 'php-config', php = 'php' } = {}
     fs.rmSync(stage, { recursive: true, force: true });
   }
 }
-module.exports = { packs, origins, command, digest, safePath, key, validateContext, validateEntry,
+module.exports = { packs, origins, command, digest, safePath, key, validateContext, validateEntry, phpApi,
   download, prefetch, runtimeContext, inspectTree, packEnvironment, relocateResources, install };
 if (require.main === module) (async () => {
   const [mode, directory, ...args] = process.argv.slice(2);

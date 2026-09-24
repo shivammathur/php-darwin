@@ -154,7 +154,11 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
     }
     if (bottle) {
       log(`Restoring source bottle: ${item.full_name} ${item.version}`);
-      run('brew', ['install', '--formula', ...flags, path.resolve(bottle)], { inherit: true });
+      // Homebrew permits local bottle paths in developer mode. Scope this to
+      // installing the exact, checksum-verified bottle we just restored.
+      run('brew', ['install', '--formula', ...flags, path.resolve(bottle)], {
+        inherit: true, env: { HOMEBREW_DEVELOPER: '1' },
+      });
       result.restored++;
       metric({ result: 'restored', key });
       continue;
@@ -172,7 +176,9 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
           warn(`Source cache unavailable while owning ${item.full_name}: ${error.message}`);
         }
         if (cached) {
-          run('brew', ['install', '--formula', ...flags, path.resolve(cached)], { inherit: true });
+          run('brew', ['install', '--formula', ...flags, path.resolve(cached)], {
+            inherit: true, env: { HOMEBREW_DEVELOPER: '1' },
+          });
           result.restored++;
           log(`Restored source bottle after coordination: ${item.full_name} ${item.version}`);
           metric({ result: 'restored-after-wait', key, waitedMs });

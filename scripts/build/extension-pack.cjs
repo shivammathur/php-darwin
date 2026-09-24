@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { command, digest, key, packs, inspectTree, packEnvironment } = require('../installer/install-extensions.cjs');
+const { command, digest, key, packs, inspectTree, packEnvironment, phpApi } = require('../installer/install-extensions.cjs');
 
 const macho = new Set(['cffaedfe', 'cefaedfe', 'feedfacf', 'feedface', 'cafebabe', 'bebafeca']);
 function isMachO(file) {
@@ -41,6 +41,7 @@ function sourceRecords(formulae) {
 }
 function packageExtension({ name, php_version, build, thread_safety, architecture, output, extensionDirectory, php }) {
   if (!Object.hasOwn(packs, name)) throw new Error('Unknown extension pack');
+  output = path.resolve(output);
   const prefix = command('brew', ['--prefix']);
   const references = packs[name].map(module => `shivammathur/extensions/${module}@${php_version}`);
   const runtime = new Set();
@@ -52,7 +53,7 @@ function packageExtension({ name, php_version, build, thread_safety, architectur
   if ([...runtime].some(formula => /(?:^|\/)php(?:@|$)/.test(formula))) throw new Error('Extension runtime must not include PHP');
   const info = runtime.size ? JSON.parse(command('brew', ['info', '--json=v2', '--formula', ...runtime])).formulae : [];
   const metadata = { schema: 1, name, php_version, build, thread_safety, architecture,
-    php_api: command(path.join(path.dirname(php), 'php-config'), ['--phpapi']),
+    php_api: phpApi(path.join(path.dirname(php), 'php-config')),
     php_semver: command(php, ['-n', '-r', 'echo PHP_VERSION;']),
     minimum_macos: architecture === 'arm64' ? 14 : 15, modules: packs[name], environment: {},
     source_records: sourceRecords([...new Set([...references, ...runtime])]),
