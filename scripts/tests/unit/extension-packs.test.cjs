@@ -26,7 +26,7 @@ test('publication recovery accepts only completed main builds with every compati
   source.status = 'in_progress'; assert.throws(() => validatePublishRun('123', run));
   assert.throws(() => validatePublishRun('../invalid', run));
 });
-test('publication awaits transfers, verifies bytes and commits manifests last without retrying failures', async t => {
+test('publication verifies bytes and commits manifests last without retrying permanent failures', async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-publish-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   for (const name of ['CF_R2_AWS_ACCESS_KEY_ID', 'CF_R2_AWS_SECRET_ACCESS_KEY', 'CF_R2_AWS_S3_ENDPOINT']) {
@@ -44,6 +44,7 @@ test('publication awaits transfers, verifies bytes and commits manifests last wi
     const run = async (program, args, options) => {
       await new Promise(resolve => setImmediate(resolve));
       calls.push({ program, args });
+      if (program === 'gh' && args[0] === 'api') return JSON.stringify(args.includes('--paginate') ? [[]] : { id: 1 });
       if (program === 'aws' && args.includes('put-object')) {
         assert.equal(options.env.AWS_MAX_ATTEMPTS, '1');
         const file = args[args.indexOf('--body') + 1];
@@ -54,20 +55,21 @@ test('publication awaits transfers, verifies bytes and commits manifests last wi
       else if (program === 'curl') {
         assert.equal(args[args.indexOf('--max-time') + 1], '45');
         assert.ok(!args.includes('--retry'));
-        if (failure === 'timeout') throw new Error('curl exited 28');
         const name = path.basename(new URL(args.at(-1)).pathname);
+        if (!uploaded.has(name)) return '404';
+        if (failure === 'timeout') throw new Error('curl exited 28');
         fs.writeFileSync(args[args.indexOf('--output') + 1], failure === 'checksum' ? 'corrupt' : uploaded.get(name));
         return failure === '404' ? '404' : '200';
       }
       return '';
     };
     if (failure) {
-      await assert.rejects(publish(directory, { run }), failure === 'upload' ? /upload rejected/ : /Mirror verification failed: imagick-/);
+      await assert.rejects(publish(directory, { run }), /upload rejected|curl exited 28|Checksum\/size mismatch|HTTP 404/);
       assert.equal(calls.filter(call => call.program === 'aws' && call.args.includes('put-object')).length, 1);
       assert.ok(!calls.some(call => call.args.some(arg => arg.endsWith('-manifest.json'))));
     } else {
       await publish(directory, { run });
-      assert.deepEqual(calls.filter(call => call.program === 'gh').map(call => path.basename(call.args[3])),
+      assert.deepEqual(calls.filter(call => call.program === 'gh' && call.args[0] === 'release').map(call => path.basename(call.args[3])),
         [metadata.file, 'extensions-8.4-manifest.json', 'install-extensions.cjs']);
       const manifestUpload = calls.findIndex(call => call.program === 'aws' && call.args.some(arg => arg.endsWith('-manifest.json')));
       const archiveCheck = calls.findIndex(call => call.program === 'curl');

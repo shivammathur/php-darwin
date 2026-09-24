@@ -38,7 +38,6 @@ on:
       - scripts/build/extension-formula.rb
       - scripts/build/prepare-extension-pack.sh
       - scripts/installer/install-extensions.cjs
-      - scripts/release/extension-packs.cjs
       - scripts/tests/native/extension-pack.test.cjs
       - scripts/tests/native/extension-pack-compatibility.test.cjs
       - conf/extension-packs.json
@@ -233,6 +232,7 @@ jobs:
       (needs.compatibility.result == 'success' || needs.compatibility.result == 'skipped') &&
       github.ref == 'refs/heads/main' && inputs.publish
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
       actions: read
@@ -250,6 +250,7 @@ jobs:
           path: builds/extensions
       - name: Publish archives, then commit the version manifests
         env:
+          EXTENSION_PUBLISH_REPORT: ${{ runner.temp }}/extension-publication.json
           GH_TOKEN: ${{ github.token }}
           CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
           CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
@@ -258,3 +259,21 @@ jobs:
           mkdir -p builds/extensions
           node --test scripts/tests/unit/extension-packs.test.cjs
           node scripts/release/extension-packs.cjs publish builds/extensions
+      - name: Preserve publication diagnostics
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: publication-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/extension-publication.json
+          if-no-files-found: ignore
+      - name: Explain publication recovery
+        if: failure()
+        env:
+          SOURCE_RUN: ${{ github.run_id }}
+        run: |
+          {
+            echo 'Builds and compatibility tests already passed. Rerun only failed jobs to resume publication.'
+            echo 'To use a newer publisher without rebuilding, run:'
+            echo "\`gh workflow run publish-extensions.yml -R shivammathur/php-darwin -f run-id=$SOURCE_RUN\`"
+          } >> "$GITHUB_STEP_SUMMARY"
