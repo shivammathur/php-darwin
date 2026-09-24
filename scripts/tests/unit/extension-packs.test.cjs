@@ -97,11 +97,13 @@ test('private runtime symlinks must resolve inside the archive', t => {
   fs.symlinkSync('/etc/passwd', path.join(directory, 'lib/c'));
   assert.throws(() => inspectTree(directory), /Unsafe/);
 });
-test('only ImageMagick resource paths can be exported by a pack', () => {
+test('only known runtime resource paths can be exported by a pack', () => {
   assert.deepEqual(packEnvironment({ environment: { MAGICK_CONFIGURE_PATH: ['kegs/imagemagick/etc'] } }, '/pack'),
     { MAGICK_CONFIGURE_PATH: '/pack/kegs/imagemagick/etc' });
   assert.throws(() => packEnvironment({ environment: { PATH: ['bin'] } }, '/pack'));
   assert.throws(() => packEnvironment({ environment: { MAGICK_CONFIGURE_PATH: ['../escape'] } }, '/pack'));
+  assert.deepEqual(packEnvironment({ environment: { SASL_PATH: ['kegs/cyrus-sasl/lib/sasl2'] } }, '/pack'),
+    { SASL_PATH: '/pack/kegs/cyrus-sasl/lib/sasl2' });
 });
 test('codec descriptors use the installed private runtime directory', t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-resources-'));

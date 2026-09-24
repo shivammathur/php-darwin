@@ -155,6 +155,10 @@ function packageExtension({ name, php_version, build, thread_safety, architectur
         metadata.relocations.push(path.relative(stage, file));
       }
     }
+    const sasl = mappings.find(item => item.name === 'cyrus-sasl');
+    if (sasl && fs.existsSync(path.join(sasl.destination, 'lib/sasl2'))) {
+      metadata.environment.SASL_PATH = [path.join(sasl.relative, 'lib/sasl2')];
+    }
     const magick = mappings.find(item => item.name === 'imagemagick');
     if (magick) {
       const directories = [...new Set(files(magick.destination).map(file => path.dirname(file)))];

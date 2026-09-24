@@ -91,7 +91,7 @@ async function prefetch(directory, context, requested, options = {}) {
     if (candidates.length !== 1) throw new Error(`No unique compatible archive for ${name}`);
     const entry = validateEntry(candidates[0]);
     console.log(`Downloading ${name} cache (${entry.bytes} bytes)`);
-    await download(entry.file, path.join(directory, entry.file), { ...options, ...entry });
+    await download(entry.file, path.join(directory, entry.file), { ...options, sha256: entry.sha256, bytes: entry.bytes });
     await fsp.writeFile(path.join(directory, `${name}.json`), JSON.stringify(entry));
     return name;
   }));
@@ -131,7 +131,7 @@ function inspectTree(root) {
 function packEnvironment(metadata, destination) {
   const environment = {};
   for (const [name, values] of Object.entries(metadata.environment || {})) {
-    if (!['MAGICK_CONFIGURE_PATH', 'MAGICK_CODER_MODULE_PATH', 'MAGICK_FILTER_MODULE_PATH'].includes(name) ||
+    if (!['MAGICK_CONFIGURE_PATH', 'MAGICK_CODER_MODULE_PATH', 'MAGICK_FILTER_MODULE_PATH', 'SASL_PATH'].includes(name) ||
         !Array.isArray(values) || !values.every(safePath)) throw new Error('Invalid pack environment');
     environment[name] = values.map(value => path.join(destination, value)).join(path.delimiter);
   }

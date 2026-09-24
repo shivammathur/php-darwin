@@ -44,6 +44,12 @@ try {
     memcached: '$m=new Memcached(); foreach ([Memcached::SERIALIZER_PHP,Memcached::SERIALIZER_IGBINARY,Memcached::SERIALIZER_MSGPACK] as $s) { if (!$m->setOption(Memcached::OPT_SERIALIZER,$s)) { exit(1); } } echo "PHP igbinary msgpack serializers passed\\n";',
   };
   console.log(command(php, ['-n', ...load, '-r', checks[name]], { env: { ...process.env, ...result.environment } }));
+  if (name === 'mongodb') {
+    assert.ok(result.environment.SASL_PATH, 'MongoDB must use its private SASL plugins');
+    const viewer = path.resolve(result.environment.SASL_PATH, '../../sbin/pluginviewer');
+    assert.match(command(viewer, ['-c'], { env: { ...process.env, ...result.environment } }), /\bPLAIN\b/);
+    console.log('Private SASL authentication plugins passed');
+  }
   assert.equal(digest(fs.readFileSync(fs.realpathSync(php))), phpHash);
   assert.deepEqual(command('brew', ['list', '--versions']).split('\n').filter(line => /^php(?:@| )/.test(line)), beforeKegs);
   assert.equal(command('brew', ['services', 'list', '--json']), beforeServices);
