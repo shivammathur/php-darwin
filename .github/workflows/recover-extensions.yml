@@ -1,0 +1,127 @@
+name: Recover extension cache validation
+run-name: Recover extension caches from run ${{ inputs.run-id }}
+on:
+  workflow_dispatch:
+    inputs:
+      run-id:
+        description: Completed extension build run to test with the current workflow
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: extension-recovery-${{ inputs.run-id }}
+  cancel-in-progress: false
+jobs:
+  plan:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      artifact-ids: ${{ steps.plan.outputs.artifact-ids }}
+      keys: ${{ steps.plan.outputs.keys }}
+      extensions-commit: ${{ steps.sources.outputs.commit }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Select successful build artifacts
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN: ${{ inputs.run-id }}
+        run: node scripts/release/extension-recovery.cjs plan "$SOURCE_RUN"
+      - name: Pin the extension tap used during test preparation
+        id: sources
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "commit=$(gh api repos/shivammathur/homebrew-extensions/commits/main --jq .sha)" >> "$GITHUB_OUTPUT"
+
+  compatibility:
+    needs: plan
+    name: Test PHP ${{ matrix.php_version }} ${{ matrix.build }}-${{ matrix.thread_safety }} on ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      PHP_VERSION: ${{ matrix.php_version }}
+      BUILD: ${{ matrix.build }}
+      TS: ${{ matrix.thread_safety }}
+      ARCH: ${{ matrix.architecture }}
+      EXTENSION_PACKS: ${{ toJSON(matrix.packs) }}
+      HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.plan.outputs.extensions-commit }}
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_INSTALL_CLEANUP: '1'
+      HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/node-runtime
+      - name: Restore archive tools
+        run: |
+          "$PHP_DARWIN_NODE" scripts/cache/upstream-bottle-cache.cjs tools
+          brew install --verbose jq zstd
+      - name: Restore published PHP
+        run: bash scripts/build/prepare-extension-pack.sh
+      - uses: ./.github/actions/download-artifacts
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.run-id }}
+          artifact-ids: ${{ matrix.artifact_ids }}
+          path: builds/extensions
+      - name: Test the selected archives without rebuilding
+        run: '"$PHP_DARWIN_NODE" scripts/tests/native/extension-pack-compatibility.test.cjs'
+      - name: Preserve compatibility reports
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: compatibility-${{ matrix.php_version }}-${{ matrix.build }}-${{ matrix.thread_safety }}-${{ matrix.runner }}
+          path: builds/extensions/*/validation.txt
+          if-no-files-found: error
+
+  publish:
+    needs: [plan, compatibility]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      actions: read
+    concurrency:
+      group: extension-cache-publish
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/download-artifacts
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.run-id }}
+          artifact-ids: ${{ needs.plan.outputs.artifact-ids }}
+          path: builds/extensions
+      - name: Verify the publication contains exactly the tested variants
+        env:
+          EXTENSION_RECOVERY_KEYS: ${{ needs.plan.outputs.keys }}
+        run: node scripts/release/extension-recovery.cjs verify builds/extensions
+      - name: Publish the verified archives
+        env:
+          EXTENSION_PUBLISH_REPORT: ${{ runner.temp }}/extension-publication.json
+          GH_TOKEN: ${{ github.token }}
+          CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
+          CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
+          CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
+        run: node scripts/release/extension-packs.cjs publish builds/extensions
+      - name: Preserve publication diagnostics
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: publication-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/extension-publication.json
+          if-no-files-found: ignore
+      - name: Explain recovery
+        if: failure()
+        run: echo 'Rerun failed jobs to resume publication. Successful native tests and builds do not need to run again.' >> "$GITHUB_STEP_SUMMARY"

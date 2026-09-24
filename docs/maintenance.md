@@ -172,6 +172,12 @@ selected tests pass. Installer updates are published even when recipes are uncha
 If publication fails after validation, run `publish-extensions.yml` with that run's
 `run-id`. It checks every source build and compatibility job before publishing the
 existing artifacts, without rebuilding PHP or extensions.
+If builds partly failed or the compatibility workflow needs a fix, run
+`recover-extensions.yml` with the completed source `run-id`. It selects only
+successful builds, pins their artifact IDs, tests those archives on every required
+compatibility platform using the current checks, and publishes exactly that set.
+Failed builds remain excluded and can be rebuilt separately. Missing or expired
+artifacts stop recovery; rerunning failed recovery jobs preserves passing work.
 Publication resumes by reusing GitHub assets with matching SHA256 digests and
 Cloudflare objects whose downloaded bytes pass SHA256 verification. Small archives
 use single-object uploads. A transient timeout, connection failure or service error

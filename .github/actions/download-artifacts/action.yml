@@ -1,6 +1,9 @@
 name: Download artifacts with bounded retries
 description: Retry transient artifact listing or transfer failures without changing the selected run or artifacts
 inputs:
+  artifact-ids:
+    description: Exact artifact IDs, for recovery from a fixed set of successful builds
+    required: false
   name:
     description: Exact artifact name
     required: false
@@ -30,6 +33,7 @@ runs:
       continue-on-error: true
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       with:
+        artifact-ids: ${{ inputs.artifact-ids }}
         name: ${{ inputs.name }}
         pattern: ${{ inputs.pattern }}
         path: ${{ inputs.path }}
@@ -48,6 +52,7 @@ runs:
       continue-on-error: true
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       with:
+        artifact-ids: ${{ inputs.artifact-ids }}
         name: ${{ inputs.name }}
         pattern: ${{ inputs.pattern }}
         path: ${{ inputs.path }}
@@ -64,6 +69,7 @@ runs:
       if: ${{ steps.second.outcome == 'failure' }}
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       with:
+        artifact-ids: ${{ inputs.artifact-ids }}
         name: ${{ inputs.name }}
         pattern: ${{ inputs.pattern }}
         path: ${{ inputs.path }}
