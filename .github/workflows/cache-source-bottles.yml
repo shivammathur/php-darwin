@@ -12,12 +12,19 @@ on:
         description: Run containing source-bottle-misses artifacts
         type: string
         default: ''
+      formula:
+        description: Optional dependency name to mirror on its own
+        type: string
+        default: ''
   workflow_call:
     inputs:
       seed:
         type: boolean
         default: false
       source-run-id:
+        type: string
+        default: ''
+      formula:
         type: string
         default: ''
     secrets:
@@ -57,6 +64,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SEED: ${{ inputs.seed }}
+          FORMULA: ${{ inputs.formula }}
         run: |
           mkdir -p source-bottle-records
           node scripts/source-bottle-mirror.cjs matrix source-bottle-records

@@ -260,13 +260,15 @@ class ReleaseCache {
     try {
       const archive = path.join(temporary, `${key}.tar`);
       command('tar', ['-cf', archive, '-C', path.resolve(directory), 'metadata.json', metadata.file]);
+      const archiveSize = fs.statSync(archive).size;
+      const archiveDigest = `sha256:${sha256(fs.readFileSync(archive))}`;
       // Upload metadata and the bottle together. A concurrent upload may win
       // this exact key; never clobber it or expose a separate pair of files.
       await this.transfer(
         `https://uploads.github.com/repos/${this.repository}/releases/${release.id}/assets?` +
         new URLSearchParams({ name, label }), () => ({
           method: 'POST', headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/x-tar',
-            'Content-Length': String(fs.statSync(archive).size) },
+            'Content-Length': String(archiveSize) },
           body: fs.createReadStream(archive), duplex: 'half',
         }), response => {
           if (!response.ok && response.status !== 422) {
@@ -280,8 +282,16 @@ class ReleaseCache {
       const assets = await this.assets(release);
       const saved = assets.find(asset => asset.name === name);
       if (!saved) throw new Error('Uploaded source bottle is missing');
-      // Read back the actual remote bytes before removing superseded versions.
-      await this.download(saved, path.join(temporary, 'verified'), key, { useMirror: false });
+      // GitHub hashes the stored upload. Comparing that digest and byte count
+      // with the locally verified bundle proves it arrived intact without a
+      // redundant CDN download that keeps every waiting builder locked out.
+      if (saved.state === 'uploaded' && saved.size === archiveSize && saved.digest === archiveDigest) {
+        console.log(`Verified uploaded source bottle by GitHub SHA-256: ${metadata.inputs.formula} ${metadata.inputs.version}`);
+      } else {
+        // Legacy servers may omit digests, and a concurrent winner can have a
+        // different tar encoding. Fully validate those bytes before pruning.
+        await this.download(saved, path.join(temporary, 'verified'), key);
+      }
       const mirrored = mirror.record(saved, this.repository, this.tag);
       if (mirrored) mirror.queue(mirrored, this.mirrorMissFile);
       const related = assets.map(asset => ({ asset, identity: assetIdentity(asset) }))
@@ -291,7 +301,7 @@ class ReleaseCache {
         // An older job can finish after a newer upload. Verify that replacement
         // too; its own uploader may have failed before completing read-back.
         const newer = related.find(entry => !obsolete.includes(entry.identity.version));
-        await this.download(newer.asset, path.join(temporary, 'replacement'), newer.identity.key, { useMirror: false });
+        await this.download(newer.asset, path.join(temporary, 'replacement'), newer.identity.key);
       }
       for (const { asset, identity } of related) {
         if (obsolete.includes(identity.version)) {

@@ -46,7 +46,8 @@ function fixture(t, tag = 'cache') {
       }
       return json({}, existing || state.uploadRace ? 422 : 201);
     }
-    if (endpoint === 'releases/1/assets') return json(state.assets.map(({ data, ...asset }) => asset));
+    if (endpoint === 'releases/1/assets') return json(state.assets.map(({ data, ...asset }) =>
+      state.omitDigest ? { ...asset, digest: undefined } : asset));
     const id = Number(endpoint.split('/').at(-1));
     const asset = state.assets.find(asset => asset.id === id);
     if (!asset) return json(null, 404);
@@ -102,11 +103,12 @@ test('persistent release round-trip and pruning only older versions in the same 
   assert.ok(!f.state.assets.some(asset => asset.name === old.name));
 });
 
-test('source restores prefer verified Cloudflare bytes and upload readback still checks GitHub', async t => {
+test('uploads verify GitHub stored digests without downloading and restores prefer Cloudflare', async t => {
   const f = fixture(t);
   const bottle = f.bottle('1');
   f.cache.mirrorMissFile = path.join(f.root, 'misses.jsonl');
-  f.cache.mirrorDownload = async () => assert.fail('upload readback must use GitHub');
+  f.cache.mirrorDownload = async () => assert.fail('matching upload digest needs no payload readback');
+  f.state.failDownload = true;
   await f.cache.saveCache([bottle.directory], bottle.key);
   const asset = f.state.assets[0];
   const record = mirror.record(asset);
@@ -170,6 +172,9 @@ test('source mirror identities stay scoped to production and group one job per d
   const result = mirror.matrix([value, value, changed]);
   assert.equal(result.include.length, 1);
   assert.equal(result.include[0].bottles.length, 2);
+  assert.deepEqual(mirror.matrix([value, changed], value.formula), result);
+  assert.throws(() => mirror.matrix([value], 'missing'), /No cached source bottles/);
+  assert.throws(() => mirror.matrix([value], '../invalid'), /Invalid source dependency/);
   assert.match(mirror.key(value), /^homebrew\/source-bottles\/sha256\/[a-f0-9]{64}\.tar$/);
 });
 
@@ -443,6 +448,7 @@ test('failed remote verification preserves old versions', async t => {
   const old = f.bottle('1');
   await f.cache.saveCache([old.directory], old.key);
   f.state.failDownload = true;
+  f.state.omitDigest = true;
   const current = f.bottle('2');
   await assert.rejects(f.cache.saveCache([current.directory], current.key), /503/);
   assert.deepEqual(f.state.deleted, []);
@@ -463,9 +469,11 @@ test('a late older build does not prune against an unverified newer upload', asy
   const old = f.bottle('1');
   await f.cache.saveCache([old.directory], old.key);
   f.state.failDownload = true;
+  f.state.omitDigest = true;
   const current = f.bottle('2');
   await assert.rejects(f.cache.saveCache([current.directory], current.key), /503/);
   f.state.failDownload = false;
+  f.state.omitDigest = false;
   f.state.assets.find(asset => asset.name === current.name).data = Buffer.from('corrupt');
   await assert.rejects(f.cache.saveCache([old.directory], old.key), /checksum/);
   assert.deepEqual(f.state.deleted, []);

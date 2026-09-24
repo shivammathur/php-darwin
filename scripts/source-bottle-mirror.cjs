@@ -40,13 +40,16 @@ function publicURL(value) { return `https://artifacts.php-darwin.setup-php.com/$
 function queue(value, file = process.env.PHP_DARWIN_SOURCE_BOTTLE_MISSES) {
   if (file) fs.appendFileSync(file, JSON.stringify(portable(value)) + '\n');
 }
-function matrix(records) {
+function matrix(records, formula = '') {
+  if (formula && !/^[A-Za-z0-9@+_.-]+$/.test(formula)) throw new Error('Invalid source dependency name');
   const groups = new Map();
   for (const input of records) {
     const value = portable(input);
+    if (formula && value.formula !== formula) continue;
     if (!groups.has(value.formula)) groups.set(value.formula, new Map());
     groups.get(value.formula).set(value.sha256, value);
   }
+  if (formula && !groups.size) throw new Error(`No cached source bottles for ${formula}`);
   if (groups.size > 256) throw new Error('Source bottle matrix exceeds 256 dependencies');
   return { include: [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([formula, values]) => ({
     formula, bottles: [...values.values()],
@@ -62,10 +65,10 @@ async function main() {
         `repos/${repository}/releases/${id}/assets?per_page=100`]));
       records = pages.flat().map(asset => record(asset)).filter(Boolean);
     } else records = readRecords(process.argv[3]);
-    const result = matrix(records);
+    const result = matrix(records, process.env.FORMULA || '');
     fs.writeFileSync('source-bottle-matrix.json', JSON.stringify(result, null, 2));
     fs.appendFileSync(process.env.GITHUB_OUTPUT, `matrix=${JSON.stringify(result)}\ncount=${result.include.length}\n`);
-    console.log(`${result.include.length} source dependency jobs; ${records.length} exact bottles`);
+    console.log(`${result.include.length} source dependency jobs; ${result.include.reduce((n, item) => n + item.bottles.length, 0)} exact bottles`);
   } else if (process.argv[2] === 'publish') {
     const results = await publish(JSON.parse(process.env.BOTTLES), {
       identity: portable, objectKey: key, contentType: 'application/x-tar', upstream: false,
