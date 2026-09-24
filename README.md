@@ -30,6 +30,8 @@ Normal builds require `conf/dependencies.json`. `update-dependencies.yml` prepar
 
 Verified archive checkpoints support partial reruns and expire after seven days. Payloads and relevant build inputs must match before reuse.
 
+`publish.yml` retries publication from a validated PHP run. It verifies source workflow provenance, build/test plans, successful jobs and exact artifact IDs and digests.
+
 Run local checks with `bash scripts/tests/run.sh` and workflow checks with `actionlint`.
 
 [MIT license](LICENSE).

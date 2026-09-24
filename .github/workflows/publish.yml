@@ -1,0 +1,65 @@
+name: Publish PHP cache
+run-name: Publish PHP ${{ inputs.php-version }} cache from run ${{ inputs.run-id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      php-version:
+        description: PHP minor version
+        required: true
+        type: string
+      run-id:
+        description: Workflow run containing validated architecture artifacts
+        required: true
+        type: string
+
+concurrency:
+  group: php-darwin-release-publish-${{ inputs.php-version }}
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    name: Publish PHP ${{ inputs.php-version }} release assets
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate source build and compatibility tests
+        id: source
+        env:
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+          PHP_VERSION: ${{ inputs.php-version }}
+          RUN_ID: ${{ inputs.run-id }}
+        run: bash scripts/release/validate-publish-run.sh "$RUN_ID"
+
+      - name: Download validated architecture caches
+        uses: ./.github/actions/download-artifacts
+        timeout-minutes: 10
+        with:
+          github-token: ${{ secrets.TOKEN || github.token }}
+          artifact-ids: ${{ steps.source.outputs.artifact-ids }}
+          path: builds
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.run-id }}
+
+      - name: Restore already-published architectures outside the recovered matrix
+        env:
+          PHP_VERSION: ${{ inputs.php-version }}
+        run: bash scripts/release/restore-missing-architectures.sh builds
+
+      - name: Replace versioned release assets
+        env:
+          PHP_DARWIN_MIRROR_REQUIRED: 'true'
+          CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
+          CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
+          CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+          PHP_VERSION: ${{ inputs.php-version }}
+        run: bash scripts/release/publish.sh builds
