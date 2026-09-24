@@ -569,7 +569,10 @@ for linked_php_path in "$brew_prefix/var/homebrew/linked"/php*; do
   linked_php_reference=$(php_darwin_keg_formula_reference "$brew_prefix" "$linked_php_formula" \
     "${linked_php_target#../../../}" "$tap") || \
     php_darwin_die "could not resolve the installed Homebrew formula $linked_php_formula"
-  linked_php_references+=("$linked_php_reference")
+  # Unlink the validated installed rack. A qualified tap name asks Homebrew
+  # to load the formula again and fails when its original tap was untapped.
+  # The same bare name also lets native rollback relink that installed keg.
+  linked_php_references+=("${linked_php_reference##*/}")
 done
 : > "$homebrew_prepare_phase_file" || php_darwin_die 'could not create the Homebrew preparation phase file'
 (

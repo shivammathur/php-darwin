@@ -143,7 +143,15 @@ begin
       Dir.glob(opt + '@*').each do |alias_path|
         next if aliases.include?(File.basename(alias_path))
         unsupported unless File.symlink?(alias_path)
-        unsupported if File.symlink?(alias_path) && (!File.exist?(alias_path) || File.dirname(File.realpath(alias_path)) == File.dirname(keg))
+        target = resolved(alias_path)
+        if !File.exist?(alias_path)
+          # php@8.5-debug can be a stale alias of the independent php-debug
+          # rack. It must not force native unlinking of the active php rack.
+          unsupported unless target.match?(%r{\A#{Regexp.escape(prefix)}/Cellar/[^/]+/[^/]+\z})
+          unsupported if File.dirname(target) == File.dirname(keg)
+        else
+          unsupported if File.dirname(File.realpath(alias_path)) == File.dirname(keg)
+        end
       end
       tap = receipt.dig('source', 'tap')
       if tap.is_a?(String)

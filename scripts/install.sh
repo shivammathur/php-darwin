@@ -1452,7 +1452,15 @@ begin
       Dir.glob(opt + '@*').each do |alias_path|
         next if aliases.include?(File.basename(alias_path))
         unsupported unless File.symlink?(alias_path)
-        unsupported if File.symlink?(alias_path) && (!File.exist?(alias_path) || File.dirname(File.realpath(alias_path)) == File.dirname(keg))
+        target = resolved(alias_path)
+        if !File.exist?(alias_path)
+          # php@8.5-debug can be a stale alias of the independent php-debug
+          # rack. It must not force native unlinking of the active php rack.
+          unsupported unless target.match?(%r{\A#{Regexp.escape(prefix)}/Cellar/[^/]+/[^/]+\z})
+          unsupported if File.dirname(target) == File.dirname(keg)
+        else
+          unsupported if File.dirname(File.realpath(alias_path)) == File.dirname(keg)
+        end
       end
       tap = receipt.dig('source', 'tap')
       if tap.is_a?(String)
@@ -2912,7 +2920,10 @@ for linked_php_path in "$brew_prefix/var/homebrew/linked"/php*; do
   linked_php_reference=$(php_darwin_keg_formula_reference "$brew_prefix" "$linked_php_formula" \
     "${linked_php_target#../../../}" "$tap") || \
     php_darwin_die "could not resolve the installed Homebrew formula $linked_php_formula"
-  linked_php_references+=("$linked_php_reference")
+  # Unlink the validated installed rack. A qualified tap name asks Homebrew
+  # to load the formula again and fails when its original tap was untapped.
+  # The same bare name also lets native rollback relink that installed keg.
+  linked_php_references+=("${linked_php_reference##*/}")
 done
 : > "$homebrew_prepare_phase_file" || php_darwin_die 'could not create the Homebrew preparation phase file'
 (

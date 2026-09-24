@@ -129,6 +129,19 @@ test('stale aliases delegate before mutation', t => {
   assert.equal(fs.existsSync(f.journals), false);
 });
 
+test('stale aliases of other PHP variants do not block unlinking the active rack', t => {
+  const f = fixture(t);
+  f.link('opt/php@1-debug', '../Cellar/php-debug/1.0');
+  f.link('opt/php@1-zts', '../Cellar/php-zts/1.0');
+  const result = f.run('unlink');
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(fs.existsSync(path.join(f.prefix, 'bin/php')), false);
+  assert.equal(fs.readlinkSync(path.join(f.prefix, 'opt/php@1-debug')), '../Cellar/php-debug/1.0');
+  assert.equal(fs.readlinkSync(path.join(f.prefix, 'opt/php@1-zts')), '../Cellar/php-zts/1.0');
+  assert.equal(f.run('restore').status, 0);
+  f.check();
+});
+
 test('owned unversioned aliases are journaled and restored; unrelated aliases are preserved', t => {
   const f = fixture(t);
   f.write('Cellar/php/1.0/INSTALL_RECEIPT.json', JSON.stringify({aliases: ['php@1', 'php-alias', 'other-alias'], runtime_dependencies: []}));
