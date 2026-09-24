@@ -36,6 +36,7 @@ try {
   const started = performance.now();
   const result = install(temporary, name, { php, phpConfig });
   const elapsed = (performance.now() - started) / 1000;
+  assert.equal(fs.statSync(result.destination).mode & 0o777, 0o755, 'Runtime must be accessible to other PHP process users');
   assert.ok(elapsed < 10, `Optional ${name} installation took ${elapsed.toFixed(3)}s`);
   const load = result.modules.flatMap(module => ['-d', `extension=${extensionDirectory}/${module}.so`]);
   const checks = {

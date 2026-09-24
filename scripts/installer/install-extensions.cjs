@@ -185,7 +185,12 @@ function install(directory, name, { phpConfig = 'php-config', php = 'php' } = {}
       if (!fs.lstatSync(path.join(stage, 'modules', `${module}.so`)).isFile()) throw new Error('Missing extension module');
     }
     relocateResources(metadata, stage, destination);
-    if (!fs.existsSync(destination)) fs.renameSync(stage, destination);
+    if (!fs.existsSync(destination)) {
+      // mkdtemp creates a private staging directory. Published runtime files
+      // must also be readable by PHP processes running under another account.
+      fs.chmodSync(stage, 0o755);
+      fs.renameSync(stage, destination);
+    }
     else {
       if (fs.realpathSync(destination) !== destination ||
           fs.readFileSync(path.join(destination, 'metadata.json'), 'utf8') !== fs.readFileSync(path.join(stage, 'metadata.json'), 'utf8')) {
