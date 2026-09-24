@@ -1,5 +1,5 @@
 name: Cache optional PHP extensions
-run-name: Cache optional PHP extensions ${{ inputs.php-versions || '8.4' }}
+run-name: Cache optional PHP extensions ${{ inputs.php-versions || (github.event_name == 'schedule' && '8.2–8.5') || '8.4' }}
 
 on:
   workflow_dispatch:

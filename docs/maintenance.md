@@ -161,8 +161,11 @@ the modules belonging to each pack.
 The workflow checks recipe changes every six hours. Unchanged packs are skipped;
 changed packs reuse the source-bottle cache. Manual runs can select PHP versions,
 extensions and build variants. Push runs validate PHP 8.4 release/NTS on both
-architectures without publishing. Publication requires every selected build to
-pass its native installation test and writes the `extensions` release separately.
+architectures without publishing. Publication requires native installation and
+functional tests on the build platforms, newer hosted macOS, and self-hosted Intel.
+Each pack must install in under 10 seconds and preserve PHP and services. Archives
+are published to the separate `extensions` release and Cloudflare only after all
+selected tests pass. Installer updates are published even when recipes are unchanged.
 
 Each archive carries private runtime libraries, relocated Mach-O load paths,
 licenses and module metadata. The standalone `scripts/installer/install-extensions.cjs`

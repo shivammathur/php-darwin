@@ -6,6 +6,7 @@ const os = require('node:os');
 const http = require('node:http');
 const { prefetch, download, digest, key, validateEntry, safePath, inspectTree, packEnvironment, relocateResources, phpApi } = require('../../installer/install-extensions.cjs');
 const { unchanged, builderHash, compatibilityMatrix } = require('../../release/extension-packs.cjs');
+const { copyRuntime } = require('../../build/extension-pack.cjs');
 
 const context = { php_version: '8.4', build: 'release', thread_safety: 'nts', architecture: 'arm64' };
 test('read the module API from the installed PHP headers using supported php-config options', t => {
@@ -110,6 +111,26 @@ test('codec descriptors use the installed private runtime directory', t => {
   assert.equal(fs.readFileSync(path.join(directory, 'png.la'), 'utf8'), "libdir='/private-pack/kegs/imagemagick/lib/coders'\n");
   assert.throws(() => relocateResources({ relocations: ['../outside.la'] }, directory, '/private-pack'));
   assert.throws(() => relocateResources({ relocations: ['script.sh'] }, directory, '/private-pack'));
+});
+test('runtime copies retain licenses and codec descriptors without dangling manual-page links', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-runtime-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const source = path.join(directory, 'source');
+  const output = path.join(directory, 'output');
+  const files = ['share/man/man3/ASN1.3ssl', 'share/doc/NOTICE.txt', 'share/doc/manual.html',
+    'lib/libssl.dylib', 'lib/libssl.a', 'lib/libssl.la', 'lib/ImageMagick/modules-Q16/coders/png.la'];
+  for (const file of files) {
+    fs.mkdirSync(path.dirname(path.join(source, file)), { recursive: true });
+    fs.writeFileSync(path.join(source, file), file);
+  }
+  fs.symlinkSync('ASN1.3ssl', path.join(source, 'share/man/man3/NOTICEREF_free.3ssl'));
+  copyRuntime(source, output);
+  inspectTree(output);
+  assert.ok(fs.existsSync(path.join(output, 'share/doc/NOTICE.txt')));
+  assert.ok(fs.existsSync(path.join(output, 'lib/ImageMagick/modules-Q16/coders/png.la')));
+  for (const file of ['share/man', 'share/doc/manual.html', 'lib/libssl.a', 'lib/libssl.la']) {
+    assert.ok(!fs.existsSync(path.join(output, file)));
+  }
 });
 test('freshness tracks dependency recipes, PHP releases and builder changes', t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-freshness-'));
