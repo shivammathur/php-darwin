@@ -26,4 +26,6 @@ Source bottles use named GitHub Releases and Cloudflare mirrors. Build claims co
 
 Normal builds require `conf/dependencies.json`. `update-dependencies.yml` prepares and verifies a replacement on both architectures before promotion. Missing approved bottles fail instead of compiling dependencies.
 
+Verified archive checkpoints support partial reruns and expire after seven days. Payloads and relevant build inputs must match before reuse.
+
 Local tests use temporary fixtures. Native tests run on the configured macOS Actions runners.
