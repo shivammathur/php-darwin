@@ -159,12 +159,17 @@ the PHP archives. `conf/extension-packs.json` defines the supported versions and
 the modules belonging to each pack.
 
 `update-extensions.yml` checks every configured PHP version every six hours,
-dispatching batches of at most eight versions to stay within Actions matrix limits.
+dispatching all versions together within Actions matrix limits.
 Its optional `after-run` input waits for a successful prerequisite before dispatching;
 failed or cancelled prerequisites stop the follow-up. Unchanged packs are skipped;
 changed packs reuse the source-bottle cache. Manual runs can select PHP versions,
-extensions and build variants. Push runs validate PHP 8.4 release/NTS on both
-architectures without publishing. Publication requires native installation and
+extensions and build variants. Builds share one job per PHP version and architecture;
+compatibility checks share one job per PHP version and runner, covering every
+selected build variant and pack. A complete 14-version campaign uses 28 native
+build jobs and 70 compatibility jobs instead of 336 and 280. Each passing pack
+is checkpointed separately, even if another pack in its job fails. Native cache
+campaigns run on dispatch or schedule; source changes run the local validation CI.
+Publication requires native installation and
 functional tests on the build platforms, newer hosted macOS, and self-hosted Intel.
 Each pack must install in under 10 seconds and preserve PHP and services. Archives
 are published to the separate `extensions` release and Cloudflare only after all
@@ -180,6 +185,15 @@ Failed builds remain excluded and can be rebuilt separately. Missing or expired
 artifacts stop recovery; rerunning failed recovery jobs preserves passing work.
 Recovery API reads use the same bounded service-error policy as publication;
 authentication failures and invalid responses stop immediately.
+For an interrupted campaign, pass completed `resume-runs` to `cache-extensions.yml`
+in oldest-to-newest order. The latest successful artifact for each pack wins.
+Ubuntu jobs download exact artifact IDs, verify archive hashes and native reports,
+and retain their bytes; Macs only build unpublished gaps and run compatibility.
+Already published variants are retained when their PHP release/source commit still
+matches. Normal runs without `resume-runs` apply full recipe freshness checks.
+This recovery path works for both architectures. Regular Homebrew ARM bottles
+cannot replace debug/ZTS or development-PHP extension binaries; missing matching
+binaries and Mach-O relocation/signing still require macOS.
 Publication resumes by reusing GitHub assets with matching SHA256 digests and
 Cloudflare objects whose downloaded bytes pass SHA256 verification. Small archives
 use single-object uploads. A transient timeout, connection failure or service error

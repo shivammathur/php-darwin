@@ -4,14 +4,15 @@ const { command, digest, key, validateEntry, origins } = require('../installer/i
 const configuration = require('../../conf/extension-packs.json');
 const platforms = require('../../conf/platforms.json');
 const { builderHash } = require('../build/extension-pack.cjs');
+const { buildMatrix, testMatrix } = require('./extension-batches.cjs');
 const { command: transferCommand, retryPolicy, httpError, githubJSON, workflowJobs, transfers } = require('./extension-transfers.cjs');
 const root = path.resolve(__dirname, '../..');
 
 function versionBatches(value = configuration.versions.join(' ')) {
   const versions = [...new Set(value.trim().split(/\s+/))];
   if (versions.some(version => !configuration.versions.includes(version))) throw new Error('Unsupported PHP version');
-  // Eight versions produce at most 192 build and 160 compatibility jobs.
-  return Array.from({ length: Math.ceil(versions.length / 8) }, (_, index) => versions.slice(index * 8, index * 8 + 8));
+  // All fourteen versions now fit in 28 build and 70 compatibility jobs.
+  return [versions];
 }
 async function dispatch({ versions = process.env.PHP_VERSIONS || undefined, afterRun = process.env.AFTER_RUN,
   repository = process.env.GITHUB_REPOSITORY || 'shivammathur/php-darwin', ref = process.env.GITHUB_REF_NAME || 'main',
@@ -71,7 +72,15 @@ async function plan() {
   const builds = (process.env.BUILDS || 'release').split(/\s+/);
   const modes = (process.env.THREAD_SAFETY || 'nts').split(/\s+/);
   const repositories = { 'shivammathur/homebrew-extensions': path.resolve('homebrew-extensions'), 'Homebrew/homebrew-core': path.resolve('homebrew-core') };
-  const include = [];
+  const include = [], reused = [], selected = [];
+  const recovery = new Map();
+  const resumeRuns = (process.env.RESUME_RUNS || '').trim().split(/\s+/).filter(Boolean);
+  // Explicit recovery keeps completed artifacts even if orchestration changed.
+  // Sources are ordered oldest to newest; the latest successful pack wins.
+  for (const id of resumeRuns) {
+    const recovered = await require('./extension-recovery.cjs').planRecovery(id);
+    for (const entry of recovered.entries) recovery.set(key(entry), entry);
+  }
   for (const php_version of versions) {
     if (!configuration.versions.includes(php_version)) throw new Error('Unsupported PHP version');
     const existing = await readManifest(php_version);
@@ -87,30 +96,31 @@ async function plan() {
         throw new Error(`Published PHP cache variant is unavailable: ${identity}`);
       }
       const previous = existing.assets.find(asset => key(asset) === identity);
+      if (recovery.has(identity)) {
+        reused.push(recovery.get(identity)); selected.push(context); continue;
+      }
+      // Resume fills holes in the requested release, without rebuilding already
+      // published packs. Normal scheduled runs still apply full freshness checks.
+      if (resumeRuns.length && previous && previous.php_semver?.split('-')[0] === phpManifest.php_semver?.split('-')[0] &&
+          (previous.php_src_commit || '') === (phpManifest.php_src_commit || '')) continue;
       if (process.env.FORCE !== 'true' && previous && unchanged(previous, repositories, phpManifest)) continue;
       include.push({ ...context, runner: platforms[architecture].build_runner });
+      selected.push(context);
     }
   }
-  if (include.length > 256) throw new Error('Extension matrix exceeds Actions limit');
-  const result = JSON.stringify({ include });
-  const tests = compatibilityMatrix(include);
+  const buildsMatrix = buildMatrix(include), reuseMatrix = buildMatrix(reused), tests = testMatrix(selected);
+  if ([buildsMatrix, reuseMatrix, tests].some(matrix => matrix.include.length > 256)) throw new Error('Extension matrix exceeds Actions limit');
+  const result = JSON.stringify(buildsMatrix);
   console.log(result);
   if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT,
-    `matrix=${result}\ncount=${include.length}\ntests=${JSON.stringify(tests)}\n`);
+    `matrix=${result}\ncount=${include.length}\nreuse=${JSON.stringify(reuseMatrix)}\nreuse-count=${reused.length}\n` +
+    `selected-count=${selected.length}\nkeys=${JSON.stringify(selected.map(key))}\ntests=${JSON.stringify(tests)}\n`);
+  if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+    `${reused.length} completed packs reused on Ubuntu; ${include.length} missing/changed packs in ${buildsMatrix.include.length} native build jobs; ` +
+    `${tests.include.length} compatibility jobs, grouped by PHP version and runner.\n`);
 }
 function compatibilityMatrix(entries) {
-  const groups = new Map();
-  for (const { name, php_version, build, thread_safety, architecture } of entries) {
-    const platform = platforms[architecture];
-    for (const runner of platform.test_runners.filter(runner => runner !== platform.build_runner)) {
-      const context = { php_version, build, thread_safety, architecture, runner };
-      const identity = JSON.stringify(context);
-      if (!groups.has(identity)) groups.set(identity, { ...context, packs: [] });
-      const packs = groups.get(identity).packs;
-      if (!packs.includes(name)) packs.push(name);
-    }
-  }
-  return { include: [...groups.values()] };
+  return testMatrix(entries);
 }
 function scan(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap(item => {
@@ -126,7 +136,7 @@ async function validatePublishRun(id, run = transferCommand, retry = retryPolicy
       source.head_repository?.full_name !== 'shivammathur/php-darwin' ||
       source.path !== '.github/workflows/cache-extensions.yml') throw new Error('Untrusted extension source run');
   const jobs = await workflowJobs(route, source.run_attempt, { run, retry });
-  const builds = jobs.filter(job => /^(imagick|mongodb|memcached) \/ PHP /.test(job.name));
+  const builds = jobs.filter(job => /^(?:(imagick|mongodb|memcached) \/ PHP |Cache PHP |Reuse PHP )/.test(job.name) && job.conclusion !== 'skipped');
   const tests = jobs.filter(job => /^Test PHP /.test(job.name));
   if (!builds.length || !tests.length || [...builds, ...tests].some(job => job.status !== 'completed' || job.conclusion !== 'success')) {
     throw new Error('Source extension builds and compatibility tests must all pass');

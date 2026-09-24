@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       php-versions:
-        description: Space-separated PHP versions (at most 10 per batch)
+        description: Space-separated PHP versions
         default: '8.2 8.3 8.4 8.5'
         type: string
       extensions:
@@ -28,22 +28,13 @@ on:
         description: Publish verified optional archives
         default: true
         type: boolean
-  push:
-    paths:
-      - .github/workflows/cache-extensions.yml
-      - .github/actions/source-cache/**
-      - scripts/cache/source-bottle-*
-      - scripts/build/extension-pack.cjs
-      - scripts/build/build-extensions.sh
-      - scripts/build/extension-formula.rb
-      - scripts/build/prepare-extension-pack.sh
-      - scripts/installer/install-extensions.cjs
-      - scripts/tests/native/extension-pack.test.cjs
-      - scripts/tests/native/extension-pack-compatibility.test.cjs
-      - conf/extension-packs.json
+      resume-runs:
+        description: Completed source run IDs, oldest to newest; reuse successful packs and build only unpublished gaps
+        type: string
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   # A focused build must not block seeding other PHP versions. Publication has
@@ -58,6 +49,10 @@ jobs:
       matrix: ${{ steps.plan.outputs.matrix }}
       count: ${{ steps.plan.outputs.count }}
       tests: ${{ steps.plan.outputs.tests }}
+      reuse: ${{ steps.plan.outputs.reuse }}
+      reuse-count: ${{ steps.plan.outputs.reuse-count }}
+      selected-count: ${{ steps.plan.outputs.selected-count }}
+      keys: ${{ steps.plan.outputs.keys }}
       extensions-commit: ${{ steps.sources.outputs.extensions }}
       core-commit: ${{ steps.sources.outputs.core }}
     steps:
@@ -86,13 +81,48 @@ jobs:
           EXTENSION_PACKS: ${{ inputs.extensions }}
           BUILDS: ${{ inputs.builds }}
           THREAD_SAFETY: ${{ inputs.ts }}
-          FORCE: ${{ inputs.force || github.event_name == 'push' }}
+          FORCE: ${{ inputs.force }}
+          RESUME_RUNS: ${{ inputs.resume-runs }}
+          GH_TOKEN: ${{ github.token }}
         run: node scripts/release/extension-packs.cjs plan
+
+  reuse:
+    needs: plan
+    if: needs.plan.outputs.reuse-count != '0'
+    name: Reuse PHP ${{ matrix.php_version }} / ${{ matrix.architecture }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.reuse) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Recover exact verified archives without Homebrew or compilation
+        env:
+          EXTENSION_ENTRIES: ${{ toJSON(matrix.entries) }}
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release/extension-batches.cjs reuse
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          overwrite: true
+          name: extension-reused-${{ matrix.php_version }}-${{ matrix.architecture }}
+          path: builds/extensions/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          overwrite: true
+          name: extension-index-reused-${{ matrix.php_version }}-${{ matrix.architecture }}
+          path: builds/index/entries.json
+          if-no-files-found: error
 
   build:
     needs: plan
     if: needs.plan.outputs.count != '0'
-    name: ${{ matrix.name }} / PHP ${{ matrix.php_version }} / ${{ matrix.build }}-${{ matrix.thread_safety }} / ${{ matrix.architecture }}
+    name: Cache PHP ${{ matrix.php_version }} / ${{ matrix.architecture }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     permissions:
@@ -102,12 +132,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     env:
-      PHP_VERSION: ${{ matrix.php_version }}
-      BUILD: ${{ matrix.build }}
-      TS: ${{ matrix.thread_safety }}
-      ARCH: ${{ matrix.architecture }}
-      EXTENSION_PACK: ${{ matrix.name }}
-      EXTENSION_PACK_OUTPUT: builds/extensions
+      EXTENSION_ENTRIES: ${{ toJSON(matrix.entries) }}
       HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.plan.outputs.extensions-commit }}
       HOMEBREW_CORE_COMMIT: ${{ needs.plan.outputs.core-commit }}
       HOMEBREW_NO_AUTO_UPDATE: '1'
@@ -132,32 +157,32 @@ jobs:
         uses: ./.github/actions/source-cache
         with:
           stage: tools
-      - name: Restore the published PHP cache and pin extension sources
-        run: bash scripts/build/prepare-extension-pack.sh
-      - name: Use the planned Homebrew core recipes
-        run: |
-          core=$(brew --repository homebrew/core)
-          git -C "$core" fetch --depth=1 origin "$HOMEBREW_CORE_COMMIT"
-          git -C "$core" checkout --detach "$HOMEBREW_CORE_COMMIT"
-      - name: Build optional extensions using cached dependency bottles
-        uses: ./.github/actions/source-cache
-        with:
-          stage: extensions
-      - name: Validate the standalone extension archive
-        run: '"$PHP_DARWIN_NODE" scripts/tests/native/extension-pack.test.cjs'
-      - name: Upload verified optional archive
+      - name: Cache and validate the missing packs, sharing preparation per PHP runtime
+        run: '"$PHP_DARWIN_NODE" scripts/build/extension-batch.cjs build'
+      - name: Preserve completed packs even when another pack fails
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: extension-${{ matrix.name }}-${{ matrix.php_version }}-${{ matrix.build }}-${{ matrix.thread_safety }}-${{ matrix.architecture }}
+          overwrite: true
+          name: extension-built-${{ matrix.php_version }}-${{ matrix.architecture }}
           path: builds/extensions/
-          if-no-files-found: error
+          if-no-files-found: ignore
           compression-level: 0
           retention-days: 7
+      - name: Record independently successful packs for recovery
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          overwrite: true
+          name: extension-index-built-${{ matrix.php_version }}-${{ matrix.architecture }}
+          path: builds/index/entries.json
+          if-no-files-found: ignore
       - name: Queue missing upstream bottles
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: bottle-misses-${{ matrix.name }}-${{ matrix.php_version }}-${{ matrix.build }}-${{ matrix.thread_safety }}-${{ matrix.architecture }}
+          overwrite: true
+          name: bottle-misses-${{ matrix.php_version }}-${{ matrix.architecture }}
           path: ${{ runner.temp }}/bottle-misses.jsonl
           if-no-files-found: ignore
           compression-level: 0
@@ -165,26 +190,27 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: source-bottle-misses-${{ matrix.name }}-${{ matrix.php_version }}-${{ matrix.build }}-${{ matrix.thread_safety }}-${{ matrix.architecture }}
+          overwrite: true
+          name: source-bottle-misses-${{ matrix.php_version }}-${{ matrix.architecture }}
           path: ${{ runner.temp }}/source-bottle-misses.jsonl
           if-no-files-found: ignore
           compression-level: 0
 
   compatibility:
-    needs: [plan, build]
-    name: Test PHP ${{ matrix.php_version }} ${{ matrix.build }}-${{ matrix.thread_safety }} on ${{ matrix.runner }}
-    if: needs.plan.outputs.count != '0'
+    needs: [plan, build, reuse]
+    name: Test PHP ${{ matrix.php_version }} on ${{ matrix.runner }}
+    if: >-
+      always() && !cancelled() && needs.plan.outputs.selected-count != '0' &&
+      needs.plan.result == 'success' &&
+      (needs.build.result == 'success' || needs.build.result == 'skipped') &&
+      (needs.reuse.result == 'success' || needs.reuse.result == 'skipped')
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.tests) }}
     env:
-      PHP_VERSION: ${{ matrix.php_version }}
-      BUILD: ${{ matrix.build }}
-      TS: ${{ matrix.thread_safety }}
-      ARCH: ${{ matrix.architecture }}
-      EXTENSION_PACKS: ${{ toJSON(matrix.packs) }}
+      EXTENSION_ENTRIES: ${{ toJSON(matrix.entries) }}
       HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.plan.outputs.extensions-commit }}
       HOMEBREW_NO_AUTO_UPDATE: '1'
       HOMEBREW_NO_INSTALL_CLEANUP: '1'
@@ -198,19 +224,21 @@ jobs:
         run: |
           "$PHP_DARWIN_NODE" scripts/cache/upstream-bottle-cache.cjs tools
           brew install --verbose jq zstd
-      - name: Restore published PHP
-        run: bash scripts/build/prepare-extension-pack.sh
       - uses: ./.github/actions/download-artifacts
         with:
-          pattern: extension-*-${{ matrix.php_version }}-${{ matrix.build }}-${{ matrix.thread_safety }}-${{ matrix.architecture }}
+          pattern: extension-@(built|reused)-${{ matrix.php_version }}-${{ matrix.architecture }}
           path: builds/extensions
-      - name: Test optional archives without building extensions
-        run: '"$PHP_DARWIN_NODE" scripts/tests/native/extension-pack-compatibility.test.cjs'
+          merge-multiple: 'true'
+      - name: Test every selected variant and pack in this PHP version
+        run: '"$PHP_DARWIN_NODE" scripts/build/extension-batch.cjs test'
       - name: Upload compatibility reports
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: compatibility-${{ matrix.php_version }}-${{ matrix.build }}-${{ matrix.thread_safety }}-${{ matrix.runner }}
+          overwrite: true
+          name: compatibility-${{ matrix.php_version }}-${{ matrix.runner }}
           path: builds/extensions/*/validation.txt
+          if-no-files-found: ignore
 
   cache-bottles:
     needs: [plan, build]
@@ -225,10 +253,11 @@ jobs:
       CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
 
   publish:
-    needs: [plan, build, compatibility]
+    needs: [plan, build, reuse, compatibility]
     if: >-
       always() && !cancelled() && needs.plan.result == 'success' &&
       (needs.build.result == 'success' || needs.build.result == 'skipped') &&
+      (needs.reuse.result == 'success' || needs.reuse.result == 'skipped') &&
       (needs.compatibility.result == 'success' || needs.compatibility.result == 'skipped') &&
       github.ref == 'refs/heads/main' && inputs.publish
     runs-on: ubuntu-latest
@@ -244,10 +273,16 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/download-artifacts
-        if: needs.plan.outputs.count != '0'
+        if: needs.plan.outputs.selected-count != '0'
         with:
-          pattern: extension-*
+          pattern: extension-@(built|reused)-*
           path: builds/extensions
+          merge-multiple: 'true'
+      - name: Check the exact tested publication set
+        if: needs.plan.outputs.selected-count != '0'
+        env:
+          EXTENSION_RECOVERY_KEYS: ${{ needs.plan.outputs.keys }}
+        run: node scripts/release/extension-recovery.cjs verify builds/extensions
       - name: Publish archives, then commit the version manifests
         env:
           EXTENSION_PUBLISH_REPORT: ${{ runner.temp }}/extension-publication.json
@@ -264,6 +299,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
+          overwrite: true
           name: publication-report-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/extension-publication.json
           if-no-files-found: ignore

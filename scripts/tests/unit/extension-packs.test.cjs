@@ -7,6 +7,7 @@ const http = require('node:http');
 const { prefetch, download, digest, key, validateEntry, validateContext, safePath, inspectTree, packEnvironment, relocateResources, phpApi } = require('../../installer/install-extensions.cjs');
 const { unchanged, builderHash, compatibilityMatrix, versionBatches, dispatch, publish, validatePublishRun } = require('../../release/extension-packs.cjs');
 const { copyRuntime } = require('../../build/extension-pack.cjs');
+const { buildMatrix } = require('../../release/extension-batches.cjs');
 
 const context = { php_version: '8.4', build: 'release', thread_safety: 'nts', architecture: 'arm64' };
 test('publication recovery accepts only completed main builds with every compatibility job passing', async () => {
@@ -87,7 +88,7 @@ test('scheduled batches cover every configured PHP version within both matrix li
       ['arm64', 'x86_64'].flatMap(architecture => ['imagick', 'mongodb', 'memcached'].map(name =>
         ({ php_version, build, thread_safety, architecture, name }))))));
     entries.forEach(validateContext);
-    assert.ok(entries.length <= 256);
+    assert.ok(buildMatrix(entries).include.length <= 256);
     assert.ok(compatibilityMatrix(entries).include.length <= 256);
   }
   for (const version of ['5.5', '7.5', '8.8', '9.0']) {
@@ -104,7 +105,7 @@ test('follow-up batches start only after a successful prerequisite', async () =>
     assert.ok(ready);
   };
   await dispatch({ afterRun: '123', run, wait: async delay => { assert.equal(delay, 60000); ready = true; } });
-  assert.equal(calls.filter(args => args[0] === 'workflow').length, 2);
+  assert.equal(calls.filter(args => args[0] === 'workflow').length, 1);
   for (const conclusion of ['failure', 'cancelled', 'timed_out']) {
     await assert.rejects(dispatch({ afterRun: '123', run: (_program, args) => {
       assert.equal(args[0], 'api');
@@ -263,5 +264,5 @@ test('compatibility covers newer hosts and self-hosted Intel while grouping pack
   assert.equal(include.length, 5);
   assert.ok(include.some(item => item.runner === 'macos-15-x86_64'));
   assert.ok(include.some(item => item.runner === 'macos-26-intel'));
-  for (const item of include) assert.deepEqual(item.packs, ['imagick', 'mongodb', 'memcached']);
+  for (const item of include) assert.deepEqual(item.entries.map(entry => entry.name), ['imagick', 'mongodb', 'memcached']);
 });

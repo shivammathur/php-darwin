@@ -20,6 +20,7 @@ jobs:
     timeout-minutes: 10
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
+      reuse: ${{ steps.plan.outputs.reuse }}
       artifact-ids: ${{ steps.plan.outputs.artifact-ids }}
       keys: ${{ steps.plan.outputs.keys }}
       extensions-commit: ${{ steps.sources.outputs.commit }}
@@ -39,20 +40,41 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: echo "commit=$(gh api repos/shivammathur/homebrew-extensions/commits/main --jq .sha)" >> "$GITHUB_OUTPUT"
 
-  compatibility:
+  reuse:
     needs: plan
-    name: Test PHP ${{ matrix.php_version }} ${{ matrix.build }}-${{ matrix.thread_safety }} on ${{ matrix.runner }}
-    runs-on: ${{ matrix.runner }}
+    runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.reuse) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Recover exact successful archives on Ubuntu
+        env:
+          EXTENSION_ENTRIES: ${{ toJSON(matrix.entries) }}
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release/extension-batches.cjs reuse
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          overwrite: true
+          name: extension-reused-${{ matrix.php_version }}-${{ matrix.architecture }}
+          path: builds/extensions/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  compatibility:
+    needs: [plan, reuse]
+    name: Test PHP ${{ matrix.php_version }} on ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     env:
-      PHP_VERSION: ${{ matrix.php_version }}
-      BUILD: ${{ matrix.build }}
-      TS: ${{ matrix.thread_safety }}
-      ARCH: ${{ matrix.architecture }}
-      EXTENSION_PACKS: ${{ toJSON(matrix.packs) }}
+      EXTENSION_ENTRIES: ${{ toJSON(matrix.entries) }}
       HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.plan.outputs.extensions-commit }}
       HOMEBREW_NO_AUTO_UPDATE: '1'
       HOMEBREW_NO_INSTALL_CLEANUP: '1'
@@ -66,22 +88,20 @@ jobs:
         run: |
           "$PHP_DARWIN_NODE" scripts/cache/upstream-bottle-cache.cjs tools
           brew install --verbose jq zstd
-      - name: Restore published PHP
-        run: bash scripts/build/prepare-extension-pack.sh
       - uses: ./.github/actions/download-artifacts
         with:
-          github-token: ${{ github.token }}
-          run-id: ${{ inputs.run-id }}
-          artifact-ids: ${{ matrix.artifact_ids }}
+          name: extension-reused-${{ matrix.php_version }}-${{ matrix.architecture }}
           path: builds/extensions
-      - name: Test the selected archives without rebuilding
-        run: '"$PHP_DARWIN_NODE" scripts/tests/native/extension-pack-compatibility.test.cjs'
+      - name: Test all selected variants without rebuilding
+        run: '"$PHP_DARWIN_NODE" scripts/build/extension-batch.cjs test'
       - name: Preserve compatibility reports
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: compatibility-${{ matrix.php_version }}-${{ matrix.build }}-${{ matrix.thread_safety }}-${{ matrix.runner }}
+          overwrite: true
+          name: compatibility-${{ matrix.php_version }}-${{ matrix.runner }}
           path: builds/extensions/*/validation.txt
-          if-no-files-found: error
+          if-no-files-found: ignore
 
   publish:
     needs: [plan, compatibility]
@@ -99,10 +119,9 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/download-artifacts
         with:
-          github-token: ${{ github.token }}
-          run-id: ${{ inputs.run-id }}
-          artifact-ids: ${{ needs.plan.outputs.artifact-ids }}
+          pattern: extension-reused-*
           path: builds/extensions
+          merge-multiple: 'true'
       - name: Verify the publication contains exactly the tested variants
         env:
           EXTENSION_RECOVERY_KEYS: ${{ needs.plan.outputs.keys }}
@@ -120,6 +139,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
+          overwrite: true
           name: publication-report-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/extension-publication.json
           if-no-files-found: ignore

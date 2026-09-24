@@ -31,7 +31,7 @@ jobs:
         with:
           github-token: ${{ github.token }}
           run-id: ${{ inputs.run-id }}
-          pattern: extension-*
+          pattern: extension-@(imagick-*|mongodb-*|memcached-*|built-*|reused-*)
           path: builds/extensions
       - name: Publish the existing verified archives
         env:

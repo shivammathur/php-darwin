@@ -21,8 +21,8 @@ test('recovery binds successful main builds to exact live artifact IDs and every
   assert.equal(result.entries[0].artifact_id, 42);
   assert.deepEqual(result.matrix.include.map(context => context.runner).sort(), ['macos-15', 'macos-26', 'macos-latest']);
   for (const context of result.matrix.include) {
-    assert.deepEqual(context.packs, ['mongodb']);
-    assert.equal(context.artifact_ids, '42');
+    assert.deepEqual(context.entries.map(entry => entry.name), ['mongodb']);
+    assert.equal(context.entries[0].artifact_id, 42);
   }
   for (const status of [502, 403]) {
     let attempts = 0;
