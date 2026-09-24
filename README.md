@@ -144,18 +144,24 @@ source-bottle cache described above. Those source bundles are also mirrored to
 verified against GitHub's asset digest and the embedded bottle checksum. GitHub
 provides the source-cache index and build locks; its bundle download is the
 fallback. `cache-source-bottles.yml` can seed these existing bundles independently,
-with one job per dependency. Builders record misses as artifacts; at the
+with one job per dependency; its optional `formula` input selects a single dependency.
+Builders record misses as artifacts; at the
 end of each package workflow the same reusable bottle workflow deduplicates those
 records and caches only the missing dependencies, also one job per dependency.
 New digests get new immutable objects; the cache never substitutes an older version.
 Each job publishes checksum verification evidence, and build timing artifacts
 record Cloudflare hits, local hits, and misses. Persistent runners retain
 current bottle downloads across builds. Source bottle release assets do not expire
-automatically. After uploading
-and downloading a replacement to verify its checksum, the builder deletes older
+automatically. After uploading a replacement, the builder compares GitHub's stored
+SHA-256 and byte count against its locally verified bundle. It downloads the
+replacement only when that comparison cannot verify the bytes, such as a legacy
+asset without a digest. Once verified, the builder deletes older
 package versions for the same architecture, macOS, and PHP variant. It preserves
 newer versions uploaded by concurrent runs and different build inputs for the
 current version. Missing or invalid bottle data falls back to source builds.
+Source builds temporarily stage configuration files owned by the previous bottle
+so the new bottle contains clean defaults, then restore the existing files even
+when compilation fails. Service data under `var` is not staged.
 Before compiling a missing key, a builder claims a small `source-build-lock-*.json`
 asset in the same release. Concurrent jobs wait, then recheck for the completed
 bottle. Claims are removed on completion; interrupted claims are reclaimed only
@@ -184,8 +190,11 @@ partial architecture rebuilds, falling back to GitHub on a miss or invalid data.
 Compatibility tests enforce installation below 10 seconds; direct release tests
 include bootstrap and archive downloads in that limit. Tests preserve installed
 PHP versions and compare PHP service definitions before and after installation.
-An explicit `use_package_cache: 'true'` in setup-php@develop selects the cache on both
-hosted and self-hosted runners, including when the PHP minor is already installed.
+The cache installer supports self-hosted runners with a writable Homebrew prefix.
+setup-php's existing self-hosted path does not select the package cache; use the
+release installer directly to install the cache there. Passwordless sudo remains
+a setup-php prerequisite; ordinary cache writes to a user-owned Homebrew prefix
+do not require sudo.
 
 ## Avoiding repeated work
 

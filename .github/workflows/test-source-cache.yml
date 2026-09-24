@@ -12,6 +12,8 @@ on:
       - scripts/test-release-http.cjs
       - scripts/build-metrics.cjs
       - scripts/test-source-build-lock-live.cjs
+      - scripts/supervise-build.cjs
+      - scripts/test-supervise-build.cjs
       - scripts/brew-php-darwin-source.rb
       - scripts/test-source-bottle-*
       - scripts/formula-build-inputs.sh

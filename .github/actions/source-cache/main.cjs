@@ -43,7 +43,13 @@ function writeOutputs(result) {
   }
 }
 
-main().catch(error => {
-  console.error(error);
-  process.exitCode = 1;
-});
+if (process.argv[2] === '--worker') {
+  process.argv.splice(2, 1);
+  main().catch(error => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+} else {
+  require('../../../scripts/supervise-build.cjs').supervise(process.execPath,
+    [__filename, '--worker', ...process.argv.slice(2)]);
+}
