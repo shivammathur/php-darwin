@@ -57,8 +57,24 @@ async function plan() {
   }
   if (include.length > 256) throw new Error('Extension matrix exceeds Actions limit');
   const result = JSON.stringify({ include });
+  const tests = compatibilityMatrix(include);
   console.log(result);
-  if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, `matrix=${result}\ncount=${include.length}\n`);
+  if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT,
+    `matrix=${result}\ncount=${include.length}\ntests=${JSON.stringify(tests)}\n`);
+}
+function compatibilityMatrix(entries) {
+  const groups = new Map();
+  for (const { name, php_version, build, thread_safety, architecture } of entries) {
+    const platform = platforms[architecture];
+    for (const runner of platform.test_runners.filter(runner => runner !== platform.build_runner)) {
+      const context = { php_version, build, thread_safety, architecture, runner };
+      const identity = JSON.stringify(context);
+      if (!groups.has(identity)) groups.set(identity, { ...context, packs: [] });
+      const packs = groups.get(identity).packs;
+      if (!packs.includes(name)) packs.push(name);
+    }
+  }
+  return { include: [...groups.values()] };
 }
 function scan(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap(item => {
@@ -120,7 +136,7 @@ async function publish(directory) {
     command('gh', ['release', 'upload', release, installer, '--repo', repo, '--clobber']);
   } finally { fs.rmSync(staging, { recursive: true, force: true }); }
 }
-module.exports = { unchanged, builderHash, readManifest, plan, publish };
+module.exports = { unchanged, builderHash, readManifest, plan, publish, compatibilityMatrix };
 if (require.main === module) (async () => {
   if (process.argv[2] === 'plan') await plan();
   else if (process.argv[2] === 'publish') await publish(process.argv[3]);

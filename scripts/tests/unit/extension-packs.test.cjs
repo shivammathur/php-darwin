@@ -5,7 +5,7 @@ const path = require('node:path');
 const os = require('node:os');
 const http = require('node:http');
 const { prefetch, download, digest, key, validateEntry, safePath, inspectTree, packEnvironment, relocateResources, phpApi } = require('../../installer/install-extensions.cjs');
-const { unchanged, builderHash } = require('../../release/extension-packs.cjs');
+const { unchanged, builderHash, compatibilityMatrix } = require('../../release/extension-packs.cjs');
 
 const context = { php_version: '8.4', build: 'release', thread_safety: 'nts', architecture: 'arm64' };
 test('read the module API from the installed PHP headers using supported php-config options', t => {
@@ -123,4 +123,13 @@ test('freshness tracks dependency recipes, PHP releases and builder changes', t 
   assert.equal(unchanged({ ...metadata, builder_sha256: '0'.repeat(64) }, repositories, { php_semver: '8.4.26' }), false);
   fs.writeFileSync(path.join(directory, 'formula.rb'), 'updated dependency');
   assert.equal(unchanged(metadata, repositories, { php_semver: '8.4.26' }), false);
+});
+test('compatibility covers newer hosts and self-hosted Intel while grouping packs per PHP runtime', () => {
+  const entries = ['arm64', 'x86_64'].flatMap(architecture => ['imagick', 'mongodb', 'memcached'].map(name =>
+    ({ ...context, architecture, name })));
+  const { include } = compatibilityMatrix(entries);
+  assert.equal(include.length, 5);
+  assert.ok(include.some(item => item.runner === 'macos-15-x86_64'));
+  assert.ok(include.some(item => item.runner === 'macos-26-intel'));
+  for (const item of include) assert.deepEqual(item.packs, ['imagick', 'mongodb', 'memcached']);
 });
