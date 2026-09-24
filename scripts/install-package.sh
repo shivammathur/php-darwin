@@ -657,6 +657,7 @@ php_darwin_download_release_archive() {
   local archive_http_status
   local mirror_url
   local urls=()
+  local origin_index=0 minimum_speed low_speed_seconds
 
   release_archive_error=
   release_url=${PHP_DARWIN_RELEASE_URL:-https://github.com/$release_repository/releases/download/php-$version/$manifest_download_asset}
@@ -670,7 +671,17 @@ php_darwin_download_release_archive() {
   fi
   release_archive_error=not-found
   for release_url in "${urls[@]}"; do
-    if ! archive_http_status=$(php_darwin_request_release "$release_url" "$archive"); then
+    minimum_speed=1024
+    low_speed_seconds=3
+    if [ "$origin_index" -eq 0 ] && [ "${#urls[@]}" -gt 1 ]; then
+      # A trickling CDN can stay above 1 KiB/s for the entire 30-second limit.
+      # Try the fallback promptly; keep its normal budget for slower networks.
+      minimum_speed=8388608
+      low_speed_seconds=1
+    fi
+    origin_index=$((origin_index + 1))
+    if ! archive_http_status=$(php_darwin_request_release "$release_url" "$archive" \
+      "$minimum_speed" "$low_speed_seconds"); then
       [ "$release_archive_error" = checksum ] || release_archive_error=download
       continue
     fi

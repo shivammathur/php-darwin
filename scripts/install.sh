@@ -689,7 +689,7 @@ php_darwin_request_release() {
   # Fail over before retrying the same broken origin. Bound connection and
   # stalled-transfer time while allowing large legacy archives to finish.
   status=$(curl --config <(php_darwin_read_config download.conf) \
-    --retry 0 --connect-timeout 2 --speed-time 3 --speed-limit 1024 \
+    --retry 0 --connect-timeout 2 --speed-time "${4:-3}" --speed-limit "${3:-1024}" \
     -fsSL -w '%{http_code}' "$1" -o "$2") || result=$?
   if [ "$result" -ne 0 ] || [ "$status" != 200 ]; then
     printf 'php-darwin: download failed (curl %s, HTTP %s): %s\n' \
@@ -2186,7 +2186,9 @@ case "$tar_version" in
     ;;
   *) extract_options=(-T "$extract_members") ;;
 esac
-tar --ignore-zeros -xkmpf "$archive" --no-same-owner -C "$prefix" "${extract_options[@]}"
+# Archive owner names can trigger slow OpenDirectory lookups on self-hosted
+# Macs, even with --no-same-owner. Extraction still belongs to the current user.
+tar --ignore-zeros -xkmpf "$archive" --no-same-owner --numeric-owner -C "$prefix" "${extract_options[@]}"
 extract_status=$?
 restore_permissions || exit 1
 exit "$extract_status"
@@ -2980,6 +2982,7 @@ php_darwin_download_release_archive() {
   local archive_http_status
   local mirror_url
   local urls=()
+  local origin_index=0 minimum_speed low_speed_seconds
 
   release_archive_error=
   release_url=${PHP_DARWIN_RELEASE_URL:-https://github.com/$release_repository/releases/download/php-$version/$manifest_download_asset}
@@ -2993,7 +2996,17 @@ php_darwin_download_release_archive() {
   fi
   release_archive_error=not-found
   for release_url in "${urls[@]}"; do
-    if ! archive_http_status=$(php_darwin_request_release "$release_url" "$archive"); then
+    minimum_speed=1024
+    low_speed_seconds=3
+    if [ "$origin_index" -eq 0 ] && [ "${#urls[@]}" -gt 1 ]; then
+      # A trickling CDN can stay above 1 KiB/s for the entire 30-second limit.
+      # Try the fallback promptly; keep its normal budget for slower networks.
+      minimum_speed=8388608
+      low_speed_seconds=1
+    fi
+    origin_index=$((origin_index + 1))
+    if ! archive_http_status=$(php_darwin_request_release "$release_url" "$archive" \
+      "$minimum_speed" "$low_speed_seconds"); then
       [ "$release_archive_error" = checksum ] || release_archive_error=download
       continue
     fi

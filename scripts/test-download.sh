@@ -57,6 +57,11 @@ loop do
         sleep 5
         next
       end
+      if mode == 'trickle'
+        connection.write("HTTP/1.1 200 Fixture\r\nContent-Length: 3276800\r\nConnection: close\r\n\r\n")
+        200.times { connection.write('x' * 16384); sleep 0.1 }
+        next
+      end
       sleep 5 if mode == 'stall'
       status = {'missing'=>404,'unavailable'=>503}.fetch(mode, 200)
       body = File.read("#{directory}/#{route.end_with?('manifest.json') ? 'manifest' : 'fixture'}")
@@ -88,10 +93,13 @@ status=$(php_darwin_fetch_release_manifest "$release_repository" "$version" "$wo
   "$base/good/manifest.json")
 [ "$status" = 200 ] || php_darwin_die 'default GitHub manifest download failed'
 [ "$(cat "$work_dir/requests")" = /good/manifest.json ] || php_darwin_die 'GitHub was not the default manifest origin'
-for route in unavailable missing partial corrupt stall error-stall; do
+for route in unavailable missing partial corrupt stall error-stall trickle; do
   PHP_DARWIN_RELEASE_URL="$base/$route/archive"
   : > "$work_dir/requests"
+  download_started=$SECONDS
   php_darwin_download_release_archive || php_darwin_die "$route did not recover from the mirror"
+  [ "$route" != trickle ] || [ "$((SECONDS - download_started))" -lt 6 ] || \
+    php_darwin_die 'a trickling primary origin delayed mirror failover'
   cmp -s "$archive" "$work_dir/fixture" || php_darwin_die "$route retained invalid bytes"
   [ "$(wc -l < "$work_dir/requests" | tr -d ' ')" = 2 ] || php_darwin_die "$route retried the broken origin"
 done

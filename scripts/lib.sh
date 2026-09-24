@@ -688,7 +688,7 @@ php_darwin_request_release() {
   # Fail over before retrying the same broken origin. Bound connection and
   # stalled-transfer time while allowing large legacy archives to finish.
   status=$(curl --config <(php_darwin_read_config download.conf) \
-    --retry 0 --connect-timeout 2 --speed-time 3 --speed-limit 1024 \
+    --retry 0 --connect-timeout 2 --speed-time "${4:-3}" --speed-limit "${3:-1024}" \
     -fsSL -w '%{http_code}' "$1" -o "$2") || result=$?
   if [ "$result" -ne 0 ] || [ "$status" != 200 ]; then
     printf 'php-darwin: download failed (curl %s, HTTP %s): %s\n' \

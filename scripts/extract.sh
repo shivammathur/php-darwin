@@ -235,7 +235,9 @@ case "$tar_version" in
     ;;
   *) extract_options=(-T "$extract_members") ;;
 esac
-tar --ignore-zeros -xkmpf "$archive" --no-same-owner -C "$prefix" "${extract_options[@]}"
+# Archive owner names can trigger slow OpenDirectory lookups on self-hosted
+# Macs, even with --no-same-owner. Extraction still belongs to the current user.
+tar --ignore-zeros -xkmpf "$archive" --no-same-owner --numeric-owner -C "$prefix" "${extract_options[@]}"
 extract_status=$?
 restore_permissions || exit 1
 exit "$extract_status"
