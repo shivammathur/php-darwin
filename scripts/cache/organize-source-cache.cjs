@@ -3,10 +3,50 @@ const os = require('node:os');
 const path = require('node:path');
 const { Readable } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
+const { setTimeout: pause } = require('node:timers/promises');
+const { curlRequest } = require('../lib/release-http.cjs');
 const { ReleaseCache, assetIdentity, unpack, family, checkUploadResponse } = require('./source-bottle-releases.cjs');
 const { keyFor } = require('./source-bottle-cache.cjs');
 const { releaseForFormula, legacyRelease } = require('./source-cache-layout.cjs');
 const mirror = require('./source-bottle-mirror.cjs');
+
+// Bulk migration can issue hundreds of writes. Share one pacing queue across
+// both transports, and stop all workers on a quota response instead of retrying
+// before GitHub's reset. Normal build and installer transports are unchanged.
+function migrationTransport({ request = fetch, fallback = curlRequest, wait = pause, now = Date.now } = {}) {
+  let writes = Promise.resolve(), nextWrite = 0, blocked;
+  const wrap = transport => async (url, options = {}) => {
+    if (blocked) throw blocked;
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(options.method || 'GET')) {
+      const turn = writes.then(async () => {
+        if (blocked) throw blocked;
+        await wait(Math.max(0, nextWrite - now()));
+        nextWrite = now() + 1000;
+      });
+      writes = turn.catch(() => {});
+      await turn;
+    }
+    if (blocked) throw blocked;
+    const response = await transport(url, options);
+    const remaining = response.headers.get('x-ratelimit-remaining');
+    if ([403, 429].includes(response.status) || remaining === '0') {
+      const reset = Number(response.headers.get('x-ratelimit-reset')) * 1000;
+      const retryAfter = response.headers.get('retry-after');
+      const retryTime = retryAfter && (Number.isFinite(Number(retryAfter)) ? now() + Number(retryAfter) * 1000 : Date.parse(retryAfter));
+      const resume = remaining === '0' && reset > now() ? reset : retryTime || now() + 60000;
+      blocked = new Error(`Migration stopped: HTTP ${response.status}, API quota ${remaining ?? 'unknown'}/` +
+        `${response.headers.get('x-ratelimit-limit') ?? 'unknown'}; resume after ${new Date(resume).toISOString()}. ` +
+        'Verified destination copies are retained.');
+      if (!response.ok) {
+        const body = await response.text();
+        try { blocked.message += ` GitHub: ${JSON.parse(body).message}`; } catch { /* Headers retain the useful quota details. */ }
+        throw blocked;
+      }
+    }
+    return response;
+  };
+  return { request: wrap(request), fallbackRequest: wrap(fallback), mirrorDownload: mirror.transfer };
+}
 
 function placement(asset, source) {
   const identity = assetIdentity(asset);
@@ -197,7 +237,14 @@ async function migrate(cache, plan, { report = () => {}, copyEntry = copy } = {}
 
 async function main() {
   if (process.env.GITHUB_REPOSITORY !== 'shivammathur/php-darwin') throw new Error('Unexpected migration repository');
-  const cache = new ReleaseCache(), plan = await inventory(cache);
+  const cache = new ReleaseCache(migrationTransport());
+  const response = await cache.request('https://api.github.com/rate_limit', {
+    headers: { Authorization: `Bearer ${cache.token}`, Accept: 'application/vnd.github+json' },
+    signal: AbortSignal.timeout(30000),
+  });
+  const quota = (await response.json()).resources.core;
+  console.log(`GitHub API budget: ${quota.remaining}/${quota.limit}; resets ${new Date(quota.reset * 1000).toISOString()}`);
+  const plan = await inventory(cache);
   fs.writeFileSync('source-cache-plan.json', JSON.stringify(plan, null, 2));
   const counts = {};
   for (const entry of plan.entries) counts[entry.target] = (counts[entry.target] || 0) + 1;
@@ -207,5 +254,5 @@ async function main() {
     fs.writeFileSync('source-cache-migration.json', JSON.stringify(results, null, 2)) });
   console.log(`Verified ${plan.entries.length} source bottles; ${results.length} moved or resumed; removed empty legacy shards`);
 }
-module.exports = { placement, matches, inventory, workers, noActiveClaims, copy, verifyDestinations, removeCopies, migrate };
+module.exports = { placement, matches, inventory, workers, noActiveClaims, copy, verifyDestinations, removeCopies, migrate, migrationTransport };
 if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });

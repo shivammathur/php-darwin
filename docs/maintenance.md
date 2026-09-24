@@ -125,6 +125,8 @@ The `organize-source-cache.yml` workflow inventories misplaced bottles, copies
 and verifies their exact bytes, then removes the old copies and empty legacy
 shard releases. It resumes verified copies and refuses cleanup while builds hold
 claims. Run it with `apply=false` to inspect the plan before migration.
+Migration writes are paced, and a GitHub quota response stops all workers with
+the reset time in the log. Resume after that time; verified copies are reused.
 
 Refresh an installer without rebuilding PHP or its dependencies:
 

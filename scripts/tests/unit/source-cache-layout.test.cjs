@@ -8,7 +8,7 @@ const { spawnSync } = require('node:child_process');
 const { releaseForFormula, productionRelease } = require('../../cache/source-cache-layout.cjs');
 const { releaseAsset } = require('../../cache/source-bottle-releases.cjs');
 const { keyFor } = require('../../cache/source-bottle-cache.cjs');
-const { placement, copy, removeCopies, noActiveClaims, workers, migrate } = require('../../cache/organize-source-cache.cjs');
+const { placement, copy, removeCopies, noActiveClaims, workers, migrate, migrationTransport } = require('../../cache/organize-source-cache.cjs');
 const mirror = require('../../cache/source-bottle-mirror.cjs');
 const sha = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 
@@ -114,6 +114,53 @@ test('failed migration workers finish in-flight copies without launching the res
     await new Promise(resolve => setImmediate(resolve)); finished.push(value);
   }, 2), /copy failed/);
   assert.deepEqual(started, [1, 2]); assert.deepEqual(finished, [2]);
+});
+
+test('bulk migration paces writes across both transports while reads remain independent', async () => {
+  let clock = 1000; const writes = [];
+  const transport = async (_url, options) => {
+    if (options.method === 'DELETE') writes.push(clock);
+    return new Response(null, { status: 204 });
+  };
+  const limited = migrationTransport({ request: transport, fallback: transport, now: () => clock,
+    wait: async ms => { clock += ms; } });
+  await limited.request('fixture', { method: 'GET' });
+  assert.equal(clock, 1000);
+  await Promise.all([limited.request('fixture', { method: 'DELETE' }),
+    limited.fallbackRequest('fixture', { method: 'DELETE' }), limited.request('fixture', { method: 'DELETE' })]);
+  assert.deepEqual(writes, [1000, 2000, 3000]);
+});
+
+test('quota exhaustion stops all migration transports without starting release-cache retries', async () => {
+  const { ReleaseCache } = require('../../cache/source-bottle-releases.cjs');
+  let calls = 0;
+  const transport = async () => {
+    calls++;
+    return Response.json({ message: 'API rate limit exceeded' }, { status: 403, headers: {
+      'x-ratelimit-remaining': '0', 'x-ratelimit-limit': '1000', 'x-ratelimit-reset': '4000',
+    } });
+  };
+  const limited = migrationTransport({ request: transport, fallback: transport, now: () => 1000,
+    wait: async () => {} });
+  const cache = new ReleaseCache({ repository: 'shivammathur/fixture', token: 'fixture', ...limited,
+    wait: async () => assert.fail('quota errors must not enter the retry loop') });
+  await assert.rejects(cache.api('releases'), /quota 0\/1000; resume after 1970-01-01T01:06:40.000Z.*API rate limit exceeded/);
+  await assert.rejects(limited.fallbackRequest('fixture'), /Verified destination copies are retained/);
+  assert.equal(calls, 1);
+});
+
+test('secondary quota responses retain the server wait and successful final reads remain consumable', async () => {
+  const limited = migrationTransport({ now: () => 1000, request: async () => Response.json({ message: 'Secondary rate limit' }, {
+    status: 429, headers: { 'retry-after': '120', 'x-ratelimit-remaining': '999' },
+  }) });
+  await assert.rejects(limited.request('fixture'), /resume after 1970-01-01T00:02:01.000Z.*Secondary rate limit/);
+  let calls = 0;
+  const exhausted = migrationTransport({ now: () => 1000, request: async () => {
+    calls++; return Response.json({ ok: true }, { headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': '4000' } });
+  } });
+  assert.deepEqual(await (await exhausted.request('fixture')).json(), { ok: true });
+  await assert.rejects(exhausted.request('fixture'), /quota 0/);
+  assert.equal(calls, 1);
 });
 
 test('migration frees the full legacy release before moving shared dependencies and removes only empty shard tags', async t => {
