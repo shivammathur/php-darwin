@@ -1,132 +1,20 @@
-name: Test setup-php end to end
-run-name: Test PHP ${{ inputs.php-version }} cache through setup-php
-
+name: Test optional extension caches through setup-php
 on:
+  workflow_dispatch:
+    inputs:
+      php-versions:
+        type: string
+        default: '["8.4"]'
   workflow_call:
     inputs:
       php-version:
         required: true
         type: string
-  workflow_dispatch:
-    inputs:
-      php-version:
-        description: Published PHP minor version
-        default: '8.5'
-        required: true
-        type: string
-
-concurrency:
-  group: setup-php-e2e-${{ inputs.php-version }}
-  cancel-in-progress: false
-
 permissions:
   contents: read
-
-env:
-  HOMEBREW_DEVELOPER: '1'
-  use_package_cache: 'true'
-
 jobs:
-  direct:
-    name: Install PHP ${{ inputs.php-version }} with the release installer on ${{ matrix.runner }}
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        runner: [macos-15, macos-15-intel, macos-15-x86_64]
-    env:
-      PHP_VERSION: ${{ inputs.php-version }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Remove unused Homebrew taps
-        run: bash scripts/build/cleanup-taps.sh
-
-      - name: Record preinstalled PHP and services
-        run: bash scripts/tests/helpers/prepare-e2e.sh
-
-      - name: Run the published installer with visible output
-        id: install
-        run: bash scripts/tests/e2e/release.test.sh
-
-      - name: Verify the direct cache installation
-        if: ${{ !cancelled() && steps.install.outcome != 'skipped' }}
-        run: bash scripts/tests/e2e/setup-php.test.sh
-
-  setup-php:
-    name: Install PHP ${{ inputs.php-version }} through setup-php on ${{ matrix.runner }}
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        runner: [macos-15, macos-15-intel, macos-15-x86_64]
-    env:
-      EXTENSIONS: ${{ (inputs.php-version == '5.6' || inputs.php-version == '7.0') && 'xdebug' || 'xdebug, pcov' }}
-      PHP_DARWIN_REQUIRE_PCOV: ${{ (inputs.php-version == '5.6' || inputs.php-version == '7.0') && 'false' || 'true' }}
-      PHP_DARWIN_REQUIRE_CACHE: 'true'
-      PHP_DARWIN_REQUIRE_XDEBUG: 'true'
-      PHP_VERSION: ${{ inputs.php-version }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Remove unused Homebrew taps
-        run: bash scripts/build/cleanup-taps.sh
-
-      - name: Record preinstalled PHP and services
-        run: bash scripts/tests/helpers/prepare-e2e.sh
-
-      - name: Install the published cache before setup-php
-        # setup-php's self-hosted path uses preinstalled PHP or Homebrew. Test
-        # the cache explicitly, including downloads and the strict <10s limit.
-        run: bash scripts/tests/e2e/release.test.sh
-
-      - name: Check setup-php's passwordless sudo prerequisite
-        run: sudo -n true
-
-      - name: Configure the extension cache
-        id: cache-env
-        uses: shivammathur/cache-extensions@9ea160ee9ad63a0be2d72644fbfcefeff8a7be35 # main (rootless macOS cache)
-        with:
-          php-version: ${{ inputs.php-version }}
-          extensions: ${{ env.EXTENSIONS }}
-          key: php-darwin-e2e-v1
-
-      - name: Restore cached extensions
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
-        with:
-          path: ${{ steps.cache-env.outputs.dir }}
-          key: ${{ steps.cache-env.outputs.key }}
-          restore-keys: ${{ steps.cache-env.outputs.key }}
-
-      - name: Check out unchanged setup-php
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: shivammathur/setup-php
-          ref: f3d967b8bc6d6fbb17cb0e2ffd56cf304d0290ba
-          path: .setup-php
-          persist-credentials: false
-
-      - name: Preserve the Actions Node runtime
-        uses: ./.github/actions/node-runtime
-
-      - name: Install PHP and extensions through unchanged setup-php
-        # Stock setup-php needs a parent directory without "darwin". The helper
-        # copies its dist/src verbatim; the repository and action stay unchanged.
-        env:
-          INPUT_PHP-VERSION: ${{ inputs.php-version }}
-          INPUT_EXTENSIONS: ${{ env.EXTENSIONS }}
-          INPUT_INI-FILE: production
-          INPUT_GITHUB-TOKEN: ${{ github.token }}
-        run: '"$PHP_DARWIN_NODE" scripts/tests/helpers/run-setup-php.cjs .setup-php'
-
-      - name: Verify the php-darwin cache installation
-        run: bash scripts/tests/e2e/setup-php.test.sh
-
-      - name: Update Homebrew after the cache installation
-        run: brew update
+  self-hosted:
+    uses: shivammathur/test-setup-php/.github/workflows/extensions.yml@e0c137e03ccb835c92f345798be499bd04538c32
+    with:
+      runners: '["macos-15-x86_64"]'
+      php-versions: ${{ inputs.php-versions || format('["{0}"]', inputs.php-version) }}
