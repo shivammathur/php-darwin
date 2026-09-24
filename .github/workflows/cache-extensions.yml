@@ -34,6 +34,7 @@ on:
     paths:
       - .github/workflows/cache-extensions.yml
       - scripts/build/extension-pack.cjs
+      - scripts/build/build-extensions.sh
       - scripts/build/prepare-extension-pack.sh
       - scripts/installer/install-extensions.cjs
       - scripts/release/extension-packs.cjs
@@ -179,7 +180,10 @@ jobs:
 
   publish:
     needs: [plan, build]
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.publish)
+    if: >-
+      always() && !cancelled() && needs.plan.result == 'success' &&
+      (needs.build.result == 'success' || needs.build.result == 'skipped') &&
+      github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.publish)
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -192,6 +196,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/download-artifacts
+        if: needs.plan.outputs.count != '0'
         with:
           pattern: extension-*
           path: builds/extensions
@@ -201,4 +206,7 @@ jobs:
           CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
           CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
           CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
-        run: node scripts/release/extension-packs.cjs publish builds/extensions
+        run: |
+          mkdir -p builds/extensions
+          node --test scripts/tests/unit/extension-packs.test.cjs
+          node scripts/release/extension-packs.cjs publish builds/extensions

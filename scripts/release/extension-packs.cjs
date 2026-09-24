@@ -3,11 +3,9 @@ const path = require('node:path');
 const { command, digest, key, validateEntry, origins } = require('../installer/install-extensions.cjs');
 const configuration = require('../../conf/extension-packs.json');
 const platforms = require('../../conf/platforms.json');
+const { builderHash } = require('../build/extension-pack.cjs');
 const root = path.resolve(__dirname, '../..');
 
-function builderHash() {
-  return digest(fs.readFileSync(path.join(root, 'scripts/build/extension-pack.cjs')));
-}
 function unchanged(entry, repositories, phpManifest) {
   try {
     validateEntry(entry);
@@ -79,16 +77,21 @@ async function publish(directory) {
         report.install_seconds >= 10 || !report.php_preserved || !report.services_preserved) throw new Error('Extension validation did not pass');
     return { entry, archive };
   });
-  if (!entries.length || new Set(entries.map(({ entry }) => key(entry))).size !== entries.length) throw new Error('Invalid extension publish batch');
+  if (new Set(entries.map(({ entry }) => key(entry))).size !== entries.length) throw new Error('Invalid extension publish batch');
   const repo = 'shivammathur/php-darwin';
   const release = 'extensions';
-  try { command('gh', ['release', 'view', release, '--repo', repo]); }
-  catch { command('gh', ['release', 'create', release, '--repo', repo, '--title', 'Optional PHP extension caches', '--notes', '', '--latest=false']); }
-  const staging = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP || '/tmp', 'extension-release-'));
   const env = { ...process.env, AWS_ACCESS_KEY_ID: process.env.CF_R2_AWS_ACCESS_KEY_ID,
     AWS_SECRET_ACCESS_KEY: process.env.CF_R2_AWS_SECRET_ACCESS_KEY, AWS_DEFAULT_REGION: 'auto',
     AWS_EC2_METADATA_DISABLED: 'true', AWS_MAX_ATTEMPTS: '1', AWS_REQUEST_CHECKSUM_CALCULATION: 'when_required' };
   if (!env.AWS_ACCESS_KEY_ID || !env.AWS_SECRET_ACCESS_KEY || !process.env.CF_R2_AWS_S3_ENDPOINT) throw new Error('Cloudflare credentials are required');
+  const response = await fetch(`https://api.github.com/repos/${repo}/releases/tags/${release}`, {
+    headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, 'X-GitHub-Api-Version': '2022-11-28' },
+    signal: AbortSignal.timeout(15000),
+  });
+  if (response.status === 404 && entries.length) {
+    command('gh', ['release', 'create', release, '--repo', repo, '--title', 'Optional PHP extension caches', '--notes', '', '--latest=false']);
+  } else if (!response.ok) throw new Error(`Cannot inspect extension release: HTTP ${response.status}`);
+  const staging = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP || '/tmp', 'extension-release-'));
   async function mirror(file, immutable) {
     const name = path.basename(file);
     command('aws', ['--endpoint-url', process.env.CF_R2_AWS_S3_ENDPOINT, 's3', 'cp', file, `s3://php-darwin/extensions/${name}`,

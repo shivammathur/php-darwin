@@ -3,6 +3,13 @@ const path = require('node:path');
 const { command, digest, key, packs, inspectTree, packEnvironment, phpApi } = require('../installer/install-extensions.cjs');
 
 const macho = new Set(['cffaedfe', 'cefaedfe', 'feedfacf', 'feedface', 'cafebabe', 'bebafeca']);
+function builderHash() {
+  const root = path.resolve(__dirname, '../..');
+  const inputs = ['conf/extension-packs.json', 'conf/platforms.json',
+    'scripts/build/extension-pack.cjs', 'scripts/build/build-extensions.sh',
+    'scripts/build/prepare-extension-pack.sh'];
+  return digest(JSON.stringify(inputs.map(file => [file, digest(fs.readFileSync(path.join(root, file)))])));
+}
 function isMachO(file) {
   const fd = fs.openSync(file, 'r');
   const header = Buffer.alloc(4);
@@ -61,7 +68,7 @@ function packageExtension({ name, php_version, build, thread_safety, architectur
   const tap = command('brew', ['--repository', 'shivammathur/extensions']);
   metadata.source_records.push({ repository: 'shivammathur/homebrew-extensions', path: 'Abstract/abstract-php-extension.rb',
     sha256: digest(command('git', ['-C', tap, 'show', 'HEAD:Abstract/abstract-php-extension.rb']) + '\n') });
-  metadata.builder_sha256 = digest(fs.readFileSync(__filename));
+  metadata.builder_sha256 = builderHash();
   metadata.inputs_sha256 = digest(JSON.stringify(metadata));
   fs.mkdirSync(output, { recursive: true });
   const stage = fs.mkdtempSync(path.join(output, '.pack-'));
@@ -176,7 +183,7 @@ function packageExtension({ name, php_version, build, thread_safety, architectur
     return entry;
   } finally { fs.rmSync(stage, { recursive: true, force: true }); }
 }
-module.exports = { packageExtension, isMachO, dependencies, copyRuntime, sourceRecords };
+module.exports = { packageExtension, isMachO, dependencies, copyRuntime, sourceRecords, builderHash };
 if (require.main === module) {
   try {
     packageExtension({ name: process.env.EXTENSION_PACK, php_version: process.env.PHP_VERSION, build: process.env.BUILD,
