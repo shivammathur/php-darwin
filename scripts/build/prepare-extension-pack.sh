@@ -12,6 +12,9 @@ tap_path=$(php_darwin_tap_repository_path "$tap")
 # PHP archive supplies its matching tap; every installed PHP keg stays in place.
 if [ -d "$tap_path" ]; then HOMEBREW_DEVELOPER=1 brew untap "$tap"; fi
 PHP_DARWIN_PREFER_MIRROR=true bash "$script_dir/../install.sh" "$PHP_VERSION" "$BUILD" "$TS"
+# Source builds can load build dependencies such as bison@2.7 from this tap,
+# beyond the installed PHP formula trusted by the normal cache installer.
+brew trust "$tap"
 "$(brew --prefix)/opt/$formula/bin/php" -n -v
 if [ "$(php_darwin_version_channel "$PHP_VERSION")" = nightly ]; then
   # Read the commit from the tap restored with this PHP, not the moving branch.
