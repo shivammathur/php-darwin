@@ -86,7 +86,7 @@ jobs:
           EXTENSION_PACKS: ${{ inputs.extensions }}
           BUILDS: ${{ inputs.builds }}
           THREAD_SAFETY: ${{ inputs.ts }}
-          FORCE: ${{ inputs.force }}
+          FORCE: ${{ inputs.force || github.event_name == 'push' }}
         run: node scripts/release/extension-packs.cjs plan
 
   build:
