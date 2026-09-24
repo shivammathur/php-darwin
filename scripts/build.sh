@@ -115,15 +115,18 @@ clean_homebrew() {
   done < "$raw_dependencies"
   [ "${#dependency_formulae[@]}" -gt 0 ] || \
     php_darwin_die "Homebrew returned no dependencies for $requested_formula"
-  brew info --json=v2 --formula "${dependency_formulae[@]}" | \
-    bash "$script_dir/canonicalize-formulae.sh" > "$php_dependencies"
-  pipeline_status=("${PIPESTATUS[@]}")
-  [ "${pipeline_status[0]}" -eq 0 ] && [ "${pipeline_status[1]}" -eq 0 ] || \
+  brew info --json=v2 --formula "${dependency_formulae[@]}" > "$work_dir/dependency-info.json" || \
+    php_darwin_die 'could not inspect current dependency versions'
+  bash "$script_dir/canonicalize-formulae.sh" < "$work_dir/dependency-info.json" > "$php_dependencies" || \
     php_darwin_die "could not canonicalize dependencies for $requested_formula"
   bash "$script_dir/select-cleanup-formulae.sh" "$cleanup_formulae" "$php_dependencies" \
     "$formulae_to_remove" || php_darwin_die 'could not select unrelated Homebrew formulae'
+  # Keep older dependency kegs, but only pin versions that already satisfy
+  # Homebrew. The source-cache planner installs/caches required newer versions.
+  jq -r '.formulae[] | select(.outdated == false) | .name' "$work_dir/dependency-info.json" \
+    > "$work_dir/current-dependencies.txt" || php_darwin_die 'could not select current dependencies'
   awk 'NR == FNR { if (NF) dependencies[$1]=1; next } NF && $1 in dependencies { print $1 }' \
-    "$php_dependencies" "$cleanup_formulae" | LC_ALL=C sort -u > "$preserved_formulae_file"
+    "$work_dir/current-dependencies.txt" "$cleanup_formulae" | LC_ALL=C sort -u > "$preserved_formulae_file"
   pipeline_status=("${PIPESTATUS[@]}")
   [ "${pipeline_status[0]}" -eq 0 ] && [ "${pipeline_status[1]}" -eq 0 ] || \
     php_darwin_die 'could not select installed PHP dependencies'

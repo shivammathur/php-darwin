@@ -76,6 +76,7 @@ jobs:
       - name: Verify first installation and clear local packages
         run: |
           bash scripts/test-source-bottle-native.sh verify
+          bash scripts/test-source-bottle-native.sh verify-outdated
           bash scripts/test-source-bottle-native.sh reset
       - name: Restore both packages from the release cache
         id: warm

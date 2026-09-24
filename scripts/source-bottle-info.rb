@@ -10,6 +10,12 @@ formulae = JSON.parse(ARGV.fetch(1))
 force_source = ARGV[2] == "true"
 raise "Invalid source bottle mode" unless %w[plan seed inputs archive].include?(mode)
 
+def current_installation?(formula)
+  # Homebrew requires the current formula version, even if an older keg is
+  # still installed. Match Dependency#installed? before skipping an update.
+  formula.latest_version_installed? && formula.opt_prefix.exist?
+end
+
 def source_dependencies(formula, planning:, force_source: false, runtime_only: false, ignore_installed: false)
   Dependency.expand(formula) do |dependent, dep|
     next Dependable::PRUNE if dep.optional? || (dep.test? && !dep.build?) ||
@@ -18,7 +24,7 @@ def source_dependencies(formula, planning:, force_source: false, runtime_only: f
     if dep.build?
       next Dependable::PRUNE if runtime_only
       building = if planning
-        (ignore_installed || !dependent.any_version_installed?) &&
+        (ignore_installed || !current_installation?(dependent)) &&
           ((dependent == formula && force_source) || !FormulaInstaller.new(dependent).pour_bottle?)
       else
         # Inputs describe a source build of this formula. Its dependencies are
@@ -60,7 +66,7 @@ records = resolved.map do |formula|
     version: formula.pkg_version.to_s,
     prefix: formula.prefix.to_s,
     recipe: formula.path.to_s,
-    installed: formula.any_version_installed?,
+    installed: current_installation?(formula),
     bottled: installer.pour_bottle?,
     post_install: formula.post_install_defined? || formula.post_install_steps_defined?,
   }

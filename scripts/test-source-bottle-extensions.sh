@@ -31,7 +31,11 @@ case "${1:?}" in
     } | sed 's|.*/||' | LC_ALL=C sort -u > "$pin_dir/dependencies"
     brew list --formula | LC_ALL=C sort -u > "$pin_dir/installed"
     LC_ALL=C comm -12 "$pin_dir/dependencies" "$pin_dir/installed" > "$pin_dir/preserve"
-    LC_ALL=C comm -23 "$pin_dir/preserve" "$pin_dir/before" > "$pin_dir/added"
+    pins=()
+    while IFS= read -r dependency; do pins+=("$dependency"); done < "$pin_dir/preserve"
+    brew info --json=v2 --formula "${pins[@]}" | \
+      jq -r '.formulae[] | select(.outdated == false) | .name' | LC_ALL=C sort -u > "$pin_dir/current"
+    LC_ALL=C comm -23 "$pin_dir/current" "$pin_dir/before" > "$pin_dir/added"
     pins=()
     while IFS= read -r dependency; do pins+=("$dependency"); done < "$pin_dir/added"
     [ "${#pins[@]}" -eq 0 ] || brew pin --formula "${pins[@]}"

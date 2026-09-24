@@ -120,7 +120,9 @@ Keys cover package version/revision, formula source, installed dependency
 versions/recipes/options, architecture, macOS major, Homebrew major, compiler,
 and SDK. Extension keys also cover the patched shared base formula and the
 installed PHP version, API, and configure options. Unrelated bottle updates do not invalidate source builds. Existing
-runner dependencies and usable upstream bottles retain priority; debug/ZTS
+runner dependencies that satisfy the current formula and usable upstream bottles
+retain priority. Older installed dependency versions do not suppress a required
+update; that update uses the same bottle cache. Debug/ZTS
 extensions use their own source bottles. Upstream GHCR bottles are first read
 from the Cloudflare R2 `php-darwin` bucket under
 `homebrew/bottles/sha256/<digest>.tar.gz`. The builder verifies the formula's exact

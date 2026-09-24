@@ -107,6 +107,28 @@ assert.deepEqual(plan(true).map(item => item.name), ['php-darwin-cache-lib', 'ph
 console.log('Native bottle selected; build-only dependency included only for forced source builds');
 JS
     ;;
+  verify-outdated)
+    "${PHP_DARWIN_NODE:-node}" <<'JS'
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { brewSource, command } = require('./scripts/source-bottle-cache.cjs');
+const formula = 'php-darwin/source-cache-test/php-darwin-cache-lib';
+const recipe = path.join(command('brew', ['--repository', 'php-darwin/source-cache-test']).trim(),
+  'Formula/php-darwin-cache-lib.rb');
+const previous = fs.readFileSync(recipe, 'utf8');
+const plan = () => JSON.parse(brewSource('info', ['plan', JSON.stringify([formula]), 'true'])).at(-1);
+assert.equal(plan().installed, true);
+try {
+  fs.writeFileSync(recipe, previous.replace('version "1.0.0"', 'version "1.0.1"'));
+  const updated = plan();
+  assert.equal(updated.version, '1.0.1');
+  assert.equal(updated.installed, false, 'an older installed keg suppressed the required update');
+} finally { fs.writeFileSync(recipe, previous); }
+assert.equal(plan().installed, true);
+console.log('Current dependency reused; older installed version correctly requires an update');
+JS
+    ;;
   verify)
     [ "$("$(brew --prefix "$app")/bin/php-darwin-cache-app")" = 42 ]
     [ "$(cat "$(brew --prefix)/var/php-darwin-source-cache-test/postinstall")" = ready ]
