@@ -150,7 +150,8 @@ runtime/extension probes during an installation.
 Use the `workflow-performance` and per-build timing artifacts to separate runner
 queueing, dependency fetching, source compilation and publication. Check cache
 miss records, archive metadata and actual links.
-# Optional extension archives
+
+## Optional extension archives
 
 `cache-extensions.yml` restores published PHP caches and builds Imagick, MongoDB
 and Memcached independently. It never compiles PHP or adds these libraries to

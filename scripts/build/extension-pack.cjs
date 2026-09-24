@@ -23,7 +23,9 @@ function copyRuntime(keg, output) {
   fs.cpSync(keg, output, { recursive: true, verbatimSymlinks: true, filter: source => {
     const relative = path.relative(keg, source);
     if (/(?:^|\/)(?:include|\.brew|cmake|pkgconfig)(?:\/|$)/.test(relative)) return false;
-    if (/\.(?:a|la|o|h|hpp|pc)$/.test(relative)) return false;
+    if (/\.(?:a|o|h|hpp|pc)$/.test(relative)) return false;
+    // ImageMagick's libltdl module loader needs its .la module descriptors.
+    if (relative.endsWith('.la') && !/\/modules-[^/]+\//.test(relative)) return false;
     if (/^share\/(?:doc|man|info)(?:\/|$)/.test(relative) &&
         !fs.statSync(source).isDirectory() && !/(?:licen[cs]e|copying|copyright|notice|legal|authors)/i.test(relative)) return false;
     return true;
@@ -130,6 +132,17 @@ function packageExtension({ name, php_version, build, thread_safety, architectur
         if (!relocatedTarget.startsWith(stage + '/')) throw new Error(`External runtime symlink: ${file}`);
         fs.unlinkSync(file);
         fs.symlinkSync(path.relative(path.dirname(file), relocatedTarget), file);
+      }
+    }
+    metadata.relocations = [];
+    for (const file of files(stage)) if (file.endsWith('.la') && fs.lstatSync(file).isFile()) {
+      let content = fs.readFileSync(file, 'utf8');
+      for (const mapping of mappings) for (const original of [mapping.keg, mapping.opt]) {
+        content = content.replaceAll(original, `@PHP_DARWIN_EXTENSION_ROOT@/${mapping.relative}`);
+      }
+      if (content.includes('@PHP_DARWIN_EXTENSION_ROOT@')) {
+        fs.writeFileSync(file, content);
+        metadata.relocations.push(path.relative(stage, file));
       }
     }
     const magick = mappings.find(item => item.name === 'imagemagick');

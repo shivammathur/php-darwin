@@ -130,6 +130,17 @@ function packEnvironment(metadata, destination) {
   }
   return environment;
 }
+function relocateResources(metadata, stage, destination) {
+  if (!Array.isArray(metadata.relocations)) throw new Error('Missing resource relocation metadata');
+  for (const relative of metadata.relocations) {
+    if (!safePath(relative) || !relative.endsWith('.la')) throw new Error('Unsafe resource relocation');
+    const file = path.join(stage, relative);
+    if (!fs.lstatSync(file).isFile() || fs.statSync(file).size > 1000000) throw new Error('Invalid resource descriptor');
+    const content = fs.readFileSync(file, 'utf8');
+    if (!content.includes('@PHP_DARWIN_EXTENSION_ROOT@')) throw new Error('Missing resource relocation marker');
+    fs.writeFileSync(file, content.replaceAll('@PHP_DARWIN_EXTENSION_ROOT@', destination));
+  }
+}
 function install(directory, name, { phpConfig = 'php-config', php = 'php' } = {}) {
   if (!Object.hasOwn(packs, name)) throw new Error('Unknown extension pack');
   const entry = validateEntry(JSON.parse(fs.readFileSync(path.join(directory, `${name}.json`), 'utf8')));
@@ -163,8 +174,15 @@ function install(directory, name, { phpConfig = 'php-config', php = 'php' } = {}
     for (const module of metadata.modules) {
       if (!fs.lstatSync(path.join(stage, 'modules', `${module}.so`)).isFile()) throw new Error('Missing extension module');
     }
+    relocateResources(metadata, stage, destination);
     if (!fs.existsSync(destination)) fs.renameSync(stage, destination);
-    else inspectTree(destination);
+    else {
+      if (fs.realpathSync(destination) !== destination ||
+          fs.readFileSync(path.join(destination, 'metadata.json'), 'utf8') !== fs.readFileSync(path.join(stage, 'metadata.json'), 'utf8')) {
+        throw new Error('Installed private extension cache is inconsistent');
+      }
+      inspectTree(destination);
+    }
     const environment = packEnvironment(metadata, destination);
     const args = metadata.modules.flatMap(module => ['-d', `extension=${path.join(destination, 'modules', `${module}.so`)}`]);
     command(php, ['-n', ...args, '-r', `exit(extension_loaded('${name}') ? 0 : 1);`], { env: { ...process.env, ...environment } });
@@ -197,7 +215,7 @@ function install(directory, name, { phpConfig = 'php-config', php = 'php' } = {}
   }
 }
 module.exports = { packs, origins, command, digest, safePath, key, validateContext, validateEntry,
-  download, prefetch, runtimeContext, inspectTree, packEnvironment, install };
+  download, prefetch, runtimeContext, inspectTree, packEnvironment, relocateResources, install };
 if (require.main === module) (async () => {
   const [mode, directory, ...args] = process.argv.slice(2);
   if (!directory) throw new Error('Extension staging directory required');

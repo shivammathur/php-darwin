@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const http = require('node:http');
-const { prefetch, download, digest, key, validateEntry, safePath, inspectTree, packEnvironment } = require('../../installer/install-extensions.cjs');
+const { prefetch, download, digest, key, validateEntry, safePath, inspectTree, packEnvironment, relocateResources } = require('../../installer/install-extensions.cjs');
 const { unchanged, builderHash } = require('../../release/extension-packs.cjs');
 
 const context = { php_version: '8.4', build: 'release', thread_safety: 'nts', architecture: 'arm64' };
@@ -90,6 +90,15 @@ test('only ImageMagick resource paths can be exported by a pack', () => {
     { MAGICK_CONFIGURE_PATH: '/pack/kegs/imagemagick/etc' });
   assert.throws(() => packEnvironment({ environment: { PATH: ['bin'] } }, '/pack'));
   assert.throws(() => packEnvironment({ environment: { MAGICK_CONFIGURE_PATH: ['../escape'] } }, '/pack'));
+});
+test('codec descriptors use the installed private runtime directory', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-resources-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(directory, 'png.la'), "libdir='@PHP_DARWIN_EXTENSION_ROOT@/kegs/imagemagick/lib/coders'\n");
+  relocateResources({ relocations: ['png.la'] }, directory, '/private-pack');
+  assert.equal(fs.readFileSync(path.join(directory, 'png.la'), 'utf8'), "libdir='/private-pack/kegs/imagemagick/lib/coders'\n");
+  assert.throws(() => relocateResources({ relocations: ['../outside.la'] }, directory, '/private-pack'));
+  assert.throws(() => relocateResources({ relocations: ['script.sh'] }, directory, '/private-pack'));
 });
 test('freshness tracks dependency recipes, PHP releases and builder changes', t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-freshness-'));
