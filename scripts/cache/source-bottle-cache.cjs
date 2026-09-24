@@ -143,6 +143,7 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
       metric({ result: 'upstream-bottle' });
       continue;
     }
+    log(`Resolving source bottle inputs: ${item.full_name} ${item.version}`);
     const build = inputs(item, platform);
     if (target && context) build.context = context;
     const key = keyFor(build);
@@ -154,7 +155,7 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
       bottle = readBottle(directory, key);
       if (!bottle) {
         // Never use a partial/prefix match for compiled packages.
-        const restoredKey = await cache.restoreCache([directory], key, []);
+        const restoredKey = await cache.restoreCache([directory], key, [], build);
         if (restoredKey === key) bottle = readBottle(directory, key);
         else if (cache.missReason) missReason = cache.missReason(key, build);
       }
@@ -179,7 +180,7 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
       if (cache.withBuildLock) {
         let cached;
         try {
-          const restored = await cache.restoreCache([directory], key, []);
+          const restored = await cache.restoreCache([directory], key, [], build);
           if (restored === key) cached = readBottle(directory, key);
         } catch (error) {
           missReason = 'cache-unavailable-or-invalid';
@@ -234,7 +235,10 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
       metric({ result: 'built', key, missReason, waitedMs, compileMs, bottleMs,
         uploadMs: Date.now() - uploadStarted, saved, ...(saveError ? { saveError } : {}) });
     };
-    if (cache.withBuildLock) await cache.withBuildLock(key, buildMissing);
+    if (cache.withBuildLock) {
+      log(`Acquiring source build ownership: ${item.full_name} (${key})`);
+      await cache.withBuildLock(key, buildMissing);
+    }
     else await buildMissing();
   }
   log(`Source bottles: ${result.restored} restored, ${result.built} built`);

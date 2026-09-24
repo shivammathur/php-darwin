@@ -10,10 +10,10 @@ const { SourceBuildLock } = require('../../cache/source-build-lock.cjs');
 const mirror = require('../../cache/source-bottle-mirror.cjs');
 const digest = value => crypto.createHash('sha256').update(value).digest('hex');
 
-function fixture(t, tag = 'cache') {
+function fixture(t, tag = 'cache', partition = false) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'release-bottle-test-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const state = { release: null, assets: [], deleted: [], failDownload: false, uploadRace: false, next: 0, delays: [] };
+  const state = { release: null, releases: [], assets: [], deleted: [], failDownload: false, uploadRace: false, next: 0, delays: [] };
   const request = async (url, options) => {
     const parsed = new URL(url);
     const endpoint = parsed.pathname.replace('/repos/shivammathur/php-darwin/', '');
@@ -21,22 +21,32 @@ function fixture(t, tag = 'cache') {
     assert.ok(options.signal instanceof AbortSignal);
     const intercepted = await state.intercept?.(endpoint, options);
     if (intercepted) return intercepted;
-    if (endpoint.startsWith('releases/tags/')) return json(state.release, state.release ? 200 : 404);
+    if (endpoint.startsWith('releases/tags/')) {
+      const release = state.releases.find(item => item.tag_name === endpoint.slice('releases/tags/'.length));
+      return json(release || null, release ? 200 : 404);
+    }
     if (endpoint === 'releases' && options.method === 'POST') {
       const body = JSON.parse(options.body);
       assert.equal(body.make_latest, 'false');
       assert.equal(body.prerelease, tag.startsWith('source-bottles-test-'));
-      state.release = { id: 1, ...body };
+      if (state.releases.some(item => item.tag_name === body.tag_name)) return json({}, 422);
+      state.release = { id: state.releases.length + 1, ...body };
+      state.releases.push(state.release);
       return json(state.release, 201);
     }
-    if (endpoint === 'releases/1/assets' && options.method === 'POST') {
+    const releaseId = Number(endpoint.match(/^releases\/(\d+)\/assets$/)?.[1]);
+    if (releaseId && options.method === 'POST') {
       const chunks = [];
       for await (const chunk of options.body) chunks.push(chunk);
       const data = Buffer.concat(chunks);
       const name = parsed.searchParams.get('name');
-      const existing = state.assets.some(asset => asset.name === name);
+      const existing = state.assets.some(asset => asset.name === name && (asset.release_id || 1) === releaseId);
+      if (!existing && state.assets.filter(asset => (asset.release_id || 1) === releaseId).length >= 1000) {
+        return json({ errors: [{ resource: 'ReleaseAsset', field: 'file_count', code: 'custom',
+          message: 'file_count limited to 1000 assets per release' }] }, 422);
+      }
       if (!existing) state.assets.push({
-        id: ++state.next, name, label: parsed.searchParams.get('label'),
+        id: ++state.next, release_id: releaseId, name, label: parsed.searchParams.get('label'),
         state: 'uploaded', size: data.length, created_at: new Date().toISOString(),
         digest: `sha256:${digest(data)}`, data,
       });
@@ -44,9 +54,10 @@ function fixture(t, tag = 'cache') {
         state.loseUploadReply = false;
         throw new TypeError('fetch failed after upload');
       }
-      return json({}, existing || state.uploadRace ? 422 : 201);
+      return existing || state.uploadRace ? json({ errors: [{ resource: 'ReleaseAsset', field: 'name', code: 'already_exists' }] }, 422) : json({}, 201);
     }
-    if (endpoint === 'releases/1/assets') return json(state.assets.map(({ data, ...asset }) =>
+    const offset = (Number(parsed.searchParams.get('page') || 1) - 1) * 100;
+    if (releaseId) return json(state.assets.filter(asset => (asset.release_id || 1) === releaseId).slice(offset, offset + 100).map(({ data, ...asset }) =>
       state.omitDigest ? { ...asset, digest: undefined } : asset));
     const id = Number(endpoint.split('/').at(-1));
     const asset = state.assets.find(asset => asset.id === id);
@@ -63,7 +74,7 @@ function fixture(t, tag = 'cache') {
     if (state.failDownload) return new Response('unavailable', { status: 503 });
     return new Response(asset.data);
   };
-  const cache = new ReleaseCache({ repository: 'shivammathur/php-darwin', token: 'fixture', tag, request,
+  const cache = new ReleaseCache({ repository: 'shivammathur/php-darwin', token: 'fixture', tag, partition, request,
     wait: async delay => state.delays.push(delay), warn: () => {},
     versionsToPrune: versions => versions.filter(version => Number(version) < Math.max(...versions.map(Number))) });
   function bottle(version, overrides = {}) {
@@ -77,7 +88,7 @@ function fixture(t, tag = 'cache') {
     fs.writeFileSync(path.join(directory, 'metadata.json'), JSON.stringify({
       schema: 1, key, file, sha256: digest(contents), inputs,
     }));
-    return { directory, key, ...releaseAsset(JSON.parse(fs.readFileSync(path.join(directory, 'metadata.json')))) };
+    return { directory, key, inputs, ...releaseAsset(JSON.parse(fs.readFileSync(path.join(directory, 'metadata.json')))) };
   }
   return { root, state, cache, bottle };
 }
@@ -287,7 +298,7 @@ test('a competing claim released before its lookup is retried safely', async t =
   let uploads = 0;
   f.state.intercept = (endpoint, options) => {
     if (endpoint === 'releases/1/assets' && options.method === 'POST' && uploads++ === 0) {
-      return new Response(null, { status: 422 });
+      return Response.json({ errors: [{ resource: 'ReleaseAsset', field: 'name', code: 'already_exists' }] }, { status: 422 });
     }
   };
   const lock = new SourceBuildLock(f.cache, { owner: { job: 1, run: 10, attempt: 1 } });
@@ -565,4 +576,84 @@ test('same-version builds retain distinct inputs and ignore edited display label
   const next = f.bottle('2');
   await f.cache.saveCache([next.directory], next.key);
   assert.deepEqual(f.state.deleted.sort(), [first.name, second.name].sort());
+});
+
+test('a full legacy release remains reusable while new bottles and claims use separate releases', async t => {
+  const f = fixture(t);
+  const old = f.bottle('1');
+  await f.cache.saveCache([old.directory], old.key);
+  const legacyAsset = f.state.assets[0];
+  for (let i = 1; i < 1000; i++) f.state.assets.push({ id: ++f.state.next, release_id: 1, name: `preserved-${i}` });
+  f.cache.partition = true;
+  f.cache.mirrorMissFile = path.join(f.root, 'partition-misses.jsonl');
+  const mirrorReads = [];
+  f.cache.mirrorDownload = async (url, file) => {
+    mirrorReads.push(url);
+    const asset = f.state.assets.find(item => item.digest && url.endsWith(`${item.digest.slice(7)}.tar`));
+    assert.ok(asset);
+    fs.writeFileSync(file, asset.data);
+    return 200;
+  };
+  const restored = path.join(f.root, 'partition-restored');
+  assert.equal(await f.cache.restoreCache([restored], old.key, [], old.inputs), old.key);
+  assert.equal(mirrorReads[0], mirror.publicURL(mirror.record(legacyAsset)));
+  const current = f.bottle('2');
+  await f.cache.saveCache([current.directory], current.key);
+  const shard = f.state.releases.find(item => item.tag_name === f.cache.bottleTag(current.inputs));
+  assert.match(shard.tag_name, /^cache-source-[a-f0-9]{2}$/);
+  const saved = f.state.assets.find(item => item.name === current.name);
+  assert.equal(saved.release_id, shard.id);
+  const queued = JSON.parse(fs.readFileSync(f.cache.mirrorMissFile));
+  assert.deepEqual(queued, mirror.record(saved, 'shivammathur/php-darwin', shard.tag_name));
+  assert.ok(queued.url.includes(`/download/${shard.tag_name}/`));
+  assert.equal(await f.cache.restoreCache([restored], current.key, [], current.inputs), current.key);
+  assert.ok(readBottle(restored, current.key));
+  const older = f.bottle('0');
+  await f.cache.saveCache([older.directory], older.key);
+  assert.ok(f.state.deleted.includes(older.name));
+  assert.ok(f.state.assets.includes(legacyAsset), 'legacy cached builds must remain intact');
+  const lock = new SourceBuildLock(f.cache, { owner: { job: 1, run: 10, attempt: 1 } });
+  await lock.run(current.key, async () => {
+    const claim = f.state.assets.find(item => item.name.startsWith('source-build-lock-'));
+    assert.equal(f.state.releases.find(item => item.id === claim.release_id).tag_name, 'cache-locks');
+  });
+  assert.equal(f.state.assets.filter(item => item.release_id === 1).length, 1000);
+  assert.equal(f.state.assets.some(item => item.name.startsWith('source-build-lock-')), false);
+  assert.deepEqual(f.state.delays, []);
+  await assert.rejects(f.cache.restoreCache([restored], current.key, [], old.inputs), /matching build inputs/);
+});
+
+test('release capacity and unknown 422 failures stop immediately without starting a compile', async t => {
+  for (const body of [{ errors: [{ resource: 'ReleaseAsset', field: 'file_count', code: 'custom',
+    message: 'file_count limited to 1000 assets per release' }] }, { message: 'Validation failed' }]) {
+    const f = fixture(t);
+    let requests = 0;
+    f.state.intercept = (endpoint, options) => {
+      if (endpoint === 'releases/1/assets' && options.method === 'POST') {
+        requests++;
+        return Response.json(body, { status: 422 });
+      }
+    };
+    const bottle = f.bottle('1');
+    const lock = new SourceBuildLock(f.cache, { owner: { job: 1, run: 10, attempt: 1 } });
+    await assert.rejects(lock.run(bottle.key, () => assert.fail('must not compile without ownership')), /Source build claim: HTTP 422/);
+    await assert.rejects(f.cache.saveCache([bottle.directory], bottle.key), /Source bottle upload: HTTP 422/);
+    assert.equal(requests, 2);
+    assert.deepEqual(f.state.delays, []);
+  }
+});
+
+test('mirror records accept only production source shards and preserve digest-based Cloudflare addresses', async t => {
+  const f = fixture(t);
+  const bottle = f.bottle('1');
+  await f.cache.saveCache([bottle.directory], bottle.key);
+  const asset = f.state.assets[0];
+  const legacy = mirror.record(asset);
+  const sharded = mirror.record(asset, 'shivammathur/php-darwin', 'cache-source-a7');
+  assert.equal(mirror.key(sharded), mirror.key(legacy));
+  assert.equal(mirror.portable(sharded).url, sharded.url);
+  for (const tag of ['cache-locks', 'cache-source-xyz', 'cache-source-A7', 'cache-source-a7/../other']) {
+    assert.equal(mirror.record(asset, 'shivammathur/php-darwin', tag), undefined);
+    assert.throws(() => mirror.portable({ ...legacy, url: legacy.url.replace('/cache/', `/${tag}/`) }));
+  }
 });

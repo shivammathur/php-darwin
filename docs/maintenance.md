@@ -115,6 +115,10 @@ The public mirror is `https://artifacts.php-darwin.setup-php.com`. PHP packages
 live under `php-X.Y/`; dependency objects live under `homebrew/bottles/sha256/`
 and `homebrew/source-bottles/sha256/`. Build locks require `contents: write`
 and `actions: read`; archive checkpoint pruning also needs `actions: write`.
+Source bottles are partitioned by package/ABI family into `cache-source-00`
+through `cache-source-ff` releases; existing bottles in `cache` remain readable.
+Build claims use `cache-locks` so they cannot exhaust bottle storage. This avoids
+GitHub's 1,000-assets-per-release limit without deleting reusable builds.
 
 Refresh an installer without rebuilding PHP or its dependencies:
 

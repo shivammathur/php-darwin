@@ -38,7 +38,7 @@ class SourceBuildLock {
     const owner = { ...await this.identity(), nonce: crypto.randomUUID() };
     const label = JSON.stringify(owner);
     const name = `source-build-lock-${hash}.json`;
-    const release = await this.cache.release(true);
+    const release = await this.cache.release(true, this.cache.partition ? 'cache-locks' : this.cache.tag);
     const started = this.now();
     let announced = false;
     let delay = 10000;
@@ -52,7 +52,8 @@ class SourceBuildLock {
             method: 'POST', headers: { Authorization: `Bearer ${this.cache.token}`,
               'Content-Type': 'application/json', 'Content-Length': String(data.length) },
             body: Readable.from([data]), duplex: 'half',
-          }), response => {
+          }), async response => {
+            await require('./source-bottle-releases.cjs').checkUploadResponse(response, 'Source build claim');
             if (!response.ok && response.status !== 422) {
               const error = new Error(`Source build claim on release ${release.id}: HTTP ${response.status}`);
               error.retryable = response.status === 404;

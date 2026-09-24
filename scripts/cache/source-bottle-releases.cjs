@@ -4,10 +4,10 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { Readable } = require('node:stream');
 const { curlRequest, errorDetails } = require('../lib/release-http.cjs');
-const { pipeline } = require('node:stream/promises');
+const { pipeline, finished } = require('node:stream/promises');
 const { spawnSync } = require('node:child_process');
 const { setTimeout: pause } = require('node:timers/promises');
-const { command, brewSource, readBottle } = require('./source-bottle-cache.cjs');
+const { command, brewSource, readBottle, keyFor } = require('./source-bottle-cache.cjs');
 const mirror = require('./source-bottle-mirror.cjs');
 
 const sha256 = value => crypto.createHash('sha256').update(value).digest('hex');
@@ -69,7 +69,7 @@ function unpack(archive, directory, key) {
 
 class ReleaseCache {
   constructor({ repository = process.env.GITHUB_REPOSITORY, token = process.env.GH_TOKEN,
-    tag = 'cache', request = fetch, fallbackRequest = request === fetch ? curlRequest : undefined,
+    tag = 'cache', partition = tag === 'cache', request = fetch, fallbackRequest = request === fetch ? curlRequest : undefined,
     mirrorDownload = request === fetch ? mirror.transfer : undefined,
     mirrorMissFile = process.env.PHP_DARWIN_SOURCE_BOTTLE_MISSES,
     versionsToPrune = olderVersions, wait = pause, warn = console.warn } = {}) {
@@ -79,6 +79,7 @@ class ReleaseCache {
     this.repository = repository;
     this.token = token;
     this.tag = tag;
+    this.partition = partition;
     this.request = request;
     this.fallbackRequest = fallbackRequest;
     this.mirrorDownload = mirrorDownload;
@@ -125,7 +126,10 @@ class ReleaseCache {
         this.warn(`Retrying release cache request (${attempt}/3) in ${delay / 1000}s: ${errorDetails(error)}`);
       } finally {
         // Recreate upload streams on retry and release unused error bodies.
-        options.body?.destroy?.();
+        if (options.body?.destroy) {
+          options.body.destroy();
+          await finished(options.body, { cleanup: true }).catch(() => {});
+        }
         if (response?.body && !response.bodyUsed) await response.body.cancel().catch(() => {});
       }
       await this.wait(delay);
@@ -158,15 +162,21 @@ class ReleaseCache {
     }, binary ? 300000 : 30000);
   }
 
-  async release(create = false) {
-    let release = await this.api(`releases/tags/${encodeURIComponent(this.tag)}`, { allow: [404] });
+  bottleTag(inputs) {
+    // Keep every version in a package/ABI family together for safe pruning,
+    // while avoiding GitHub's 1,000-assets-per-release limit.
+    return this.partition ? `cache-source-${family(inputs).slice(0, 2)}` : this.tag;
+  }
+
+  async release(create = false, tag = this.tag) {
+    let release = await this.api(`releases/tags/${encodeURIComponent(tag)}`, { allow: [404] });
     if (!release && create) {
       release = await this.api('releases', { method: 'POST', allow: [422], body: {
-        tag_name: this.tag, target_commitish: 'main', name: this.tag,
+        tag_name: tag, target_commitish: 'main', name: tag,
         body: 'Homebrew source bottles and build-input metadata used by PHP cache builds.',
-        prerelease: this.tag.startsWith('source-bottles-test-'), make_latest: 'false',
+        prerelease: tag.startsWith('source-bottles-test-'), make_latest: 'false',
       } });
-      release ||= await this.api(`releases/tags/${encodeURIComponent(this.tag)}`);
+      release ||= await this.api(`releases/tags/${encodeURIComponent(tag)}`);
     }
     return release;
   }
@@ -194,11 +204,11 @@ class ReleaseCache {
     }
   }
 
-  async download(asset, directory, key, { useMirror = true } = {}) {
+  async download(asset, directory, key, { useMirror = true, tag = this.tag } = {}) {
     const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'source-bottle-download-'));
     try {
       const archive = path.join(temporary, 'bundle.tar');
-      const mirrored = useMirror && this.mirrorDownload && mirror.record(asset, this.repository, this.tag);
+      const mirrored = useMirror && this.mirrorDownload && mirror.record(asset, this.repository, tag);
       if (mirrored) {
         try {
           const status = await this.mirrorDownload(mirror.publicURL(mirrored), archive);
@@ -224,16 +234,20 @@ class ReleaseCache {
     } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
   }
 
-  async restoreCache([directory], key) {
-    const release = await this.release();
-    if (!release) return;
-    const assets = await this.assets(release);
-    this.lastLookup = { key, assets };
-    const asset = assets.find(asset =>
-      asset.state !== 'starter' && assetIdentity(asset)?.key === key);
-    if (!asset) return;
-    await this.download(asset, directory, key);
-    return key;
+  async restoreCache([directory], key, _restoreKeys = [], inputs) {
+    if (this.partition && (!inputs || keyFor(inputs) !== key)) throw new Error('Source cache lookup requires matching build inputs');
+    const tags = this.partition ? [this.bottleTag(inputs), this.tag] : [this.tag];
+    this.lastLookup = { key, assets: [] };
+    for (const tag of tags) {
+      const release = await this.release(false, tag);
+      if (!release) continue;
+      const assets = await this.assets(release);
+      this.lastLookup.assets.push(...assets);
+      const asset = assets.find(asset => asset.state !== 'starter' && assetIdentity(asset)?.key === key);
+      if (!asset) continue;
+      await this.download(asset, directory, key, { tag });
+      return key;
+    }
   }
 
   missReason(key, inputs) {
@@ -254,7 +268,8 @@ class ReleaseCache {
     const metadata = JSON.parse(fs.readFileSync(path.join(directory, 'metadata.json')));
     const group = family(metadata.inputs);
     const { name, label } = releaseAsset(metadata);
-    const release = await this.release(true);
+    const tag = this.bottleTag(metadata.inputs);
+    const release = await this.release(true, tag);
     await this.removeAbandonedUpload(release, name);
     const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'source-bottle-upload-'));
     try {
@@ -270,7 +285,8 @@ class ReleaseCache {
           method: 'POST', headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/x-tar',
             'Content-Length': String(archiveSize) },
           body: fs.createReadStream(archive), duplex: 'half',
-        }), response => {
+        }), async response => {
+          await checkUploadResponse(response, 'Source bottle upload');
           if (!response.ok && response.status !== 422) {
             const error = new Error(`Source bottle upload: HTTP ${response.status}`);
             // GitHub can also return 404 when concurrent uploads race with
@@ -290,9 +306,9 @@ class ReleaseCache {
       } else {
         // Legacy servers may omit digests, and a concurrent winner can have a
         // different tar encoding. Fully validate those bytes before pruning.
-        await this.download(saved, path.join(temporary, 'verified'), key);
+        await this.download(saved, path.join(temporary, 'verified'), key, { tag });
       }
-      const mirrored = mirror.record(saved, this.repository, this.tag);
+      const mirrored = mirror.record(saved, this.repository, tag);
       if (mirrored) mirror.queue(mirrored, this.mirrorMissFile);
       const related = assets.map(asset => ({ asset, identity: assetIdentity(asset) }))
         .filter(entry => entry.identity?.group === group);
@@ -301,7 +317,7 @@ class ReleaseCache {
         // An older job can finish after a newer upload. Verify that replacement
         // too; its own uploader may have failed before completing read-back.
         const newer = related.find(entry => !obsolete.includes(entry.identity.version));
-        await this.download(newer.asset, path.join(temporary, 'replacement'), newer.identity.key);
+        await this.download(newer.asset, path.join(temporary, 'replacement'), newer.identity.key, { tag });
       }
       for (const { asset, identity } of related) {
         if (obsolete.includes(identity.version)) {
@@ -312,4 +328,14 @@ class ReleaseCache {
   }
 }
 
-module.exports = { ReleaseCache, family, releaseAsset, assetIdentity, unpack };
+async function checkUploadResponse(response, operation) {
+  if (response.status !== 422) return;
+  const details = await response.text();
+  let errors;
+  try { errors = JSON.parse(details).errors; } catch { /* Unknown validation errors must fail closed. */ }
+  if (errors?.length && errors.every(error => error.resource === 'ReleaseAsset' &&
+      error.field === 'name' && error.code === 'already_exists')) return;
+  throw new Error(`${operation}: HTTP 422 ${details}`);
+}
+
+module.exports = { ReleaseCache, family, releaseAsset, assetIdentity, unpack, checkUploadResponse };

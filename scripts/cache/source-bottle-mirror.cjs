@@ -4,9 +4,10 @@ const { transfer, validFile, publish, readRecords } = require('./upstream-bottle
 const { command } = require('./source-bottle-cache.cjs');
 const repository = 'shivammathur/php-darwin';
 const tag = 'cache';
+const productionRelease = value => /^cache(?:-source-[0-9a-f]{2})?$/.test(value);
 
 function record(asset, repo = repository, release = tag) {
-  if (repo !== repository || release !== tag) return;
+  if (repo !== repository || !productionRelease(release)) return;
   const identity = require('./source-bottle-releases.cjs').assetIdentity(asset);
   if (!identity || !/^sha256:[0-9a-f]{64}$/.test(asset.digest || '') ||
       asset.state === 'starter' || !Number.isSafeInteger(asset.size) || asset.size <= 0) return;
@@ -15,10 +16,11 @@ function record(asset, repo = repository, release = tag) {
   return portable({ formula: stem[0], version: identity.version, tag: 'source',
     name: asset.name, source_key: identity.key, bytes: asset.size,
     sha256: asset.digest.slice(7),
-    url: `https://github.com/${repository}/releases/download/${tag}/${encodeURIComponent(asset.name)}` });
+    url: `https://github.com/${repository}/releases/download/${release}/${encodeURIComponent(asset.name)}` });
 }
 
 function portable(value) {
+  const release = typeof value?.url === 'string' ? value.url.split('/')[7] : '';
   if (!value || !/^[A-Za-z0-9@+_.-]+$/.test(value.formula || '') ||
       !/^[A-Za-z0-9+_.-]+$/.test(value.version || '') || value.tag !== 'source' ||
       !/^[0-9a-f]{64}$/.test(value.sha256 || '') ||
@@ -26,7 +28,8 @@ function portable(value) {
       !/^[A-Za-z0-9@+_.-]+\.tar$/.test(value.name || '') ||
       !/^php-darwin-source-v1-[0-9a-f]{64}$/.test(value.source_key || '') ||
       !value.name.startsWith(`${value.formula}-${value.version}.macos-`) ||
-      value.url !== `https://github.com/${repository}/releases/download/${tag}/${encodeURIComponent(value.name)}` ||
+      !productionRelease(release) ||
+      value.url !== `https://github.com/${repository}/releases/download/${release}/${encodeURIComponent(value.name)}` ||
       require('./source-bottle-releases.cjs').assetIdentity(value)?.key !== value.source_key ||
       require('./source-bottle-releases.cjs').assetIdentity(value)?.version !== value.version) {
     throw new Error('Invalid mirrored source bottle identity');
@@ -59,11 +62,13 @@ async function main() {
   if (process.argv[2] === 'matrix') {
     let records;
     if (process.env.SEED === 'true') {
-      const id = command('gh', ['api', `repos/${repository}/releases/tags/${tag}`, '--jq', '.id']).trim();
-      if (!/^\d+$/.test(id)) throw new Error('Invalid source cache release');
-      const pages = JSON.parse(command('gh', ['api', '--paginate', '--slurp',
-        `repos/${repository}/releases/${id}/assets?per_page=100`]));
-      records = pages.flat().map(asset => record(asset)).filter(Boolean);
+      const releases = JSON.parse(command('gh', ['api', '--paginate', '--slurp',
+        `repos/${repository}/releases?per_page=100`])).flat().filter(item => productionRelease(item.tag_name));
+      records = releases.flatMap(release => {
+        const pages = JSON.parse(command('gh', ['api', '--paginate', '--slurp',
+          `repos/${repository}/releases/${release.id}/assets?per_page=100`]));
+        return pages.flat().map(asset => record(asset, repository, release.tag_name)).filter(Boolean);
+      });
     } else records = readRecords(process.argv[3]);
     const result = matrix(records, process.env.FORMULA || '');
     fs.writeFileSync('source-bottle-matrix.json', JSON.stringify(result, null, 2));
