@@ -159,6 +159,16 @@ if [ -n "$suffix" ]; then
   fi
 fi
 
+# Formula names do not encode the PHP debug/ZTS variant. A persistent runner
+# can retain a keg from another build, so let the bottle cache select the exact
+# variant instead of treating that keg as an already satisfied target.
+for extension_reference in "${extension_references[@]}"; do
+  if brew list --versions "$extension_reference" >/dev/null 2>&1; then
+    brew uninstall --force --ignore-dependencies "$extension_reference" || \
+      php_darwin_die "could not clear the previous extension build: $extension_reference"
+  fi
+done
+
 if [ -n "${PHP_DARWIN_SOURCE_CACHE_NODE:-}" ]; then
   "$PHP_DARWIN_SOURCE_CACHE_NODE" "${PHP_DARWIN_SOURCE_CACHE_ACTION:?}" install-extensions \
     "$extension_tap_path/Abstract/abstract-php-extension.rb" "$brew_prefix/opt/$formula" \

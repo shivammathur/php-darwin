@@ -77,8 +77,31 @@ PY
     done
     ;;
   reset)
-    # build-extensions.sh already removed the temporary formulae. Clearing the
-    # working cache ensures the next install reads the GitHub Release assets.
+    # Leave installed targets that cannot satisfy the requested PHP build.
+    # The warm pass must replace them from exact variant bottles, rather than
+    # trusting Homebrew's version-only installed check.
+    python3 - <<'PY'
+import json, pathlib, subprocess
+modules = []
+for file in pathlib.Path('.source-bottle-cache').glob('*/metadata.json'):
+    metadata = json.loads(file.read_text())
+    inputs = metadata['inputs']
+    if 'context' not in inputs:
+        continue
+    subprocess.run(['brew', 'install', '--formula', '--ignore-dependencies', '--skip-link',
+                    str((file.parent / metadata['file']).resolve())], check=True)
+    prefix = pathlib.Path(subprocess.check_output(['brew', '--prefix', inputs['formula']], text=True).strip())
+    extension = inputs['formula'].split('/')[-1].split('@')[0]
+    module = prefix / (extension + '.so')
+    assert module.is_file() and not module.is_symlink(), module
+    modules.append(module)
+assert len(modules) == 2, modules
+for module in modules:
+    module.chmod(module.stat().st_mode | 0o200)
+    module.write_text('Unusable extension retained from an earlier PHP build\n')
+print('Installed two unusable extension kegs to verify exact variant restoration')
+PY
+    # Clearing the working cache proves the next install reads release assets.
     rm -rf .source-bottle-cache
     ;;
   cleanup)
