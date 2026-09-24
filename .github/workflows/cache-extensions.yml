@@ -1,0 +1,168 @@
+name: Cache optional PHP extensions
+run-name: Cache optional PHP extensions ${{ inputs.php-versions || '8.4' }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      php-versions:
+        description: Space-separated PHP versions
+        default: '8.2 8.3 8.4 8.5'
+        type: string
+      extensions:
+        description: Space-separated optional extension packs
+        default: imagick mongodb memcached
+        type: string
+      builds:
+        description: Space-separated build types
+        default: debug release
+        type: string
+      ts:
+        description: Space-separated thread-safety modes
+        default: nts zts
+        type: string
+      force:
+        description: Rebuild even when package inputs are unchanged
+        default: false
+        type: boolean
+      publish:
+        description: Publish verified optional archives
+        default: true
+        type: boolean
+  schedule:
+    - cron: '37 */6 * * *'
+  push:
+    paths:
+      - .github/workflows/cache-extensions.yml
+      - scripts/build/extension-pack.cjs
+      - scripts/build/prepare-extension-pack.sh
+      - scripts/installer/install-extensions.cjs
+      - scripts/release/extension-packs.cjs
+      - scripts/tests/native/extension-pack.test.cjs
+      - conf/extension-packs.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: extension-cache-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      count: ${{ steps.plan.outputs.count }}
+      extensions-commit: ${{ steps.sources.outputs.extensions }}
+      core-commit: ${{ steps.sources.outputs.core }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: shivammathur/homebrew-extensions
+          path: homebrew-extensions
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Homebrew/homebrew-core
+          path: homebrew-core
+          persist-credentials: false
+      - name: Record formula snapshots
+        id: sources
+        run: |
+          echo "extensions=$(git -C homebrew-extensions rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "core=$(git -C homebrew-core rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Select new or changed extension archives
+        id: plan
+        env:
+          PHP_VERSIONS: ${{ inputs.php-versions }}
+          EXTENSION_PACKS: ${{ inputs.extensions }}
+          BUILDS: ${{ inputs.builds }}
+          THREAD_SAFETY: ${{ inputs.ts }}
+          FORCE: ${{ inputs.force }}
+        run: node scripts/release/extension-packs.cjs plan
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.count != '0'
+    name: ${{ matrix.name }} / PHP ${{ matrix.php_version }} / ${{ matrix.build }}-${{ matrix.thread_safety }} / ${{ matrix.architecture }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    permissions:
+      contents: write
+      actions: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      PHP_VERSION: ${{ matrix.php_version }}
+      BUILD: ${{ matrix.build }}
+      TS: ${{ matrix.thread_safety }}
+      ARCH: ${{ matrix.architecture }}
+      EXTENSION_PACK: ${{ matrix.name }}
+      EXTENSION_PACK_OUTPUT: builds/extensions
+      HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.plan.outputs.extensions-commit }}
+      HOMEBREW_CORE_COMMIT: ${{ needs.plan.outputs.core-commit }}
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_INSTALL_FROM_API: '1'
+      HOMEBREW_NO_INSTALL_CLEANUP: '1'
+      HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: '1'
+      HOMEBREW_VERBOSE: '1'
+      HOMEBREW_VERBOSE_USING_DOTS: '0'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/node-runtime
+      - name: Clean stale build processes and locks
+        run: brew test-bot --only-cleanup-before
+      - name: Restore the published PHP cache and pin extension sources
+        run: bash scripts/build/prepare-extension-pack.sh
+      - name: Use the planned Homebrew core recipes
+        run: |
+          core=$(brew --repository homebrew/core)
+          git -C "$core" fetch --depth=1 origin "$HOMEBREW_CORE_COMMIT"
+          git -C "$core" checkout --detach "$HOMEBREW_CORE_COMMIT"
+      - name: Build optional extensions using cached dependency bottles
+        uses: ./.github/actions/source-cache
+        with:
+          stage: extensions
+      - name: Validate the standalone extension archive
+        run: '"$PHP_DARWIN_NODE" scripts/tests/native/extension-pack.test.cjs'
+      - name: Upload verified optional archive
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: extension-${{ matrix.name }}-${{ matrix.php_version }}-${{ matrix.build }}-${{ matrix.thread_safety }}-${{ matrix.architecture }}
+          path: builds/extensions/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  publish:
+    needs: [plan, build]
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || inputs.publish)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    concurrency:
+      group: extension-cache-publish
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/download-artifacts
+        with:
+          pattern: extension-*
+          path: builds/extensions
+      - name: Publish archives, then commit the version manifests
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
+          CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
+          CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
+        run: node scripts/release/extension-packs.cjs publish builds/extensions

@@ -28,8 +28,15 @@ extension_formulae=()
 extension_references=()
 extension_types=()
 cached_paths=()
-configured_extensions=$(bash "$script_dir/cached-extensions.sh" "$version" records) || \
-  php_darwin_die "could not read cached extensions for PHP $version"
+if [ -n "${EXTENSION_PACK:-}" ]; then
+  configured_extensions=$(jq -er --arg name "$EXTENSION_PACK" --arg version "$version" '
+    select(.versions | index($version)) | .packs[$name] | select(type == "array" and length > 0) |
+    .[] | [.,"extension"] | @tsv' "$script_dir/../../conf/extension-packs.json") || \
+    php_darwin_die 'invalid optional extension pack'
+else
+  configured_extensions=$(bash "$script_dir/cached-extensions.sh" "$version" records) || \
+    php_darwin_die "could not read cached extensions for PHP $version"
+fi
 
 remove_extension_configs() {
   local config_dir="$brew_prefix/etc/php/$config_id/conf.d"
@@ -210,13 +217,25 @@ for extension_formula in "${extension_formulae[@]}"; do
   printf '%s\t%s\t%s\n' "$extension" "$extension_type" \
     "${cached_module#"$brew_prefix"/}" >> "$paths_file" || \
     php_darwin_die "could not record cached $extension"
-  "$brew_prefix/opt/$formula/bin/php" -n -d "$extension_type=$cached_module" -r \
+  extension_load_args=()
+  if [ -n "${EXTENSION_PACK:-}" ]; then
+    for load_index in "${!cached_paths[@]}"; do
+      extension_load_args+=(-d "${extension_types[$load_index]}=${cached_paths[$load_index]}")
+    done
+  else
+    extension_load_args=(-d "$extension_type=$cached_module")
+  fi
+  "$brew_prefix/opt/$formula/bin/php" -n "${extension_load_args[@]}" -r \
     "if (!extension_loaded('$extension')) { exit(1); }" || \
     php_darwin_die "$extension does not load with PHP $version $build/$ts"
 done
 
 LC_ALL=C sort -u "$paths_file" -o "$paths_file" || \
   php_darwin_die 'could not sort cached extension paths'
+if [ -n "${EXTENSION_PACK:-}" ]; then
+  "${PHP_DARWIN_NODE:-node}" "$script_dir/extension-pack.cjs" "$extension_dir" "$brew_prefix/opt/$formula/bin/php" || \
+    php_darwin_die "could not package $EXTENSION_PACK"
+fi
 brew uninstall --force --ignore-dependencies "${extension_formulae[@]}" || \
   php_darwin_die 'could not remove temporary extension formulae'
 extension_formulae=()
