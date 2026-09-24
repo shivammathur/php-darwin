@@ -130,7 +130,8 @@ async function publish(directory) {
   const release = 'extensions';
   const env = { ...process.env, AWS_ACCESS_KEY_ID: process.env.CF_R2_AWS_ACCESS_KEY_ID,
     AWS_SECRET_ACCESS_KEY: process.env.CF_R2_AWS_SECRET_ACCESS_KEY, AWS_DEFAULT_REGION: 'auto',
-    AWS_EC2_METADATA_DISABLED: 'true', AWS_MAX_ATTEMPTS: '1', AWS_REQUEST_CHECKSUM_CALCULATION: 'when_required' };
+    AWS_EC2_METADATA_DISABLED: 'true', AWS_MAX_ATTEMPTS: '1', AWS_REQUEST_CHECKSUM_CALCULATION: 'when_required',
+    AWS_RESPONSE_CHECKSUM_VALIDATION: 'when_required' };
   if (!env.AWS_ACCESS_KEY_ID || !env.AWS_SECRET_ACCESS_KEY || !process.env.CF_R2_AWS_S3_ENDPOINT) throw new Error('Cloudflare credentials are required');
   const response = await fetch(`https://api.github.com/repos/${repo}/releases/tags/${release}`, {
     headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, 'X-GitHub-Api-Version': '2022-11-28' },
@@ -143,9 +144,24 @@ async function publish(directory) {
   async function mirror(file, immutable) {
     const name = path.basename(file);
     command('aws', ['--endpoint-url', process.env.CF_R2_AWS_S3_ENDPOINT, 's3', 'cp', file, `s3://php-darwin/extensions/${name}`,
-      '--cache-control', immutable ? 'public, max-age=31536000, immutable' : 'no-cache, max-age=0, must-revalidate', '--only-show-errors'], { env });
+      '--cache-control', immutable ? 'public, max-age=31536000, immutable' : 'no-cache, max-age=0, must-revalidate',
+      '--cli-connect-timeout', '5', '--cli-read-timeout', '60', '--only-show-errors'], { env });
     const response = await fetch(`${origins[1]}/${name}?verify=${Date.now()}`, { signal: AbortSignal.timeout(45000) });
-    if (!response.ok || digest(Buffer.from(await response.arrayBuffer())) !== digest(fs.readFileSync(file))) throw new Error(`Mirror verification failed: ${name}`);
+    const received = Buffer.from(await response.arrayBuffer());
+    const expected = digest(fs.readFileSync(file));
+    if (!response.ok || digest(received) !== expected) {
+      // Distinguish a missing R2 object from a public-edge failure. Never
+      // repeat an upload or publish a manifest after failed verification.
+      try {
+        const object = JSON.parse(command('aws', ['--endpoint-url', process.env.CF_R2_AWS_S3_ENDPOINT,
+          's3api', 'head-object', '--bucket', 'php-darwin', '--key', `extensions/${name}`,
+          '--cli-connect-timeout', '5', '--cli-read-timeout', '30'], { env }));
+        console.error(`R2 object exists: ${name}; ${object.ContentLength} bytes, ETag ${object.ETag}`);
+      } catch { console.error(`R2 HeadObject could not confirm the uploaded object: ${name}`); }
+      throw new Error(`Mirror verification failed: ${name}; HTTP ${response.status}, expected ${expected}, ` +
+        `received ${digest(received)} (${received.length} bytes)`);
+    }
+    console.log(`Verified Cloudflare object: ${name}; ${received.length} bytes, SHA256 ${expected}`);
   }
   try {
     for (const { archive } of entries) {
