@@ -8,6 +8,12 @@ require 'json'
 require 'digest'
 mode, prefix, state_file, *service_directories = ARGV
 raise 'Invalid preservation check' unless %w[snapshot check].include?(mode)
+def php_version(keg)
+  output = IO.popen([File.join(keg, 'bin', 'php'), '-n', '-r', 'echo PHP_VERSION;'], err: File::NULL, &:read)
+  $?.success? ? output : nil
+rescue SystemCallError
+  nil
+end
 kegs = Dir.glob(File.join(prefix, 'Cellar', 'php*', '*')).select do |keg|
   File.basename(File.dirname(keg)).match?(/\Aphp(@[0-9]+\.[0-9]+)?(-debug)?(-zts)?\z/) &&
     File.directory?(keg) && File.executable?(File.join(keg, 'bin', 'php'))
@@ -17,12 +23,17 @@ services = service_directories.flat_map { |directory| Dir.glob(File.join(directo
            'sha256' => File.file?(file) ? Digest::SHA256.file(file).hexdigest : nil }]
 end
 if mode == 'snapshot'
-  File.write(state_file, JSON.generate({ 'kegs' => kegs, 'services' => services }))
+  runtimes = kegs.to_h { |keg| [keg, php_version(keg)] }.reject { |_, version| version.nil? }
+  File.write(state_file, JSON.generate({ 'kegs' => kegs, 'runtimes' => runtimes, 'services' => services }))
 else
   before = JSON.parse(File.read(state_file))
   missing = before.fetch('kegs') - kegs
   raise "Removed existing PHP kegs: #{missing.join(', ')}" unless missing.empty?
   raise 'PHP service definitions changed' unless before.fetch('services') == services
+  before.fetch('runtimes', {}).each do |keg, version|
+    raise "Existing PHP runtime changed or stopped working: #{keg}" unless php_version(keg) == version
+  end
   puts "Preserved #{before.fetch('kegs').length} existing PHP kegs and #{services.length} PHP service definitions"
+  puts "Verified #{before.fetch('runtimes', {}).length} existing PHP runtimes still execute with the same version"
 end
 RUBY
