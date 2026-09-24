@@ -33,7 +33,7 @@ function copyRuntime(keg, output) {
     if (/\.(?:a|o|h|hpp|pc)$/.test(relative)) return false;
     // ImageMagick's libltdl module loader needs its .la module descriptors.
     if (relative.endsWith('.la') && !/\/modules-[^/]+\//.test(relative)) return false;
-    if (/^share\/(?:man|info)(?:\/|$)/.test(relative)) return false;
+    if (/(?:^|\/)(?:man|gnuman|info)(?:\/|$)/.test(relative)) return false;
     if (/^share\/doc(?:\/|$)/.test(relative) && !fs.lstatSync(source).isDirectory() &&
         (!fs.lstatSync(source).isFile() ||
          !/^(?:licen[cs]e|copying|copyright|notice|legal|authors)(?:$|[.-])/i.test(path.basename(source)))) return false;

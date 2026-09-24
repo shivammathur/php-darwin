@@ -126,11 +126,13 @@ test('runtime copies retain licenses and codec descriptors without dangling manu
     fs.writeFileSync(path.join(source, file), file);
   }
   fs.symlinkSync('ASN1.3ssl', path.join(source, 'share/man/man3/NOTICEREF_free.3ssl'));
+  fs.mkdirSync(path.join(source, 'libexec/gnuman/man1'), { recursive: true });
+  fs.symlinkSync('../../../share/man/man3/ASN1.3ssl', path.join(source, 'libexec/gnuman/man1/tool.1'));
   copyRuntime(source, output);
   inspectTree(output);
   assert.ok(fs.existsSync(path.join(output, 'share/doc/NOTICE.txt')));
   assert.ok(fs.existsSync(path.join(output, 'lib/ImageMagick/modules-Q16/coders/png.la')));
-  for (const file of ['share/man', 'share/doc/manual.html', 'lib/libssl.a', 'lib/libssl.la']) {
+  for (const file of ['share/man', 'libexec/gnuman', 'share/doc/manual.html', 'lib/libssl.a', 'lib/libssl.la']) {
     assert.ok(!fs.existsSync(path.join(output, file)));
   }
 });
