@@ -33,6 +33,14 @@ def source_dependencies(formula, planning:, force_source: false, runtime_only: f
         dependent == formula
       end
       next Dependable::PRUNE unless building
+      # An installed build tool (notably the PHP archive used by extensions)
+      # already runs with its installed libraries. Updating that tool's entire
+      # runtime graph here can rebuild curl/OpenSSL for an unrelated extension.
+      # Keep the tool itself, while direct extension runtime dependencies still
+      # follow the normal version checks below.
+      if planning && !ignore_installed && current_installation?(dep.to_formula)
+        next Dependable::KEEP_BUT_PRUNE_RECURSIVE_DEPS
+      end
     end
   end
 end

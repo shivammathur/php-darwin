@@ -121,6 +121,8 @@ const formula = 'php-darwin/source-cache-test/php-darwin-cache-lib';
 const recipe = path.join(command('brew', ['--repository', 'php-darwin/source-cache-test']).trim(),
   'Formula/php-darwin-cache-lib.rb');
 const previous = fs.readFileSync(recipe, 'utf8');
+const consumerRecipe = path.join(path.dirname(recipe), 'php-darwin-cache-bottled.rb');
+const previousConsumer = fs.readFileSync(consumerRecipe, 'utf8');
 const plan = () => JSON.parse(brewSource('info', ['plan', JSON.stringify([formula]), 'true'])).at(-1);
 assert.equal(plan().installed, true);
 try {
@@ -128,9 +130,19 @@ try {
   const updated = plan();
   assert.equal(updated.version, '1.0.1');
   assert.equal(updated.installed, false, 'an older installed keg suppressed the required update');
-} finally { fs.writeFileSync(recipe, previous); }
+  fs.writeFileSync(consumerRecipe, previousConsumer.replace('depends_on "php-darwin/source-cache-test/php-darwin-cache-lib"',
+    'depends_on "php-darwin/source-cache-test/php-darwin-cache-app"'));
+  const toolPlan = JSON.parse(brewSource('info', ['plan',
+    JSON.stringify(['php-darwin/source-cache-test/php-darwin-cache-bottled']), 'true']));
+  assert.deepEqual(toolPlan.map(item => item.name), ['php-darwin-cache-app', 'php-darwin-cache-bottled'],
+    'an installed build tool must not upgrade its unrelated runtime libraries');
+} finally {
+  fs.writeFileSync(recipe, previous);
+  fs.writeFileSync(consumerRecipe, previousConsumer);
+}
 assert.equal(plan().installed, true);
 console.log('Current dependency reused; older installed version correctly requires an update');
+console.log('Installed build tool reused without rebuilding its runtime dependency tree');
 JS
     ;;
   verify)
