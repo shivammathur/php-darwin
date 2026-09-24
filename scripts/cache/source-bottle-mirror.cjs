@@ -4,15 +4,16 @@ const { transfer, validFile, publish, readRecords } = require('./upstream-bottle
 const { command } = require('./source-bottle-cache.cjs');
 const repository = 'shivammathur/php-darwin';
 const tag = 'cache';
-const productionRelease = value => /^cache(?:-source-[0-9a-f]{2})?$/.test(value);
+const { productionRelease, legacyRelease, releaseForFormula } = require('./source-cache-layout.cjs');
 
 function record(asset, repo = repository, release = tag) {
-  if (repo !== repository || !productionRelease(release)) return;
+  if (repo !== repository || !(productionRelease(release) || legacyRelease(release))) return;
   const identity = require('./source-bottle-releases.cjs').assetIdentity(asset);
   if (!identity || !/^sha256:[0-9a-f]{64}$/.test(asset.digest || '') ||
       asset.state === 'starter' || !Number.isSafeInteger(asset.size) || asset.size <= 0) return;
   const stem = asset.name.split(`-${identity.version}.macos-`);
   if (stem.length !== 2 || !/^[A-Za-z0-9@+_.-]+$/.test(stem[0])) return;
+  if (release !== tag && !legacyRelease(release) && release !== releaseForFormula(stem[0])) return;
   return portable({ formula: stem[0], version: identity.version, tag: 'source',
     name: asset.name, source_key: identity.key, bytes: asset.size,
     sha256: asset.digest.slice(7),
@@ -28,7 +29,7 @@ function portable(value) {
       !/^[A-Za-z0-9@+_.-]+\.tar$/.test(value.name || '') ||
       !/^php-darwin-source-v1-[0-9a-f]{64}$/.test(value.source_key || '') ||
       !value.name.startsWith(`${value.formula}-${value.version}.macos-`) ||
-      !productionRelease(release) ||
+      !(release === tag || legacyRelease(release) || release === releaseForFormula(value.formula)) ||
       value.url !== `https://github.com/${repository}/releases/download/${release}/${encodeURIComponent(value.name)}` ||
       require('./source-bottle-releases.cjs').assetIdentity(value)?.key !== value.source_key ||
       require('./source-bottle-releases.cjs').assetIdentity(value)?.version !== value.version) {

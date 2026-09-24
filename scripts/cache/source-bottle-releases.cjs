@@ -9,6 +9,7 @@ const { spawnSync } = require('node:child_process');
 const { setTimeout: pause } = require('node:timers/promises');
 const { command, brewSource, readBottle, keyFor } = require('./source-bottle-cache.cjs');
 const mirror = require('./source-bottle-mirror.cjs');
+const { releaseForFormula } = require('./source-cache-layout.cjs');
 
 const sha256 = value => crypto.createHash('sha256').update(value).digest('hex');
 
@@ -163,9 +164,7 @@ class ReleaseCache {
   }
 
   bottleTag(inputs) {
-    // Keep every version in a package/ABI family together for safe pruning,
-    // while avoiding GitHub's 1,000-assets-per-release limit.
-    return this.partition ? `cache-source-${family(inputs).slice(0, 2)}` : this.tag;
+    return this.partition ? releaseForFormula(inputs.formula) : this.tag;
   }
 
   async release(create = false, tag = this.tag) {
@@ -236,7 +235,8 @@ class ReleaseCache {
 
   async restoreCache([directory], key, _restoreKeys = [], inputs) {
     if (this.partition && (!inputs || keyFor(inputs) !== key)) throw new Error('Source cache lookup requires matching build inputs');
-    const tags = this.partition ? [this.bottleTag(inputs), this.tag] : [this.tag];
+    const tags = this.partition ? [...new Set([this.bottleTag(inputs), this.tag,
+      `cache-source-${family(inputs).slice(0, 2)}`])] : [this.tag];
     this.lastLookup = { key, assets: [] };
     for (const tag of tags) {
       const release = await this.release(false, tag);

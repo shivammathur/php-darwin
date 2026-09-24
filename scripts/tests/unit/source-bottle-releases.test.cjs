@@ -580,7 +580,7 @@ test('same-version builds retain distinct inputs and ignore edited display label
 
 test('a full legacy release remains reusable while new bottles and claims use separate releases', async t => {
   const f = fixture(t);
-  const old = f.bottle('1');
+  const old = f.bottle('1', { formula: 'shivammathur/extensions/imagick@5.6' });
   await f.cache.saveCache([old.directory], old.key);
   const legacyAsset = f.state.assets[0];
   for (let i = 1; i < 1000; i++) f.state.assets.push({ id: ++f.state.next, release_id: 1, name: `preserved-${i}` });
@@ -597,10 +597,10 @@ test('a full legacy release remains reusable while new bottles and claims use se
   const restored = path.join(f.root, 'partition-restored');
   assert.equal(await f.cache.restoreCache([restored], old.key, [], old.inputs), old.key);
   assert.equal(mirrorReads[0], mirror.publicURL(mirror.record(legacyAsset)));
-  const current = f.bottle('2');
+  const current = f.bottle('2', { formula: 'shivammathur/extensions/imagick@5.6' });
   await f.cache.saveCache([current.directory], current.key);
   const shard = f.state.releases.find(item => item.tag_name === f.cache.bottleTag(current.inputs));
-  assert.match(shard.tag_name, /^cache-source-[a-f0-9]{2}$/);
+  assert.equal(shard.tag_name, 'cache-imagick');
   const saved = f.state.assets.find(item => item.name === current.name);
   assert.equal(saved.release_id, shard.id);
   const queued = JSON.parse(fs.readFileSync(f.cache.mirrorMissFile));
@@ -608,7 +608,7 @@ test('a full legacy release remains reusable while new bottles and claims use se
   assert.ok(queued.url.includes(`/download/${shard.tag_name}/`));
   assert.equal(await f.cache.restoreCache([restored], current.key, [], current.inputs), current.key);
   assert.ok(readBottle(restored, current.key));
-  const older = f.bottle('0');
+  const older = f.bottle('0', { formula: 'shivammathur/extensions/imagick@5.6' });
   await f.cache.saveCache([older.directory], older.key);
   assert.ok(f.state.deleted.includes(older.name));
   assert.ok(f.state.assets.includes(legacyAsset), 'legacy cached builds must remain intact');

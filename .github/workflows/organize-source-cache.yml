@@ -1,0 +1,36 @@
+name: Organize source-cache releases
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Move verified bottles into named releases and remove their old copies
+        type: boolean
+        default: false
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: organize-source-cache
+  cancel-in-progress: false
+jobs:
+  organize:
+    if: github.repository == 'shivammathur/php-darwin' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Inventory, migrate and verify source bottles
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APPLY: ${{ inputs.apply }}
+        run: node scripts/cache/organize-source-cache.cjs
+      - name: Preserve migration inventory and verified progress
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: source-cache-organization
+          path: source-cache-*.json
+          if-no-files-found: error
+          retention-days: 30
