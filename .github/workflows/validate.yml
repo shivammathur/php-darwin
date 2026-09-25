@@ -1,0 +1,10 @@
+name: Validate installer-owned extension preservation
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  validate:
+    uses: shivammathur/test-setup-php/.github/workflows/validate.yml@936490d310324b44db0e9e333a914a7d2d65bc17
+    with:
+      cases: '[{"php":"5.6","runner":"macos-15-intel","runs_on":["self-hosted","macOS","X64","macos-15-intel"]},{"php":"8.6","runner":"macos-15-intel","runs_on":["self-hosted","macOS","X64","macos-15-intel"]},{"php":"8.7","runner":"macos-15-intel","runs_on":["self-hosted","macOS","X64","macos-15-intel"]}]'
+    secrets: inherit
