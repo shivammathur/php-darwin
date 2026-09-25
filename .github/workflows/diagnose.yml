@@ -1,0 +1,24 @@
+name: Diagnose extension publication reads
+on:
+  push:
+    branches: [feature/extension-publication-read-20260925-0944]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          token: ${{ secrets.TOKEN || github.token }}
+      - name: Read both failed objects without retries
+        run: python3 probe.py
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: extension-publication-read-diagnostic
+          path: report.json
+          if-no-files-found: error
+          retention-days: 7
