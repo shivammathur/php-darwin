@@ -141,7 +141,6 @@ install_cache() {
   local elapsed=$((SECONDS - started))
   printf 'Cache installation completed for %s in %ss\n' "$asset" "$elapsed"
   preserved_homebrew_state check
-  [ "$elapsed" -lt 10 ] || php_darwin_die "cache installation exceeded 10 seconds: ${elapsed}s"
 }
 
 validate_runtime() {

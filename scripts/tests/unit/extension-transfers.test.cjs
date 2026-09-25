@@ -40,7 +40,7 @@ function fixture(t, failure) {
     return '';
   };
   const retry = retryPolicy({ wait: async ms => waits.push(ms) });
-  const create = () => transfers({ directory, endpoint: 'https://test.invalid', env: { AWS_MAX_ATTEMPTS: '1' }, run, retry });
+  const create = () => transfers({ directory, endpoint: 'https://test.invalid', env: { AWS_MAX_ATTEMPTS: '1' }, run, retry, cloudflareRetry: retry });
   return { file, calls, waits, github, cloudflare, create };
 }
 test('resuming publication reuses matching GitHub digests and fully verified Cloudflare bytes', async t => {
@@ -109,6 +109,78 @@ test('recovery is bounded per operation and by a shared job budget', async () =>
   assert.equal(calls, 1);
   assert.deepEqual(waits, [5000, 5000]);
   for (const status of [400, 401, 403, 404, 422]) assert.equal(httpError(status, 'test').transient, false);
+  for (const status of [408, 429, 500, 502, 503, 504, 520, 522, 523, 524]) assert.equal(httpError(status, 'test').transient, true);
+});
+test('retry backoff respects a bounded server delay', async () => {
+  const waits = [], retry = retryPolicy({ attempts: 3, delay: 1000, wait: async pause => waits.push(pause) });
+  let calls = 0;
+  await retry('rate limit', async () => {
+    if (++calls < 3) throw Object.assign(httpError(429, 'Rate limited'), { retryAfterMs: calls === 1 ? 5000 : 90000 });
+  });
+  assert.deepEqual(waits, [5000, 30000]);
+});
+
+test('Cloudflare body recovery is bounded, resumes authenticated bytes, and fails safely', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-cloudflare-retry-'));
+  const file = path.join(directory, 'pack.tar.zst'), bytes = Buffer.from('0123456789abcdef');
+  fs.writeFileSync(file, bytes);
+  let mode, requests;
+  const server = http.createServer((request, response) => {
+    requests.push(request.headers.range || '');
+    const offset = Number((request.headers.range || '').match(/bytes=(\d+)-/)?.[1] || 0);
+    const attempt = requests.length;
+    if (mode === 'permanent') { response.writeHead(403); response.end(); return; }
+    if (mode === 'transient' && attempt < 3) { response.writeHead(attempt === 1 ? 524 : 503); response.end(); return; }
+    const resumed = offset > 0 && mode !== 'range-ignored';
+    const start = resumed ? offset : 0;
+    response.writeHead(resumed ? 206 : 200, {
+      'Content-Length': String(bytes.length - start),
+      ...(resumed ? { 'Content-Range': `bytes ${mode === 'bad-range' ? 0 : start}-${bytes.length - 1}/${bytes.length}` } : {}),
+      'CF-Ray': 'fixture-IAD',
+    });
+    if (mode === 'corrupt') { response.end(Buffer.alloc(bytes.length, 120)); return; }
+    if (['resume', 'range-ignored', 'bad-range', 'exhausted'].includes(mode) &&
+        (attempt === 1 || (mode === 'resume' && attempt === 2) || mode === 'exhausted')) {
+      response.write(bytes.subarray(start, start + 4)); return;
+    }
+    response.end(bytes.subarray(start));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => {
+    server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+  for (mode of ['resume', 'range-ignored', 'bad-range', 'corrupt', 'permanent', 'transient', 'exhausted']) {
+    requests = [];
+    const waits = [], cloudflareRetry = retryPolicy({ attempts: 3, budget: 12, delay: 1000,
+      wait: async pause => waits.push(pause) });
+    const run = (program, args) => {
+      if (program === 'aws') { assert.ok(args.includes('head-object'), 'a failed read must never cause an upload'); return '{}'; }
+      assert.equal(program, 'curl');
+      const local = [...args];
+      local[local.indexOf('--proto') + 1] = '=http';
+      local[local.indexOf('--proto-redir') + 1] = '=http';
+      local[local.indexOf('--max-time') + 1] = '0.15';
+      local[local.length - 1] = `http://127.0.0.1:${server.address().port}/pack.tar.zst`;
+      return command(program, local);
+    };
+    const transfer = transfers({ directory, run, cloudflareRetry });
+    const work = transfer.mirror(file, true);
+    if (mode === 'bad-range') await assert.rejects(work, /Invalid Content-Range/);
+    else if (mode === 'corrupt') await assert.rejects(work, /Checksum\/size mismatch/);
+    else if (mode === 'permanent') await assert.rejects(work, /HTTP 403/);
+    else if (mode === 'exhausted') await assert.rejects(work, /curl exited 28/);
+    else { await work; assert.equal(transfer.report.cloudflare_reused, 1); }
+    if (mode === 'resume') {
+      assert.deepEqual(requests, ['', 'bytes=4-', 'bytes=8-']);
+      assert.equal(transfer.report.reads.at(-1).assembled_bytes, bytes.length);
+      assert.equal(transfer.report.reads.at(-1).verified, true);
+    }
+    if (mode === 'transient' || mode === 'resume' || mode === 'exhausted') assert.deepEqual(waits, [1000, 2000]);
+    if (mode === 'corrupt' || mode === 'permanent') { assert.equal(requests.length, 1); assert.deepEqual(waits, []); }
+    assert.ok(requests.length <= 3);
+    assert.ok(!fs.readdirSync(directory).some(name => name.startsWith('verify-')), 'failed and successful operations clean partial files');
+  }
 });
 test('process diagnostics distinguish retryable service errors from permanent failures', async () => {
   for (const [message, transient] of [['HTTP 503: service unavailable', true], ['AccessDenied: no permission', false],

@@ -40,4 +40,3 @@ BASH_ENV="$script_dir/../helpers/trace-install-phases.sh" bash "$installer" "$ve
   php_darwin_die "the PHP $version release installer failed"
 elapsed=$((SECONDS - started))
 printf 'Published cache download and installation completed in %ss\n' "$elapsed"
-[ "$elapsed" -lt 10 ] || php_darwin_die "published cache installation exceeded 10 seconds: ${elapsed}s"

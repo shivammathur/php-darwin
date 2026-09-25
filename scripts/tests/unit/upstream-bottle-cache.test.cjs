@@ -6,6 +6,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { prefetch, matrix, publish, publicURL, key, validate } = require('../../cache/upstream-bottle-cache.cjs');
+const { retryPolicy } = require('../../release/extension-transfers.cjs');
 const bytes = Buffer.from('a verified bottle archive');
 const digest = crypto.createHash('sha256').update(bytes).digest('hex');
 function record(overrides = {}) {
@@ -90,7 +91,7 @@ test('publish checks upstream and public download hashes and uses only the bottl
   }, run: async (program, args, options) => {
     assert.equal(program, 'aws');
     assert.ok(args.includes(`s3://php-darwin/${key(record())}`));
-    assert.equal(options.env.AWS_MAX_ATTEMPTS, '1');
+    assert.equal(options.env.AWS_MAX_ATTEMPTS, '3');
     assert.equal(options.env.AWS_ACCESS_KEY_ID, env.CF_R2_AWS_ACCESS_KEY_ID);
     uploaded = true;
   } });
@@ -114,6 +115,25 @@ test('existing verified objects require no upstream request or upload', async ()
   assert.equal(result[0].result, 'existing');
 });
 
+test('source mirror publication retries transient reads without uploads and bounds persistent failures', async () => {
+  for (const mode of ['recover', 'timeout', 'forbidden']) {
+    const waits = [];
+    let reads = 0;
+    const retry = retryPolicy({ attempts: 3, budget: 12, delay: 1000, wait: async pause => waits.push(pause) });
+    const work = publish([record()], { env, retry, download: async (_url, file) => {
+      reads++;
+      if (mode === 'timeout') throw Object.assign(new Error('body timeout'), { transient: true });
+      if (mode === 'forbidden') return 403;
+      if (reads < 3) return reads === 1 ? 524 : 503;
+      fs.writeFileSync(file, bytes); return 200;
+    }, run: async () => assert.fail('read failures must not trigger uploads') });
+    if (mode === 'recover') assert.equal((await work)[0].result, 'existing');
+    else await assert.rejects(work, mode === 'timeout' ? /body timeout/ : /403/);
+    assert.equal(reads, mode === 'forbidden' ? 1 : 3);
+    assert.deepEqual(waits, mode === 'forbidden' ? [] : [1000, 2000]);
+  }
+});
+
 test('public 404 after upload checks R2 directly and fails without another upload', async () => {
   const calls = [];
   await assert.rejects(publish([record()], { env, download: async (url, file) => {
@@ -122,7 +142,7 @@ test('public 404 after upload checks R2 directly and fails without another uploa
     return upstream ? 200 : 404;
   }, run: async (program, args, options) => {
     assert.equal(program, 'aws');
-    assert.equal(options.env.AWS_MAX_ATTEMPTS, '1');
+    assert.equal(options.env.AWS_MAX_ATTEMPTS, '3');
     calls.push(args[2]);
     if (args[2] === 's3api') {
       assert.ok(args.includes('head-object'));

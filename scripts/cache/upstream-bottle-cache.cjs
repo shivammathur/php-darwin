@@ -7,6 +7,7 @@ const os = require('node:os');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 const { recordMetric } = require('../lib/build-metrics.cjs');
+const { retryPolicy, httpError } = require('../release/extension-transfers.cjs');
 const DOMAIN = 'https://artifacts.php-darwin.setup-php.com';
 
 function validate(record) {
@@ -43,19 +44,30 @@ function exec(program, args, options = {}) {
     let output = '';
     child.stdout?.on('data', data => { output += data; });
     child.on('error', reject);
-    child.on('close', code => code === 0 ? resolve(output.trim()) : reject(new Error(`${program} exited ${code}`)));
+    child.on('close', code => {
+      if (code === 0) return resolve(output.trim());
+      const error = new Error(`${program} exited ${code}`);
+      error.transient = program === 'curl' && [5, 6, 7, 18, 28, 52, 55, 56, 92].includes(code);
+      Object.defineProperty(error, 'output', { value: output.trim() });
+      reject(error);
+    });
   });
 }
 async function transfer(url, file, { head = false, upstream = false } = {}) {
-  // One attempt per request: a failed mirror read falls back to normal Homebrew.
-  const args = ['-q', '--silent', '--show-error', '--location', '--proto', '=https',
+  // One attempt here: publication wraps transient failures in its shared retry
+  // budget, while build prefetch can promptly fall back to normal Homebrew.
+  const args = ['-q', '--fail', '--silent', '--show-error', '--location', '--proto', '=https',
     '--proto-redir', '=https', '--connect-timeout', '5', '--max-time', head ? '10' : '180',
     '--output', file, '--write-out', '%{http_code}'];
   if (head) args.push('--head');
   if (upstream) args.push('--header', 'Authorization: Bearer QQ==');
   args.push(url);
   try { return Number(await exec('curl', args)); }
-  catch (error) { throw new Error(`Download failed: ${url}: ${error.message}`, { cause: error }); }
+  catch (error) {
+    if (/^[45]\d{2}$/.test(error.output || '')) return Number(error.output);
+    throw Object.assign(new Error(`Download failed: ${url}: ${error.message}`, { cause: error }),
+      { transient: Boolean(error.transient) });
+  }
 }
 async function pool(items, concurrency, work) {
   let next = 0;
@@ -122,12 +134,18 @@ function readRecords(directory) {
   return records;
 }
 async function publish(records, { download = transfer, run = exec, env = process.env,
-  identity = portable, objectKey = key, contentType = 'application/gzip', upstream = true } = {}) {
+  identity = portable, objectKey = key, contentType = 'application/gzip', upstream = true,
+  retry = retryPolicy({ attempts: 3, budget: 12, delay: 1000 }) } = {}) {
   const endpoint = env.CF_R2_AWS_S3_ENDPOINT;
   if (!/^https:\/\/[a-f0-9]+\.r2\.cloudflarestorage\.com\/?$/.test(endpoint || '') ||
       !env.CF_R2_AWS_ACCESS_KEY_ID || !env.CF_R2_AWS_SECRET_ACCESS_KEY) throw new Error('Missing R2 configuration');
   const directory = await fsp.mkdtemp(path.join(os.tmpdir(), 'php-darwin-bottles-'));
   const results = [];
+  const readPublic = (url, file) => retry('Cloudflare bottle read', async () => {
+    const status = await download(url, file);
+    if (status !== 200 && status !== 404) throw httpError(status, 'Cloudflare read failed');
+    return status;
+  });
   try {
     for (const raw of records) {
       const record = identity(raw);
@@ -136,7 +154,7 @@ async function publish(records, { download = transfer, run = exec, env = process
       const file = path.join(directory, record.sha256);
       let result = 'existing';
       // Check full bytes on both existing and newly published immutable objects.
-      let status = await download(publicUrl, file);
+      let status = await readPublic(publicUrl, file);
       if (status !== 200 || !await validFile(file, record.sha256)) {
         if (status !== 200 && status !== 404) throw new Error(`Cloudflare read failed: HTTP ${status}`);
         status = await download(record.url, file, { upstream });
@@ -144,14 +162,14 @@ async function publish(records, { download = transfer, run = exec, env = process
         const awsOptions = { env: {
           ...env, AWS_ACCESS_KEY_ID: env.CF_R2_AWS_ACCESS_KEY_ID,
           AWS_SECRET_ACCESS_KEY: env.CF_R2_AWS_SECRET_ACCESS_KEY, AWS_DEFAULT_REGION: 'auto',
-          AWS_EC2_METADATA_DISABLED: 'true', AWS_MAX_ATTEMPTS: '1',
+          AWS_EC2_METADATA_DISABLED: 'true', AWS_MAX_ATTEMPTS: '3', AWS_RETRY_MODE: 'standard',
           AWS_REQUEST_CHECKSUM_CALCULATION: 'when_required', AWS_RESPONSE_CHECKSUM_VALIDATION: 'when_required',
         } };
         await run('aws', ['--endpoint-url', endpoint, 's3', 'cp', file, `s3://php-darwin/${objectKey(record)}`,
           '--cache-control', 'public,max-age=31536000,immutable', '--content-type', contentType,
           '--cli-connect-timeout', '5', '--cli-read-timeout', '60', '--only-show-errors'], awsOptions);
         // Bypass any negative edge cache populated by the initial miss.
-        status = await download(`${publicUrl}?verify=${crypto.randomUUID()}`, file);
+        status = await readPublic(`${publicUrl}?verify=${crypto.randomUUID()}`, file);
         if (status !== 200 || !await validFile(file, record.sha256)) {
           if (status === 404) {
             // Diagnose stale public 404s against R2's strongly consistent API;

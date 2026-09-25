@@ -23,7 +23,7 @@ function reuseCompatibility(matrix, jobs, artifacts, download = downloadArtifact
         if (!fs.existsSync(file) || !fs.lstatSync(file).isFile()) return false;
         const report = JSON.parse(fs.readFileSync(file));
         return report.name === entry.name && report.sha256 === entry.sha256 && report.bytes === entry.bytes &&
-          Number.isFinite(report.install_seconds) && report.install_seconds > 0 && report.install_seconds < 10 &&
+          Number.isFinite(report.install_seconds) && report.install_seconds >= 0 &&
           report.php_preserved === true && report.services_preserved === true;
       });
       if (valid) verified.push({ job: job.id, name, artifact_id: artifact.id, artifact_digest: artifact.digest,

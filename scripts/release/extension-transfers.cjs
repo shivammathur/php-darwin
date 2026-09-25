@@ -19,29 +19,32 @@ function command(program, args, options = {}) {
       Object.defineProperty(error, 'output', { value: output.trim() });
       const status = diagnostic.match(/HTTP(?:\/\S+)?\s+(\d{3})\b/);
       error.transient = (program === 'curl' && [5, 6, 7, 18, 28, 52, 55, 56, 92].includes(code)) ||
-        (status && [408, 429, 500, 502, 503, 504].includes(Number(status[1]))) ||
+        (status && httpError(status[1], 'Transfer').transient) ||
         /\b(InternalError|InternalFailure|ServiceUnavailable|SlowDown|RequestTimeout)\b/.test(diagnostic) ||
         /unexpected EOF|connection reset by peer|TLS handshake timeout|connection timed out|connection was closed before we received a valid response/i.test(diagnostic);
       reject(error);
     });
   });
 }
-function retryPolicy({ wait = ms => new Promise(resolve => setTimeout(resolve, ms)), budget = 6 } = {}) {
+function retryPolicy({ wait = ms => new Promise(resolve => setTimeout(resolve, ms)), budget = 6,
+  attempts = 2, delay = 5000 } = {}) {
   return async (label, work) => {
-    try { return await work(); }
-    catch (error) {
-      // At most one extra attempt per operation and six across the whole job.
-      // Permanent errors (credentials, checksums, metadata) never enter here.
-      if (!error.transient || budget-- <= 0) throw error;
-      console.warn(`${label}: transient service failure; one recovery attempt in 5 seconds (${budget} remain for this job)`);
-      await wait(5000);
-      return work();
+    for (let attempt = 1; ; attempt++) {
+      try { return await work(); }
+      catch (error) {
+        // Bound both an individual operation and all recovery work in the job.
+        // Permanent errors (credentials, checksums, metadata) never enter here.
+        if (!error.transient || attempt >= attempts || budget-- <= 0) throw error;
+        const pause = Math.min(Math.max(delay * 2 ** (attempt - 1), error.retryAfterMs || 0), 30000);
+        console.warn(`${label}: transient service failure; recovery attempt ${attempt + 1}/${attempts} in ${pause / 1000} seconds (${budget} remain for this job)`);
+        await wait(pause);
+      }
     }
   };
 }
 function httpError(status, label) {
   const error = new Error(`${label}: HTTP ${status}`);
-  error.transient = [408, 429, 500, 502, 503, 504].includes(Number(status));
+  error.transient = [408, 429].includes(Number(status)) || (Number(status) >= 500 && Number(status) <= 599);
   return error;
 }
 function readDiagnostic(output, headerFile, downloaded) {
@@ -56,7 +59,7 @@ function readDiagnostic(output, headerFile, downloaded) {
   let headers = {};
   if (fs.existsSync(headerFile)) for (const line of fs.readFileSync(headerFile, 'utf8').split(/\r?\n/)) {
     if (line.startsWith('HTTP/')) headers = {};
-    const match = line.match(/^(cf-ray|cf-cache-status|age|content-length|content-range):\s*([\w ./:-]{1,100})$/i);
+    const match = line.match(/^(cf-ray|cf-cache-status|age|content-length|content-range|retry-after):\s*([\w ,./:-]{1,100})$/i);
     if (match) headers[match[1].toLowerCase()] = match[2];
   }
   return { ...result, headers };
@@ -76,7 +79,8 @@ async function workflowJobs(route, attempts, options = {}) {
   }
   return [...jobs.values()];
 }
-function transfers({ directory, env, endpoint, run = command, retry = retryPolicy() }) {
+function transfers({ directory, env, endpoint, run = command, retry = retryPolicy(),
+  cloudflareRetry = retryPolicy({ attempts: 3, budget: 12, delay: 1000 }) }) {
   const repo = 'shivammathur/php-darwin', release = 'extensions';
   let assets;
   const report = { github_reused: 0, github_uploaded: 0, cloudflare_reused: 0, cloudflare_uploaded: 0, reads: [] };
@@ -85,21 +89,57 @@ function transfers({ directory, env, endpoint, run = command, retry = retryPolic
     assets = new Map(JSON.parse(await run('gh', ['api', '--paginate', '--slurp',
       `repos/${repo}/releases/${record.id}/assets?per_page=100`])).flat().map(asset => [asset.name, asset]));
   }
-  async function read(file, base, { missing = false, different = false, fresh = true } = {}) {
+  async function read(file, base, { missing = false, different = false, fresh = true, resume = false } = {}) {
     const name = path.basename(file), downloaded = path.join(directory, `verify-${name}`);
     const headers = `${downloaded}.headers`;
+    const partial = `${downloaded}.partial`, expected = fs.readFileSync(file);
+    const prefix = resume && fs.existsSync(partial) ? fs.readFileSync(partial) : Buffer.alloc(0);
+    const offset = prefix.length;
     let output = '', failure, verified = false;
+    let assembled = 0;
     try {
-      output = await run('curl', ['-q', '--silent', '--show-error', '--location',
-        '--proto', '=https', '--proto-redir', '=https', '--connect-timeout', '5', '--max-time', '45',
-        '--output', downloaded, '--dump-header', headers, '--write-out',
-        '%{http_code}\n%{time_namelookup} %{time_connect} %{time_appconnect} %{time_starttransfer} %{time_total} %{size_download} %{http_version} %{remote_ip}',
-        `${base}/${name}${fresh ? `?verify=${Date.now()}` : ''}`]);
+      let transportError;
+      try {
+        output = await run('curl', ['-q', '--fail', '--silent', '--show-error', '--location',
+          '--proto', '=https', '--proto-redir', '=https', '--connect-timeout', '5', '--max-time', '45',
+          ...(offset ? ['--range', `${offset}-`] : []),
+          '--output', downloaded, '--dump-header', headers, '--write-out',
+          '%{http_code}\n%{time_namelookup} %{time_connect} %{time_appconnect} %{time_starttransfer} %{time_total} %{size_download} %{http_version} %{remote_ip}',
+          `${base}/${name}${fresh ? `?verify=${Date.now()}` : ''}`]);
+      } catch (error) { transportError = error; output = error.output || ''; }
       const status = output.split('\n')[0];
+      const received = fs.existsSync(downloaded) ? fs.readFileSync(downloaded) : Buffer.alloc(0);
+      let complete = received;
+      if (status === '206') {
+        const range = readDiagnostic(output, headers, downloaded).headers['content-range'];
+        if (!offset || range !== `bytes ${offset}-${expected.length - 1}/${expected.length}`) {
+          throw new Error(`Invalid Content-Range: ${name}`);
+        }
+        complete = Buffer.concat([prefix, received]);
+      }
+      // A server may ignore Range and return the full object; replace the prefix
+      // in that case. Authenticate every retained byte against the local archive.
+      if (resume && ['200', '206'].includes(status)) {
+        assembled = complete.length;
+        if (complete.length > expected.length || !complete.equals(expected.subarray(0, complete.length))) {
+          throw new Error(`Checksum/size mismatch: ${name}`);
+        }
+        if (complete.length === expected.length && digest(complete) === digest(expected)) {
+          verified = true; return true;
+        }
+        if (transportError?.transient && complete.length) fs.writeFileSync(partial, complete, { mode: 0o600 });
+      }
       if (status === '404' && missing) return false;
-      if (status !== '200') throw httpError(status, `Verify ${name}`);
-      const expected = fs.readFileSync(file), received = fs.readFileSync(downloaded);
-      if (received.length !== expected.length || digest(received) !== digest(expected)) {
+      if (/^[45]\d{2}$/.test(status)) {
+        const error = httpError(status, `Verify ${name}`);
+        const after = readDiagnostic(output, headers, downloaded).headers['retry-after'];
+        const delay = /^\d+$/.test(after || '') ? Number(after) * 1000 : Date.parse(after) - Date.now();
+        if (Number.isFinite(delay) && delay > 0) error.retryAfterMs = Math.min(delay, 30000);
+        throw error;
+      }
+      if (transportError) throw transportError;
+      if (status !== '200' && !(resume && status === '206')) throw httpError(status, `Verify ${name}`);
+      if (complete.length !== expected.length || digest(complete) !== digest(expected)) {
         if (different) return false;
         throw new Error(`Checksum/size mismatch: ${name}`);
       }
@@ -111,7 +151,8 @@ function transfers({ directory, env, endpoint, run = command, retry = retryPolic
       throw error;
     } finally {
       const diagnostic = { file: name, origin: base === origins[0] ? 'github' : 'cloudflare',
-        ...readDiagnostic(output, headers, downloaded), verified, ...(failure ? { error: failure.message } : {}) };
+        ...readDiagnostic(output, headers, downloaded), ...(offset ? { resume_offset: offset } : {}),
+        ...(assembled ? { assembled_bytes: assembled } : {}), verified, ...(failure ? { error: failure.message } : {}) };
       report.reads.push(diagnostic);
       console.log(`Publication read: ${JSON.stringify(diagnostic)}`);
       fs.rmSync(downloaded, { force: true });
@@ -147,14 +188,14 @@ function transfers({ directory, env, endpoint, run = command, retry = retryPolic
   async function mirror(file, immutable) {
     const name = path.basename(file);
     let uncertain = false;
-    await retry(`Cloudflare ${name}`, async () => {
+    await cloudflareRetry(`Cloudflare ${name}`, async () => {
       // Reuse only after reading the complete object and verifying its SHA256.
       // This also resolves uploads that succeeded but lost their response.
       // SHA-addressed archives cannot change. Reuse their ordinary cache key
       // while still hashing every byte; unique queries force cold origin reads.
       // Mutable files and verification after an upload require a fresh read
       // (the ordinary URL may still have a cached pre-upload 404).
-      if (await read(file, origins[1], { missing: true, different: !immutable, fresh: !immutable || uncertain })) {
+      if (await read(file, origins[1], { missing: true, different: !immutable, fresh: !immutable || uncertain, resume: immutable })) {
         report.cloudflare_reused++;
         console.log(`Reused verified Cloudflare object: ${name}`);
         return;
@@ -165,7 +206,7 @@ function transfers({ directory, env, endpoint, run = command, retry = retryPolic
         '--key', `extensions/${name}`, '--body', file,
         '--cache-control', immutable ? 'public, max-age=31536000, immutable' : 'no-cache, max-age=0, must-revalidate',
         '--cli-connect-timeout', '5', '--cli-read-timeout', '60'], { env });
-      await read(file, origins[1]);
+      await read(file, origins[1], { resume: immutable });
       report.cloudflare_uploaded++;
       console.log(`Verified Cloudflare object: ${name}; SHA256 ${digest(fs.readFileSync(file))}`);
     }).catch(async error => {
@@ -176,7 +217,7 @@ function transfers({ directory, env, endpoint, run = command, retry = retryPolic
       } catch { console.error(`R2 HeadObject could not confirm object: ${name}`); }
       throw Object.assign(new Error(`Cloudflare publication failed: ${name}; ${error.message}`, { cause: error }),
         { transient: Boolean(error.transient) });
-    });
+    }).finally(() => fs.rmSync(path.join(directory, `verify-${name}.partial`), { force: true }));
   }
   return { github, mirror, report };
 }

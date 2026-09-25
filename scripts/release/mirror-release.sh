@@ -15,7 +15,7 @@ php_darwin_validate_release_manifest "$manifest" "$version" >/dev/null
 bash -n "$staging/install.sh"
 export AWS_ACCESS_KEY_ID=${CF_R2_AWS_ACCESS_KEY_ID:?}
 export AWS_SECRET_ACCESS_KEY=${CF_R2_AWS_SECRET_ACCESS_KEY:?}
-export AWS_DEFAULT_REGION=auto AWS_EC2_METADATA_DISABLED=true AWS_MAX_ATTEMPTS=1 AWS_RETRY_MODE=standard
+export AWS_DEFAULT_REGION=auto AWS_EC2_METADATA_DISABLED=true AWS_MAX_ATTEMPTS=3 AWS_RETRY_MODE=standard
 export AWS_REQUEST_CHECKSUM_CALCULATION=when_required AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
 endpoint=${CF_R2_AWS_S3_ENDPOINT:?}
 mirror=$(php_darwin_release_mirror shivammathur/php-darwin "$version")
@@ -35,12 +35,25 @@ upload() {
 
 read_public() {
   # A freshly uploaded object must not inherit a cached 404. A transport error
-  # is not evidence that an immutable object is missing: never reupload it or
-  # multiply a stall through nested retry loops.
+  # is not evidence that an immutable object is missing: retry only the read.
   local name=$1 destination=$2 fresh=${3:-false} url="$mirror/$1"
+  local attempt=1 result status delay
   [ "$fresh" != true ] || url="$url?verify=$(basename "$work_dir")"
-  curl -fsSL --retry 0 --connect-timeout 5 --max-time 45 \
-    --speed-limit 1024 --speed-time 5 -w '%{http_code}' "$url" -o "$destination"
+  while :; do
+    result=0
+    status=$(curl -q -fsSL --retry 0 --connect-timeout 5 --max-time 45 \
+      --speed-limit 1024 --speed-time 5 -w '%{http_code}' "$url" -o "$destination") || result=$?
+    if [ "$attempt" -ge 3 ]; then printf '%s' "$status"; return "$result"; fi
+    case "$result:$status" in
+      5:*|6:*|7:*|18:*|28:*|52:*|55:*|56:*|92:*|22:408|22:429|22:5??) ;;
+      *) printf '%s' "$status"; return "$result" ;;
+    esac
+    delay=$((1 << (attempt - 1)))
+    printf 'Cloudflare read %s failed (curl %s, HTTP %s); retry %s/3 in %ss\n' \
+      "$name" "$result" "$status" "$((attempt + 1))" "$delay" >&2
+    sleep "$delay"
+    attempt=$((attempt + 1))
+  done
 }
 
 if [ "$mode" = installer-only ]; then

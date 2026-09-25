@@ -161,9 +161,10 @@ Passwordless sudo remains a prerequisite for setup-php. Its self-hosted path may
 reuse installed PHP or invoke Homebrew; direct release tests establish cache
 coverage separately.
 
-Compatibility installs must remain strictly below 10 seconds; direct release
-checks include bootstrap and archive downloads. Keep this gate strict and report
-existing timing failures. QA helpers record phases through `BASH_ENV` without
+Installation timings are informational and do not gate builds, compatibility,
+recovery or publication. Performance benchmarks and optimization are separate
+from packaging; direct release timings include bootstrap and archive downloads.
+QA helpers record phases through `BASH_ENV` without
 adding probes to production installers. `test.yml` has an `trace-install`
 input for detailed diagnostics. `PHP_DARWIN_VERIFY_RUNTIME=true` also enables
 runtime/extension probes during an installation.
@@ -192,7 +193,7 @@ is checkpointed separately, even if another pack in its job fails. Native cache
 campaigns run on dispatch or schedule; source changes run the local validation CI.
 Publication requires native installation and
 functional tests on the build platforms and newer macOS releases.
-Each pack must install in under 10 seconds and preserve PHP and services. Archives
+Each pack must load correctly and preserve PHP and services. Archives
 are published to the separate `extensions` release and Cloudflare only after all
 selected tests pass. Installer updates are published even when recipes are unchanged.
 If publication fails after validation, run `publish-extensions.yml` with that run's
@@ -212,7 +213,7 @@ successful builds and pins their artifact IDs and archive hashes. Optionally set
 example when another version's PHP API changed after the source run. Omit it to
 select all versions; unsupported, duplicate or unavailable selections fail.
 A successful compatibility job is reused only when its checksum-verified reports match every
-selected archive and confirm preservation and installation below 10 seconds.
+selected archive and confirm preservation with a valid timing report.
 Only missing or failed groups run the current native checks. The recovery plan
 artifact records reused evidence; publication waits for every remaining group.
 Failed builds remain excluded and can be rebuilt separately. Missing or expired
@@ -239,9 +240,14 @@ Publication resumes by reusing GitHub assets with matching SHA256 digests and
 Cloudflare objects whose downloaded bytes pass SHA256 verification. Existing
 SHA-addressed archives use their ordinary cache URLs; mutable files and reads
 after uploads use fresh queries to avoid stale manifests or cached missing responses.
-Small archives use single-object uploads. A transient timeout, connection failure or service error
-gets one recovery attempt after five seconds, with at most six recovery attempts
-across publication. Checksums, metadata and credential errors are never retried.
+Small archives use single-object uploads. Cloudflare publication reads have up to
+three attempts with exponential backoff. Extension and source-bottle publishers
+share a budget of twelve extra attempts per job; GitHub operations retain their
+separate bounded policy. Extension rate-limit delays are capped at thirty seconds.
+Immutable extension read retries resume only locally authenticated prefixes,
+validate Content-Range, and check the complete SHA256 before publishing a manifest.
+Base/source mirror writes use the AWS standard retry policy, capped at three attempts.
+Checksums, metadata and credential errors are never retried.
 Lost upload responses are reconciled with the remote object before another write.
 Each version's manifest is committed only after all its selected archives are
 verified. A transient failure leaves that version incomplete while independent

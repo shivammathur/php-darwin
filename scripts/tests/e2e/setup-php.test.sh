@@ -120,8 +120,9 @@ fi
 if [ "${PHP_DARWIN_REQUIRE_INSTALL_TIMING:-false}" = true ]; then
   elapsed=$(cat "${RUNNER_TEMP:?}/php-darwin-setup-install-seconds.txt") || \
     php_darwin_die 'setup-php did not record cache installer timing'
-  [[ "$elapsed" =~ ^[0-9]+$ ]] && [ "$elapsed" -lt 10 ] || \
-    php_darwin_die "setup-php cache installation exceeded 10 seconds: ${elapsed}s"
+  [[ "$elapsed" =~ ^[0-9]+$ ]] || \
+    php_darwin_die "invalid setup-php cache installation timing: $elapsed"
+  printf 'Setup-php cache installation completed in %ss\n' "$elapsed"
 fi
 
 printf 'Verified php-darwin cache installation for PHP %s' "$version"

@@ -86,7 +86,7 @@ jobs:
 
       - name: Install the published cache before setup-php
         # setup-php's self-hosted path uses preinstalled PHP or Homebrew. Test
-        # the cache explicitly, including downloads and the strict <10s limit.
+        # the cache explicitly, recording downloads and installation timing.
         run: bash scripts/tests/e2e/release.test.sh
 
       - name: Check setup-php's passwordless sudo prerequisite

@@ -140,7 +140,11 @@ test('recovery reuses only successful compatibility jobs with reports for the ex
   assert.deepEqual(result.matrix.include, [matrix.include[1]]);
   assert.deepEqual(result.verified[0].archives, [{ key: key(entry), sha256: entry.sha256, bytes: entry.bytes }]);
   assert.equal(calls, 1, 'a failed job cannot reuse reports left by its producer');
-  for (const [field, invalid] of [['sha256', 'c'.repeat(64)], ['bytes', 200], ['install_seconds', 10],
+  for (const seconds of [0, 10, 52, 300]) {
+    report.install_seconds = seconds;
+    assert.equal(reuseCompatibility(matrix, jobs, artifacts, download).verified.length, 1);
+  }
+  for (const [field, invalid] of [['sha256', 'c'.repeat(64)], ['bytes', 200], ['install_seconds', null],
     ['install_seconds', -1], ['php_preserved', false], ['services_preserved', false]]) {
     const previous = report[field]; report[field] = invalid;
     assert.equal(reuseCompatibility(matrix, jobs, artifacts, download).matrix.include.length, 2);

@@ -26,7 +26,7 @@ function writeArchive(folder, metadata) {
   fs.writeFileSync(path.join(folder, `${key(metadata)}.json`), JSON.stringify(metadata));
   fs.writeFileSync(path.join(folder, metadata.file), metadata.name);
   fs.writeFileSync(path.join(folder, 'validation.txt'), JSON.stringify({ name: metadata.name, sha256: metadata.sha256,
-    install_seconds: 1, php_preserved: true, services_preserved: true }));
+    install_seconds: 52, php_preserved: true, services_preserved: true }));
 }
 test('all 336 packs use 28 build jobs and 56 compatibility jobs, retaining every variant', () => {
   const entries = versions.flatMap(php_version => ['arm64', 'x86_64'].flatMap(architecture =>

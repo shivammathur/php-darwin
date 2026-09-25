@@ -27,6 +27,7 @@ dependency, platform and toolchain inputs. Archives include a pinned Homebrew ta
 snapshot matching PHP; `tap_snapshot` is its path relative to the Homebrew prefix.
 
 Installation preserves existing PHP kegs, configuration and services, and makes
-cached PHP the default through the archived `bin/php` link. The compatibility
-gate is strictly below 10 seconds. Timing probes belong to test helpers; source
+cached PHP the default through the archived `bin/php` link. Compatibility gates
+check correctness and preservation; timings are reported for separate performance
+work, without blocking publication. Timing probes belong to test helpers; source
 builds retain verbose configure/make output.

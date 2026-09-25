@@ -29,6 +29,9 @@ while [ "$#" -gt 0 ]; do
 done
 printf '%s\n' "$url" >> "$PHP_DARWIN_TEST_READS"
 if [ "${PHP_DARWIN_TEST_FAIL_READ:-}" = "$name" ]; then printf '200'; exit 28; fi
+if [ "${PHP_DARWIN_TEST_TRANSIENT_READ:-}" = "$name" ] && \
+  [ "$(grep -c "$name" "$PHP_DARWIN_TEST_READS")" -lt 3 ]; then printf '524'; exit 22; fi
+if [ "${PHP_DARWIN_TEST_FORBIDDEN_READ:-}" = "$name" ]; then printf '403'; exit 22; fi
 if [ "${PHP_DARWIN_TEST_STALE_READ:-}" = "$name" ] && [[ "$url" != *'?verify='* ]]; then
   printf '404'; exit 22
 fi
@@ -77,16 +80,31 @@ if bash "$script_dir/../../release/mirror-release.sh" "$work_dir/staging" instal
 fi
 [ ! -s "$work_dir/uploads" ] || php_darwin_die 'unverified generation mutated the mirror'
 mv "$work_dir/saved-manifest" "$work_dir/staging/php-8.3-manifest.json"
-# A transport failure must neither trigger an upload nor retry the same origin.
+# A transport failure has bounded read retries and must never trigger an upload.
 : > "$work_dir/uploads"
 : > "$work_dir/reads"
 export PHP_DARWIN_TEST_FAIL_READ=php-8.3/$name
 if bash "$script_dir/../../release/mirror-release.sh" "$work_dir/staging" > "$work_dir/log" 2>&1; then
   php_darwin_die 'mirror accepted a transport failure'
 fi
-[ "$(grep -c "$name" "$work_dir/reads")" = 1 ] || php_darwin_die 'mirror retried a stalled object'
+[ "$(grep -c "$name" "$work_dir/reads")" = 3 ] || php_darwin_die 'mirror exceeded its bounded read attempts'
 ! grep -Eq '(install.sh|manifest.json|\.tar\.zst)$' "$work_dir/uploads" || php_darwin_die 'read failure mutated release data'
 unset PHP_DARWIN_TEST_FAIL_READ
+# Transient 524s recover without reuploading archives; authorization errors fail immediately.
+: > "$work_dir/reads"
+: > "$work_dir/uploads"
+export PHP_DARWIN_TEST_TRANSIENT_READ=php-8.3/$name
+bash "$script_dir/../../release/mirror-release.sh" "$work_dir/staging" > "$work_dir/log" 2>&1
+[ "$(grep -c "$name" "$work_dir/reads")" = 3 ] || php_darwin_die 'mirror did not recover a transient 524'
+! grep -Eq '\.tar\.zst$' "$work_dir/uploads" || php_darwin_die 'transient read failure reuploaded an archive'
+unset PHP_DARWIN_TEST_TRANSIENT_READ
+: > "$work_dir/reads"
+export PHP_DARWIN_TEST_FORBIDDEN_READ=php-8.3/$name
+if bash "$script_dir/../../release/mirror-release.sh" "$work_dir/staging" > "$work_dir/log" 2>&1; then
+  php_darwin_die 'mirror accepted an authorization failure'
+fi
+[ "$(grep -c "$name" "$work_dir/reads")" = 1 ] || php_darwin_die 'mirror retried an authorization failure'
+unset PHP_DARWIN_TEST_FORBIDDEN_READ
 # A cached negative response after upload must not block public byte verification.
 export PHP_DARWIN_TEST_STALE_READ=php-8.3/$name
 bash "$script_dir/../../release/mirror-release.sh" "$work_dir/staging" > "$work_dir/log" 2>&1
