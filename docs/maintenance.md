@@ -204,8 +204,11 @@ updates only `install-extensions.cjs` at both origins; archives and manifests
 remain unchanged. Validate the installer against existing native packs first.
 If builds partly failed or the compatibility workflow needs a fix, run
 `recover-extensions.yml` with the completed source `run-id`. It selects only
-successful builds and pins their artifact IDs and archive hashes. A successful
-compatibility job is reused only when its checksum-verified reports match every
+successful builds and pins their artifact IDs and archive hashes. Optionally set
+`php-versions` to a space-separated list to recover only those versions, for
+example when another version's PHP API changed after the source run. Omit it to
+select all versions; unsupported, duplicate or unavailable selections fail.
+A successful compatibility job is reused only when its checksum-verified reports match every
 selected archive and confirm preservation and installation below 10 seconds.
 Only missing or failed groups run the current native checks. The recovery plan
 artifact records reused evidence; publication waits for every remaining group.

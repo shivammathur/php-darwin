@@ -67,6 +67,60 @@ test('partial reruns retain passing jobs from earlier attempts and respect newer
   await assert.rejects(workflowJobs('fixture', undefined, { run }), /Invalid source run attempt/);
 });
 
+test('version-scoped recovery excludes obsolete archives before downloads and retains exact compatibility evidence', async () => {
+  const source = { status: 'completed', head_branch: 'main', run_attempt: 1, head_sha: 'a'.repeat(40),
+    head_repository: { full_name: 'shivammathur/php-darwin' }, path: '.github/workflows/cache-extensions.yml' };
+  const entry = { schema: 1, name: 'mongodb', php_version: '8.5', build: 'release', thread_safety: 'nts', architecture: 'arm64',
+    sha256: 'b'.repeat(64), inputs_sha256: 'c'.repeat(64), php_api: '20250926', minimum_macos: 14, bytes: 100 };
+  entry.file = `${key(entry)}-${entry.sha256}.tar.zst`;
+  const runners = ['macos-15', 'macos-26', 'macos-latest'];
+  const jobs = [
+    { name: 'imagick / PHP 7.4 / release-nts / arm64', status: 'completed', conclusion: 'success' },
+    // The excluded individual build deliberately has no available payload.
+    { name: 'imagick / PHP 8.6 / release-nts / arm64', status: 'completed', conclusion: 'success' },
+    ...runners.map((runner, id) => ({ id, name: `Test PHP 8.5 on ${runner}`, status: 'completed', conclusion: 'success' }))
+  ];
+  const artifacts = [
+    { id: 1, name: 'extension-imagick-7.4-release-nts-arm64' },
+    { id: 11, name: 'extension-index-built-8.5-arm64' },
+    { id: 12, name: 'extension-built-8.5-arm64' },
+    // The excluded grouped build deliberately has no available payload either.
+    { id: 13, name: 'extension-index-built-8.6-arm64' },
+    ...runners.map((runner, i) => ({ id: 20 + i, name: `compatibility-8.5-${runner}`, digest: `sha256:${'d'.repeat(64)}` }))
+  ];
+  const run = (_program, args) => JSON.stringify(args.at(-1).includes('/jobs?') ? [{ jobs }] :
+    args.at(-1).includes('/artifacts?') ? [{ artifacts }] : source);
+  const downloaded = [];
+  const download = (artifact, folder) => {
+    downloaded.push(artifact.artifact_id);
+    if (artifact.artifact_id === 11) fs.writeFileSync(path.join(folder, 'entries.json'), JSON.stringify([entry]));
+    else {
+      assert.ok(artifact.artifact_id >= 20 && artifact.artifact_id <= 22);
+      const output = path.join(folder, `extension-${key(entry)}`); fs.mkdirSync(output);
+      fs.writeFileSync(path.join(output, 'validation.txt'), JSON.stringify({ name: entry.name, sha256: entry.sha256,
+        bytes: entry.bytes, install_seconds: 0.5, php_preserved: true, services_preserved: true }));
+    }
+  };
+  const options = { download, reuseReports: true, phpVersions: ' 7.4  8.5\n' };
+  const result = await planRecovery('123', run, undefined, options);
+  assert.deepEqual(result.entries.map(value => [key(value), value.artifact_id]),
+    [['imagick-7.4-release-nts-arm64', 1], [key(entry), 12]]);
+  assert.ok(result.matrix.include.every(group => group.php_version === '7.4'));
+  assert.equal(result.matrix.include.length, 3);
+  assert.equal(result.verified.length, 3);
+  assert.ok(result.verified.every(group => group.archives[0].sha256 === entry.sha256));
+  assert.deepEqual(downloaded, [11, 20, 21, 22]);
+  await assert.rejects(planRecovery('123', run, undefined, { ...options, phpVersions: '7.4 8.4' }), /no successful/);
+  await assert.rejects(planRecovery('123', run, undefined, { ...options, phpVersions: '8.6' }), /Missing or ambiguous/);
+});
+
+test('invalid recovery version selections fail before reading GitHub', async () => {
+  const run = () => assert.fail('Invalid selections must not query GitHub');
+  for (const phpVersions of ['8.8', '8.5,8.6', '8.5 8.5', ['8.5']]) {
+    await assert.rejects(planRecovery('123', run, undefined, { phpVersions }), /Unsupported|Duplicate|Invalid/);
+  }
+});
+
 test('recovery reuses only successful compatibility jobs with reports for the exact indexed archives', () => {
   const entry = { name: 'memcached', php_version: '8.0', build: 'debug', thread_safety: 'zts', architecture: 'x86_64',
     sha256: 'a'.repeat(64), bytes: 100 };

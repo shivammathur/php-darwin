@@ -34,8 +34,13 @@ function reuseCompatibility(matrix, jobs, artifacts, download = downloadArtifact
   return { matrix: { include: pending }, verified };
 }
 
-async function planRecovery(id, run = command, retry = retryPolicy(), { download = downloadArtifact, reuseReports = false } = {}) {
+async function planRecovery(id, run = command, retry = retryPolicy(), { download = downloadArtifact, reuseReports = false, phpVersions = '' } = {}) {
   if (!/^[1-9][0-9]*$/.test(id || '')) throw new Error('Invalid source workflow run');
+  if (typeof phpVersions !== 'string') throw new Error('Invalid recovery PHP versions');
+  const versions = phpVersions.trim() ? phpVersions.trim().split(/\s+/) : [];
+  for (const php_version of versions) validateContext({ php_version, architecture: 'arm64', build: 'release', thread_safety: 'nts' });
+  if (new Set(versions).size !== versions.length) throw new Error('Duplicate recovery PHP version');
+  const includesVersion = version => !versions.length || versions.includes(version);
   const route = `repos/shivammathur/php-darwin/actions/runs/${id}`;
   const source = await githubJSON(route, { run, retry });
   if (source.status !== 'completed' || source.head_branch !== 'main' ||
@@ -49,6 +54,7 @@ async function planRecovery(id, run = command, retry = retryPolicy(), { download
     const match = /^(imagick|mongodb|memcached) \/ PHP ([0-9.]+) \/ (debug|release)-(nts|zts) \/ (arm64|x86_64)$/.exec(job.name);
     if (!match || job.status !== 'completed' || job.conclusion !== 'success') continue;
     const [, name, php_version, build, thread_safety, architecture] = match;
+    if (!includesVersion(php_version)) continue;
     const entry = { ...validateContext({ php_version, build, thread_safety, architecture }), name };
     const selected = artifacts.filter(artifact => artifact.name === `extension-${key(entry)}` && !artifact.expired);
     if (selected.length !== 1 || !Number.isSafeInteger(selected[0].id) || selected[0].id <= 0) {
@@ -62,6 +68,7 @@ async function planRecovery(id, run = command, retry = retryPolicy(), { download
     const match = /^extension-index-(built|reused)-([0-9.]+)-(arm64|x86_64)$/.exec(artifact.name);
     if (!match || artifact.expired) continue;
     const [, kind, version, arch] = match;
+    if (!includesVersion(version)) continue;
     const payloads = artifacts.filter(item => item.name === `extension-${kind}-${version}-${arch}` && !item.expired);
     if (payloads.length !== 1) throw new Error('Missing or ambiguous grouped artifact');
     const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-index-'));
@@ -79,6 +86,7 @@ async function planRecovery(id, run = command, retry = retryPolicy(), { download
     } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
   }
   if (!entries.length || new Set(entries.map(key)).size !== entries.length) throw new Error('No unique successful extension builds');
+  if (versions.some(version => !entries.some(entry => entry.php_version === version))) throw new Error('Requested PHP version has no successful extension builds');
   let matrix = testMatrix(entries), verified = [];
   if (reuseReports) ({ matrix, verified } = reuseCompatibility(matrix, jobs, artifacts, download));
   if (matrix.include.length > 256) throw new Error('Recovery matrix exceeds Actions limit');
@@ -98,7 +106,8 @@ function verifySelection(directory, keys) {
 module.exports = { planRecovery, verifySelection, reuseCompatibility };
 if (require.main === module) (async () => {
   if (process.argv[2] === 'plan') {
-    const result = await planRecovery(process.argv[3], undefined, undefined, { reuseReports: true });
+    const result = await planRecovery(process.argv[3], undefined, undefined,
+      { reuseReports: true, phpVersions: process.env.PHP_VERSIONS || '' });
     const tests = result.matrix;
     fs.writeFileSync('extension-recovery-plan.json', JSON.stringify(result, null, 2));
     console.log(JSON.stringify(result, null, 2));

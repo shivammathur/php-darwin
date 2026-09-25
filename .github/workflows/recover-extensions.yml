@@ -7,6 +7,10 @@ on:
         description: Completed extension build run to test with the current workflow
         required: true
         type: string
+      php-versions:
+        description: Space-separated PHP versions to recover (empty selects all)
+        required: false
+        type: string
 permissions:
   contents: read
   actions: read
@@ -34,6 +38,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.TOKEN || github.token }}
           SOURCE_RUN: ${{ inputs.run-id }}
+          PHP_VERSIONS: ${{ inputs.php-versions }}
         run: node scripts/release/extension-recovery.cjs plan "$SOURCE_RUN"
       - name: Preserve the exact reused reports and remaining test plan
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
