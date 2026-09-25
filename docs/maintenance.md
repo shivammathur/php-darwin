@@ -30,4 +30,6 @@ Verified archive checkpoints support partial reruns and expire after seven days.
 
 `publish.yml` retries publication from a validated PHP run. It verifies source workflow provenance, build/test plans, successful jobs and exact artifact IDs and digests.
 
+Optional Imagick, MongoDB and Memcached packs carry private runtime libraries, licenses and serializer headers. Their standalone installer requires matching PHP release, source, architecture and ABI.
+
 Local tests use temporary fixtures. Native tests run on the configured macOS Actions runners.
