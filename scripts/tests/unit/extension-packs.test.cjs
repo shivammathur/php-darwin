@@ -4,7 +4,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const http = require('node:http');
-const { prefetch, download, digest, key, validateEntry, validateContext, safePath, inspectTree, packEnvironment, relocateResources, phpApi } = require('../../installer/install-extensions.cjs');
+const { execFileSync } = require('node:child_process');
+const { prefetch, download, digest, key, validateEntry, validateContext, safePath, inspectTree, packEnvironment, relocateResources, phpApi, prepareArchive, movePrepared } = require('../../installer/install-extensions.cjs');
 const { unchanged, freshnessReason, compatibleBuilder, builderHash, compatibilityMatrix, versionBatches, dispatch, publish, validatePublishRun } = require('../../release/extension-packs.cjs');
 const { copyRuntime } = require('../../build/extension-pack.cjs');
 const { buildMatrix } = require('../../release/extension-batches.cjs');
@@ -96,6 +97,35 @@ test('scheduled batches cover every configured PHP version within both matrix li
     assert.throws(() => validateContext({ ...context, php_version: version }), /Unsupported/);
   }
 });
+test('installer-only publication leaves every archive and PHP manifest untouched', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-installer-publish-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  for (const name of ['CF_R2_AWS_ACCESS_KEY_ID', 'CF_R2_AWS_SECRET_ACCESS_KEY', 'CF_R2_AWS_S3_ENDPOINT']) {
+    const previous = process.env[name]; process.env[name] = 'fixture';
+    t.after(() => { if (previous === undefined) delete process.env[name]; else process.env[name] = previous; });
+  }
+  t.mock.method(globalThis, 'fetch', async url => {
+    assert.match(url, /\/releases\/tags\/extensions$/);
+    return new Response('', { status: 200 });
+  });
+  let uploaded;
+  const writes = [];
+  await publish(directory, { run: async (program, args) => {
+    if (program === 'gh' && args[0] === 'api') return JSON.stringify(args.includes('--paginate') ? [[]] : { id: 1 });
+    if (program === 'aws') {
+      writes.push(args[args.indexOf('--key') + 1]);
+      uploaded = fs.readFileSync(args[args.indexOf('--body') + 1]);
+    } else if (program === 'curl') {
+      assert.match(args.at(-1), /\/install-extensions\.cjs\?verify=/);
+      if (!uploaded) return '404';
+      fs.writeFileSync(args[args.indexOf('--output') + 1], uploaded);
+      return '200';
+    } else if (program === 'gh') writes.push(path.basename(args[3]));
+    else assert.fail(`Unexpected publication command ${program}`);
+    return '';
+  } });
+  assert.deepEqual(writes, ['extensions/install-extensions.cjs', 'install-extensions.cjs']);
+});
 test('follow-up batches start only after a successful prerequisite', async () => {
   const calls = [];
   let ready = false;
@@ -155,7 +185,13 @@ test('all requested packs download concurrently, with no unrequested downloads',
     // Sequential downloads would deadlock; all three requests must arrive.
     if (pending.length === 3) pending.forEach(item => item.res.end(item.name));
   });
-  assert.deepEqual(await prefetch(directory, context, names, { bases: [url] }), names);
+  const prepared = [];
+  assert.deepEqual(await prefetch(directory, context, names, { bases: [url], prepare: async (root, name) => {
+    assert.equal(root, directory);
+    prepared.push(name);
+    await new Promise(resolve => setImmediate(resolve));
+  } }), names);
+  assert.deepEqual(prepared.sort(), names.sort());
   assert.equal(requested.length, 4);
   for (const asset of assets) assert.equal(fs.readFileSync(path.join(directory, asset.file), 'utf8'), asset.name);
 });
@@ -174,7 +210,7 @@ test('a missing pack does not discard successfully downloaded packs', async t =>
     if (req.url.endsWith('.json')) return res.end(JSON.stringify({ schema: 1, assets }));
     res.end('imagick');
   });
-  assert.deepEqual(await prefetch(directory, context, ['imagick', 'memcached'], { bases: [url] }), ['imagick']);
+  assert.deepEqual(await prefetch(directory, context, ['imagick', 'memcached'], { bases: [url], prepare: async () => {} }), ['imagick']);
   assert.ok(fs.existsSync(path.join(directory, 'imagick.json')));
   assert.ok(!fs.existsSync(path.join(directory, 'memcached.json')));
 });
@@ -184,6 +220,72 @@ test('wrong variants and duplicate manifest entries do not download archives', a
   const { directory, url } = await fixture(t, (_req, res) => { requests++; res.end(JSON.stringify({ schema: 1, assets })); });
   assert.deepEqual(await prefetch(directory, context, ['imagick', 'mongodb'], { bases: [url] }), []);
   assert.equal(requests, 1);
+});
+test('failed preparation leaves other downloaded packs available without retrying', async t => {
+  const names = ['imagick', 'mongodb'];
+  const assets = names.map(name => entry(name));
+  const { directory, url } = await fixture(t, (req, res) => {
+    if (req.url.endsWith('.json')) return res.end(JSON.stringify({ schema: 1, assets }));
+    res.end(assets.find(item => req.url === '/' + item.file).name);
+  });
+  const calls = [];
+  assert.deepEqual(await prefetch(directory, context, names, { bases: [url], prepare: async (_root, name) => {
+    calls.push(name);
+    if (name === 'mongodb') throw new Error('fixture extraction failed');
+  } }), ['imagick']);
+  assert.deepEqual(calls.sort(), names.sort());
+  assert.ok(fs.existsSync(path.join(directory, 'imagick.json')));
+  assert.ok(!fs.existsSync(path.join(directory, 'mongodb.json')));
+});
+test('preparation verifies archives and metadata without running PHP or writing the Homebrew prefix', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-prepare-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const source = path.join(directory, 'source');
+  fs.mkdirSync(path.join(source, 'modules'), { recursive: true });
+  const metadata = { ...entry('imagick'), modules: ['imagick'], relocations: [], environment: {} };
+  fs.writeFileSync(path.join(source, 'metadata.json'), JSON.stringify(metadata));
+  fs.writeFileSync(path.join(source, 'modules/imagick.so'), 'native module fixture');
+  const archive = path.join(directory, 'fixture.tar.zst');
+  execFileSync('tar', ['--zstd', '-cf', archive, '-C', source, 'metadata.json', 'modules']);
+  const record = { ...metadata, ...entry('imagick', fs.readFileSync(archive)) };
+  fs.renameSync(archive, path.join(directory, record.file));
+  fs.writeFileSync(path.join(directory, 'imagick.json'), JSON.stringify(record));
+  const stage = prepareArchive(directory, 'imagick');
+  assert.equal(stage, path.join(directory, `imagick-${record.sha256}.stage`));
+  assert.equal(fs.readFileSync(path.join(stage, 'modules/imagick.so'), 'utf8'), 'native module fixture');
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(stage, 'metadata.json'))), metadata);
+  assert.equal(fs.readdirSync(directory).filter(name => name.startsWith('.prepare-')).length, 0);
+  const bytes = fs.readFileSync(path.join(directory, record.file));
+  const served = await fixture(t, (req, res) => {
+    res.end(req.url.endsWith('.json') ? JSON.stringify({ schema: 1, assets: [record] }) : bytes);
+  });
+  assert.deepEqual(await prefetch(served.directory, context, ['imagick'], { bases: [served.url] }), ['imagick']);
+  assert.equal(fs.readFileSync(path.join(served.directory, `imagick-${record.sha256}.stage/modules/imagick.so`), 'utf8'), 'native module fixture');
+  fs.rmSync(stage, { recursive: true });
+  fs.writeFileSync(path.join(directory, record.file), 'corrupt');
+  assert.throws(() => prepareArchive(directory, 'imagick'), /changed after download/);
+  assert.ok(!fs.existsSync(stage));
+});
+test('prepared packs move atomically when the temporary directory is on another volume', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-move-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const stage = path.join(directory, 'stage'), destination = path.join(directory, 'installed');
+  fs.mkdirSync(stage);
+  fs.writeFileSync(path.join(stage, 'module'), 'native module');
+  fs.symlinkSync('module', path.join(stage, 'alias'));
+  const rename = fs.renameSync;
+  const moves = [];
+  t.mock.method(fs, 'renameSync', (from, to) => {
+    moves.push([from, to]);
+    if (from === stage) throw Object.assign(new Error('other volume'), { code: 'EXDEV' });
+    assert.equal(fs.readFileSync(path.join(from, 'module'), 'utf8'), 'native module');
+    assert.equal(fs.readlinkSync(path.join(from, 'alias')), 'module');
+    return rename(from, to);
+  });
+  movePrepared(stage, destination);
+  assert.equal(moves.length, 2);
+  assert.equal(fs.readFileSync(path.join(destination, 'alias'), 'utf8'), 'native module');
+  assert.ok(!fs.readdirSync(directory).some(name => name.startsWith('.install-')));
 });
 test('reject unsupported contexts, unsafe archive paths and invalid identities', () => {
   for (const value of ['../escape', '/absolute', 'a/../../b', 'a//b', 'a\nb', 'a\\b']) assert.equal(safePath(value), false);

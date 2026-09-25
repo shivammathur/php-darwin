@@ -196,6 +196,10 @@ selected tests pass. Installer updates are published even when recipes are uncha
 If publication fails after validation, run `publish-extensions.yml` with that run's
 `run-id`. It checks every source build and compatibility job before publishing the
 existing artifacts, without rebuilding PHP or extensions.
+For an installer-only change, dispatch `publish-extensions.yml` with
+`installer-only=true` and no `run-id`. This shares the publication lock and
+updates only `install-extensions.cjs` at both origins; archives and manifests
+remain unchanged. Validate the installer against existing native packs first.
 If builds partly failed or the compatibility workflow needs a fix, run
 `recover-extensions.yml` with the completed source `run-id`. It selects only
 successful builds and pins their artifact IDs and archive hashes. A successful
@@ -239,4 +243,7 @@ Each archive carries private runtime libraries, relocated Mach-O load paths,
 licenses and module metadata. The standalone `scripts/installer/install-extensions.cjs`
 prefetches requested packs concurrently, then installs only packs matching the
 installed PHP API, architecture and build variant. Downloads prefer GitHub Releases
-and fall back to Cloudflare. No Homebrew commands run in the extension installer.
+and fall back to Cloudflare. Downloaded packs are verified and extracted in private
+temporary directories while PHP setup continues. PHP ABI checks, module loading,
+private runtime placement and extension links wait until PHP is ready. No Homebrew
+commands run in the extension installer.

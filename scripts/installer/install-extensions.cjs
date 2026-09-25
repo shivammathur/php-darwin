@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const fsp = fs.promises;
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { spawnSync } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 const { pipeline } = require('node:stream/promises');
 const { Readable } = require('node:stream');
 
@@ -94,12 +94,20 @@ async function prefetch(directory, context, requested, options = {}) {
     console.log(`Downloading ${name} cache (${entry.bytes} bytes)`);
     await download(entry.file, path.join(directory, entry.file), { ...options, sha256: entry.sha256, bytes: entry.bytes });
     await fsp.writeFile(path.join(directory, `${name}.json`), JSON.stringify(entry));
+    try {
+      // Use independent processes so extraction cannot block other downloads.
+      // This overlaps PHP setup without loading or changing the active PHP.
+      await (options.prepare || prepareDownloaded)(directory, name);
+    } catch (error) {
+      await fsp.rm(path.join(directory, `${name}.json`), { force: true });
+      throw error;
+    }
     return name;
   }));
   results.forEach((result, index) => {
     if (result.status === 'rejected') console.warn(`Extension cache ${names[index]}: ${result.reason.message}`);
   });
-  console.log(`Extension cache downloads completed in ${((performance.now() - started) / 1000).toFixed(3)} seconds`);
+  console.log(`Extension cache preparation completed in ${((performance.now() - started) / 1000).toFixed(3)} seconds`);
   return results.filter(result => result.status === 'fulfilled').map(result => result.value);
 }
 function phpApi(phpConfig = 'php-config') {
@@ -150,10 +158,69 @@ function relocateResources(metadata, stage, destination) {
     fs.writeFileSync(file, content.replaceAll('@PHP_DARWIN_EXTENSION_ROOT@', destination));
   }
 }
-function install(directory, name, { phpConfig = 'php-config', php = 'php' } = {}) {
-  const started = performance.now();
+function readEntry(directory, name) {
   if (!Object.hasOwn(packs, name)) throw new Error('Unknown extension pack');
   const entry = validateEntry(JSON.parse(fs.readFileSync(path.join(directory, `${name}.json`), 'utf8')));
+  if (entry.name !== name) throw new Error('Extension cache name mismatch');
+  return entry;
+}
+function verifyArchive(directory, entry) {
+  const archive = path.join(directory, entry.file);
+  const data = fs.readFileSync(archive);
+  if (data.length !== entry.bytes || digest(data) !== entry.sha256) throw new Error('Extension archive changed after download');
+  return archive;
+}
+function preparedMetadata(stage, entry) {
+  if (!fs.lstatSync(stage).isDirectory()) throw new Error('Invalid extension staging directory');
+  inspectTree(stage);
+  const metadata = JSON.parse(fs.readFileSync(path.join(stage, 'metadata.json'), 'utf8'));
+  if (metadata.schema !== 1 || key(metadata) !== key(entry) || metadata.php_api !== entry.php_api ||
+      metadata.inputs_sha256 !== entry.inputs_sha256 || JSON.stringify(metadata.modules) !== JSON.stringify(packs[entry.name])) {
+    throw new Error('Extension archive metadata mismatch');
+  }
+  for (const module of metadata.modules) {
+    if (!fs.lstatSync(path.join(stage, 'modules', `${module}.so`)).isFile()) throw new Error('Missing extension module');
+  }
+  return metadata;
+}
+function prepareArchive(directory, name) {
+  const entry = readEntry(directory, name);
+  const archive = verifyArchive(directory, entry);
+  const ready = path.resolve(directory, `${name}-${entry.sha256}.stage`);
+  const stage = fs.mkdtempSync(path.resolve(directory, `.prepare-${name}-`));
+  try {
+    const listing = command('tar', ['--zstd', '-tf', archive]).split('\n');
+    if (!listing.every(member => safePath(member.replace(/\/$/, '')))) throw new Error('Unsafe extension archive path');
+    command('tar', ['--zstd', '--no-same-owner', '-xf', archive, '-C', stage]);
+    preparedMetadata(stage, entry);
+    fs.renameSync(stage, ready);
+    return ready;
+  } finally {
+    fs.rmSync(stage, { recursive: true, force: true });
+  }
+}
+function prepareDownloaded(directory, name) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [__filename, 'prepare', directory, name], { stdio: 'inherit' });
+    child.once('error', reject);
+    child.once('exit', code => code === 0 ? resolve() : reject(new Error(`Preparing ${name} failed (${code})`)));
+  });
+}
+function movePrepared(stage, destination) {
+  try { fs.renameSync(stage, destination); }
+  catch (error) {
+    if (error.code !== 'EXDEV') throw error;
+    // RUNNER_TEMP may be on another volume. Keep the final move atomic there.
+    const local = fs.mkdtempSync(path.join(path.dirname(destination), '.install-'));
+    try {
+      fs.cpSync(stage, local, { recursive: true, verbatimSymlinks: true });
+      fs.renameSync(local, destination);
+    } finally { fs.rmSync(local, { recursive: true, force: true }); }
+  }
+}
+function install(directory, name, { phpConfig = 'php-config', php = 'php' } = {}) {
+  const started = performance.now();
+  const entry = readEntry(directory, name);
   const actual = runtimeContext(phpConfig, php);
   if (entry.name !== name || !['php_version', 'build', 'thread_safety', 'architecture', 'php_api'].every(field => actual[field] === entry[field])) {
     throw new Error('Extension cache does not match installed PHP');
@@ -161,31 +228,19 @@ function install(directory, name, { phpConfig = 'php-config', php = 'php' } = {}
   if (Number(command('sw_vers', ['-productVersion']).split('.')[0]) < entry.minimum_macos) throw new Error('Extension cache requires newer macOS');
   const prefix = actual.architecture === 'arm64' ? '/opt/homebrew' : '/usr/local';
   if (!actual.extension_dir.startsWith(prefix + '/') || !fs.statSync(actual.extension_dir).isDirectory()) throw new Error('Invalid PHP extension directory');
-  const archive = path.join(directory, entry.file);
-  const data = fs.readFileSync(archive);
-  if (data.length !== entry.bytes || digest(data) !== entry.sha256) throw new Error('Extension archive changed after download');
+  const stage = path.resolve(directory, `${name}-${entry.sha256}.stage`);
+  if (fs.existsSync(stage)) verifyArchive(directory, entry);
+  else prepareArchive(directory, name);
   const store = path.join(prefix, 'var/php-darwin/extensions');
   fs.mkdirSync(store, { recursive: true });
   if (fs.realpathSync(store) !== store) throw new Error('Extension store traverses a symlink');
   const destination = path.join(store, entry.sha256);
-  const stage = fs.mkdtempSync(path.join(store, '.install-'));
   const previous = [];
   let committed = false;
   try {
-    const listing = command('tar', ['--zstd', '-tf', archive]).split('\n');
-    if (!listing.every(member => safePath(member.replace(/\/$/, '')))) throw new Error('Unsafe extension archive path');
-    command('tar', ['--zstd', '--no-same-owner', '-xf', archive, '-C', stage]);
-    inspectTree(stage);
-    const metadata = JSON.parse(fs.readFileSync(path.join(stage, 'metadata.json'), 'utf8'));
-    if (metadata.schema !== 1 || key(metadata) !== key(entry) || metadata.php_api !== entry.php_api ||
-        metadata.inputs_sha256 !== entry.inputs_sha256 || JSON.stringify(metadata.modules) !== JSON.stringify(packs[name])) {
-      throw new Error('Extension archive metadata mismatch');
-    }
-    for (const module of metadata.modules) {
-      if (!fs.lstatSync(path.join(stage, 'modules', `${module}.so`)).isFile()) throw new Error('Missing extension module');
-    }
+    const metadata = preparedMetadata(stage, entry);
     relocateResources(metadata, stage, destination);
-    if (!fs.existsSync(destination)) fs.renameSync(stage, destination);
+    if (!fs.existsSync(destination)) movePrepared(stage, destination);
     else {
       if (fs.realpathSync(destination) !== destination ||
           fs.readFileSync(path.join(destination, 'metadata.json'), 'utf8') !== fs.readFileSync(path.join(stage, 'metadata.json'), 'utf8')) {
@@ -228,13 +283,14 @@ function install(directory, name, { phpConfig = 'php-config', php = 'php' } = {}
   }
 }
 module.exports = { packs, origins, command, digest, safePath, key, validateContext, validateEntry, phpApi,
-  download, prefetch, runtimeContext, inspectTree, packEnvironment, relocateResources, install };
+  download, prefetch, runtimeContext, inspectTree, packEnvironment, relocateResources, prepareArchive, movePrepared, install };
 if (require.main === module) (async () => {
   const [mode, directory, ...args] = process.argv.slice(2);
   if (!directory) throw new Error('Extension staging directory required');
   if (mode === 'prefetch') {
     const [php_version, build, thread_safety, architecture, ...names] = args;
     await prefetch(directory, { php_version, build, thread_safety, architecture }, names);
-  } else if (mode === 'install' && args.length === 1) install(directory, args[0]);
-  else throw new Error('Usage: install-extensions.cjs prefetch|install DIRECTORY ...');
+  } else if (mode === 'prepare' && args.length === 1) prepareArchive(directory, args[0]);
+  else if (mode === 'install' && args.length === 1) install(directory, args[0]);
+  else throw new Error('Usage: install-extensions.cjs prefetch|prepare|install DIRECTORY ...');
 })().catch(error => { console.error(`php-darwin extensions: ${error.message}`); process.exitCode = 1; });

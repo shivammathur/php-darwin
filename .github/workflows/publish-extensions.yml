@@ -1,12 +1,16 @@
 name: Publish validated extension caches
-run-name: Publish extension caches from run ${{ inputs.run-id }}
+run-name: Publish extension caches (source ${{ inputs.run-id || 'installer only' }})
 on:
   workflow_dispatch:
     inputs:
       run-id:
         description: Completed extension run with successful builds and compatibility tests
-        required: true
+        required: false
         type: string
+      installer-only:
+        description: Refresh only the extension installer, without rebuilding or changing archives/manifests
+        default: false
+        type: boolean
 permissions:
   contents: write
   actions: read
@@ -26,8 +30,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.TOKEN || github.token }}
           SOURCE_RUN: ${{ inputs.run-id }}
-        run: node scripts/release/extension-packs.cjs validate-publish-run "$SOURCE_RUN"
+          INSTALLER_ONLY: ${{ inputs.installer-only }}
+        run: |
+          if [ "$INSTALLER_ONLY" = true ]; then
+            [ -z "$SOURCE_RUN" ] || { echo 'Choose an installer refresh or a source run, not both'; exit 1; }
+            mkdir -p builds/extensions
+          else
+            node scripts/release/extension-packs.cjs validate-publish-run "$SOURCE_RUN"
+          fi
       - uses: ./.github/actions/download-artifacts
+        if: ${{ !inputs.installer-only }}
         with:
           github-token: ${{ secrets.TOKEN || github.token }}
           run-id: ${{ inputs.run-id }}
