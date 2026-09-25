@@ -20,6 +20,7 @@ jobs:
     timeout-minutes: 10
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
+      test-count: ${{ steps.plan.outputs.test-count }}
       reuse: ${{ steps.plan.outputs.reuse }}
       artifact-ids: ${{ steps.plan.outputs.artifact-ids }}
       keys: ${{ steps.plan.outputs.keys }}
@@ -31,13 +32,19 @@ jobs:
       - name: Select successful build artifacts
         id: plan
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
           SOURCE_RUN: ${{ inputs.run-id }}
         run: node scripts/release/extension-recovery.cjs plan "$SOURCE_RUN"
+      - name: Preserve the exact reused reports and remaining test plan
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: extension-recovery-plan
+          path: extension-recovery-plan.json
+          if-no-files-found: error
       - name: Pin the extension tap used during test preparation
         id: sources
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
         run: echo "commit=$(gh api repos/shivammathur/homebrew-extensions/commits/main --jq .sha)" >> "$GITHUB_OUTPUT"
 
   reuse:
@@ -54,7 +61,7 @@ jobs:
       - name: Recover exact successful archives on Ubuntu
         env:
           EXTENSION_ENTRIES: ${{ toJSON(matrix.entries) }}
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
         run: node scripts/release/extension-batches.cjs reuse
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -67,6 +74,7 @@ jobs:
 
   compatibility:
     needs: [plan, reuse]
+    if: needs.plan.outputs.test-count != '0'
     name: Test PHP ${{ matrix.php_version }} on ${{ matrix.runner }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
@@ -104,7 +112,10 @@ jobs:
           if-no-files-found: ignore
 
   publish:
-    needs: [plan, compatibility]
+    needs: [plan, reuse, compatibility]
+    if: >-
+      always() && !cancelled() && needs.plan.result == 'success' && needs.reuse.result == 'success' &&
+      (needs.compatibility.result == 'success' || needs.compatibility.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -129,7 +140,7 @@ jobs:
       - name: Publish the verified archives
         env:
           EXTENSION_PUBLISH_REPORT: ${{ runner.temp }}/extension-publication.json
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
           CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
           CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
           CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}

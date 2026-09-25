@@ -75,7 +75,7 @@ jobs:
         uses: ./.github/actions/download-artifacts
         timeout-minutes: 10
         with:
-          github-token: ${{ github.token }}
+          github-token: ${{ secrets.TOKEN || github.token }}
           pattern: php-${{ inputs.php-version }}-${{ needs.target.outputs.arch }}*
           merge-multiple: true
           path: ${{ runner.temp }}/php-darwin

@@ -59,5 +59,5 @@ jobs:
           overwrite: true
       - name: Restore and verify the checkpoint through the GitHub API
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
         run: node scripts/tests/e2e/checkpoint-transfer.test.cjs restore

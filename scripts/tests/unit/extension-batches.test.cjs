@@ -54,6 +54,8 @@ test('Ubuntu reuse downloads each immutable bundle once and selects only indepen
   assert.equal(index.length, 2);
   assert.ok(!fs.existsSync(path.join(directory, `extension-${key(entry('memcached'))}`)));
   for (const expected of selected) assert.equal(verifyArchive(directory, expected).entry.sha256, expected.sha256);
+  assert.throws(() => verifyArchive(directory, { ...selected[0], sha256: 'a'.repeat(64) }), /differs from the recovery index/);
+  assert.throws(() => verifyArchive(directory, { ...selected[0], bytes: selected[0].bytes + 1 }), /differs from the recovery index/);
   fs.writeFileSync(path.join(directory, `extension-${key(selected[0])}`, selected[0].file), 'corrupt');
   assert.throws(() => verifyArchive(directory, selected[0]), /Invalid archive bytes/);
 });

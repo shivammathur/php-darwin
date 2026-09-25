@@ -26,5 +26,5 @@ jobs:
           persist-credentials: false
       - name: Start one cache workflow per nightly PHP version
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
         run: bash scripts/release/dispatch-nightly.sh

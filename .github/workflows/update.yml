@@ -49,7 +49,7 @@ jobs:
 
       - name: Compare formula sources with published release manifests
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
           HOMEBREW_EXTENSIONS_PATH: ${{ github.workspace }}/homebrew-extensions
           HOMEBREW_PHP_PATH: ${{ github.workspace }}/homebrew-php
           ONLY_VERSION: ${{ github.event.client_payload['php-version'] || inputs.php-version }}

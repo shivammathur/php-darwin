@@ -24,19 +24,19 @@ jobs:
           persist-credentials: false
       - name: Validate source builds and compatibility tests
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
           SOURCE_RUN: ${{ inputs.run-id }}
         run: node scripts/release/extension-packs.cjs validate-publish-run "$SOURCE_RUN"
       - uses: ./.github/actions/download-artifacts
         with:
-          github-token: ${{ github.token }}
+          github-token: ${{ secrets.TOKEN || github.token }}
           run-id: ${{ inputs.run-id }}
           pattern: extension-@(imagick-*|mongodb-*|memcached-*|built-*|reused-*)
           path: builds/extensions
       - name: Publish the existing verified archives
         env:
           EXTENSION_PUBLISH_REPORT: ${{ runner.temp }}/extension-publication.json
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
           CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
           CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
           CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}

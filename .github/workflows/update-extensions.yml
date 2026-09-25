@@ -33,7 +33,7 @@ jobs:
           persist-credentials: false
       - name: Dispatch bounded batches after the prerequisite succeeds
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
           PHP_VERSIONS: ${{ inputs.php-versions }}
           AFTER_RUN: ${{ inputs.after-run }}
         run: node scripts/release/extension-packs.cjs dispatch

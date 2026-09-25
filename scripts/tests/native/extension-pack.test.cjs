@@ -16,8 +16,13 @@ const prefix = command('brew', ['--prefix']);
 const php = path.join(prefix, 'opt', phpFormula, 'bin/php');
 const phpConfig = path.join(prefix, 'opt', phpFormula, 'bin/php-config');
 const phpHash = digest(fs.readFileSync(fs.realpathSync(php)));
-const beforeKegs = command('brew', ['list', '--versions']).split('\n').filter(line => /^php(?:@| )/.test(line));
-const beforeServices = command('brew', ['services', 'list', '--json']);
+const preservationCheck = 'scripts/tests/helpers/check-preserved-homebrew.sh';
+const preservationArgs = [prefix, path.join(temporary, 'preserved-homebrew.json'),
+  path.join(process.env.HOME, 'Library/LaunchAgents'), '/Library/LaunchAgents', '/Library/LaunchDaemons'];
+// A pre-existing FPM crash loop can change brew's status label between reads.
+// Verify service definitions and every existing PHP runtime instead; these
+// checks run outside the measured installation and never control services.
+command('bash', [preservationCheck, 'snapshot', ...preservationArgs]);
 const extensionDirectory = command(phpConfig, ['--extension-dir']);
 // Keep the modules produced during the build outside PHP's extension directory
 // so this test proves the optional archive supplies them itself.
@@ -52,8 +57,7 @@ try {
     console.log('Private SASL authentication plugins passed');
   }
   assert.equal(digest(fs.readFileSync(fs.realpathSync(php))), phpHash);
-  assert.deepEqual(command('brew', ['list', '--versions']).split('\n').filter(line => /^php(?:@| )/.test(line)), beforeKegs);
-  assert.equal(command('brew', ['services', 'list', '--json']), beforeServices);
+  console.log(command('bash', [preservationCheck, 'check', ...preservationArgs]));
   const report = { name, sha256: entry.sha256, install_seconds: elapsed, bytes: entry.bytes, php_preserved: true, services_preserved: true };
   fs.writeFileSync(path.join(output, 'validation.txt'), JSON.stringify(report) + '\n');
   console.log(JSON.stringify(report));

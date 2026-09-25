@@ -55,7 +55,7 @@ jobs:
           persist-credentials: false
       - name: Verify and mirror the published release
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
           PHP_VERSION: ${{ matrix.php-version }}
           PUBLISH_INSTALLER: ${{ inputs.publish-installers }}
           CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}

@@ -14,6 +14,8 @@ on:
         default: ''
   workflow_call:
     secrets:
+      TOKEN:
+        required: false
       CF_R2_AWS_ACCESS_KEY_ID:
         required: false
       CF_R2_AWS_SECRET_ACCESS_KEY:
@@ -40,6 +42,7 @@ jobs:
       seed: ${{ inputs.seed }}
       source-run-id: ${{ inputs.source-run-id || github.run_id }}
     secrets:
+      TOKEN: ${{ secrets.TOKEN }}
       CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
       CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
       CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
@@ -102,7 +105,7 @@ jobs:
         with:
           pattern: ${{ inputs.seed && 'bottle-plan-*' || 'bottle-misses-*' }}
           path: bottle-records
-          github-token: ${{ github.token }}
+          github-token: ${{ secrets.TOKEN || github.token }}
           run-id: ${{ inputs.source-run-id || github.run_id }}
           digest-mismatch: error
       - name: Build the dependency matrix

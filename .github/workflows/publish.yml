@@ -33,7 +33,7 @@ jobs:
 
       - name: Validate source build and compatibility tests
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
           RUN_ID: ${{ inputs.run-id }}
         run: bash scripts/release/validate-publish-run.sh "$RUN_ID"
 
@@ -41,7 +41,7 @@ jobs:
         uses: ./.github/actions/download-artifacts
         timeout-minutes: 10
         with:
-          github-token: ${{ github.token }}
+          github-token: ${{ secrets.TOKEN || github.token }}
           pattern: php-${{ inputs.php-version }}-*
           path: builds
           repository: ${{ github.repository }}
@@ -53,6 +53,6 @@ jobs:
           CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
           CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
           CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
           PHP_VERSION: ${{ inputs.php-version }}
         run: bash scripts/release/publish.sh builds

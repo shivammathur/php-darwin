@@ -54,6 +54,11 @@ Tests in `native/` and `e2e/` require workflow-provided state and are not part o
 the local runner. Run all applicable suites after installer, cache or workflow
 changes, and inspect artifacts and logs as well as job conclusions.
 
+GitHub API steps use the repository's `TOKEN` Actions secret when configured,
+with `github.token` as the fallback. Reusable workflows pass `TOKEN` explicitly.
+The token needs repository contents and Actions access for release and workflow
+operations; keep its value only in Actions secrets.
+
 ## Build and cache
 
 Each `conf/cached-extensions/<PHP minor>` file contains plain extension names,
@@ -191,8 +196,11 @@ If publication fails after validation, run `publish-extensions.yml` with that ru
 existing artifacts, without rebuilding PHP or extensions.
 If builds partly failed or the compatibility workflow needs a fix, run
 `recover-extensions.yml` with the completed source `run-id`. It selects only
-successful builds, pins their artifact IDs, tests those archives on every required
-compatibility platform using the current checks, and publishes exactly that set.
+successful builds and pins their artifact IDs and archive hashes. A successful
+compatibility job is reused only when its checksum-verified reports match every
+selected archive and confirm preservation and installation below 10 seconds.
+Only missing or failed groups run the current native checks. The recovery plan
+artifact records reused evidence; publication waits for every remaining group.
 Failed builds remain excluded and can be rebuilt separately. Missing or expired
 artifacts stop recovery; rerunning failed recovery jobs preserves passing work.
 Recovery API reads use the same bounded service-error policy as publication;

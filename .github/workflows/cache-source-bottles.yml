@@ -28,6 +28,8 @@ on:
         type: string
         default: ''
     secrets:
+      TOKEN:
+        required: false
       CF_R2_AWS_ACCESS_KEY_ID:
         required: false
       CF_R2_AWS_SECRET_ACCESS_KEY:
@@ -56,13 +58,13 @@ jobs:
         with:
           pattern: source-bottle-misses-*
           path: source-bottle-records
-          github-token: ${{ github.token }}
+          github-token: ${{ secrets.TOKEN || github.token }}
           run-id: ${{ inputs.source-run-id || github.run_id }}
           digest-mismatch: error
       - name: Build the source dependency matrix
         id: matrix
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
           SEED: ${{ inputs.seed }}
           FORMULA: ${{ inputs.formula }}
         run: |

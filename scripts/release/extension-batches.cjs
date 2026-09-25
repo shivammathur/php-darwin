@@ -44,6 +44,9 @@ function verifyArchive(directory, expected) {
   const matches = archiveEntries(directory, [key(expected)]).filter(item => key(item.entry) === key(expected));
   if (matches.length !== 1) throw new Error(`Missing or duplicate archive: ${key(expected)}`);
   const { entry, directory: folder } = matches[0];
+  if ((expected.sha256 && expected.sha256 !== entry.sha256) || (expected.bytes && expected.bytes !== entry.bytes)) {
+    throw new Error(`Archive differs from the recovery index: ${key(entry)}`);
+  }
   const archive = path.join(folder, entry.file), bytes = fs.readFileSync(archive);
   if (digest(bytes) !== entry.sha256 || bytes.length !== entry.bytes) throw new Error(`Invalid archive bytes: ${key(entry)}`);
   const report = JSON.parse(fs.readFileSync(path.join(folder, 'validation.txt')));

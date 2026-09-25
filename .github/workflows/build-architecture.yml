@@ -2,6 +2,9 @@ name: Build and test one PHP cache architecture
 
 on:
   workflow_call:
+    secrets:
+      TOKEN:
+        required: false
     inputs:
       php-version:
         required: true
@@ -66,7 +69,7 @@ jobs:
       ARCH: ${{ inputs.arch }}
       BUILD: ${{ matrix.build }}
       TS: ${{ matrix.ts }}
-      GH_TOKEN: ${{ github.token }}
+      GH_TOKEN: ${{ secrets.TOKEN || github.token }}
       HOMEBREW_EXTENSIONS_COMMIT: ${{ inputs.homebrew-extensions-commit }}
       HOMEBREW_PHP_COMMIT: ${{ inputs.homebrew-php-commit }}
       PHP_VERSION: ${{ inputs.php-version }}

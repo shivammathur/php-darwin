@@ -3,6 +3,9 @@ run-name: Test PHP ${{ inputs.php-version }} cache through setup-php
 
 on:
   workflow_call:
+    secrets:
+      TOKEN:
+        required: false
     inputs:
       php-version:
         required: true
@@ -122,7 +125,7 @@ jobs:
           INPUT_PHP-VERSION: ${{ inputs.php-version }}
           INPUT_EXTENSIONS: ${{ env.EXTENSIONS }}
           INPUT_INI-FILE: production
-          INPUT_GITHUB-TOKEN: ${{ github.token }}
+          INPUT_GITHUB-TOKEN: ${{ secrets.TOKEN || github.token }}
         run: '"$PHP_DARWIN_NODE" scripts/tests/helpers/run-setup-php.cjs .setup-php'
 
       - name: Verify the php-darwin cache installation

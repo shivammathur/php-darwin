@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { planRecovery, verifySelection } = require('../../release/extension-recovery.cjs');
+const { planRecovery, verifySelection, reuseCompatibility } = require('../../release/extension-recovery.cjs');
 const { key } = require('../../installer/install-extensions.cjs');
 const { retryPolicy, httpError, workflowJobs } = require('../../release/extension-transfers.cjs');
 
@@ -65,6 +65,52 @@ test('partial reruns retain passing jobs from earlier attempts and respect newer
   assert.deepEqual(await workflowJobs('fixture', 2, { run }), [jobs[0][0], jobs[1][0]]);
   assert.deepEqual(await workflowJobs('fixture', 3, { run }), [jobs[2][0], jobs[1][0]]);
   await assert.rejects(workflowJobs('fixture', undefined, { run }), /Invalid source run attempt/);
+});
+
+test('recovery reuses only successful compatibility jobs with reports for the exact indexed archives', () => {
+  const entry = { name: 'memcached', php_version: '8.0', build: 'debug', thread_safety: 'zts', architecture: 'x86_64',
+    sha256: 'a'.repeat(64), bytes: 100 };
+  const matrix = { include: ['macos-26-intel', 'macos-15-x86_64'].map(runner => ({ php_version: '8.0', runner, entries: [entry] })) };
+  const jobs = matrix.include.map((group, i) => ({ id: i + 1, name: `Test PHP 8.0 on ${group.runner}`, status: 'completed',
+    conclusion: i ? 'failure' : 'success' }));
+  const artifacts = matrix.include.map((group, i) => ({ id: i + 10, name: `compatibility-8.0-${group.runner}`, digest: `sha256:${'b'.repeat(64)}` }));
+  const report = { name: entry.name, sha256: entry.sha256, bytes: entry.bytes, install_seconds: 1,
+    php_preserved: true, services_preserved: true };
+  let calls = 0;
+  const download = (artifact, folder) => {
+    calls++; assert.equal(artifact.artifact_id, 10); assert.equal(artifact.artifact_digest, artifacts[0].digest);
+    const output = path.join(folder, `extension-${key(entry)}`); fs.mkdirSync(output);
+    fs.writeFileSync(path.join(output, 'validation.txt'), JSON.stringify(report));
+  };
+  const result = reuseCompatibility(matrix, jobs, artifacts, download);
+  assert.deepEqual(result.matrix.include, [matrix.include[1]]);
+  assert.deepEqual(result.verified[0].archives, [{ key: key(entry), sha256: entry.sha256, bytes: entry.bytes }]);
+  assert.equal(calls, 1, 'a failed job cannot reuse reports left by its producer');
+  for (const [field, invalid] of [['sha256', 'c'.repeat(64)], ['bytes', 200], ['install_seconds', 10],
+    ['install_seconds', -1], ['php_preserved', false], ['services_preserved', false]]) {
+    const previous = report[field]; report[field] = invalid;
+    assert.equal(reuseCompatibility(matrix, jobs, artifacts, download).matrix.include.length, 2);
+    report[field] = previous;
+  }
+  for (const patch of [{ expired: true }, { digest: undefined }]) {
+    const changed = [{ ...artifacts[0], ...patch }, artifacts[1]];
+    assert.equal(reuseCompatibility(matrix, jobs, changed, () => assert.fail('invalid evidence must not download')).verified.length, 0);
+  }
+  assert.equal(reuseCompatibility(matrix, jobs, [], () => assert.fail('missing evidence must retest')).matrix.include.length, 2);
+});
+
+test('an entirely verified compatibility matrix needs no native rerun', () => {
+  const entry = { name: 'imagick', php_version: '8.5', build: 'release', thread_safety: 'nts', architecture: 'arm64', sha256: 'a'.repeat(64), bytes: 100 };
+  const group = { php_version: '8.5', runner: 'macos-26', entries: [entry] };
+  const jobs = [{ id: 1, name: 'Test PHP 8.5 on macos-26', status: 'completed', conclusion: 'success' }];
+  const artifacts = [{ id: 10, name: 'compatibility-8.5-macos-26', digest: `sha256:${'b'.repeat(64)}` }];
+  const result = reuseCompatibility({ include: [group] }, jobs, artifacts, (_artifact, folder) => {
+    const output = path.join(folder, `extension-${key(entry)}`); fs.mkdirSync(output);
+    fs.writeFileSync(path.join(output, 'validation.txt'), JSON.stringify({ name: entry.name, sha256: entry.sha256,
+      bytes: entry.bytes, install_seconds: 0.5, php_preserved: true, services_preserved: true }));
+  });
+  assert.deepEqual(result.matrix, { include: [] });
+  assert.equal(result.verified.length, 1);
 });
 
 test('publication rejects missing, extra or duplicated variants after recovery tests', t => {

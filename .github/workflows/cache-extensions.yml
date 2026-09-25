@@ -83,7 +83,7 @@ jobs:
           THREAD_SAFETY: ${{ inputs.ts }}
           FORCE: ${{ inputs.force }}
           RESUME_RUNS: ${{ inputs.resume-runs }}
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
         run: node scripts/release/extension-packs.cjs plan
 
   reuse:
@@ -102,7 +102,7 @@ jobs:
       - name: Recover exact verified archives without Homebrew or compilation
         env:
           EXTENSION_ENTRIES: ${{ toJSON(matrix.entries) }}
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
         run: node scripts/release/extension-batches.cjs reuse
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -141,7 +141,7 @@ jobs:
       HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: '1'
       HOMEBREW_VERBOSE: '1'
       HOMEBREW_VERBOSE_USING_DOTS: '0'
-      GH_TOKEN: ${{ github.token }}
+      GH_TOKEN: ${{ secrets.TOKEN || github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -248,6 +248,7 @@ jobs:
       contents: read
       actions: read
     secrets:
+      TOKEN: ${{ secrets.TOKEN }}
       CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
       CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
       CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
@@ -286,7 +287,7 @@ jobs:
       - name: Publish archives, then commit the version manifests
         env:
           EXTENSION_PUBLISH_REPORT: ${{ runner.temp }}/extension-publication.json
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
           CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
           CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
           CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
