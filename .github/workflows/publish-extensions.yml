@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       run-id:
-        description: Completed extension run with successful builds and compatibility tests
+        description: Completed extension build or recovery run with verified archives and compatibility
         required: false
         type: string
       installer-only:

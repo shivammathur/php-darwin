@@ -198,6 +198,9 @@ selected tests pass. Installer updates are published even when recipes are uncha
 If publication fails after validation, run `publish-extensions.yml` with that run's
 `run-id`. It checks every source build and compatibility job before publishing the
 existing artifacts, without rebuilding PHP or extensions.
+The source can also be a completed `recover-extensions.yml` run whose plan,
+archive reuse, compatibility checks and exact publication selection passed.
+This resumes its publisher without rerunning the Ubuntu recovery dependencies.
 For an installer-only change, dispatch `publish-extensions.yml` with
 `installer-only=true` and no `run-id`. This shares the publication lock and
 updates only `install-extensions.cjs` at both origins; archives and manifests
@@ -238,9 +241,14 @@ use single-object uploads. A transient timeout, connection failure or service er
 gets one recovery attempt after five seconds, with at most six recovery attempts
 across publication. Checksums, metadata and credential errors are never retried.
 Lost upload responses are reconciled with the remote object before another write.
-Manifests are committed only after every referenced archive is verified. Failed
-jobs include recovery instructions and a publication report; publication has a
-30-minute limit. These recovery rules do not add retries to the installer.
+Each version's manifest is committed only after all its selected archives are
+verified. A transient failure leaves that version incomplete while independent
+versions continue; the job still fails if any version remains incomplete.
+Permanent errors stop immediately. Publication reports list completed, failed and
+remaining versions, plus HTTP timing, received bytes and selected Cloudflare
+headers for each verification read, including timeouts. They omit URLs and
+credentials. Recover only the remaining versions after diagnosing failures.
+Publication has a 30-minute limit. These recovery rules do not add retries to the installer.
 Nightly packs also track the PHP source commit, so a new nightly with the same
 version string rebuilds its extension modules while reusing dependency bottles.
 

@@ -171,10 +171,23 @@ async function validatePublishRun(id, run = transferCommand, retry = retryPolicy
   if (!/^[1-9][0-9]*$/.test(id || '')) throw new Error('Invalid source workflow run');
   const route = `repos/shivammathur/php-darwin/actions/runs/${id}`;
   const source = await githubJSON(route, { run, retry });
+  const recovery = source.path === '.github/workflows/recover-extensions.yml';
   if (source.status !== 'completed' || source.head_branch !== 'main' ||
       source.head_repository?.full_name !== 'shivammathur/php-darwin' ||
-      source.path !== '.github/workflows/cache-extensions.yml') throw new Error('Untrusted extension source run');
+      (!recovery && source.path !== '.github/workflows/cache-extensions.yml')) throw new Error('Untrusted extension source run');
   const jobs = await workflowJobs(route, source.run_attempt, { run, retry });
+  if (recovery) {
+    const plan = jobs.find(job => job.name === 'plan');
+    const reuse = jobs.filter(job => job.name.startsWith('reuse ('));
+    const tests = jobs.filter(job => /^Test PHP /.test(job.name) && job.conclusion !== 'skipped');
+    const publication = jobs.find(job => job.name === 'publish');
+    if (!plan || !reuse.length || [plan, ...reuse, ...tests].some(job => job.status !== 'completed' || job.conclusion !== 'success') ||
+        !publication?.steps?.some(step => step.name === 'Verify the publication contains exactly the tested variants' && step.conclusion === 'success')) {
+      throw new Error('Source recovery plan, archive reuse, compatibility and exact publication selection must pass');
+    }
+    console.log(`Validated recovery run ${id}: ${reuse.length} archive groups; retained compatibility evidence and exact publication selection passed`);
+    return;
+  }
   const builds = jobs.filter(job => /^(?:(imagick|mongodb|memcached) \/ PHP |Cache PHP |Reuse PHP )/.test(job.name) && job.conclusion !== 'skipped');
   const tests = jobs.filter(job => /^Test PHP /.test(job.name));
   if (!builds.length || !tests.length || [...builds, ...tests].some(job => job.status !== 'completed' || job.conclusion !== 'success')) {
@@ -226,38 +239,54 @@ async function publish(directory, { run = transferCommand, retry = retryPolicy()
   } else if (!response.ok) throw new Error(`Cannot inspect extension release: HTTP ${response.status}`);
   const staging = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP || '/tmp', 'extension-release-'));
   const transfer = transfers({ directory: staging, env, endpoint: process.env.CF_R2_AWS_S3_ENDPOINT, run, retry });
+  const publishedVersions = [], failedVersions = [];
   let failure;
   try {
-    for (const { archive } of entries) {
-      await transfer.github(archive, true);
-      await transfer.mirror(archive, true);
-    }
     // Commit each PHP-version manifest only after every referenced archive is
-    // uploaded and verified. Existing configurations remain in the manifest.
+    // uploaded and verified. A transient failure in another version must not
+    // discard that progress. Permanent validation/authentication failures stop.
     for (const version of new Set(entries.map(({ entry }) => entry.php_version))) {
-      const previous = await retry(`Read PHP ${version} manifest`, () => readManifest(version));
-      const merged = new Map(previous.assets.map(entry => [key(entry), entry]));
-      for (const { entry } of entries) if (entry.php_version === version) merged.set(key(entry), entry);
-      const manifest = path.join(staging, `extensions-${version}-manifest.json`);
-      fs.writeFileSync(manifest, JSON.stringify({ schema: 1, assets: [...merged.values()].sort((a, b) => key(a).localeCompare(key(b))) }, null, 2) + '\n');
-      // Recheck after transfers in case PHP changed while immutable archives
-      // were uploading. Keep those archives available for recovery.
-      await validatePublishedPHP(entries.filter(({ entry }) => entry.php_version === version).map(({ entry }) => entry));
-      await transfer.mirror(manifest, false);
-      await transfer.github(manifest, false);
+      try {
+        const selected = entries.filter(({ entry }) => entry.php_version === version);
+        for (const { archive } of selected) {
+          await transfer.github(archive, true);
+          await transfer.mirror(archive, true);
+        }
+        const previous = await retry(`Read PHP ${version} manifest`, () => readManifest(version));
+        const merged = new Map(previous.assets.map(entry => [key(entry), entry]));
+        for (const { entry } of selected) merged.set(key(entry), entry);
+        const manifest = path.join(staging, `extensions-${version}-manifest.json`);
+        fs.writeFileSync(manifest, JSON.stringify({ schema: 1, assets: [...merged.values()].sort((a, b) => key(a).localeCompare(key(b))) }, null, 2) + '\n');
+        // Recheck after transfers in case PHP changed while immutable archives
+        // were uploading. Keep those archives available for recovery.
+        await validatePublishedPHP(selected.map(({ entry }) => entry));
+        await transfer.mirror(manifest, false);
+        await transfer.github(manifest, false);
+        publishedVersions.push(version);
+      } catch (error) {
+        failedVersions.push({ php_version: version, error: error.message });
+        if (!error.transient) throw error;
+        console.error(`PHP ${version} publication incomplete; continuing independent versions: ${error.message}`);
+      }
     }
+    if (failedVersions.length) throw new Error(`Publication incomplete: ${failedVersions.map(item => `PHP ${item.php_version}: ${item.error}`).join('; ')}`);
     const installer = path.join(root, 'scripts/installer/install-extensions.cjs');
     await transfer.mirror(installer, false);
     await transfer.github(installer, false);
   } catch (error) { failure = error.message; throw error; }
   finally {
-    const report = { ...transfer.report, archives: entries.length, success: !failure, ...(failure ? { failure } : {}) };
-    console.log(`Extension publication: ${JSON.stringify(report)}`);
+    const report = { ...transfer.report, archives: entries.length, published_versions: publishedVersions,
+      remaining_versions: [...new Set(entries.map(({ entry }) => entry.php_version))].filter(version => !publishedVersions.includes(version)),
+      failed_versions: failedVersions, success: !failure, ...(failure ? { failure } : {}) };
+    // Individual read records are logged above and retained in the artifact;
+    // avoid duplicating hundreds of them into one oversized summary log line.
+    console.log(`Extension publication: ${JSON.stringify({ ...report, reads: undefined })}`);
     if (process.env.EXTENSION_PUBLISH_REPORT) fs.writeFileSync(process.env.EXTENSION_PUBLISH_REPORT, JSON.stringify(report, null, 2) + '\n');
     if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
       `Extension publication ${failure ? 'failed' : 'succeeded'}. ${report.archives} validated archives.\n\n` +
       `GitHub: ${report.github_reused} reused, ${report.github_uploaded} uploaded. ` +
       `Cloudflare: ${report.cloudflare_reused} reused, ${report.cloudflare_uploaded} uploaded.\n\n` +
+      `Published PHP versions: ${publishedVersions.join(', ') || 'none'}.\n\n` +
       (failure ? 'Rerun the failed publish job to resume verified transfers; passing build and test jobs do not need to run again.\n' : ''));
     fs.rmSync(staging, { recursive: true, force: true });
   }

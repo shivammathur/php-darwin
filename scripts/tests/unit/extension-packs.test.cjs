@@ -28,6 +28,38 @@ test('publication recovery accepts only completed main builds with every compati
   source.status = 'in_progress'; await assert.rejects(validatePublishRun('123', run));
   await assert.rejects(validatePublishRun('../invalid', run));
 });
+test('publication-only recovery requires trusted main and every recovery gate including exact archive selection', async () => {
+  const source = { status: 'completed', head_branch: 'main', run_attempt: 1,
+    head_repository: { full_name: 'shivammathur/php-darwin' }, path: '.github/workflows/recover-extensions.yml' };
+  const selection = { name: 'Verify the publication contains exactly the tested variants', conclusion: 'success' };
+  const jobs = [
+    { name: 'plan', status: 'completed', conclusion: 'success' },
+    { name: 'reuse (8.4, arm64)', status: 'completed', conclusion: 'success' },
+    { name: 'Test PHP 8.4 on macos-15', status: 'completed', conclusion: 'skipped' },
+    { name: 'publish', status: 'completed', conclusion: 'failure', steps: [selection] },
+  ];
+  const run = (_program, args) => JSON.stringify(args.includes('--paginate') ? [{ jobs }] : source);
+  await validatePublishRun('123', run);
+  jobs[2].conclusion = 'success';
+  await validatePublishRun('123', run);
+  for (const job of jobs.slice(0, 3)) {
+    const previous = job.conclusion;
+    for (const conclusion of ['failure', 'cancelled', null]) {
+      job.conclusion = conclusion;
+      await assert.rejects(validatePublishRun('123', run), /Source recovery/);
+    }
+    job.conclusion = previous;
+  }
+  selection.conclusion = 'skipped';
+  await assert.rejects(validatePublishRun('123', run), /Source recovery/);
+  selection.conclusion = 'success';
+  for (const field of ['head_branch', 'path']) {
+    const previous = source[field]; source[field] = 'untrusted';
+    await assert.rejects(validatePublishRun('123', run), /Untrusted/); source[field] = previous;
+  }
+  source.head_repository.full_name = 'other/php-darwin';
+  await assert.rejects(validatePublishRun('123', run), /Untrusted/);
+});
 test('publication requires the current PHP release and exact nightly source for every variant', async t => {
   const metadata = { ...entry('imagick'), php_src_commit: 'a'.repeat(40), php_semver: '8.4.26-dev' };
   const current = { schema: 1, php_version: '8.4', php_semver: '8.4.26', php_src_commit: metadata.php_src_commit, assets: [context] };
@@ -115,6 +147,61 @@ test('publication verifies bytes and current PHP before committing manifests wit
       const archiveCheck = calls.findIndex(call => call.program === 'curl');
       assert.ok(manifestUpload > archiveCheck);
     }
+  }
+});
+test('transient publication failures preserve completed versions and do not publish an incomplete version', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-independent-publish-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  for (const name of ['CF_R2_AWS_ACCESS_KEY_ID', 'CF_R2_AWS_SECRET_ACCESS_KEY', 'CF_R2_AWS_S3_ENDPOINT', 'EXTENSION_PUBLISH_REPORT']) {
+    const previous = process.env[name];
+    process.env[name] = name === 'EXTENSION_PUBLISH_REPORT' ? path.join(directory, 'report.txt') : 'fixture';
+    t.after(() => { if (previous === undefined) delete process.env[name]; else process.env[name] = previous; });
+  }
+  for (const php_version of ['8.3', '8.4', '8.5']) for (const name of php_version === '8.4' ? ['imagick', 'memcached'] : ['imagick']) {
+    const metadata = { ...entry(name), php_version, php_semver: `${php_version}.26` };
+    metadata.file = `${key(metadata)}-${metadata.sha256}.tar.zst`;
+    const location = path.join(directory, key(metadata));
+    fs.mkdirSync(location);
+    fs.writeFileSync(path.join(location, 'pack.json'), JSON.stringify(metadata));
+    fs.writeFileSync(path.join(location, metadata.file), name);
+    fs.writeFileSync(path.join(location, 'validation.txt'), JSON.stringify({ name, sha256: metadata.sha256,
+      install_seconds: 1, php_preserved: true, services_preserved: true }));
+  }
+  t.mock.method(globalThis, 'fetch', async url => {
+    const match = url.match(/\/php-(8\.[345])-manifest.json$/);
+    if (match) return Response.json({ schema: 1, php_version: match[1], php_semver: `${match[1]}.26`,
+      assets: [{ ...context, php_version: match[1] }] });
+    return new Response('', { status: url.includes('api.github.com') ? 200 : 404 });
+  });
+  for (const transient of [true, false]) {
+    const calls = [], uploaded = new Map();
+    const run = async (program, args) => {
+      calls.push({ program, args });
+      if (program === 'gh' && args[0] === 'api') return JSON.stringify(args.includes('--paginate') ? [[]] : { id: 1 });
+      if (program === 'aws' && args.includes('put-object')) {
+        const file = args[args.indexOf('--body') + 1];
+        uploaded.set(path.basename(file), fs.readFileSync(file));
+      } else if (program === 'aws') return '{}';
+      else if (program === 'curl') {
+        const name = path.basename(new URL(args.at(-1)).pathname);
+        if (!uploaded.has(name)) return '404';
+        if (name.startsWith('memcached-8.4-')) throw Object.assign(new Error('stalled archive'), { transient });
+        fs.writeFileSync(args[args.indexOf('--output') + 1], uploaded.get(name));
+        return '200';
+      }
+      return '';
+    };
+    await assert.rejects(publish(directory, { run, retry: async (_label, work) => work() }), /stalled archive/);
+    const report = JSON.parse(fs.readFileSync(process.env.EXTENSION_PUBLISH_REPORT));
+    assert.equal(report.success, false);
+    assert.deepEqual(report.published_versions, transient ? ['8.3', '8.5'] : ['8.3']);
+    assert.deepEqual(report.remaining_versions, transient ? ['8.4'] : ['8.4', '8.5']);
+    assert.deepEqual(report.failed_versions.map(item => item.php_version), ['8.4']);
+    const manifests = calls.filter(call => call.program === 'gh' && call.args[0] === 'release')
+      .map(call => path.basename(call.args[3])).filter(name => name.endsWith('-manifest.json'));
+    assert.deepEqual(manifests, transient ? ['extensions-8.3-manifest.json', 'extensions-8.5-manifest.json'] : ['extensions-8.3-manifest.json']);
+    assert.ok(!calls.some(call => call.args.some(arg => arg.endsWith('install-extensions.cjs'))));
+    if (!transient) assert.ok(!calls.some(call => call.args.some(arg => /imagick-8.5-/.test(arg))));
   }
 });
 test('scheduled batches cover every configured PHP version within both matrix limits', () => {

@@ -14,6 +14,9 @@ function command(program, args, options = {}) {
     child.on('close', code => {
       if (code === 0) return resolve(output.trim());
       const error = new Error(`${program} exited ${code}: ${diagnostic.trim()}`);
+      // Curl still writes transfer metrics when it times out. Keep stdout
+      // available to the reader without exposing arbitrary command output in logs.
+      Object.defineProperty(error, 'output', { value: output.trim() });
       const status = diagnostic.match(/HTTP(?:\/\S+)?\s+(\d{3})\b/);
       error.transient = (program === 'curl' && [5, 6, 7, 18, 28, 52, 55, 56, 92].includes(code)) ||
         (status && [408, 429, 500, 502, 503, 504].includes(Number(status[1]))) ||
@@ -41,6 +44,23 @@ function httpError(status, label) {
   error.transient = [408, 429, 500, 502, 503, 504].includes(Number(status));
   return error;
 }
+function readDiagnostic(output, headerFile, downloaded) {
+  const [status = '', timing = ''] = String(output || '').split('\n');
+  const values = timing.split(' '), result = { http_status: /^\d{3}$/.test(status) ? Number(status) : 0 };
+  ['dns_seconds', 'connect_seconds', 'tls_seconds', 'first_byte_seconds', 'total_seconds', 'received_bytes'].forEach((name, i) => {
+    if (/^\d+(?:\.\d+)?$/.test(values[i] || '')) result[name] = Number(values[i]);
+  });
+  if (/^[\d.]+$/.test(values[6] || '')) result.http_version = values[6];
+  if (/^[\da-fA-F:.]+$/.test(values[7] || '')) result.remote_ip = values[7];
+  result.saved_bytes = fs.existsSync(downloaded) ? fs.statSync(downloaded).size : 0;
+  let headers = {};
+  if (fs.existsSync(headerFile)) for (const line of fs.readFileSync(headerFile, 'utf8').split(/\r?\n/)) {
+    if (line.startsWith('HTTP/')) headers = {};
+    const match = line.match(/^(cf-ray|cf-cache-status|age|content-length|content-range):\s*([\w ./:-]{1,100})$/i);
+    if (match) headers[match[1].toLowerCase()] = match[2];
+  }
+  return { ...result, headers };
+}
 async function githubJSON(route, { run = command, retry = retryPolicy(), paginate = false } = {}) {
   const result = await retry(`Read ${route}`, () => run('gh', ['api', ...(paginate ? ['--paginate', '--slurp'] : []), route]));
   return JSON.parse(result);
@@ -59,7 +79,7 @@ async function workflowJobs(route, attempts, options = {}) {
 function transfers({ directory, env, endpoint, run = command, retry = retryPolicy() }) {
   const repo = 'shivammathur/php-darwin', release = 'extensions';
   let assets;
-  const report = { github_reused: 0, github_uploaded: 0, cloudflare_reused: 0, cloudflare_uploaded: 0 };
+  const report = { github_reused: 0, github_uploaded: 0, cloudflare_reused: 0, cloudflare_uploaded: 0, reads: [] };
   async function refreshAssets() {
     const record = JSON.parse(await run('gh', ['api', `repos/${repo}/releases/tags/${release}`]));
     assets = new Map(JSON.parse(await run('gh', ['api', '--paginate', '--slurp',
@@ -67,10 +87,15 @@ function transfers({ directory, env, endpoint, run = command, retry = retryPolic
   }
   async function read(file, base, { missing = false, different = false } = {}) {
     const name = path.basename(file), downloaded = path.join(directory, `verify-${name}`);
+    const headers = `${downloaded}.headers`;
+    let output = '', failure, verified = false;
     try {
-      const status = await run('curl', ['-q', '--silent', '--show-error', '--location',
+      output = await run('curl', ['-q', '--silent', '--show-error', '--location',
         '--proto', '=https', '--proto-redir', '=https', '--connect-timeout', '5', '--max-time', '45',
-        '--output', downloaded, '--write-out', '%{http_code}', `${base}/${name}?verify=${Date.now()}`]);
+        '--output', downloaded, '--dump-header', headers, '--write-out',
+        '%{http_code}\n%{time_namelookup} %{time_connect} %{time_appconnect} %{time_starttransfer} %{time_total} %{size_download} %{http_version} %{remote_ip}',
+        `${base}/${name}?verify=${Date.now()}`]);
+      const status = output.split('\n')[0];
       if (status === '404' && missing) return false;
       if (status !== '200') throw httpError(status, `Verify ${name}`);
       const expected = fs.readFileSync(file), received = fs.readFileSync(downloaded);
@@ -78,8 +103,20 @@ function transfers({ directory, env, endpoint, run = command, retry = retryPolic
         if (different) return false;
         throw new Error(`Checksum/size mismatch: ${name}`);
       }
+      verified = true;
       return true;
-    } finally { fs.rmSync(downloaded, { force: true }); }
+    } catch (error) {
+      failure = error;
+      output = error.output || output;
+      throw error;
+    } finally {
+      const diagnostic = { file: name, origin: base === origins[0] ? 'github' : 'cloudflare',
+        ...readDiagnostic(output, headers, downloaded), verified, ...(failure ? { error: failure.message } : {}) };
+      report.reads.push(diagnostic);
+      console.log(`Publication read: ${JSON.stringify(diagnostic)}`);
+      fs.rmSync(downloaded, { force: true });
+      fs.rmSync(headers, { force: true });
+    }
   }
   async function github(file, immutable) {
     const name = path.basename(file), bytes = fs.readFileSync(file), sha = digest(bytes);
@@ -104,7 +141,8 @@ function transfers({ directory, env, endpoint, run = command, retry = retryPolic
       report.github_uploaded++;
       assets.set(name, { name, size: bytes.length, digest: `sha256:${sha}` });
       console.log(`Uploaded GitHub asset: ${name}`);
-    }).catch(error => { throw new Error(`GitHub publication failed: ${name}; ${error.message}`, { cause: error }); });
+    }).catch(error => { throw Object.assign(new Error(`GitHub publication failed: ${name}; ${error.message}`, { cause: error }),
+      { transient: Boolean(error.transient) }); });
   }
   async function mirror(file, immutable) {
     const name = path.basename(file);
@@ -130,9 +168,10 @@ function transfers({ directory, env, endpoint, run = command, retry = retryPolic
           '--bucket', 'php-darwin', '--key', `extensions/${name}`, '--cli-connect-timeout', '5', '--cli-read-timeout', '30'], { env }));
         console.error(`R2 object exists: ${name}; ${object.ContentLength} bytes, ETag ${object.ETag}`);
       } catch { console.error(`R2 HeadObject could not confirm object: ${name}`); }
-      throw new Error(`Cloudflare publication failed: ${name}; ${error.message}`, { cause: error });
+      throw Object.assign(new Error(`Cloudflare publication failed: ${name}; ${error.message}`, { cause: error }),
+        { transient: Boolean(error.transient) });
     });
   }
   return { github, mirror, report };
 }
-module.exports = { command, retryPolicy, httpError, githubJSON, workflowJobs, transfers };
+module.exports = { command, retryPolicy, httpError, readDiagnostic, githubJSON, workflowJobs, transfers };

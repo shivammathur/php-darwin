@@ -3,7 +3,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { command, retryPolicy, httpError, transfers } = require('../../release/extension-transfers.cjs');
+const http = require('node:http');
+const { command, retryPolicy, httpError, readDiagnostic, transfers } = require('../../release/extension-transfers.cjs');
 const { digest } = require('../../installer/install-extensions.cjs');
 
 function fixture(t, failure) {
@@ -101,4 +102,43 @@ test('process diagnostics distinguish retryable service errors from permanent fa
     await assert.rejects(command(process.execPath, ['-e', 'process.stderr.write(process.argv[1]);process.exit(1)', message]),
       error => Boolean(error.transient) === transient && error.message.includes(message));
   }
+});
+test('a real stalled HTTP body retains timing and partial-byte diagnostics without response secrets', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-read-diagnostic-'));
+  const headers = path.join(directory, 'headers'), downloaded = path.join(directory, 'body');
+  const server = http.createServer((_request, response) => {
+    response.writeHead(200, { 'Content-Length': '100', 'CF-Ray': '123456-IAD', 'CF-Cache-Status': 'MISS',
+      'Set-Cookie': 'secret-cookie', Location: 'https://example.invalid/?token=secret' });
+    response.write('partial');
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => {
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+  await assert.rejects(command('curl', ['-q', '-sS', '--max-time', '0.3', '--output', downloaded, '--dump-header', headers,
+    '--write-out', '%{http_code}\n%{time_namelookup} %{time_connect} %{time_appconnect} %{time_starttransfer} %{time_total} %{size_download} %{http_version} %{remote_ip}',
+    `http://127.0.0.1:${server.address().port}`]), error => {
+    assert.ok(error.transient);
+    assert.ok(!Object.keys(error).includes('output'));
+    const diagnostic = readDiagnostic(error.output, headers, downloaded);
+    assert.equal(diagnostic.http_status, 200);
+    assert.equal(diagnostic.saved_bytes, 7);
+    assert.equal(diagnostic.received_bytes, 7);
+    assert.ok(diagnostic.total_seconds >= 0.29);
+    assert.ok(diagnostic.first_byte_seconds < diagnostic.total_seconds);
+    assert.deepEqual(diagnostic.headers, { 'content-length': '100', 'cf-ray': '123456-IAD', 'cf-cache-status': 'MISS' });
+    assert.doesNotMatch(JSON.stringify(diagnostic), /secret|token|cookie|example/);
+    return true;
+  });
+});
+test('diagnostics use only the final HTTP response and reject untrusted header characters', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-read-headers-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const headers = path.join(directory, 'headers');
+  fs.writeFileSync(headers, 'HTTP/1.1 302 Found\r\nCF-Ray: earlier-IAD\r\nLocation: secret\r\n\r\n' +
+    'HTTP/2 200\r\nContent-Length: 7\r\nCF-Ray: bad\u001b[31mheader\r\n');
+  assert.deepEqual(readDiagnostic('200', headers, path.join(directory, 'missing')),
+    { http_status: 200, saved_bytes: 0, headers: { 'content-length': '7' } });
 });
