@@ -1,0 +1,10 @@
+name: Validate final setup-php preservation
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  validate:
+    uses: shivammathur/test-setup-php/.github/workflows/validate.yml@a9608ab991adbeb2a8292a5fe1037d8a1c259760
+    with:
+      cases: '[{"php":"5.6","runner":"macos-15-intel","runs_on":["self-hosted","macOS","X64","macos-15-intel"]},{"php":"8.6","runner":"macos-15-intel","runs_on":["self-hosted","macOS","X64","macos-15-intel"]},{"php":"8.7","runner":"macos-15-intel","runs_on":["self-hosted","macOS","X64","macos-15-intel"]}]'
+    secrets: inherit
