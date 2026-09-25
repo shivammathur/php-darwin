@@ -19,6 +19,7 @@ trap 'exit 143' TERM
 printf 'verified fixture\n' > "$work_dir/fixture"
 expected_hash=$(php_darwin_sha256 "$work_dir/fixture")
 version=8.3
+channel=stable
 release_repository=fixture/repo
 asset=$(php_darwin_asset "$version" release nts arm64)
 manifest_download_asset=$(php_darwin_download_asset "$asset" "$expected_hash")
@@ -32,11 +33,17 @@ jq -n --arg hash "$expected_hash" --arg asset "$manifest_download_asset" '
       download:($name|sub(".tar.zst$";"."+$hash+".tar.zst")), minimum_macos:(if $arch=="arm64" then 14 else 15 end)}]}
 ' > "$work_dir/manifest"
 php_darwin_validate_release_manifest "$work_dir/manifest" "$version" >/dev/null
-# Exercise the actual archive selection function without touching Homebrew.
-sed -n '/^php_darwin_download_release_archive() {/,/^}/p' "$script_dir/../../installer/install-package.sh" > "$work_dir/download.sh"
+# Exercise manifest selection and archive downloading without touching Homebrew.
+sed -n '/^php_darwin_use_release_manifest() {/,/^}/p; /^php_darwin_download_release_archive() {/,/^}/p' \
+  "$script_dir/../../installer/install-package.sh" > "$work_dir/download.sh"
 # shellcheck source=/dev/null
 . "$work_dir/download.sh"
-php_darwin_start_archive_hash() { actual_hash=$(php_darwin_sha256 "$1"); }
+php_darwin_use_release_manifest "$work_dir/manifest"
+[ "$manifest_archive_bytes" = 17 ] || php_darwin_die 'selected the wrong archive size'
+php_darwin_start_archive_hash() {
+  wc -c < "$1" | tr -d ' ' >> "$work_dir/hashes"
+  actual_hash=$(php_darwin_sha256 "$1")
+}
 php_darwin_wait_for_archive_hash() { :; }
 ruby -rsocket - "$work_dir" <<'RUBY' &
 directory = ARGV.fetch(0)
@@ -79,6 +86,12 @@ loop do
       body = 'invalid bytes' if mode == 'corrupt'
       length = body.bytesize
       body = body.byteslice(0, 5) if mode == 'partial'
+      # Curl reports truncation even though every expected archive byte arrived.
+      if ['complete-timeout', 'corrupt-timeout', 'oversize-timeout'].include?(mode)
+        body = 'x' * body.bytesize if mode == 'corrupt-timeout'
+        body += 'x' if mode == 'oversize-timeout'
+        length = body.bytesize + 1
+      end
       if ['range', 'wrong-range'].include?(mode) && range
         File.write("#{directory}/range", range.to_s)
         status = 206
@@ -126,13 +139,32 @@ done
 export PHP_DARWIN_MIRROR_URL="$base/range"
 PHP_DARWIN_RELEASE_URL="$base/partial/archive"
 : > "$work_dir/requests"
+: > "$work_dir/hashes"
 php_darwin_download_release_archive || php_darwin_die 'partial archive did not resume'
+[ "$(cat "$work_dir/hashes")" = 17 ] || php_darwin_die 'hashed incomplete bytes before resuming'
 [ "$(cat "$work_dir/range")" = 5 ] || php_darwin_die 'wrong resume offset'
 cmp -s "$archive" "$work_dir/fixture" || php_darwin_die 'resumed bytes differ'
 [ "$(wc -l < "$work_dir/requests" | tr -d ' ')" = 2 ] || php_darwin_die 'resume retried an origin'
 export PHP_DARWIN_MIRROR_URL="$base/wrong-range"
 if php_darwin_download_release_archive; then php_darwin_die 'accepted corrupt range response'; fi
 [ "$release_archive_error" = checksum ] || php_darwin_die 'corrupt resumed bytes lost their checksum error'
+# A late transfer error can still contain a complete, valid archive. Corrupt
+# complete and oversized responses must restart instead of requesting past EOF.
+PHP_DARWIN_RELEASE_URL="$base/complete-timeout/archive"
+: > "$work_dir/requests"
+: > "$work_dir/hashes"
+php_darwin_download_release_archive || php_darwin_die 'discarded a verified complete download'
+[ "$(cat "$work_dir/hashes")" = 17 ] || php_darwin_die 'did not verify the complete errored response'
+[ "$(wc -l < "$work_dir/requests" | tr -d ' ')" = 1 ] || php_darwin_die 'redownloaded a verified archive'
+export PHP_DARWIN_MIRROR_URL="$base/range"
+for route in corrupt-timeout oversize-timeout; do
+  PHP_DARWIN_RELEASE_URL="$base/$route/archive"
+  rm -f "$work_dir/range"
+  : > "$work_dir/hashes"
+  php_darwin_download_release_archive || php_darwin_die "$route did not recover"
+  [ ! -f "$work_dir/range" ] || php_darwin_die "$route requested a range past the archive"
+  cmp -s "$archive" "$work_dir/fixture" || php_darwin_die "$route retained invalid bytes"
+done
 # A high initial throughput must not mask a later stall for tens of seconds.
 export PHP_DARWIN_MIRROR_URL="$base/good"
 PHP_DARWIN_RELEASE_URL="$base/burst/archive"

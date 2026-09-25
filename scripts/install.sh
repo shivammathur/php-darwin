@@ -2976,6 +2976,7 @@ manifest_php_src_commit=
 manifest_php_semver=
 manifest_source_hash=
 manifest_download_asset=
+manifest_archive_bytes=
 manifest_extensions_commit=
 manifest_from_embedded=false
 release_archive_error=
@@ -2995,6 +2996,8 @@ php_darwin_use_release_manifest() {
     [ -n "$manifest_extensions_commit" ] || return 1
   [ "$manifest_php_src_commit" != - ] || manifest_php_src_commit=
   [ "$manifest_extensions_commit" != - ] || manifest_extensions_commit=
+  manifest_archive_bytes=$(jq -er --arg asset "$asset" \
+    '.assets[] | select(.name == $asset) | .bytes' "$manifest_file") || return 1
 }
 
 php_darwin_refresh_release_manifest() {
@@ -3015,7 +3018,7 @@ php_darwin_download_release_archive() {
   local mirror_url
   local urls=()
   local origin_index=0 minimum_speed low_speed_seconds max_time destination
-  local resume_bytes='' request_result
+  local resume_bytes='' request_result received_bytes
 
   release_archive_error=
   release_url=${PHP_DARWIN_RELEASE_URL:-https://github.com/$release_repository/releases/download/php-$version/$manifest_download_asset}
@@ -3052,12 +3055,19 @@ php_darwin_download_release_archive() {
     if [ "$request_result" -ne 0 ]; then
       [ "$release_archive_error" = checksum ] || release_archive_error=download
       if [ "$archive_http_status" = 200 ] && [ -s "$archive" ] && [ -z "$resume_bytes" ]; then
-        # A timeout can arrive after the last byte. Only the expected digest
-        # makes that a complete archive; otherwise preserve the prefix to resume.
-        php_darwin_start_archive_hash "$archive"
-        php_darwin_wait_for_archive_hash
-        if [ "$actual_hash" = "$expected_hash" ]; then release_archive_error=; return 0; fi
-        resume_bytes=$(wc -c < "$archive" | tr -d '[:space:]')
+        received_bytes=$(wc -c < "$archive" | tr -d '[:space:]')
+        if [ "$received_bytes" -lt "$manifest_archive_bytes" ]; then
+          # A known incomplete prefix cannot match the digest. Start the mirror
+          # immediately and authenticate the complete combined archive below.
+          resume_bytes=$received_bytes
+        elif [ "$received_bytes" -eq "$manifest_archive_bytes" ]; then
+          # A timeout can arrive after the last byte. Still require its digest;
+          # a corrupt complete response must restart at the next origin.
+          php_darwin_start_archive_hash "$archive"
+          php_darwin_wait_for_archive_hash
+          if [ "$actual_hash" = "$expected_hash" ]; then release_archive_error=; return 0; fi
+          release_archive_error=checksum
+        fi
       fi
       continue
     fi
