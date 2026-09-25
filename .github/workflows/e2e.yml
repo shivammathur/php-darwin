@@ -1,0 +1,13 @@
+name: Validate optional extension packs on self-hosted runners
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  self-hosted:
+    uses: shivammathur/test-setup-php/.github/workflows/extensions.yml@f4ae45091bef42619a2017e67f7faf50abaad03d
+    with:
+      runners: '["macos-15-x86_64"]'
+      php-versions: '["5.6","8.5","8.7"]'
+    secrets:
+      TOKEN: ${{ secrets.TOKEN }}
