@@ -3,6 +3,9 @@ name: Test reusable source bottles
 on:
   workflow_dispatch:
   push:
+    # TOKEN-created release tags emit push events. Only source branches may
+    # start tests, or each temporary release would recursively start a new run.
+    branches: ['**']
     paths:
       - .github/actions/source-cache/**
       - .github/workflows/test-source-cache.yml
@@ -24,6 +27,7 @@ permissions:
 jobs:
   prepare:
     name: Create the isolated source-cache release before parallel workers
+    if: github.ref_type == 'branch'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

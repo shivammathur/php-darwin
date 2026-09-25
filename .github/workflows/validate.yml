@@ -2,6 +2,7 @@ name: Validate workflows and cache scripts
 
 on:
   push:
+    branches: ['**']
     paths: ['.github/**', 'scripts/**', 'conf/**', 'templates/**']
   pull_request:
     paths: ['.github/**', 'scripts/**', 'conf/**', 'templates/**']

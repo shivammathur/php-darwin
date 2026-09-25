@@ -58,6 +58,8 @@ GitHub API steps use the repository's `TOKEN` Actions secret when configured,
 with `github.token` as the fallback. Reusable workflows pass `TOKEN` explicitly.
 The token needs repository contents and Actions access for release and workflow
 operations; keep its value only in Actions secrets.
+Push-triggered validation runs only on branches. Keep release tags excluded:
+tags created with `TOKEN` emit push events and can recursively start cache tests.
 
 ## Build and cache
 
