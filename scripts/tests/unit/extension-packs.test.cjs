@@ -6,7 +6,7 @@ const os = require('node:os');
 const http = require('node:http');
 const { execFileSync } = require('node:child_process');
 const { prefetch, download, digest, key, validateEntry, validateContext, safePath, inspectTree, packEnvironment, relocateResources, phpApi, prepareArchive, movePrepared } = require('../../installer/install-extensions.cjs');
-const { unchanged, freshnessReason, compatibleBuilder, builderHash, compatibilityMatrix, versionBatches, dispatch, publish, validatePublishRun } = require('../../release/extension-packs.cjs');
+const { unchanged, freshnessReason, compatibleBuilder, builderHash, compatibilityMatrix, versionBatches, dispatch, publish, validatePublishRun, validatePublishedPHP } = require('../../release/extension-packs.cjs');
 const { copyRuntime } = require('../../build/extension-pack.cjs');
 const { buildMatrix } = require('../../release/extension-batches.cjs');
 
@@ -28,20 +28,56 @@ test('publication recovery accepts only completed main builds with every compati
   source.status = 'in_progress'; await assert.rejects(validatePublishRun('123', run));
   await assert.rejects(validatePublishRun('../invalid', run));
 });
-test('publication verifies bytes and commits manifests last without retrying permanent failures', async t => {
+test('publication requires the current PHP release and exact nightly source for every variant', async t => {
+  const metadata = { ...entry('imagick'), php_src_commit: 'a'.repeat(40), php_semver: '8.4.26-dev' };
+  const current = { schema: 1, php_version: '8.4', php_semver: '8.4.26', php_src_commit: metadata.php_src_commit, assets: [context] };
+  let manifest = current, status = 200, reads = 0;
+  t.mock.method(globalThis, 'fetch', async url => {
+    assert.match(url, /\/php-8\.4\/php-8\.4-manifest\.json$/);
+    reads++;
+    return Response.json(manifest, { status });
+  });
+  await validatePublishedPHP([metadata, { ...metadata, name: 'mongodb' }]);
+  assert.equal(reads, 1, 'read each PHP release once per batch');
+  for (const change of [{ php_src_commit: 'b'.repeat(40) }, { php_src_commit: undefined },
+    { php_semver: '8.4.27' }, { assets: [{ ...context, thread_safety: 'zts' }] }]) {
+    manifest = { ...current, ...change };
+    await assert.rejects(validatePublishedPHP([metadata]), /refusing stale extension publication/);
+  }
+  for (const change of [{ schema: 2 }, { php_version: '8.5' }, { php_semver: undefined }, { assets: null }]) {
+    manifest = { ...current, ...change };
+    await assert.rejects(validatePublishedPHP([metadata]), /Invalid published PHP/);
+  }
+  manifest = { ...current, php_src_commit: undefined };
+  await validatePublishedPHP([entry('imagick')]);
+  manifest.php_semver = '8.4.27';
+  await assert.rejects(validatePublishedPHP([entry('imagick')]), /refusing stale extension publication/);
+  status = 404;
+  await assert.rejects(validatePublishedPHP([metadata]), /HTTP 404/);
+});
+test('publication verifies bytes and current PHP before committing manifests without retrying permanent failures', async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-publish-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   for (const name of ['CF_R2_AWS_ACCESS_KEY_ID', 'CF_R2_AWS_SECRET_ACCESS_KEY', 'CF_R2_AWS_S3_ENDPOINT']) {
     const previous = process.env[name]; process.env[name] = 'fixture';
     t.after(() => { if (previous === undefined) delete process.env[name]; else process.env[name] = previous; });
   }
-  t.mock.method(globalThis, 'fetch', async url => new Response('', { status: url.includes('api.github.com') ? 200 : 404 }));
+  let failure, baseReads;
+  t.mock.method(globalThis, 'fetch', async url => {
+    if (url.endsWith('/php-8.4-manifest.json')) {
+      baseReads++;
+      return Response.json({ schema: 1, php_version: '8.4', assets: [context],
+        php_semver: failure === 'stale' || (failure === 'php-changed' && baseReads > 1) ? '8.4.27' : '8.4.26' });
+    }
+    return new Response('', { status: url.includes('api.github.com') ? 200 : 404 });
+  });
   const metadata = entry('imagick');
   fs.writeFileSync(path.join(directory, 'pack.json'), JSON.stringify(metadata));
   fs.writeFileSync(path.join(directory, metadata.file), 'imagick');
   fs.writeFileSync(path.join(directory, 'validation.txt'), JSON.stringify({ name: metadata.name, sha256: metadata.sha256,
     install_seconds: 1, php_preserved: true, services_preserved: true }));
-  for (const failure of ['', 'upload', 'timeout', 'checksum', '404']) {
+  for (failure of ['', 'stale', 'php-changed', 'upload', 'timeout', 'checksum', '404']) {
+    baseReads = 0;
     const calls = [], uploaded = new Map();
     const run = async (program, args, options) => {
       await new Promise(resolve => setImmediate(resolve));
@@ -66,11 +102,13 @@ test('publication verifies bytes and commits manifests last without retrying per
       return '';
     };
     if (failure) {
-      await assert.rejects(publish(directory, { run }), /upload rejected|curl exited 28|Checksum\/size mismatch|HTTP 404/);
-      assert.equal(calls.filter(call => call.program === 'aws' && call.args.includes('put-object')).length, 1);
+      await assert.rejects(publish(directory, { run }), /upload rejected|curl exited 28|Checksum\/size mismatch|HTTP 404|refusing stale extension publication/);
+      if (failure === 'stale') assert.equal(calls.length, 0, 'reject stale packs before any external writes');
+      assert.equal(calls.filter(call => call.program === 'aws' && call.args.includes('put-object')).length, failure === 'stale' ? 0 : 1);
       assert.ok(!calls.some(call => call.args.some(arg => arg.endsWith('-manifest.json'))));
     } else {
       await publish(directory, { run });
+      assert.equal(baseReads, 2, 'recheck PHP after archive transfers');
       assert.deepEqual(calls.filter(call => call.program === 'gh' && call.args[0] === 'release').map(call => path.basename(call.args[3])),
         [metadata.file, 'extensions-8.4-manifest.json', 'install-extensions.cjs']);
       const manifestUpload = calls.findIndex(call => call.program === 'aws' && call.args.some(arg => arg.endsWith('-manifest.json')));
@@ -156,7 +194,7 @@ test('read the module API from the installed PHP headers using supported php-con
 });
 function entry(name, content = Buffer.from(name)) {
   const metadata = { ...context, name, schema: 1, sha256: digest(content), inputs_sha256: '1'.repeat(64),
-    php_api: '20240924', minimum_macos: 14, bytes: content.length };
+    php_api: '20240924', php_semver: '8.4.26', minimum_macos: 14, bytes: content.length };
   metadata.file = `${key(metadata)}-${metadata.sha256}.tar.zst`;
   return metadata;
 }

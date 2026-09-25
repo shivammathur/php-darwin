@@ -80,6 +80,28 @@ async function readManifest(version) {
   manifest.assets.forEach(validateEntry);
   return manifest;
 }
+async function validatePublishedPHP(entries) {
+  for (const version of new Set(entries.map(entry => entry.php_version))) {
+    const response = await fetch(`https://github.com/shivammathur/php-darwin/releases/download/php-${version}/php-${version}-manifest.json`,
+      { signal: AbortSignal.timeout(15000), cache: 'no-store' });
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw httpError(response.status, `Read published PHP ${version} manifest`);
+    }
+    const manifest = await response.json();
+    if (manifest.schema !== 1 || manifest.php_version !== version || !manifest.php_semver || !Array.isArray(manifest.assets)) {
+      throw new Error(`Invalid published PHP ${version} manifest`);
+    }
+    for (const entry of entries.filter(entry => entry.php_version === version)) {
+      const semver = manifest.php_src_commit ? entry.php_semver?.split('-')[0] : entry.php_semver;
+      if (semver !== manifest.php_semver || (entry.php_src_commit || '') !== (manifest.php_src_commit || '') ||
+          !manifest.assets.some(asset => asset.architecture === entry.architecture && asset.build === entry.build &&
+            asset.thread_safety === entry.thread_safety)) {
+        throw new Error(`Published PHP ${version} no longer matches ${key(entry)}; refusing stale extension publication`);
+      }
+    }
+  }
+}
 async function plan() {
   const versions = (process.env.PHP_VERSIONS || '8.4').split(/\s+/);
   const selectedPacks = (process.env.EXTENSION_PACKS || Object.keys(configuration.packs).join(' ')).split(/\s+/);
@@ -172,6 +194,9 @@ async function publish(directory, { run = transferCommand, retry = retryPolicy()
     return { entry, archive };
   });
   if (new Set(entries.map(({ entry }) => key(entry))).size !== entries.length) throw new Error('Invalid extension publish batch');
+  // Recovery may outlive a PHP release or nightly API update. Reject its stale
+  // packs before uploads, even when their earlier compatibility reports passed.
+  await validatePublishedPHP(entries.map(({ entry }) => entry));
   const repo = 'shivammathur/php-darwin';
   const release = 'extensions';
   const env = { ...process.env, AWS_ACCESS_KEY_ID: process.env.CF_R2_AWS_ACCESS_KEY_ID,
@@ -215,6 +240,9 @@ async function publish(directory, { run = transferCommand, retry = retryPolicy()
       for (const { entry } of entries) if (entry.php_version === version) merged.set(key(entry), entry);
       const manifest = path.join(staging, `extensions-${version}-manifest.json`);
       fs.writeFileSync(manifest, JSON.stringify({ schema: 1, assets: [...merged.values()].sort((a, b) => key(a).localeCompare(key(b))) }, null, 2) + '\n');
+      // Recheck after transfers in case PHP changed while immutable archives
+      // were uploading. Keep those archives available for recovery.
+      await validatePublishedPHP(entries.filter(({ entry }) => entry.php_version === version).map(({ entry }) => entry));
       await transfer.mirror(manifest, false);
       await transfer.github(manifest, false);
     }
@@ -234,7 +262,7 @@ async function publish(directory, { run = transferCommand, retry = retryPolicy()
     fs.rmSync(staging, { recursive: true, force: true });
   }
 }
-module.exports = { unchanged, freshnessReason, compatibleBuilder, builderHash, readManifest, plan, publish, compatibilityMatrix, versionBatches, dispatch, validatePublishRun };
+module.exports = { unchanged, freshnessReason, compatibleBuilder, builderHash, readManifest, plan, publish, compatibilityMatrix, versionBatches, dispatch, validatePublishRun, validatePublishedPHP };
 if (require.main === module) (async () => {
   if (process.argv[2] === 'dispatch') await dispatch();
   else if (process.argv[2] === 'plan') await plan();
