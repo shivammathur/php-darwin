@@ -1,0 +1,10 @@
+{
+  "formula": "msgpack@8.1",
+  "version": "3.0.1",
+  "tag": "source",
+  "name": "msgpack@8.1-3.0.1.macos-15.x86_64.debug-nts.source-v2-d9c3ab8c8f7718e94402e0e3b46f700be8f7fc3dd995bb266d6fae1ee0326811.3.0.1.7a0d221bc1636417879169a8758fdb28610a59f1facd36940444d1ce7bb42cc0.tar",
+  "source_key": "php-darwin-source-v1-7a0d221bc1636417879169a8758fdb28610a59f1facd36940444d1ce7bb42cc0",
+  "bytes": 62976,
+  "sha256": "3ea86f03bd1c91d283fbac3eefbf68432b65708a8244d15bb05990e489a59913",
+  "url": "https://github.com/shivammathur/php-darwin/releases/download/cache-msgpack/msgpack%408.1-3.0.1.macos-15.x86_64.debug-nts.source-v2-d9c3ab8c8f7718e94402e0e3b46f700be8f7fc3dd995bb266d6fae1ee0326811.3.0.1.7a0d221bc1636417879169a8758fdb28610a59f1facd36940444d1ce7bb42cc0.tar"
+}
