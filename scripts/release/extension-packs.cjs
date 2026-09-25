@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { command, digest, key, validateEntry, origins } = require('../installer/install-extensions.cjs');
 const configuration = require('../../conf/extension-packs.json');
+const compatibleBuilders = require('../../conf/extension-builder-compatibility.json');
 const platforms = require('../../conf/platforms.json');
 const { builderHash } = require('../build/extension-pack.cjs');
 const { buildMatrix, testMatrix } = require('./extension-batches.cjs');
@@ -39,20 +40,33 @@ async function dispatch({ versions = process.env.PHP_VERSIONS || undefined, afte
     console.log(`Dispatched optional extension caches for PHP ${batch.join(', ')}`);
   }
 }
-function unchanged(entry, repositories, phpManifest) {
+function compatibleBuilder(previous, current = builderHash()) {
+  // Reviewed cache transport/preparation changes need not repack valid binaries.
+  // Bind each exception to an exact current hash so future builder edits still
+  // invalidate it; PHP and every recorded recipe are checked separately below.
+  return previous === current || (compatibleBuilders[current] || []).includes(previous);
+}
+function freshnessReason(entry, repositories, phpManifest) {
   try {
     validateEntry(entry);
     const phpVersion = phpManifest.php_src_commit ? entry.php_semver?.split('-')[0] : entry.php_semver;
-    if (entry.builder_sha256 !== builderHash() || phpVersion !== phpManifest.php_semver ||
-        !entry.source_records?.length) return false;
-    if ((phpManifest.php_src_commit || '') !== (entry.php_src_commit || '')) return false;
-    return entry.source_records.every(record => {
+    if (!compatibleBuilder(entry.builder_sha256)) return 'builder changed';
+    if (phpVersion !== phpManifest.php_semver ||
+        (phpManifest.php_src_commit || '') !== (entry.php_src_commit || '')) return 'PHP release changed';
+    if (!entry.source_records?.length) return 'missing recipe records';
+    for (const record of entry.source_records) {
       const repository = repositories[record.repository];
-      if (!repository || !record.path || record.path.includes('..') || path.isAbsolute(record.path)) return false;
+      if (!repository || !record.path || record.path.includes('..') || path.isAbsolute(record.path)) return 'invalid recipe record';
       const file = path.join(repository, record.path);
-      return fs.existsSync(file) && digest(fs.readFileSync(file)) === record.sha256;
-    });
-  } catch { return false; }
+      if (!fs.existsSync(file) || digest(fs.readFileSync(file)) !== record.sha256) {
+        return `recipe changed: ${record.repository}/${record.path}`;
+      }
+    }
+    return null;
+  } catch { return 'invalid published metadata'; }
+}
+function unchanged(entry, repositories, phpManifest) {
+  return freshnessReason(entry, repositories, phpManifest) === null;
 }
 async function readManifest(version) {
   const response = await fetch(`${origins[0]}/extensions-${version}-manifest.json`, { signal: AbortSignal.timeout(15000) });
@@ -103,7 +117,10 @@ async function plan() {
       // published packs. Normal scheduled runs still apply full freshness checks.
       if (resumeRuns.length && previous && previous.php_semver?.split('-')[0] === phpManifest.php_semver?.split('-')[0] &&
           (previous.php_src_commit || '') === (phpManifest.php_src_commit || '')) continue;
-      if (process.env.FORCE !== 'true' && previous && unchanged(previous, repositories, phpManifest)) continue;
+      const reason = process.env.FORCE === 'true' ? 'forced rebuild' :
+        previous ? freshnessReason(previous, repositories, phpManifest) : 'not published';
+      if (!reason) continue;
+      console.log(`Selected ${identity}: ${reason}`);
       include.push({ ...context, runner: platforms[architecture].build_runner });
       selected.push(context);
     }
@@ -217,7 +234,7 @@ async function publish(directory, { run = transferCommand, retry = retryPolicy()
     fs.rmSync(staging, { recursive: true, force: true });
   }
 }
-module.exports = { unchanged, builderHash, readManifest, plan, publish, compatibilityMatrix, versionBatches, dispatch, validatePublishRun };
+module.exports = { unchanged, freshnessReason, compatibleBuilder, builderHash, readManifest, plan, publish, compatibilityMatrix, versionBatches, dispatch, validatePublishRun };
 if (require.main === module) (async () => {
   if (process.argv[2] === 'dispatch') await dispatch();
   else if (process.argv[2] === 'plan') await plan();

@@ -5,7 +5,7 @@ const path = require('node:path');
 const os = require('node:os');
 const http = require('node:http');
 const { prefetch, download, digest, key, validateEntry, validateContext, safePath, inspectTree, packEnvironment, relocateResources, phpApi } = require('../../installer/install-extensions.cjs');
-const { unchanged, builderHash, compatibilityMatrix, versionBatches, dispatch, publish, validatePublishRun } = require('../../release/extension-packs.cjs');
+const { unchanged, freshnessReason, compatibleBuilder, builderHash, compatibilityMatrix, versionBatches, dispatch, publish, validatePublishRun } = require('../../release/extension-packs.cjs');
 const { copyRuntime } = require('../../build/extension-pack.cjs');
 const { buildMatrix } = require('../../release/extension-batches.cjs');
 
@@ -248,13 +248,35 @@ test('freshness tracks dependency recipes, PHP releases and builder changes', t 
     source_records: [{ repository: 'core', path: 'formula.rb', sha256: digest('original') }] };
   const repositories = { core: directory };
   assert.ok(unchanged(metadata, repositories, { php_semver: '8.4.26' }));
+  assert.equal(freshnessReason(metadata, repositories, { php_semver: '8.4.26' }), null);
+  assert.equal(freshnessReason(metadata, repositories, { php_semver: '8.4.27' }), 'PHP release changed');
   assert.equal(unchanged(metadata, repositories, { php_semver: '8.4.27' }), false);
   const nightly = { ...metadata, php_version: '8.7', php_semver: '8.7.0-dev', php_src_commit: 'a'.repeat(40) };
   nightly.file = `${key(nightly)}-${nightly.sha256}.tar.zst`;
   assert.ok(unchanged(nightly, repositories, { php_semver: '8.7.0', php_src_commit: nightly.php_src_commit }));
   assert.equal(unchanged(nightly, repositories, { php_semver: '8.7.0', php_src_commit: 'b'.repeat(40) }), false);
   assert.equal(unchanged({ ...metadata, builder_sha256: '0'.repeat(64) }, repositories, { php_semver: '8.4.26' }), false);
+  assert.equal(freshnessReason({ ...metadata, builder_sha256: '0'.repeat(64) }, repositories, { php_semver: '8.4.26' }), 'builder changed');
   fs.writeFileSync(path.join(directory, 'formula.rb'), 'updated dependency');
+  assert.equal(unchanged(metadata, repositories, { php_semver: '8.4.26' }), false);
+  assert.equal(freshnessReason(metadata, repositories, { php_semver: '8.4.26' }), 'recipe changed: core/formula.rb');
+});
+test('reviewed builder compatibility retains recipe and PHP invalidation', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-builder-compatibility-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const previous = '7b2d334fd6d1f3e86b137329154d9ef0091a58e6ba2f9cc8f35f5d9cd5c119da';
+  const current = '09df44b6ee436c8302bd300bbc3e0c8feced747d0058a70b16f362555645fcf8';
+  assert.equal(compatibleBuilder(previous, current), true);
+  assert.equal(compatibleBuilder(previous, 'f'.repeat(64)), false);
+  assert.equal(compatibleBuilder('0'.repeat(64), current), false);
+  assert.equal(compatibleBuilder(current, previous), false);
+  fs.writeFileSync(path.join(directory, 'formula.rb'), 'original');
+  const metadata = { ...entry('imagick'), builder_sha256: previous, php_semver: '8.4.26',
+    source_records: [{ repository: 'core', path: 'formula.rb', sha256: digest('original') }] };
+  const repositories = { core: directory };
+  assert.equal(unchanged(metadata, repositories, { php_semver: '8.4.26' }), builderHash() === current);
+  assert.equal(unchanged(metadata, repositories, { php_semver: '8.4.27' }), false);
+  fs.writeFileSync(path.join(directory, 'formula.rb'), 'changed');
   assert.equal(unchanged(metadata, repositories, { php_semver: '8.4.26' }), false);
 });
 test('compatibility covers newer hosts and self-hosted Intel while grouping packs per PHP runtime', () => {

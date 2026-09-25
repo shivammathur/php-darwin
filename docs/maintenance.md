@@ -213,6 +213,13 @@ Ubuntu jobs download exact artifact IDs, verify archive hashes and native report
 and retain their bytes; Macs only build unpublished gaps and run compatibility.
 Already published variants are retained when their PHP release/source commit still
 matches. Normal runs without `resume-runs` apply full recipe freshness checks.
+The planner logs why each pack needs rebuilding. `extension-builder-compatibility.json`
+records reviewed, artifact-equivalent builder changes, scoped to exact old and
+current hashes; it never bypasses PHP or recipe checks. The initial mapping covers
+archive-tool bootstrap, tap trust and source-cache coordination changes from
+`fb68665` to `850998d`, validated against the published packs and native reports.
+Add a mapping only after reviewing the builder diff and verifying existing artifacts;
+unlisted builder changes still invalidate the cache.
 This recovery path works for both architectures. Regular Homebrew ARM bottles
 cannot replace debug/ZTS or development-PHP extension binaries; missing matching
 binaries and Mach-O relocation/signing still require macOS.
