@@ -686,25 +686,24 @@ php_darwin_request_release() {
   local status
   local result=0
   local range=()
-  local attempt=1 attempts=1 connect_timeout=2 delay retry_after
+  local attempt=1 attempts=1 connect_timeout=10 delay retry_after
   local mirror=${PHP_DARWIN_MIRROR_URL-https://artifacts.php-darwin.setup-php.com}
   local headers=()
   [ -z "${6:-}" ] || range=(--range "$6-")
   if [ -n "$mirror" ] && [[ "$1" = "${mirror%/}/"* ]]; then
     attempts=3
-    connect_timeout=5
     headers=(--dump-header "$2.headers")
   fi
 
-  # GitHub still fails over promptly. Give the mirror the normal connection
-  # budget and bounded recovery from DNS, truncated bodies and transient HTTP
-  # errors. Each retry replaces its output at the same requested range offset;
+  # Allow time for DNS, TLS and redirects on both origins. Give the mirror
+  # bounded recovery from DNS, truncated bodies and transient HTTP errors.
+  # Each retry replaces its output at the same requested range offset;
   # the archive caller verifies the complete assembled SHA before extraction.
   while :; do
     result=0
     if [ "$attempts" -gt 1 ]; then : > "$2.headers" || return 1; fi
     status=$(curl --config <(php_darwin_read_config download.conf) \
-      --retry 0 --connect-timeout "$connect_timeout" --speed-time "${4:-3}" --speed-limit "${3:-1024}" \
+      --retry 0 --connect-timeout "$connect_timeout" --speed-time "${4:-10}" --speed-limit "${3:-1024}" \
       --max-time "${5:-30}" ${range[@]+"${range[@]}"} ${headers[@]+"${headers[@]}"} \
       -fsSL -w '%{http_code}' "$1" -o "$2") || result=$?
     if [ "$result" -ne 0 ] || { [ "$status" != 200 ] && [ "$status" != 206 ]; }; then
@@ -1226,8 +1225,8 @@ async function download(name, destination, { sha256, bytes, bases = origins,
     for (let attempt = 1; attempt <= attempts; attempt++) {
       const temporary = `${destination}.partial`;
       try {
-        // Fail over from GitHub promptly; retry only transient mirror failures.
-        const response = await fetch(`${base}/${name}`, { signal: AbortSignal.timeout(index === 0 ? 3000 : 20000) });
+        // Give archives time to finish on either origin; metadata stays bounded.
+        const response = await fetch(`${base}/${name}`, { signal: AbortSignal.timeout(bytes ? 300000 : 30000) });
         if (!response.ok || !response.body) {
           await response.body?.cancel();
           const retryAfter = response.headers.get('retry-after');
@@ -3506,7 +3505,7 @@ php_darwin_download_release_archive() {
   local archive_http_status
   local mirror_url
   local urls=()
-  local origin_index=0 minimum_speed low_speed_seconds max_time destination
+  local destination
   local resume_bytes='' request_result received_bytes
 
   release_archive_error=
@@ -3521,26 +3520,11 @@ php_darwin_download_release_archive() {
   fi
   release_archive_error=not-found
   for release_url in "${urls[@]}"; do
-    minimum_speed=1024
-    low_speed_seconds=3
-    max_time=30
-    if [ "$origin_index" -eq 0 ] && [ "${#urls[@]}" -gt 1 ] && \
-      [ "${PHP_DARWIN_PREFER_MIRROR:-false}" != true ]; then
-      # A trickling CDN can stay above 1 KiB/s for the entire 30-second limit.
-      # Try Cloudflare promptly. A preferred Cloudflare read already uses the
-      # desired origin and keeps its normal budget for slower networks.
-      minimum_speed=8388608
-      low_speed_seconds=1
-      # A fast initial burst can evade curl's low-speed timer. Bound that first
-      # attempt and continue its immutable bytes from the fallback if needed.
-      max_time=3
-    fi
-    origin_index=$((origin_index + 1))
     destination=$archive
     [ -z "$resume_bytes" ] || destination="$archive.remaining"
     request_result=0
     archive_http_status=$(php_darwin_request_release "$release_url" "$destination" \
-      "$minimum_speed" "$low_speed_seconds" "$max_time" "$resume_bytes") || request_result=$?
+      1024 10 300 "$resume_bytes") || request_result=$?
     if [ "$request_result" -ne 0 ]; then
       [ "$release_archive_error" = checksum ] || release_archive_error=download
       if [ "$archive_http_status" = 200 ] && [ -s "$archive" ] && [ -z "$resume_bytes" ]; then

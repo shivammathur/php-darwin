@@ -682,7 +682,7 @@ php_darwin_download_release_archive() {
   local archive_http_status
   local mirror_url
   local urls=()
-  local origin_index=0 minimum_speed low_speed_seconds max_time destination
+  local destination
   local resume_bytes='' request_result received_bytes
 
   release_archive_error=
@@ -697,26 +697,11 @@ php_darwin_download_release_archive() {
   fi
   release_archive_error=not-found
   for release_url in "${urls[@]}"; do
-    minimum_speed=1024
-    low_speed_seconds=3
-    max_time=30
-    if [ "$origin_index" -eq 0 ] && [ "${#urls[@]}" -gt 1 ] && \
-      [ "${PHP_DARWIN_PREFER_MIRROR:-false}" != true ]; then
-      # A trickling CDN can stay above 1 KiB/s for the entire 30-second limit.
-      # Try Cloudflare promptly. A preferred Cloudflare read already uses the
-      # desired origin and keeps its normal budget for slower networks.
-      minimum_speed=8388608
-      low_speed_seconds=1
-      # A fast initial burst can evade curl's low-speed timer. Bound that first
-      # attempt and continue its immutable bytes from the fallback if needed.
-      max_time=3
-    fi
-    origin_index=$((origin_index + 1))
     destination=$archive
     [ -z "$resume_bytes" ] || destination="$archive.remaining"
     request_result=0
     archive_http_status=$(php_darwin_request_release "$release_url" "$destination" \
-      "$minimum_speed" "$low_speed_seconds" "$max_time" "$resume_bytes") || request_result=$?
+      1024 10 300 "$resume_bytes") || request_result=$?
     if [ "$request_result" -ne 0 ]; then
       [ "$release_archive_error" = checksum ] || release_archive_error=download
       if [ "$archive_http_status" = 200 ] && [ -s "$archive" ] && [ -z "$resume_bytes" ]; then

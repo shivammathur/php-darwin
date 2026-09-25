@@ -685,25 +685,24 @@ php_darwin_request_release() {
   local status
   local result=0
   local range=()
-  local attempt=1 attempts=1 connect_timeout=2 delay retry_after
+  local attempt=1 attempts=1 connect_timeout=10 delay retry_after
   local mirror=${PHP_DARWIN_MIRROR_URL-https://artifacts.php-darwin.setup-php.com}
   local headers=()
   [ -z "${6:-}" ] || range=(--range "$6-")
   if [ -n "$mirror" ] && [[ "$1" = "${mirror%/}/"* ]]; then
     attempts=3
-    connect_timeout=5
     headers=(--dump-header "$2.headers")
   fi
 
-  # GitHub still fails over promptly. Give the mirror the normal connection
-  # budget and bounded recovery from DNS, truncated bodies and transient HTTP
-  # errors. Each retry replaces its output at the same requested range offset;
+  # Allow time for DNS, TLS and redirects on both origins. Give the mirror
+  # bounded recovery from DNS, truncated bodies and transient HTTP errors.
+  # Each retry replaces its output at the same requested range offset;
   # the archive caller verifies the complete assembled SHA before extraction.
   while :; do
     result=0
     if [ "$attempts" -gt 1 ]; then : > "$2.headers" || return 1; fi
     status=$(curl --config <(php_darwin_read_config download.conf) \
-      --retry 0 --connect-timeout "$connect_timeout" --speed-time "${4:-3}" --speed-limit "${3:-1024}" \
+      --retry 0 --connect-timeout "$connect_timeout" --speed-time "${4:-10}" --speed-limit "${3:-1024}" \
       --max-time "${5:-30}" ${range[@]+"${range[@]}"} ${headers[@]+"${headers[@]}"} \
       -fsSL -w '%{http_code}' "$1" -o "$2") || result=$?
     if [ "$result" -ne 0 ] || { [ "$status" != 200 ] && [ "$status" != 206 ]; }; then

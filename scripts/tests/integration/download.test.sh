@@ -74,18 +74,17 @@ loop do
       end
       if mode == 'trickle'
         connection.write("HTTP/1.1 200 Fixture\r\nContent-Length: 3276800\r\nConnection: close\r\n\r\n")
-        200.times { connection.write('x' * 16384); sleep 0.1 }
+        200.times { connection.write('x' * 16); sleep 0.1 }
         next
       end
-      sleep 5 if mode == 'stall'
-      # A healthy but moderate transfer must not be treated as a failed
-      # Cloudflare origin merely because it is below the GitHub cutoff.
-      sleep 2 if mode == 'moderate'
+      sleep 20 if mode == 'stall'
+      # Healthy downloads must survive the former three-second GitHub cutoff.
+      sleep 4 if mode == 'moderate'
       status = {'missing'=>404,'unavailable'=>503}.fetch(mode, 200)
       if mode == 'burst'
-        body = 'x' * (32 * 1024 * 1024)
+        body = 'x' * 16384
         connection.write("HTTP/1.1 200 Fixture\r\nContent-Length: #{body.bytesize + 1}\r\nConnection: close\r\n\r\n#{body}")
-        sleep 10
+        sleep 20
         next
       end
       body = File.read("#{directory}/#{route.end_with?('manifest.json') ? 'manifest' : 'fixture'}")
@@ -132,12 +131,17 @@ status=$(php_darwin_fetch_release_manifest "$release_repository" "$version" "$wo
   "$base/good/manifest.json")
 [ "$status" = 200 ] || php_darwin_die 'default GitHub manifest download failed'
 [ "$(cat "$work_dir/requests")" = /good/manifest.json ] || php_darwin_die 'GitHub was not the default manifest origin'
+PHP_DARWIN_RELEASE_URL="$base/moderate/archive"
+: > "$work_dir/requests"
+php_darwin_download_release_archive || php_darwin_die 'healthy primary download timed out'
+[ "$(cat "$work_dir/requests")" = /moderate/archive ] || php_darwin_die 'healthy primary unnecessarily used the mirror'
+cmp -s "$archive" "$work_dir/fixture" || php_darwin_die 'healthy primary returned invalid bytes'
 for route in unavailable missing partial corrupt stall error-stall trickle; do
   PHP_DARWIN_RELEASE_URL="$base/$route/archive"
   : > "$work_dir/requests"
   download_started=$SECONDS
   php_darwin_download_release_archive || php_darwin_die "$route did not recover from the mirror"
-  [ "$route" != trickle ] || [ "$((SECONDS - download_started))" -lt 6 ] || \
+  [ "$route" != trickle ] || [ "$((SECONDS - download_started))" -lt 20 ] || \
     php_darwin_die 'a trickling primary origin delayed mirror failover'
   cmp -s "$archive" "$work_dir/fixture" || php_darwin_die "$route retained invalid bytes"
   [ "$(wc -l < "$work_dir/requests" | tr -d ' ')" = 2 ] || php_darwin_die "$route retried the broken origin"
@@ -172,12 +176,12 @@ for route in corrupt-timeout oversize-timeout; do
   [ ! -f "$work_dir/range" ] || php_darwin_die "$route requested a range past the archive"
   cmp -s "$archive" "$work_dir/fixture" || php_darwin_die "$route retained invalid bytes"
 done
-# A high initial throughput must not mask a later stall for tens of seconds.
+# An initial burst must not prevent a stalled transfer from failing over.
 export PHP_DARWIN_MIRROR_URL="$base/good"
 PHP_DARWIN_RELEASE_URL="$base/burst/archive"
 download_started=$SECONDS
 php_darwin_download_release_archive || php_darwin_die 'burst then stall did not recover'
-[ "$((SECONDS - download_started))" -lt 5 ] || php_darwin_die 'primary exceeded its absolute time budget'
+[ "$((SECONDS - download_started))" -lt 20 ] || php_darwin_die 'primary exceeded its low-speed time budget'
 cmp -s "$archive" "$work_dir/fixture" || php_darwin_die 'ignored range appended a full response'
 # An error response must fail over on its headers, without waiting for its body.
 PHP_DARWIN_RELEASE_URL="$base/error-stall/archive"
@@ -253,7 +257,7 @@ curl() {
     [ "$previous" != --connect-timeout ] || connect=$argument
     previous=$argument
   done
-  [ "$connect" = 5 ] || return 97
+  [ "$connect" = 10 ] || return 97
   if [ "$count" -lt 3 ]; then printf '000'; return 6; fi
   command curl "$@"
 }

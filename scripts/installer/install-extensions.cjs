@@ -59,8 +59,8 @@ async function download(name, destination, { sha256, bytes, bases = origins,
     for (let attempt = 1; attempt <= attempts; attempt++) {
       const temporary = `${destination}.partial`;
       try {
-        // Fail over from GitHub promptly; retry only transient mirror failures.
-        const response = await fetch(`${base}/${name}`, { signal: AbortSignal.timeout(index === 0 ? 3000 : 20000) });
+        // Give archives time to finish on either origin; metadata stays bounded.
+        const response = await fetch(`${base}/${name}`, { signal: AbortSignal.timeout(bytes ? 300000 : 30000) });
         if (!response.ok || !response.body) {
           await response.body?.cancel();
           const retryAfter = response.headers.get('retry-after');

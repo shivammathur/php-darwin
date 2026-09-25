@@ -320,6 +320,22 @@ test('all requested packs download concurrently, with no unrequested downloads',
   assert.equal(requested.length, 4);
   for (const asset of assets) assert.equal(fs.readFileSync(path.join(directory, asset.file), 'utf8'), asset.name);
 });
+test('healthy extension downloads can take longer than three seconds without failing over', async t => {
+  const paths = [];
+  const { directory, url } = await fixture(t, (req, res) => {
+    paths.push(req.url);
+    res.write('go');
+    setTimeout(() => res.end('od'), 4000);
+  });
+  await Promise.all(['manifest.json', 'pack.tar.zst'].map(async name => {
+    const destination = path.join(directory, name);
+    await download(name, destination, { bases: [url + '/primary', url + '/mirror'],
+      sha256: digest('good'), ...(name.endsWith('.zst') ? { bytes: 4 } : {}) });
+    assert.equal(fs.readFileSync(destination, 'utf8'), 'good');
+    assert.ok(!fs.existsSync(`${destination}.partial`));
+  }));
+  assert.deepEqual(paths.sort(), ['/primary/manifest.json', '/primary/pack.tar.zst']);
+});
 test('a checksum failure uses the mirror and never promotes corrupt bytes', async t => {
   const content = Buffer.from('good');
   const paths = [];
