@@ -1068,7 +1068,7 @@ PHP_DARWIN_CONFIG_PACKAGE_JSON
     "brew_prefix": "/usr/local",
     "minimum_macos": 15,
     "platform_key": "sequoia",
-    "test_runners": ["macos-15-intel", "macos-15-x86_64", "macos-26-intel"]
+    "test_runners": ["macos-15-intel", "macos-26-intel"]
   }
 }
 PHP_DARWIN_CONFIG_PLATFORMS_JSON

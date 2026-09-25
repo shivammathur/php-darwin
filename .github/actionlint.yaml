@@ -1,2 +1,0 @@
-self-hosted-runner:
-  labels: [macos-15-x86_64]

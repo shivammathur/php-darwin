@@ -70,7 +70,7 @@ test('partial reruns retain passing jobs from earlier attempts and respect newer
 test('recovery reuses only successful compatibility jobs with reports for the exact indexed archives', () => {
   const entry = { name: 'memcached', php_version: '8.0', build: 'debug', thread_safety: 'zts', architecture: 'x86_64',
     sha256: 'a'.repeat(64), bytes: 100 };
-  const matrix = { include: ['macos-26-intel', 'macos-15-x86_64'].map(runner => ({ php_version: '8.0', runner, entries: [entry] })) };
+  const matrix = { include: ['macos-26-intel', 'macos-15-intel'].map(runner => ({ php_version: '8.0', runner, entries: [entry] })) };
   const jobs = matrix.include.map((group, i) => ({ id: i + 1, name: `Test PHP 8.0 on ${group.runner}`, status: 'completed',
     conclusion: i ? 'failure' : 'success' }));
   const artifacts = matrix.include.map((group, i) => ({ id: i + 10, name: `compatibility-8.0-${group.runner}`, digest: `sha256:${'b'.repeat(64)}` }));

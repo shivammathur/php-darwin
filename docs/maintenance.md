@@ -41,12 +41,14 @@ directories or Actions artifacts, not checked-in benchmark reports.
 configuration preservation and Xdebug/PCOV cold/warm reuse. Its release is
 isolated per run and removed by its cleanup job. `test.yml` validates all four
 variants from an existing build's artifacts. `e2e.yml` checks published downloads
-and unchanged setup-php on ARM, Intel and an explicit self-hosted runner.
+and unchanged setup-php on ARM and Intel. Routine Intel jobs use `macos-15-intel`;
+dedicated self-hosted coverage is a separate one-time check after installer
+changes are ready.
 
 ```sh
 gh workflow run test-source-cache.yml -R shivammathur/php-darwin
 gh workflow run test.yml -R shivammathur/php-darwin \
-  -f php-version=8.4 -f run-id=BUILD_RUN_ID -f runner=macos-15-x86_64
+  -f php-version=8.4 -f run-id=BUILD_RUN_ID -f runner=macos-15-intel
 gh workflow run e2e.yml -R shivammathur/php-darwin -f php-version=8.4
 ```
 
@@ -185,11 +187,11 @@ changed packs reuse the source-bottle cache. Manual runs can select PHP versions
 extensions and build variants. Builds share one job per PHP version and architecture;
 compatibility checks share one job per PHP version and runner, covering every
 selected build variant and pack. A complete 14-version campaign uses 28 native
-build jobs and 70 compatibility jobs instead of 336 and 280. Each passing pack
+build jobs and 56 compatibility jobs instead of 336 and 280. Each passing pack
 is checkpointed separately, even if another pack in its job fails. Native cache
 campaigns run on dispatch or schedule; source changes run the local validation CI.
 Publication requires native installation and
-functional tests on the build platforms, newer hosted macOS, and self-hosted Intel.
+functional tests on the build platforms and newer macOS releases.
 Each pack must install in under 10 seconds and preserve PHP and services. Archives
 are published to the separate `extensions` release and Cloudflare only after all
 selected tests pass. Installer updates are published even when recipes are unchanged.

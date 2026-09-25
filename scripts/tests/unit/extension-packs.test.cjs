@@ -367,7 +367,7 @@ test('reviewed builder compatibility retains recipe and PHP invalidation', t => 
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-builder-compatibility-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const previous = '7b2d334fd6d1f3e86b137329154d9ef0091a58e6ba2f9cc8f35f5d9cd5c119da';
-  const current = '09df44b6ee436c8302bd300bbc3e0c8feced747d0058a70b16f362555645fcf8';
+  const current = 'ddaa46669f024e98a8e40ef867dd3c04def51ec59d4711ec1057ad97bb7614fa';
   assert.equal(compatibleBuilder(previous, current), true);
   assert.equal(compatibleBuilder(previous, 'f'.repeat(64)), false);
   assert.equal(compatibleBuilder('0'.repeat(64), current), false);
@@ -381,12 +381,12 @@ test('reviewed builder compatibility retains recipe and PHP invalidation', t => 
   fs.writeFileSync(path.join(directory, 'formula.rb'), 'changed');
   assert.equal(unchanged(metadata, repositories, { php_semver: '8.4.26' }), false);
 });
-test('compatibility covers newer hosts and self-hosted Intel while grouping packs per PHP runtime', () => {
+test('compatibility covers newer hosts while build jobs validate the build platforms', () => {
   const entries = ['arm64', 'x86_64'].flatMap(architecture => ['imagick', 'mongodb', 'memcached'].map(name =>
     ({ ...context, architecture, name })));
   const { include } = compatibilityMatrix(entries);
-  assert.equal(include.length, 5);
-  assert.ok(include.some(item => item.runner === 'macos-15-x86_64'));
+  assert.equal(include.length, 4);
+  assert.ok(!include.some(item => item.runner === 'macos-15-intel'));
   assert.ok(include.some(item => item.runner === 'macos-26-intel'));
   for (const item of include) assert.deepEqual(item.entries.map(entry => entry.name), ['imagick', 'mongodb', 'memcached']);
 });

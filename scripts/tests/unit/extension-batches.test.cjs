@@ -27,15 +27,16 @@ function writeArchive(folder, metadata) {
   fs.writeFileSync(path.join(folder, 'validation.txt'), JSON.stringify({ name: metadata.name, sha256: metadata.sha256,
     install_seconds: 1, php_preserved: true, services_preserved: true }));
 }
-test('all 336 packs use 28 build jobs and 70 compatibility jobs, retaining every variant', () => {
+test('all 336 packs use 28 build jobs and 56 compatibility jobs, retaining every variant', () => {
   const entries = versions.flatMap(php_version => ['arm64', 'x86_64'].flatMap(architecture =>
     ['debug', 'release'].flatMap(build => ['nts', 'zts'].flatMap(thread_safety =>
       ['imagick', 'mongodb', 'memcached'].map(name => ({ php_version, architecture, build, thread_safety, name }))))));
   assert.equal(entries.length, 336);
   assert.equal(buildMatrix(entries).include.length, 28);
   const tests = testMatrix(entries).include;
-  assert.equal(tests.length, 70);
-  assert.equal(tests.filter(item => item.runner === 'macos-15-x86_64').length, 14);
+  assert.equal(tests.length, 56);
+  assert.equal(buildMatrix(entries).include.filter(item => item.runner === 'macos-15-intel').length, 14);
+  assert.equal(tests.filter(item => item.runner === 'macos-26-intel').length, 14);
   for (const job of [...buildMatrix(entries).include, ...tests]) {
     assert.equal(variants(job.entries).length, 4);
     assert.equal(job.entries.length, 12);

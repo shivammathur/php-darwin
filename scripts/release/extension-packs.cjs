@@ -12,7 +12,7 @@ const root = path.resolve(__dirname, '../..');
 function versionBatches(value = configuration.versions.join(' ')) {
   const versions = [...new Set(value.trim().split(/\s+/))];
   if (versions.some(version => !configuration.versions.includes(version))) throw new Error('Unsupported PHP version');
-  // All fourteen versions now fit in 28 build and 70 compatibility jobs.
+  // All fourteen versions now fit in 28 build and 56 compatibility jobs.
   return [versions];
 }
 async function dispatch({ versions = process.env.PHP_VERSIONS || undefined, afterRun = process.env.AFTER_RUN,
