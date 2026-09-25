@@ -99,6 +99,9 @@ jobs:
           echo "HOMEBREW_CURLRC=$RUNNER_TEMP/php-darwin-curlrc" >> "$GITHUB_ENV"
 
       - name: Clean runner before building PHP
+        # test-bot purges the prefix into /tmp on disposable runners. Shared
+        # runners must retain their installed PHP, services and dependencies.
+        if: ${{ runner.environment != 'self-hosted' }}
         run: brew test-bot --only-cleanup-before
 
       - name: Restore Homebrew build tools

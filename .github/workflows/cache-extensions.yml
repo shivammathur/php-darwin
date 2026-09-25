@@ -152,6 +152,8 @@ jobs:
           echo "PHP_DARWIN_BOTTLE_MISSES=$RUNNER_TEMP/bottle-misses.jsonl" >> "$GITHUB_ENV"
           echo "PHP_DARWIN_SOURCE_BOTTLE_MISSES=$RUNNER_TEMP/source-bottle-misses.jsonl" >> "$GITHUB_ENV"
       - name: Clean stale build processes and locks
+        # test-bot assumes a disposable machine and leaves purged kegs in /tmp.
+        if: ${{ runner.environment != 'self-hosted' }}
         run: brew test-bot --only-cleanup-before
       - name: Restore archive tools from the bottle cache
         uses: ./.github/actions/source-cache
