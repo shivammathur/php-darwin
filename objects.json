@@ -1,0 +1,22 @@
+[
+  {
+    "name": "mongodb-5.6-release-zts-arm64-f34abe763d63a6d385f692ff22d932c68b77d82f716d4950c6eceb4bacf8fb97.tar.zst",
+    "bytes": 19378862,
+    "sha256": "f34abe763d63a6d385f692ff22d932c68b77d82f716d4950c6eceb4bacf8fb97"
+  },
+  {
+    "name": "mongodb-7.0-release-nts-x86_64-55a460aa9acf3d1d22abb5912286171ab6871a768beeaa90675172bdd1536c62.tar.zst",
+    "bytes": 20374224,
+    "sha256": "55a460aa9acf3d1d22abb5912286171ab6871a768beeaa90675172bdd1536c62"
+  },
+  {
+    "name": "mongodb-7.2-release-nts-x86_64-b687bea257f450d671e55e1a2e94285469172f3ab46694b95aba275153ca18e1.tar.zst",
+    "bytes": 20691285,
+    "sha256": "b687bea257f450d671e55e1a2e94285469172f3ab46694b95aba275153ca18e1"
+  },
+  {
+    "name": "mongodb-8.5-debug-nts-x86_64-d489d88c525d0883b577520a9ad380b7b5fb624ea57abebbf9eb515dced8f063.tar.zst",
+    "bytes": 20955741,
+    "sha256": "d489d88c525d0883b577520a9ad380b7b5fb624ea57abebbf9eb515dced8f063"
+  }
+]
