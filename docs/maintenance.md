@@ -153,6 +153,9 @@ Normal installs prefer GitHub Releases and fall back to Cloudflare, validating
 the final checksum before extraction. `PHP_DARWIN_PREFER_MIRROR=true` explicitly
 reverses that order and is used during cache construction. Do not change the
 normal setup-php download priority or add retries without diagnosing the cause.
+Mirror requests allow five seconds to connect and retry transient DNS, transport
+and HTTP failures up to three times with bounded backoff. Permanent HTTP errors
+and checksum failures remain failures; archive retries retain full SHA validation.
 
 Preserve existing PHP kegs, configuration, services and unrelated Homebrew state.
 The archive must supply the default `bin/php` link. A writable Homebrew prefix is
@@ -268,3 +271,29 @@ and fall back to Cloudflare. Downloaded packs are verified and extracted in priv
 temporary directories while PHP setup continues. PHP ABI checks, module loading,
 private runtime placement and extension links wait until PHP is ready. No Homebrew
 commands run in the extension installer.
+
+### Passing optional extensions to the PHP installer
+
+`install.sh VERSION BUILD THREAD_SAFETY [LOCAL_ARCHIVE] [EXTENSIONS]` accepts
+the raw comma-separated extensions input in its fifth argument. The fourth
+argument remains the optional local PHP archive; pass an empty string for a
+normal release download. setup-php only forwards `INPUT_EXTENSIONS` at its
+existing PHP cache call. It contains no pack selector, downloader or enabler.
+Preinstalled PHP paths that do not call the cache installer retain setup-php's
+normal extension handling.
+
+The readable generated PHP installer embeds `install-extensions.cjs`. When Node
+is available it selects unversioned optional packs, excluding explicit disabled,
+versioned or source requests and conflicting serializer requests. Preparation
+runs while PHP installs; installation waits for successful PHP verification and
+requires matching release/source, ABI, architecture and build variant. Optional
+failures leave the caller's existing extension fallback available. PHP-only
+installation does not require Node or contact extension origins.
+
+The installer enables pack modules and their serializers in an owned `conf.d`
+file, without replacing user configuration. Private library/resource variables
+are written to `GITHUB_ENV` for subsequent action steps. Standalone users can
+source the printed private pack `environment.sh` path. No shell profiles or
+services are modified. Optional mirror downloads retry transient failures up to
+three times with 1/2-second backoff and capped Retry-After; integrity failures
+are not retried on the same origin and every promoted archive is SHA-verified.

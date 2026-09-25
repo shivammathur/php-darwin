@@ -1,4 +1,5 @@
 scripts/installer/install-package.sh
+scripts/installer/install-extensions.cjs
 scripts/lib/lib.sh
 scripts/installer/trust-store.sh
 scripts/installer/check-dependencies.sh

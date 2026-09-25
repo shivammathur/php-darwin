@@ -97,6 +97,15 @@ PHP_DARWIN_CONFIG_DEFAULT
 while IFS= read -r relative; do
   case "$relative" in
     scripts/installer/install-package.sh|scripts/lib/lib.sh|conf/*) continue ;;
+    scripts/installer/install-extensions.cjs)
+      {
+        printf '\n# Source: %s\n' "$relative"
+        printf 'php_darwin_extension_installer() {\n'
+        printf "  cat <<'PHP_DARWIN_EXTENSION_INSTALLER'\n"
+        cat "$root/$relative"
+        printf 'PHP_DARWIN_EXTENSION_INSTALLER\n}\n'
+      } >> "$helpers" || php_darwin_die "could not embed $relative"
+      continue ;;
     scripts/*.sh) ;;
     *) php_darwin_die "unsupported standalone installer input: $relative" ;;
   esac
@@ -127,6 +136,7 @@ done < "$seen_inputs"
     /^# shellcheck source=scripts\/lib\/lib\.sh$/ { next }
     /^\. "\$script_dir\/(\.\.\/lib\/)?lib\.sh"$/ { next }
     {
+      gsub(/cat "\$script_dir\/install-extensions\.cjs"/, "php_darwin_extension_installer")
       gsub(/bash "\$script_dir\/read-metadata\.sh"/, "php_darwin_read_metadata")
       gsub(/bash "\$script_dir\/existing-paths\.sh"/, "php_darwin_existing_paths")
       gsub(/bash "\$script_dir\/extract\.sh"/, "php_darwin_extract")

@@ -685,18 +685,48 @@ php_darwin_request_release() {
   local status
   local result=0
   local range=()
+  local attempt=1 attempts=1 connect_timeout=2 delay retry_after
+  local mirror=${PHP_DARWIN_MIRROR_URL-https://artifacts.php-darwin.setup-php.com}
+  local headers=()
   [ -z "${6:-}" ] || range=(--range "$6-")
-
-  # Fail over before retrying the same broken origin. Bound connection and
-  # stalled-transfer time while allowing large legacy archives to finish.
-  status=$(curl --config <(php_darwin_read_config download.conf) \
-    --retry 0 --connect-timeout 2 --speed-time "${4:-3}" --speed-limit "${3:-1024}" \
-    --max-time "${5:-30}" ${range[@]+"${range[@]}"} \
-    -fsSL -w '%{http_code}' "$1" -o "$2") || result=$?
-  if [ "$result" -ne 0 ] || { [ "$status" != 200 ] && [ "$status" != 206 ]; }; then
-    printf 'php-darwin: download failed (curl %s, HTTP %s): %s\n' \
-      "$result" "${status:-000}" "$1" >&2
+  if [ -n "$mirror" ] && [[ "$1" = "${mirror%/}/"* ]]; then
+    attempts=3
+    connect_timeout=5
+    headers=(--dump-header "$2.headers")
   fi
+
+  # GitHub still fails over promptly. Give the mirror the normal connection
+  # budget and bounded recovery from DNS, truncated bodies and transient HTTP
+  # errors. Each retry replaces its output at the same requested range offset;
+  # the archive caller verifies the complete assembled SHA before extraction.
+  while :; do
+    result=0
+    if [ "$attempts" -gt 1 ]; then : > "$2.headers" || return 1; fi
+    status=$(curl --config <(php_darwin_read_config download.conf) \
+      --retry 0 --connect-timeout "$connect_timeout" --speed-time "${4:-3}" --speed-limit "${3:-1024}" \
+      --max-time "${5:-30}" ${range[@]+"${range[@]}"} ${headers[@]+"${headers[@]}"} \
+      -fsSL -w '%{http_code}' "$1" -o "$2") || result=$?
+    if [ "$result" -ne 0 ] || { [ "$status" != 200 ] && [ "$status" != 206 ]; }; then
+      printf 'php-darwin: download failed (curl %s, HTTP %s): %s\n' \
+        "$result" "${status:-000}" "$1" >&2
+    fi
+    [ "$attempt" -lt "$attempts" ] || break
+    case "$result:$status" in
+      5:*|6:*|7:*|18:*|28:*|52:*|55:*|56:*|92:*|22:408|22:429|22:5??) ;;
+      *) break ;;
+    esac
+    delay=$((1 << (attempt - 1)))
+    retry_after=$(awk 'tolower($1) == "retry-after:" {gsub(/\r/, "", $2); value=$2} END {print value}' "$2.headers" 2>/dev/null) || retry_after=
+    if [[ "$retry_after" =~ ^[0-9]{1,6}$ ]]; then
+      retry_after=$((10#$retry_after))
+      [ "$retry_after" -le 30 ] || retry_after=30
+      [ "$retry_after" -le "$delay" ] || delay=$retry_after
+    fi
+    printf 'php-darwin: retrying mirror transfer %s/%s in %ss\n' "$((attempt + 1))" "$attempts" "$delay" >&2
+    sleep "$delay"
+    attempt=$((attempt + 1))
+  done
+  [ "$attempts" -eq 1 ] || rm -f "$2.headers"
   # HTTP errors are classified by the caller (especially retired 404 assets).
   # --fail stops at their headers instead of downloading a slow error body.
   if [ "$result" -eq 22 ] && [[ "$status" =~ ^[45][0-9][0-9]$ ]]; then

@@ -39,6 +39,8 @@ To install a published cache directly on a macOS runner:
 curl --fail --location --output install.sh \
   https://github.com/shivammathur/php-darwin/releases/download/php-8.4/install.sh
 bash install.sh 8.4 release nts
+# Optional packs are selected and prepared in parallel by the installer.
+bash install.sh 8.4 release nts "" "imagick, mongodb, memcached"
 ```
 
 PHP package downloads use GitHub Releases first, with a checksum-verified

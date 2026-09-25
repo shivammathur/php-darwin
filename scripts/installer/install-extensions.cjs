@@ -44,34 +44,55 @@ function validateEntry(entry) {
       entry.file !== `${key(entry)}-${entry.sha256}.tar.zst`) throw new Error('Invalid extension cache metadata');
   return entry;
 }
-async function download(name, destination, { sha256, bytes, bases = origins } = {}) {
+function transientDownload(error) {
+  return error.transient === true || ['TimeoutError', 'AbortError'].includes(error.name) ||
+    ['EAI_AGAIN', 'ENOTFOUND', 'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT',
+      'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT', 'UND_ERR_SOCKET']
+      .includes(error.cause?.code || error.code);
+}
+async function download(name, destination, { sha256, bytes, bases = origins,
+  sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
   if (!safePath(name) || name.includes('/')) throw new Error('Invalid download name');
   let lastError;
   for (const [index, base] of bases.entries()) {
-    const temporary = `${destination}.partial`;
-    try {
-      // A stalled primary must not serialize minutes of retries before the mirror.
-      const response = await fetch(`${base}/${name}`, { signal: AbortSignal.timeout(index === 0 ? 3000 : 20000) });
-      if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
-      let received = 0;
-      const hash = crypto.createHash('sha256');
-      const limit = bytes || 2000000;
-      await pipeline(Readable.fromWeb(response.body), async function* (source) {
-        for await (const chunk of source) {
-          received += chunk.length;
-          if (received > limit) throw new Error('Download exceeds expected size');
-          hash.update(chunk);
-          yield chunk;
+    const attempts = index === 0 ? 1 : 3;
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      const temporary = `${destination}.partial`;
+      try {
+        // Fail over from GitHub promptly; retry only transient mirror failures.
+        const response = await fetch(`${base}/${name}`, { signal: AbortSignal.timeout(index === 0 ? 3000 : 20000) });
+        if (!response.ok || !response.body) {
+          await response.body?.cancel();
+          const retryAfter = response.headers.get('retry-after');
+          throw Object.assign(new Error(`HTTP ${response.status}`), {
+            transient: [408, 429].includes(response.status) || response.status >= 500,
+            retryAfter: /^\d{1,6}$/.test(retryAfter || '') ? Math.min(30, Number(retryAfter)) : 0
+          });
         }
-      }, fs.createWriteStream(temporary, { flags: 'wx', mode: 0o600 }));
-      if ((bytes && received !== bytes) || (sha256 && hash.digest('hex') !== sha256)) {
-        throw new Error('Extension archive checksum/size mismatch');
+        let received = 0;
+        const hash = crypto.createHash('sha256');
+        const limit = bytes || 2000000;
+        await pipeline(Readable.fromWeb(response.body), async function* (source) {
+          for await (const chunk of source) {
+            received += chunk.length;
+            if (received > limit) throw new Error('Download exceeds expected size');
+            hash.update(chunk);
+            yield chunk;
+          }
+        }, fs.createWriteStream(temporary, { flags: 'wx', mode: 0o600 }));
+        if ((bytes && received !== bytes) || (sha256 && hash.digest('hex') !== sha256)) {
+          throw new Error('Extension archive checksum/size mismatch');
+        }
+        await fsp.rename(temporary, destination);
+        return;
+      } catch (error) {
+        lastError = error;
+        await fsp.rm(temporary, { force: true });
+        if (attempt === attempts || !transientDownload(error)) break;
+        const delay = Math.max(attempt, error.retryAfter || 0);
+        console.warn(`Extension mirror retry ${attempt + 1}/${attempts} in ${delay}s: ${error.message}`);
+        await sleep(delay * 1000);
       }
-      await fsp.rename(temporary, destination);
-      return;
-    } catch (error) {
-      lastError = error;
-      await fsp.rm(temporary, { force: true });
     }
   }
   throw new Error(`Could not download ${name}: ${lastError.message}`);
@@ -109,6 +130,115 @@ async function prefetch(directory, context, requested, options = {}) {
   });
   console.log(`Extension cache preparation completed in ${((performance.now() - started) / 1000).toFixed(3)} seconds`);
   return results.filter(result => result.status === 'fulfilled').map(result => result.value);
+}
+// Keep the action's raw input opaque until it reaches the installer. Only
+// unversioned pack requests are eligible; explicit disable/version/source
+// requests for a pack or one of its serializers retain the caller's behavior.
+function selectRequested(input) {
+  const tokens = String(input).split(',').map(value => value.trim().toLowerCase().replace(/^(:)?php[-_]/, '$1'));
+  return Object.entries(packs).filter(([name, modules]) => tokens.includes(name) &&
+    !modules.some(module => tokens.some(token => token === `:${module}` ||
+      token.startsWith(`${module}-`) || token.startsWith(`${module}@`))))
+    .map(([name]) => name);
+}
+function requestedPacks(directory) {
+  const names = fs.readFileSync(path.join(directory, 'requested.txt'), 'utf8').trim().split('\n').filter(Boolean);
+  if (names.some(name => !Object.hasOwn(packs, name)) || new Set(names).size !== names.length) {
+    throw new Error('Invalid requested extension packs');
+  }
+  return names;
+}
+function validateBase(entry, base) {
+  validateContext(base);
+  if (!['php_version', 'architecture', 'build', 'thread_safety'].every(field => entry[field] === base[field]) ||
+      !entry.php_semver || !base.php_semver || entry.php_semver.replace(/-dev$/, '') !== base.php_semver.replace(/-dev$/, '') ||
+      (entry.php_src_commit || '') !== (base.php_src_commit || '')) {
+    throw new Error('Extension cache does not match the installed PHP release/source');
+  }
+}
+function installDownloaded(directory, name) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [__filename, 'install', directory, name], { stdio: 'inherit' });
+    child.once('error', reject);
+    child.once('exit', code => code === 0 ? resolve() : reject(new Error(`Installing ${name} failed (${code})`)));
+  });
+}
+function enableInstalled(directory, name, scanDirectory, { php = 'php', environmentFile = process.env.GITHUB_ENV } = {}) {
+  const entry = readEntry(directory, name);
+  const prefix = entry.architecture === 'arm64' ? '/opt/homebrew' : '/usr/local';
+  const destination = path.join(prefix, 'var/php-darwin/extensions', entry.sha256);
+  if (fs.realpathSync(destination) !== destination) throw new Error('Unsafe installed extension directory');
+  const installedMetadata = JSON.parse(fs.readFileSync(path.join(destination, 'metadata.json'), 'utf8'));
+  if (key(installedMetadata) !== key(entry) || installedMetadata.inputs_sha256 !== entry.inputs_sha256) {
+    throw new Error('Installed extension metadata changed');
+  }
+  const environment = packEnvironment(installedMetadata, destination);
+  const env = { ...process.env, ...environment };
+  const loaded = JSON.parse(command(php, ['-r', 'echo json_encode(get_loaded_extensions());'], { env })).map(value => value.toLowerCase());
+  const missing = packs[name].filter(module => !loaded.includes(module));
+  fs.mkdirSync(scanDirectory, { recursive: true });
+  if (fs.realpathSync(scanDirectory) !== scanDirectory) throw new Error('PHP configuration directory traverses a symlink');
+  const ini = path.join(scanDirectory, `zz-php-darwin-${name}.ini`);
+  const marker = '; Managed by php-darwin optional extension installer\n';
+  let previous;
+  let iniStat;
+  try { iniStat = fs.lstatSync(ini); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  if (iniStat) {
+    if (!iniStat.isFile()) throw new Error('Unsafe optional extension configuration');
+    previous = fs.readFileSync(ini, 'utf8');
+    if (!previous.startsWith(marker)) throw new Error('Refusing to replace an existing extension configuration');
+  }
+  const temporary = path.join(scanDirectory, `.php-darwin-${name}.tmp`);
+  let changed = false;
+  try {
+    if (missing.length) {
+      fs.writeFileSync(temporary, (previous || marker) + missing.map(module => `extension=${module}.so\n`).join(''), { flag: 'wx' });
+      fs.renameSync(temporary, ini);
+      changed = true;
+    }
+    command(php, ['-r', `exit(${packs[name].map(module => `extension_loaded('${module}')`).join(' && ')} ? 0 : 1);`], { env });
+    // Actions imports this for following steps. Standalone users can source the
+    // persistent environment file; no shell startup file or service is changed.
+    if (Object.keys(environment).length) {
+      const exports = Object.entries(environment).map(([variable, value]) => `export ${variable}='${value.replaceAll("'", "'\\''")}'\n`).join('');
+      fs.writeFileSync(path.join(destination, 'environment.sh'), exports);
+      if (environmentFile) fs.appendFileSync(environmentFile,
+        Object.entries(environment).map(([variable, value]) => `${variable}=${value}\n`).join(''));
+      else console.log(`Extension environment: ${path.join(destination, 'environment.sh')}`);
+    }
+  } catch (error) {
+    if (changed) {
+      if (previous === undefined) fs.rmSync(ini, { force: true });
+      else fs.writeFileSync(ini, previous);
+    }
+    throw error;
+  } finally { fs.rmSync(temporary, { force: true }); }
+}
+async function activate(directory, base, scanDirectory, { installPack = installDownloaded, enablePack = enableInstalled } = {}) {
+  validateContext(base);
+  const prefix = base.architecture === 'arm64' ? '/opt/homebrew' : '/usr/local';
+  const config = base.php_version + (base.build === 'debug' ? '-debug' : '') + (base.thread_safety === 'zts' ? '-zts' : '');
+  if (scanDirectory !== `${prefix}/etc/php/${config}/conf.d`) throw new Error('Invalid optional extension configuration directory');
+  const names = requestedPacks(directory);
+  const installed = await Promise.allSettled(names.map(async name => {
+    const entry = readEntry(directory, name);
+    validateBase(entry, base);
+    await installPack(directory, name);
+    return name;
+  }));
+  const enabled = [];
+  // Enable after all independent installations finish, so PHP never reads a
+  // half-written configuration or loads a serializer before it is installed.
+  for (const [index, result] of installed.entries()) {
+    try {
+      if (result.status === 'rejected') throw result.reason;
+      await enablePack(directory, result.value, scanDirectory);
+      enabled.push(result.value);
+    } catch (error) {
+      console.warn(`Extension cache ${names[index]} unavailable; caller fallback remains available: ${error.message}`);
+    }
+  }
+  return enabled;
 }
 function phpApi(phpConfig = 'php-config') {
   const include = command(phpConfig, ['--include-dir']);
@@ -283,14 +413,22 @@ function install(directory, name, { phpConfig = 'php-config', php = 'php' } = {}
   }
 }
 module.exports = { packs, origins, command, digest, safePath, key, validateContext, validateEntry, phpApi,
-  download, prefetch, runtimeContext, inspectTree, packEnvironment, relocateResources, prepareArchive, movePrepared, install };
+  selectRequested, requestedPacks, validateBase, activate, enableInstalled, download, prefetch, runtimeContext, inspectTree, packEnvironment, relocateResources, prepareArchive, movePrepared, install };
 if (require.main === module) (async () => {
   const [mode, directory, ...args] = process.argv.slice(2);
   if (!directory) throw new Error('Extension staging directory required');
-  if (mode === 'prefetch') {
+  if (mode === 'select' && args.length === 1) {
+    fs.writeFileSync(path.join(directory, 'requested.txt'), selectRequested(args[0]).join('\n'));
+  } else if (mode === 'prefetch-requested' && args.length === 4) {
+    const [php_version, build, thread_safety, architecture] = args;
+    const names = requestedPacks(directory);
+    if (names.length) await prefetch(directory, { php_version, build, thread_safety, architecture }, names);
+  } else if (mode === 'activate' && args.length === 2) {
+    await activate(directory, JSON.parse(fs.readFileSync(args[0], 'utf8')), args[1]);
+  } else if (mode === 'prefetch') {
     const [php_version, build, thread_safety, architecture, ...names] = args;
     await prefetch(directory, { php_version, build, thread_safety, architecture }, names);
   } else if (mode === 'prepare' && args.length === 1) prepareArchive(directory, args[0]);
   else if (mode === 'install' && args.length === 1) install(directory, args[0]);
-  else throw new Error('Usage: install-extensions.cjs prefetch|prepare|install DIRECTORY ...');
+  else throw new Error('Usage: install-extensions.cjs select|prefetch-requested|activate|prefetch|prepare|install DIRECTORY ...');
 })().catch(error => { console.error(`php-darwin extensions: ${error.message}`); process.exitCode = 1; });

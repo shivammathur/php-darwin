@@ -61,6 +61,12 @@ loop do
       range = headers.join.match(/Range: bytes=(\d+)-/i)&.captures&.first&.to_i
       File.open("#{directory}/requests", 'a') { |f| f.puts(route) }
       mode = route.split('/')[1]
+      count = File.readlines("#{directory}/requests").count { |line| line.strip == route }
+      if mode == 'retry-http' && count < 3 || mode == 'always-524' || mode == 'forbidden'
+        status = mode == 'forbidden' ? 403 : 524
+        connection.write("HTTP/1.1 #{status} Fixture\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+        next
+      end
       if mode == 'error-stall'
         connection.write("HTTP/1.1 503 Fixture\r\nContent-Length: 1000000\r\nConnection: close\r\n\r\n")
         sleep 5
@@ -92,13 +98,14 @@ loop do
         body += 'x' if mode == 'oversize-timeout'
         length = body.bytesize + 1
       end
-      if ['range', 'wrong-range'].include?(mode) && range
+      if ['range', 'wrong-range', 'retry-partial'].include?(mode) && range
         File.write("#{directory}/range", range.to_s)
         status = 206
         body = body.byteslice(range..-1)
         body = 'wrong bytes' if mode == 'wrong-range'
         length = body.bytesize
       end
+      body = body.byteslice(0, 3) if mode == 'retry-partial' && count < 3
       connection.write("HTTP/1.1 #{status} Fixture\r\nContent-Length: #{length}\r\nConnection: close\r\n\r\n#{body}")
     rescue IOError, SystemCallError
     ensure
@@ -211,8 +218,51 @@ export PHP_DARWIN_MIRROR_URL="$base/partial"
 status=$(php_darwin_fetch_release_manifest "$release_repository" "$version" "$work_dir/body" \
   "$base/partial/manifest.json")
 [ "$status" != 200 ] || php_darwin_die 'a truncated HTTP 200 was reported as a successful manifest download'
+# Recover the mirror without repeating the primary or appending a failed range
+# response twice. Full archive authentication remains in the production caller.
+export PHP_DARWIN_MIRROR_URL="$base/retry-partial"
+PHP_DARWIN_RELEASE_URL="$base/partial/archive"
+: > "$work_dir/requests"
+php_darwin_download_release_archive || php_darwin_die 'mirror range retries failed'
+cmp -s "$archive" "$work_dir/fixture" || php_darwin_die 'mirror retries assembled corrupt bytes'
+[ "$(wc -l < "$work_dir/requests" | tr -d ' ')" = 4 ] || php_darwin_die 'mirror range retry count changed'
+[ "$(cat "$work_dir/range")" = 5 ] || php_darwin_die 'mirror retries changed the requested offset'
+for route in retry-http always-524 forbidden; do
+  export PHP_DARWIN_MIRROR_URL="$base/$route"
+  : > "$work_dir/requests"
+  status=$(php_darwin_request_release "$base/$route/archive" "$work_dir/body")
+  case "$route" in
+    retry-http) [ "$status" = 200 ] && cmp -s "$work_dir/body" "$work_dir/fixture" ;;
+    always-524) [ "$status" = 524 ] ;;
+    forbidden) [ "$status" = 403 ] ;;
+  esac || php_darwin_die 'mirror HTTP retry classification failed'
+  count=3
+  [ "$route" != forbidden ] || count=1
+  [ "$(wc -l < "$work_dir/requests" | tr -d ' ')" = "$count" ] || php_darwin_die 'unbounded or permanent-error retry'
+  [ ! -e "$work_dir/body.headers" ] || php_darwin_die 'mirror retry headers were not cleaned'
+done
+# DNS/connection failures carry no HTTP response. Simulate those exact curl
+# exits before a real successful read, and verify the fallback connection limit.
+export PHP_DARWIN_MIRROR_URL="$base/good"
+curl() {
+  local count=0 argument previous='' connect=''
+  [ ! -f "$work_dir/dns-attempts" ] || count=$(cat "$work_dir/dns-attempts")
+  count=$((count + 1))
+  printf '%s\n' "$count" > "$work_dir/dns-attempts"
+  for argument in "$@"; do
+    [ "$previous" != --connect-timeout ] || connect=$argument
+    previous=$argument
+  done
+  [ "$connect" = 5 ] || return 97
+  if [ "$count" -lt 3 ]; then printf '000'; return 6; fi
+  command curl "$@"
+}
+status=$(php_darwin_request_release "$base/good/archive" "$work_dir/body")
+unset -f curl
+[ "$status" = 200 ] && [ "$(cat "$work_dir/dns-attempts")" = 3 ] && \
+  cmp -s "$work_dir/body" "$work_dir/fixture" || php_darwin_die 'mirror DNS retry did not recover'
 export PHP_DARWIN_MIRROR_URL=
 PHP_DARWIN_RELEASE_URL="$base/missing/archive"
 if php_darwin_download_release_archive; then php_darwin_die 'explicit disabled mirror was ignored'; fi
 [ -z "$(php_darwin_release_mirror fixture/repo 8.3)" ] || php_darwin_die 'a fork used production assets'
-printf 'Verified archive and manifest failover, HTTP errors, truncation, stalls, checksum rejection, and disabled mirrors\n'
+printf 'Verified archive and manifest failover, bounded mirror DNS/HTTP/range retries, permanent errors, truncation, stalls, checksum rejection, and disabled mirrors\n'

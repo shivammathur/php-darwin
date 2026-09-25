@@ -10,6 +10,7 @@ version=${1:-}
 build=${2:-release}
 ts=${3:-nts}
 local_archive=${4:-}
+extensions_input=${5:-}
 arch=$(php_darwin_normalize_arch "$(uname -m)") || exit 1
 
 PHP_DARWIN_PHASE=environment
@@ -153,6 +154,9 @@ tap_snapshot_path="$brew_prefix/$tap_snapshot"
 : > "$new_state_paths_file" || php_darwin_die 'could not create the new-state list'
 archive_mutation_started=false
 runtime_verified=false
+extension_prefetch_pid=
+extension_node=
+extension_dir="$tmp_dir/extensions"
 preserve_tmp_dir=false
 php_darwin_unlink_formulae() {
   local mode_file=$1
@@ -391,6 +395,8 @@ php_darwin_install_cleanup() {
   php_darwin_reap_job "$tap_pid" 0
   php_darwin_reap_job "$missing_pid" 0
   php_darwin_reap_job "$archive_hash_pid" 0
+  # The Node supervisor drains its read-only extraction children on termination.
+  php_darwin_reap_job "$extension_prefetch_pid" 5
   if [ "$cleanup_status" -ne 0 ] && [ "$runtime_verified" = false ]; then
     rollback_attempted=true
     if [ "$tap_installed" = true ]; then
@@ -552,6 +558,19 @@ trap php_darwin_install_cleanup EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
+
+# Optional pack preparation is read-only and overlaps the base PHP install.
+# Node is optional: PHP-only installs and unavailable pack support keep working.
+if [ -n "$extensions_input" ] && extension_node=$(command -v node); then
+  mkdir -p "$extension_dir" &&
+    cat "$script_dir/install-extensions.cjs" > "$extension_dir/install-extensions.cjs" &&
+    "$extension_node" "$extension_dir/install-extensions.cjs" select "$extension_dir" "$extensions_input" &&
+    if [ -s "$extension_dir/requested.txt" ]; then
+      "$extension_node" "$extension_dir/install-extensions.cjs" prefetch-requested "$extension_dir" \
+        "$version" "$build" "$ts" "$arch" > "$extension_dir/prefetch.log" 2>&1 &
+      extension_prefetch_pid=$!
+    fi
+fi
 
 # Reading Homebrew trust, unlinking PHP, and downloading the cache are
 # independent. Track the read-only and mutating workers separately so cleanup
@@ -1175,6 +1194,17 @@ elif [ "$tap_path_backed_up" = true ]; then
   php_darwin_remove_tap_backup "$brew_prefix" "$tap_path_backup" || \
     printf 'php-darwin: could not remove the retired Homebrew tap backup: %s\n' \
       "$tap_path_backup" >&2
+fi
+# Install only after the complete base transaction has passed its runtime and
+# preservation checks. A missing or incompatible optional pack leaves normal
+# extension installation available to callers such as setup-php.
+if [ -n "$extension_prefetch_pid" ]; then
+  wait "$extension_prefetch_pid" || true
+  extension_prefetch_pid=
+  cat "$extension_dir/prefetch.log"
+  "$extension_node" "$extension_dir/install-extensions.cjs" activate "$extension_dir" \
+    "$metadata_copy" "$brew_prefix/etc/php/$config_id/conf.d" ||
+    printf 'php-darwin: optional packs unavailable; using the caller extension installer\n' >&2
 fi
 printf 'Installed PHP %s (%s, %s, %s) from %s\n' \
   "$expected_runtime_version" "$build" "$ts" "$arch" "$asset"
