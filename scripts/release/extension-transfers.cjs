@@ -85,7 +85,7 @@ function transfers({ directory, env, endpoint, run = command, retry = retryPolic
     assets = new Map(JSON.parse(await run('gh', ['api', '--paginate', '--slurp',
       `repos/${repo}/releases/${record.id}/assets?per_page=100`])).flat().map(asset => [asset.name, asset]));
   }
-  async function read(file, base, { missing = false, different = false } = {}) {
+  async function read(file, base, { missing = false, different = false, fresh = true } = {}) {
     const name = path.basename(file), downloaded = path.join(directory, `verify-${name}`);
     const headers = `${downloaded}.headers`;
     let output = '', failure, verified = false;
@@ -94,7 +94,7 @@ function transfers({ directory, env, endpoint, run = command, retry = retryPolic
         '--proto', '=https', '--proto-redir', '=https', '--connect-timeout', '5', '--max-time', '45',
         '--output', downloaded, '--dump-header', headers, '--write-out',
         '%{http_code}\n%{time_namelookup} %{time_connect} %{time_appconnect} %{time_starttransfer} %{time_total} %{size_download} %{http_version} %{remote_ip}',
-        `${base}/${name}?verify=${Date.now()}`]);
+        `${base}/${name}${fresh ? `?verify=${Date.now()}` : ''}`]);
       const status = output.split('\n')[0];
       if (status === '404' && missing) return false;
       if (status !== '200') throw httpError(status, `Verify ${name}`);
@@ -131,7 +131,7 @@ function transfers({ directory, env, endpoint, run = command, retry = retryPolic
         return;
       }
       if (previous && immutable) {
-        if (await read(file, origins[0])) {
+        if (await read(file, origins[0], { fresh: false })) {
           report.github_reused++;
           return;
         }
@@ -146,15 +146,21 @@ function transfers({ directory, env, endpoint, run = command, retry = retryPolic
   }
   async function mirror(file, immutable) {
     const name = path.basename(file);
+    let uncertain = false;
     await retry(`Cloudflare ${name}`, async () => {
       // Reuse only after reading the complete object and verifying its SHA256.
       // This also resolves uploads that succeeded but lost their response.
-      if (await read(file, origins[1], { missing: true, different: !immutable })) {
+      // SHA-addressed archives cannot change. Reuse their ordinary cache key
+      // while still hashing every byte; unique queries force cold origin reads.
+      // Mutable files and verification after an upload require a fresh read
+      // (the ordinary URL may still have a cached pre-upload 404).
+      if (await read(file, origins[1], { missing: true, different: !immutable, fresh: !immutable || uncertain })) {
         report.cloudflare_reused++;
         console.log(`Reused verified Cloudflare object: ${name}`);
         return;
       }
       console.log(`Uploading Cloudflare object: ${name}`);
+      uncertain = true;
       await run('aws', ['--endpoint-url', endpoint, 's3api', 'put-object', '--bucket', 'php-darwin',
         '--key', `extensions/${name}`, '--body', file,
         '--cache-control', immutable ? 'public, max-age=31536000, immutable' : 'no-cache, max-age=0, must-revalidate',

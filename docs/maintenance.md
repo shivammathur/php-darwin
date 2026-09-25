@@ -236,8 +236,10 @@ This recovery path works for both architectures. Regular Homebrew ARM bottles
 cannot replace debug/ZTS or development-PHP extension binaries; missing matching
 binaries and Mach-O relocation/signing still require macOS.
 Publication resumes by reusing GitHub assets with matching SHA256 digests and
-Cloudflare objects whose downloaded bytes pass SHA256 verification. Small archives
-use single-object uploads. A transient timeout, connection failure or service error
+Cloudflare objects whose downloaded bytes pass SHA256 verification. Existing
+SHA-addressed archives use their ordinary cache URLs; mutable files and reads
+after uploads use fresh queries to avoid stale manifests or cached missing responses.
+Small archives use single-object uploads. A transient timeout, connection failure or service error
 gets one recovery attempt after five seconds, with at most six recovery attempts
 across publication. Checksums, metadata and credential errors are never retried.
 Lost upload responses are reconciled with the remote object before another write.

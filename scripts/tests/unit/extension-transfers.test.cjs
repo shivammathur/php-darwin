@@ -12,7 +12,8 @@ function fixture(t, failure) {
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const file = path.join(directory, 'pack.tar.zst');
   fs.writeFileSync(file, 'verified archive');
-  const github = new Map(), cloudflare = new Map(), calls = [], waits = [];
+  const github = new Map(), cloudflare = new Map(), cachedMissing = new Set(), calls = [], waits = [];
+  const cacheMissing = ['cached-miss', 'cloudflare-response'].includes(failure);
   const run = async (program, args) => {
     calls.push({ program, args });
     if (program === 'gh' && args[0] === 'api') {
@@ -29,9 +30,10 @@ function fixture(t, failure) {
       if (failure === 'cloudflare-response') { failure = ''; throw httpError(503, 'Lost upload response'); }
     } else if (program === 'aws') return JSON.stringify({ ContentLength: 16, ETag: 'test' });
     else if (program === 'curl') {
-      const name = path.basename(new URL(args.at(-1)).pathname);
+      const url = new URL(args.at(-1)), name = path.basename(url.pathname);
       if (failure === 'edge-503') { failure = ''; return '503'; }
-      if (!cloudflare.has(name)) return '404';
+      if (cacheMissing && !url.search && cachedMissing.has(name)) return '404';
+      if (!cloudflare.has(name)) { cachedMissing.add(name); return '404'; }
       fs.writeFileSync(args[args.indexOf('--output') + 1], cloudflare.get(name));
       return '200';
     }
@@ -49,7 +51,19 @@ test('resuming publication reuses matching GitHub digests and fully verified Clo
   await resumed.github(f.file, true); await resumed.mirror(f.file, true);
   assert.equal(resumed.report.github_reused, 1); assert.equal(resumed.report.cloudflare_reused, 1);
   assert.ok(!f.calls.slice(before).some(c => c.args.includes('put-object') || c.args.includes('upload')));
-  assert.ok(f.calls.slice(before).some(c => c.program === 'curl'));
+  const reads = f.calls.slice(before).filter(c => c.program === 'curl');
+  assert.equal(reads.length, 1);
+  assert.equal(new URL(reads[0].args.at(-1)).search, '');
+});
+test('verification after a new immutable upload bypasses a cached missing response', async t => {
+  const f = fixture(t, 'cached-miss'), transfer = f.create();
+  await transfer.mirror(f.file, true);
+  assert.equal(transfer.report.cloudflare_uploaded, 1);
+  const reads = f.calls.filter(c => c.program === 'curl');
+  assert.equal(reads.length, 2);
+  assert.equal(new URL(reads[0].args.at(-1)).search, '');
+  assert.match(new URL(reads[1].args.at(-1)).search, /^\?verify=\d+$/);
+  assert.deepEqual(f.waits, []);
 });
 for (const backend of ['github', 'cloudflare']) {
   test(`a lost ${backend} upload response reconciles remote bytes before another write`, async t => {
@@ -81,6 +95,7 @@ test('mutable manifests are replaced only when their bytes differ', async t => {
   await transfer.mirror(f.file, false);
   await transfer.mirror(f.file, false);
   assert.equal(f.calls.filter(c => c.args.includes('put-object')).length, 1);
+  assert.ok(f.calls.filter(c => c.program === 'curl').every(c => new URL(c.args.at(-1)).search.startsWith('?verify=')));
 });
 test('recovery is bounded per operation and by a shared job budget', async () => {
   const waits = [], retry = retryPolicy({ budget: 2, wait: async ms => waits.push(ms) });
