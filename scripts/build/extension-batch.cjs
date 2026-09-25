@@ -28,7 +28,9 @@ function batch(entries, mode, { run = execute, output = 'builds/extensions', ind
         if (match) env[match[1]] = match[2];
       }
       if (mode === 'build' && !corePinned) {
-        run('bash', ['-euc', 'core=$(brew --repository homebrew/core); git -C "$core" fetch --depth=1 origin "$HOMEBREW_CORE_COMMIT"; git -C "$core" checkout --detach "$HOMEBREW_CORE_COMMIT"'], env);
+        // Preserve full core history: Homebrew refuses to update shallow core
+        // checkouts, including on the next job using this runner.
+        run('bash', ['-euc', 'core=$(brew --repository homebrew/core); git -C "$core" fetch origin "$HOMEBREW_CORE_COMMIT"; git -C "$core" checkout --detach "$HOMEBREW_CORE_COMMIT"'], env);
         corePinned = true;
       }
     } catch (error) {

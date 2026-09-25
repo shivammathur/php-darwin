@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 const { key, digest } = require('../../installer/install-extensions.cjs');
 const { buildMatrix, testMatrix, variants, reuse, verifyArchive } = require('../../release/extension-batches.cjs');
 const { batch } = require('../../build/extension-batch.cjs');
@@ -77,6 +78,29 @@ test('a failed pack does not stop unrelated packs or discard their checkpoint, a
   assert.equal(calls.filter(call => call.args.includes('scripts/build/prepare-extension-pack.sh')).length, 1);
   assert.equal(calls.filter(call => call.args.includes('scripts/tests/native/extension-pack.test.cjs')).length, 2);
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(directory, 'index/entries.json'))).map(item => item.name), ['imagick', 'memcached']);
+});
+test('pinning core keeps a full checkout updateable on later runner jobs', t => {
+  const directory = fixture(t), source = path.join(directory, 'source'), core = path.join(directory, 'core');
+  const bin = path.join(directory, 'bin'); fs.mkdirSync(bin);
+  const env = { ...process.env, GIT_AUTHOR_NAME: 'Fixture', GIT_AUTHOR_EMAIL: 'fixture@example.test',
+    GIT_COMMITTER_NAME: 'Fixture', GIT_COMMITTER_EMAIL: 'fixture@example.test' };
+  const git = (...args) => execFileSync('git', args, { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  git('init', source); git('-C', source, 'commit', '--allow-empty', '-m', 'first');
+  git('clone', '--no-local', source, core);
+  git('-C', source, 'commit', '--allow-empty', '-m', 'second');
+  const commit = git('-C', source, 'rev-parse', 'HEAD');
+  fs.writeFileSync(path.join(bin, 'brew'), '#!/bin/sh\nprintf "%s\\n" "$CORE_FIXTURE"\n', { mode: 0o755 });
+  const previous = process.env.RUNNER_TEMP; process.env.RUNNER_TEMP = directory;
+  t.after(() => { if (previous === undefined) delete process.env.RUNNER_TEMP; else process.env.RUNNER_TEMP = previous; });
+  batch([entry()], 'build', { output: path.join(directory, 'packs'), indexOutput: path.join(directory, 'index'),
+    run: (program, args, buildEnv) => {
+      if (args[0] === '-euc') execFileSync(program, args, { env: { ...env, PATH: `${bin}:${env.PATH}`,
+        CORE_FIXTURE: core, HOMEBREW_CORE_COMMIT: commit }, stdio: 'pipe' });
+      if (args.includes('.github/actions/source-cache/main.cjs')) writeArchive(buildEnv.EXTENSION_PACK_OUTPUT, entry());
+    } });
+  assert.equal(git('-C', core, 'rev-parse', 'HEAD'), commit);
+  assert.equal(git('-C', core, 'rev-parse', '--is-shallow-repository'), 'false');
+  assert.equal(git('-C', core, 'rev-list', '--count', 'HEAD'), '2');
 });
 test('grouped recovery accepts passing checkpoints in a failed job but rejects the wrong bundle context', async t => {
   fixture(t);
