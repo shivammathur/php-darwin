@@ -36,6 +36,8 @@ Optional Imagick, MongoDB and Memcached packs carry private runtime libraries, l
 
 The PHP installer accepts optional extensions in its fifth argument and prepares packs while PHP installs. Activation follows successful runtime verification; pack failures retain setup-php fallback behavior.
 
+`cache-extensions.yml` batches extension builds and compatibility tests. `update-extensions.yml` dispatches scheduled refreshes. Publication verifies archives on both origins before committing each manifest.
+
 Run local checks with `bash scripts/tests/run.sh` and workflow checks with `actionlint`.
 
 [MIT license](LICENSE).
