@@ -18,6 +18,12 @@ bash() {
     return $?
   fi
   started=$SECONDS
+  # CI can exercise a candidate installer against existing published archives
+  # before changing any release. Keep the action and its inputs unchanged.
+  if [ -n "${PHP_DARWIN_TEST_INSTALLER:-}" ]; then
+    shift
+    set -- "$PHP_DARWIN_TEST_INSTALLER" "$@"
+  fi
   if command bash "$@"; then status=0; else status=$?; fi
   elapsed=$((SECONDS - started))
   printf 'setup-php cache installer completed in %ss (status %s)\n' "$elapsed" "$status"

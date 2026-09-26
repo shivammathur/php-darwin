@@ -44,12 +44,14 @@ for version in "${version_values[@]}"; do
   manifest_extension_commit=
   php_current=false
   extensions_current=false
+  dependencies_current=false
   if ! http_status=$(php_darwin_fetch_release_manifest "$release_repository" "$version" "$manifest"); then
     php_darwin_die "could not request the PHP $version release manifest"
   fi
   case "$http_status" in
     200)
       if php_darwin_validate_release_manifest "$manifest" "$version" stable 2>/dev/null; then
+        dependencies_current=$("${PHP_DARWIN_NODE:-node}" "$script_dir/../build/package-inputs.cjs" current "$manifest") || exit 1
         published=$(jq -er '.source_hash' "$manifest") || \
           php_darwin_die "could not read the PHP $version published source hash"
         published_extensions=$(bash "$script_dir/../build/manifest-extensions-source-hash.sh" "$manifest" "$version") || \
@@ -73,7 +75,7 @@ for version in "${version_values[@]}"; do
     *) php_darwin_die "could not fetch the PHP $version release manifest (HTTP $http_status)" ;;
   esac
   if [ "$php_current" = true ] && [ "$extensions_current" = true ] && \
-    [ "$manifest_current_platforms" = true ]; then
+    [ "$manifest_current_platforms" = true ] && [ "$dependencies_current" = true ]; then
     printf 'PHP %s cache build inputs are current (PHP %s, extensions %s)\n' "$version" "$current" "$current_extensions"
     continue
   fi
@@ -81,7 +83,7 @@ for version in "${version_values[@]}"; do
   architectures='arm64 x86_64'
   pinned_arguments=()
   if [ "$php_current" = true ] && [ "$extensions_current" = true ] && \
-    [ "$manifest_current_platforms" = false ] && [ -n "$manifest_source_commit" ] && \
+    [ "$manifest_current_platforms" = false ] && [ "$dependencies_current" = true ] && [ -n "$manifest_source_commit" ] && \
     [ -n "$manifest_extension_commit" ]; then
     architectures=x86_64
     pinned_arguments=(-f "homebrew-php-commit=$manifest_source_commit" \

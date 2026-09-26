@@ -98,6 +98,7 @@ write_manifest() {
      extensions_source_hash:$extensions_hash,homebrew_extensions_commit:$extensions_commit,
      homebrew_php_commit:$homebrew_commit,source_hash:$source_hash,assets:.}
   ' "$assets_jsonl" > "$manifest"
+  node "$script_dir/../helpers/add-package-inputs.cjs" "$manifest" "$extensions_path" || exit 1
 }
 
 run_gate() {

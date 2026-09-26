@@ -4,6 +4,7 @@ scripts/lib/lib.sh
 scripts/installer/trust-store.sh
 scripts/installer/check-dependencies.sh
 scripts/installer/unlink-kegs.sh
+scripts/installer/php-command-links.sh
 scripts/installer/read-metadata.sh
 scripts/lib/source-hash.sh
 scripts/installer/validate-tap.sh

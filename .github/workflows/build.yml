@@ -72,6 +72,7 @@ jobs:
       build-required: ${{ steps.freshness.outputs.build-required }}
       extensions-source-commit: ${{ steps.extensions-source.outputs.commit }}
       source-commit: ${{ steps.source.outputs.commit }}
+      core-commit: ${{ steps.core.outputs.commit }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -80,6 +81,7 @@ jobs:
       - name: Create build and compatibility-test matrices
         id: matrix
         env:
+          PHP_DARWIN_BUILD_PLAN: ${{ runner.temp }}/build-plan.json
           ARCHITECTURES: ${{ inputs.architectures }}
           BUILDS: ${{ inputs.builds }}
           CHANNEL: ${{ inputs.channel }}
@@ -92,6 +94,15 @@ jobs:
           bash scripts/tests/run.sh check
           bash scripts/build/get-matrix.sh
 
+      - name: Preserve the expected build and compatibility matrix
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: build-plan-${{ inputs.php-version }}
+          path: ${{ runner.temp }}/build-plan.json
+          retention-days: 7
+          overwrite: true
+          compression-level: 0
+
       - name: Pin the homebrew-php source commit
         id: source
         env:
@@ -103,6 +114,18 @@ jobs:
         env:
           PINNED_COMMIT: ${{ inputs.homebrew-extensions-commit }}
         run: bash scripts/build/source-commit.sh extensions
+
+      - name: Pin Homebrew core dependencies
+        id: core
+        run: bash scripts/build/source-commit.sh core
+
+      - name: Check out Homebrew core for dependency freshness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Homebrew/homebrew-core
+          ref: ${{ steps.core.outputs.commit }}
+          path: homebrew-core
+          persist-credentials: false
 
       - name: Check out the pinned PHP formulae for freshness
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -127,6 +150,7 @@ jobs:
           CHANNEL: ${{ inputs.channel }}
           FORCE: ${{ inputs.force }}
           PUBLISH: ${{ inputs.publish }}
+          HOMEBREW_CORE_PATH: ${{ github.workspace }}/homebrew-core
           HOMEBREW_PHP_PATH: ${{ github.workspace }}/homebrew-php
           HOMEBREW_EXTENSIONS_PATH: ${{ github.workspace }}/homebrew-extensions
         run: bash scripts/build/check-build-freshness.sh
@@ -154,6 +178,7 @@ jobs:
       ts: ${{ inputs.ts }}
       homebrew-php-commit: ${{ needs.matrix.outputs.source-commit }}
       homebrew-extensions-commit: ${{ needs.matrix.outputs.extensions-source-commit }}
+      homebrew-core-commit: ${{ needs.matrix.outputs.core-commit }}
       source-cache-release: ${{ inputs.source-cache-release }}
       reuse-archives: ${{ inputs.reuse-archives }}
       force-source: ${{ inputs.force-source }}

@@ -139,9 +139,15 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
       continue;
     }
     if (item.bottled && !(target && forceSource)) {
-      run('brew', ['install', '--formula', ...flags, item.full_name], { inherit: true });
+      const incomplete = item.missing_build_files?.length > 0;
+      if (incomplete) log(`Restoring incomplete ${item.full_name} bottle; missing: ${item.missing_build_files.join(', ')}`);
+      run('brew', incomplete ? ['reinstall', '--formula', '--verbose', '--force-bottle', item.full_name] :
+        ['install', '--formula', ...flags, item.full_name], { inherit: true });
       metric({ result: 'upstream-bottle' });
       continue;
+    }
+    if (item.missing_build_files?.length) {
+      throw new Error(`Incomplete installed ${item.full_name}; missing ${item.missing_build_files.join(', ')} and no usable upstream bottle`);
     }
     log(`Resolving source bottle inputs: ${item.full_name} ${item.version}`);
     const build = inputs(item, platform);

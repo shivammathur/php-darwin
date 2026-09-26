@@ -28,6 +28,7 @@ manifest_source_commit=
 manifest_extension_commit=
 extensions_current=false
 formula_current=false
+dependencies_current=false
 
 if [ -n "$manifest_override" ]; then
   [ -f "$manifest_override" ] || php_darwin_die "nightly manifest not found: $manifest_override"
@@ -42,6 +43,7 @@ fi
 case "$http_status" in
   200)
     if php_darwin_validate_release_manifest "$manifest" "$version" nightly 2>/dev/null; then
+      dependencies_current=$("${PHP_DARWIN_NODE:-node}" "$script_dir/../build/package-inputs.cjs" current "$manifest") || exit 1
       published=$(jq -er '.php_src_commit' "$manifest") || \
         php_darwin_die "could not read the PHP $version published source commit"
       published_extensions=$(bash "$script_dir/../build/manifest-extensions-source-hash.sh" "$manifest" "$version") || \
@@ -71,14 +73,14 @@ esac
 
 build=false
 if [ "$force" = true ] || [ "$published" != "$current" ] || \
-  [ "$formula_current" != true ] || [ "$extensions_current" != true ] || [ "$manifest_current_platforms" = false ]; then
+  [ "$formula_current" != true ] || [ "$extensions_current" != true ] || [ "$dependencies_current" != true ] || [ "$manifest_current_platforms" = false ]; then
   build=true
 fi
 architectures='arm64 x86_64'
 pinned_extension_commit=
 pinned_source_commit=
 if [ "$force" = false ] && [ "$published" = "$current" ] && \
-  [ "$formula_current" = true ] && [ "$extensions_current" = true ] && [ "$manifest_current_platforms" = false ] && \
+  [ "$formula_current" = true ] && [ "$extensions_current" = true ] && [ "$dependencies_current" = true ] && [ "$manifest_current_platforms" = false ] && \
   [ -n "$manifest_source_commit" ] && [ -n "$manifest_extension_commit" ]; then
   architectures=x86_64
   pinned_extension_commit=$manifest_extension_commit

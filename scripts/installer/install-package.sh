@@ -10,7 +10,9 @@ version=${1:-}
 build=${2:-release}
 ts=${3:-nts}
 local_archive=${4:-}
-extensions_input=${5:-}
+# setup-php exports its action input to child processes. Older action revisions
+# call this installer with three arguments; use that input on the cold path too.
+extensions_input=${5-${PHP_DARWIN_EXTENSIONS:-${INPUT_EXTENSIONS:-}}}
 arch=$(php_darwin_normalize_arch "$(uname -m)") || exit 1
 
 PHP_DARWIN_PHASE=environment
@@ -112,6 +114,7 @@ homebrew_prepare_phase_file="$tmp_dir/homebrew-prepare-phase.txt"
 php_unlink_mode_file="$tmp_dir/php-unlink-mode"
 dependency_unlink_mode_file="$tmp_dir/dependency-unlink-mode"
 unlink_journal_dir="$tmp_dir/unlinked"
+command_links_journal="$tmp_dir/php-command-links.json"
 tap_path_file="$tmp_dir/homebrew-tap-path.txt"
 tap_trust_file="$tmp_dir/homebrew-tap-trust.txt"
 initial_formula_trust_file="$tmp_dir/homebrew-formula-trust.txt"
@@ -519,6 +522,8 @@ php_darwin_install_cleanup() {
     if [ "$archive_mutation_started" = true ]; then
       rm -f "$brew_prefix/$internal_metadata_path" >> "$rollback_log" 2>&1 || rollback_status=failed
     fi
+    bash "$script_dir/php-command-links.sh" restore "$brew_prefix" "$command_links_journal" >> "$rollback_log" 2>&1 || \
+      rollback_status=failed
     if [ -d "$unlink_journal_dir" ]; then
       bash "$script_dir/unlink-kegs.sh" restore "$brew_prefix" "$unlink_journal_dir" >> "$rollback_log" 2>&1 || \
         rollback_status=failed
@@ -546,6 +551,11 @@ php_darwin_install_cleanup() {
     preserve_tmp_dir=true
     printf 'php-darwin: restore the previous cache tap with: sudo mv %s %s\n' \
       "$tap_snapshot_backup" "$tap_snapshot_path" >&2
+  fi
+  # A failed restore must never discard the only remaining copies of user
+  # state. Keep the entire transaction, including journals and diagnostics.
+  if [ "$rollback_status" = failed ]; then
+    preserve_tmp_dir=true
   fi
   if [ "$preserve_tmp_dir" = true ]; then
     printf 'php-darwin: preserved recovery files in %s\n' "$tmp_dir" >&2
@@ -974,6 +984,10 @@ cat "$postinstall_paths_file" >> "$managed_paths_file" || \
   php_darwin_die 'could not add formula-managed post-install paths'
 LC_ALL=C sort -u "$managed_paths_file" -o "$managed_paths_file" || \
   php_darwin_die 'could not sort managed archive paths'
+# Active Homebrew records are normally unlinked by preparation. Also handle
+# stale command links without a linked-keg record, before exclusion inventory.
+bash "$script_dir/php-command-links.sh" prepare "$brew_prefix" "$command_links_journal" "$links_file" "$formula" || \
+  php_darwin_die 'could not prepare the archived PHP command links'
 bash "$script_dir/existing-paths.sh" "$brew_prefix" "$exclude_file" \
   "$archive_roots_file" \
   "$existing_kegs" "$managed_paths_file" "$package_kegs_file" || \

@@ -2,12 +2,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const assert = require('node:assert/strict');
-const { identity, stageCheckpoint, restoreCheckpoint } = require('../../cache/archive-checkpoint.cjs');
+const { identity, stageCheckpoint, restoreCheckpoint, restoreEarly } = require('../../cache/archive-checkpoint.cjs');
 const { ReleaseCache } = require('../../cache/source-bottle-releases.cjs');
 
 async function main(stage) {
   const inputs = { schema: 1, php: '0.0', arch: 'x86_64', build: 'release', ts: 'nts',
     revision: process.env.GITHUB_SHA, phpCommit: 'a'.repeat(40), extensionsCommit: 'b'.repeat(40),
+    coreCommit: 'c'.repeat(40), platform: {fixture: true},
     packages: [{ fixture: process.env.GITHUB_RUN_ID }] };
   const item = identity(inputs);
   const root = path.join(process.env.RUNNER_TEMP, 'checkpoint-transfer-fixture');
@@ -28,6 +29,9 @@ async function main(stage) {
     const result = await restoreCheckpoint(cache, inputs, path.join(root, 'restored'));
     assert.equal(result.hit, true, 'the uploaded checkpoint was not restored');
     assert.equal(result.current, true);
+    const early = await restoreEarly(cache, inputs, path.join(root, 'restored-early'));
+    assert.equal(early.hit, true, 'this run should restore without installed PHP or dependencies');
+    assert.equal(early.current, true);
     cache.request = async () => { throw new TypeError('Simulated Node connection failure'); };
     const fallback = await restoreCheckpoint(cache, inputs, path.join(root, 'restored-curl'));
     assert.equal(fallback.hit, true);

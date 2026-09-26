@@ -32,8 +32,10 @@ jobs:
           persist-credentials: false
 
       - name: Validate source build and compatibility tests
+        id: source
         env:
           GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+          PHP_VERSION: ${{ inputs.php-version }}
           RUN_ID: ${{ inputs.run-id }}
         run: bash scripts/release/validate-publish-run.sh "$RUN_ID"
 
@@ -42,10 +44,15 @@ jobs:
         timeout-minutes: 10
         with:
           github-token: ${{ secrets.TOKEN || github.token }}
-          pattern: php-${{ inputs.php-version }}-*
+          artifact-ids: ${{ steps.source.outputs.artifact-ids }}
           path: builds
           repository: ${{ github.repository }}
           run-id: ${{ inputs.run-id }}
+
+      - name: Restore already-published architectures outside the recovered matrix
+        env:
+          PHP_VERSION: ${{ inputs.php-version }}
+        run: bash scripts/release/restore-missing-architectures.sh builds
 
       - name: Replace versioned release assets
         env:

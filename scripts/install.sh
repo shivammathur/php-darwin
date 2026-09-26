@@ -1217,19 +1217,21 @@ function transientDownload(error) {
       .includes(error.cause?.code || error.code);
 }
 async function download(name, destination, { sha256, bytes, bases = origins,
-  sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
+  fresh = false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
   if (!safePath(name) || name.includes('/')) throw new Error('Invalid download name');
   let lastError;
+  const missing = new Set();
   for (const [index, base] of bases.entries()) {
     const attempts = index === 0 ? 1 : 3;
     for (let attempt = 1; attempt <= attempts; attempt++) {
       const temporary = `${destination}.partial`;
       try {
         // Give archives time to finish on either origin; metadata stays bounded.
-        const response = await fetch(`${base}/${name}`, { signal: AbortSignal.timeout(bytes ? 300000 : 30000) });
+        const response = await fetch(`${base}/${name}${fresh ? `?refresh=${Date.now()}` : ''}`, { signal: AbortSignal.timeout(bytes ? 300000 : 30000) });
         if (!response.ok || !response.body) {
           await response.body?.cancel();
           const retryAfter = response.headers.get('retry-after');
+          if ([404, 410].includes(response.status)) missing.add(base);
           throw Object.assign(new Error(`HTTP ${response.status}`), {
             transient: [408, 429].includes(response.status) || response.status >= 500,
             retryAfter: /^\d{1,6}$/.test(retryAfter || '') ? Math.min(30, Number(retryAfter)) : 0
@@ -1261,7 +1263,7 @@ async function download(name, destination, { sha256, bytes, bases = origins,
       }
     }
   }
-  throw new Error(`Could not download ${name}: ${lastError.message}`);
+  throw Object.assign(new Error(`Could not download ${name}: ${lastError.message}`), { retired: missing.size === bases.length });
 }
 async function prefetch(directory, context, requested, options = {}) {
   const started = performance.now();
@@ -1273,13 +1275,32 @@ async function prefetch(directory, context, requested, options = {}) {
   await download(`extensions-${context.php_version}-manifest.json`, manifestPath, options);
   const manifest = JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
   if (manifest.schema !== 1 || !Array.isArray(manifest.assets)) throw new Error('Invalid extension manifest');
-  const results = await Promise.allSettled(names.map(async name => {
+  let refreshed;
+  const select = (manifest, name) => {
+    if (manifest.schema !== 1 || !Array.isArray(manifest.assets)) throw new Error('Invalid extension manifest');
     const candidates = manifest.assets.filter(entry => entry.name === name &&
       Object.entries(context).every(([field, value]) => entry[field] === value));
     if (candidates.length !== 1) throw new Error(`No unique compatible archive for ${name}`);
-    const entry = validateEntry(candidates[0]);
+    return validateEntry(candidates[0]);
+  };
+  const results = await Promise.allSettled(names.map(async name => {
+    let entry = select(manifest, name);
     console.log(`Downloading ${name} cache (${entry.bytes} bytes)`);
-    await download(entry.file, path.join(directory, entry.file), { ...options, sha256: entry.sha256, bytes: entry.bytes });
+    try {
+      await download(entry.file, path.join(directory, entry.file), { ...options, sha256: entry.sha256, bytes: entry.bytes });
+    } catch (error) {
+      if (!error.retired) throw error;
+      // Publication can retire the archive after this install read its manifest.
+      // Refresh once, shared across packs; retain exact context and checksums.
+      refreshed ||= (async () => {
+        await download(`extensions-${context.php_version}-manifest.json`, manifestPath, { ...options, fresh: true });
+        return JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
+      })();
+      const replacement = select(await refreshed, name);
+      if (replacement.file === entry.file) throw error;
+      entry = replacement;
+      await download(entry.file, path.join(directory, entry.file), { ...options, sha256: entry.sha256, bytes: entry.bytes });
+    }
     await fsp.writeFile(path.join(directory, `${name}.json`), JSON.stringify(entry));
     try {
       // Use independent processes so extraction cannot block other downloads.
@@ -1413,10 +1434,13 @@ function phpApi(phpConfig = 'php-config') {
   if (!match) throw new Error('Missing PHP module API in installed headers');
   return match[1];
 }
-function runtimeContext(phpConfig = 'php-config', php = 'php') {
-  const value = command(php, ['-n', '-r', 'echo PHP_MAJOR_VERSION,".",PHP_MINOR_VERSION," ",PHP_DEBUG," ",PHP_ZTS;']).split(' ');
-  return { php_version: value[0], build: value[1] === '1' ? 'debug' : 'release',
-    thread_safety: value[2] === '1' ? 'zts' : 'nts',
+function runtimeContext(phpConfig = 'php-config') {
+  const version = command(phpConfig, ['--version']);
+  if (!/^\d+\.\d+\.\d+(?:[A-Za-z+-][0-9A-Za-z.+-]*)?$/.test(version)) throw new Error('Invalid php-config version');
+  const flags = command(phpConfig, ['--configure-options']).replaceAll("'", '').split(/\s+/);
+  const enabled = option => flags.includes(option) || flags.includes(option + '=yes');
+  return { php_version: version.split('.').slice(0, 2).join('.'), build: enabled('--enable-debug') ? 'debug' : 'release',
+    thread_safety: enabled('--enable-zts') || enabled('--enable-maintainer-zts') ? 'zts' : 'nts',
     architecture: process.arch === 'arm64' ? 'arm64' : 'x86_64',
     php_api: phpApi(phpConfig), extension_dir: command(phpConfig, ['--extension-dir']) };
 }
@@ -1994,6 +2018,66 @@ ensure
   locks.reverse_each(&:close)
 end
 PHP_DARWIN_UNLINK_RUBY
+)
+
+# Source: scripts/installer/php-command-links.sh
+php_darwin_php_command_links() (
+
+
+php_darwin_ruby - "$@" <<'PHP_DARWIN_COMMAND_LINKS_RUBY'
+require 'json'
+require 'fileutils'
+
+begin
+  mode, prefix, journal, links_file, formula = ARGV
+  commands = %w[bin/php bin/php-config bin/phpize sbin/php-fpm]
+  raise 'unsafe Homebrew command directory' if %w[bin sbin].any? { |name| File.symlink?(File.join(prefix, name)) }
+  case mode
+  when 'prepare'
+    entries = File.readlines(links_file, chomp: true).map do |line|
+      relative, target = line.split("\t", -1)
+      next unless commands.include?(relative)
+      expected = File.expand_path(target, File.dirname(File.join(prefix, relative)))
+      raise 'invalid archived PHP command' unless expected.start_with?(File.join(prefix, 'Cellar', formula) + '/')
+      destination = File.join(prefix, relative)
+      next unless File.exist?(destination) || File.symlink?(destination)
+      raise "PHP command conflicts with an unmanaged file: #{destination}" unless File.symlink?(destination)
+      previous = File.readlink(destination)
+      resolved = File.expand_path(previous, File.dirname(destination))
+      raise "PHP command conflicts with an unmanaged link: #{destination}" unless
+        resolved.match?(%r{\A#{Regexp.escape(prefix)}/(?:Cellar|opt)/php(?:@[0-9.]+)?(?:-debug)?(?:-zts)?/})
+      {'path' => relative, 'previous' => previous, 'installed' => target}
+    end
+    entries.compact!
+    # Persist the complete plan before removing any link. Extraction supplies
+    # the new default; this helper never discovers the version by running PHP.
+    File.open(journal, 'w', 0600) { |file| file.write(JSON.generate(entries)); file.flush; file.fsync }
+    entries.each { |entry| File.unlink(File.join(prefix, entry.fetch('path'))) }
+  when 'restore'
+    exit 0 unless File.file?(journal)
+    JSON.parse(File.read(journal)).reverse_each do |entry|
+      relative, previous, installed = entry.values_at('path', 'previous', 'installed')
+      raise 'invalid command link journal' unless commands.include?(relative) && previous.is_a?(String) && installed.is_a?(String)
+      destination = File.join(prefix, relative)
+      if File.symlink?(destination)
+        target = File.readlink(destination)
+        next if target == previous
+        raise "PHP command rollback conflict: #{destination}" unless target == installed
+        File.unlink(destination)
+      end
+      raise "PHP command rollback conflict: #{destination}" if File.exist?(destination)
+      FileUtils.mkdir_p(File.dirname(destination))
+      File.symlink(previous, destination)
+    end
+    File.unlink(journal)
+  else
+    raise 'invalid PHP command link operation'
+  end
+rescue SystemCallError, JSON::ParserError, RuntimeError, ArgumentError, TypeError => error
+  warn "php-darwin: #{error.message}"
+  exit 1
+end
+PHP_DARWIN_COMMAND_LINKS_RUBY
 )
 
 # Source: scripts/installer/read-metadata.sh
@@ -2809,11 +2893,17 @@ while IFS=$'\t' read -r extension extension_type extension_path extra; do
   }
 done < "$extensions"
 
-# Release QA tests PHP and each extension on every supported runner before
-# publication. Keep explicit load probes available for installation diagnostics.
+# Reused Homebrew kegs may have broken loader paths even when their version
+# and receipt look correct. One process checks those paths without recompiling
+# dependencies or using PHP for version discovery.
+"$php_bin" -n -r 'exit(0);' || {
+  printf 'Cached PHP runtime smoke test failed; check the reused dependency paths\n' >&2
+  exit 1
+}
+
+# Release QA tests each extension before publication. Keep the more expensive
+# per-extension probes available for explicit installation diagnostics.
 if [ "${PHP_DARWIN_VERIFY_RUNTIME:-false}" = true ]; then
-  installed_version=$("$php_bin" -n -r 'echo PHP_VERSION;') || exit 1
-  [ "$installed_version" = "$expected_version" ] || exit 1
   while IFS=$'\t' read -r extension extension_type extension_path; do
     "$php_bin" -n -d "$extension_type=$prefix/$extension_path" -r \
       "if (!extension_loaded('$extension')) { exit(1); }" || {
@@ -2833,7 +2923,9 @@ version=${1:-}
 build=${2:-release}
 ts=${3:-nts}
 local_archive=${4:-}
-extensions_input=${5:-}
+# setup-php exports its action input to child processes. Older action revisions
+# call this installer with three arguments; use that input on the cold path too.
+extensions_input=${5-${PHP_DARWIN_EXTENSIONS:-${INPUT_EXTENSIONS:-}}}
 arch=$(php_darwin_normalize_arch "$(uname -m)") || exit 1
 
 PHP_DARWIN_PHASE=environment
@@ -2935,6 +3027,7 @@ homebrew_prepare_phase_file="$tmp_dir/homebrew-prepare-phase.txt"
 php_unlink_mode_file="$tmp_dir/php-unlink-mode"
 dependency_unlink_mode_file="$tmp_dir/dependency-unlink-mode"
 unlink_journal_dir="$tmp_dir/unlinked"
+command_links_journal="$tmp_dir/php-command-links.json"
 tap_path_file="$tmp_dir/homebrew-tap-path.txt"
 tap_trust_file="$tmp_dir/homebrew-tap-trust.txt"
 initial_formula_trust_file="$tmp_dir/homebrew-formula-trust.txt"
@@ -3342,6 +3435,8 @@ php_darwin_install_cleanup() {
     if [ "$archive_mutation_started" = true ]; then
       rm -f "$brew_prefix/$internal_metadata_path" >> "$rollback_log" 2>&1 || rollback_status=failed
     fi
+    php_darwin_php_command_links restore "$brew_prefix" "$command_links_journal" >> "$rollback_log" 2>&1 || \
+      rollback_status=failed
     if [ -d "$unlink_journal_dir" ]; then
       php_darwin_unlink_kegs restore "$brew_prefix" "$unlink_journal_dir" >> "$rollback_log" 2>&1 || \
         rollback_status=failed
@@ -3369,6 +3464,11 @@ php_darwin_install_cleanup() {
     preserve_tmp_dir=true
     printf 'php-darwin: restore the previous cache tap with: sudo mv %s %s\n' \
       "$tap_snapshot_backup" "$tap_snapshot_path" >&2
+  fi
+  # A failed restore must never discard the only remaining copies of user
+  # state. Keep the entire transaction, including journals and diagnostics.
+  if [ "$rollback_status" = failed ]; then
+    preserve_tmp_dir=true
   fi
   if [ "$preserve_tmp_dir" = true ]; then
     printf 'php-darwin: preserved recovery files in %s\n' "$tmp_dir" >&2
@@ -3797,6 +3897,10 @@ cat "$postinstall_paths_file" >> "$managed_paths_file" || \
   php_darwin_die 'could not add formula-managed post-install paths'
 LC_ALL=C sort -u "$managed_paths_file" -o "$managed_paths_file" || \
   php_darwin_die 'could not sort managed archive paths'
+# Active Homebrew records are normally unlinked by preparation. Also handle
+# stale command links without a linked-keg record, before exclusion inventory.
+php_darwin_php_command_links prepare "$brew_prefix" "$command_links_journal" "$links_file" "$formula" || \
+  php_darwin_die 'could not prepare the archived PHP command links'
 php_darwin_existing_paths "$brew_prefix" "$exclude_file" \
   "$archive_roots_file" \
   "$existing_kegs" "$managed_paths_file" "$package_kegs_file" || \

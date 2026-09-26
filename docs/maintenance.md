@@ -71,9 +71,13 @@ INI directive; other names use `extension`. These are build inputs, not runtime
 installer configuration.
 
 `conf/versions`, `conf/variants` and `conf/platforms.json` are authoritative.
-Builds pin both Homebrew taps, run each architecture/variant independently, then
+Builds pin the PHP and extension taps and Homebrew core, run each architecture/variant independently, then
 publish only after required compatibility jobs pass. Stable/nightly update
-workflows compare relevant formula and php-src inputs before dispatching work.
+workflows compare relevant formula, runtime dependency, packaging and php-src
+inputs before dispatching work. Package metadata records normalized recipe
+inputs; new bottles for unrelated platforms do not invalidate existing caches.
+An older manifest without dependency provenance requires a controlled refresh.
+Compression settings and installer-only changes do not invalidate PHP packages.
 
 ```sh
 gh workflow run cache-bottles.yml -R shivammathur/php-darwin -f seed=true
@@ -95,10 +99,42 @@ failed builds; service data is not staged. Keep configure/make output visible.
 
 Archive checkpoints last seven days and require matching workflow revision,
 inputs and verified payloads. They are separate from reusable source bottles.
+Partial reruns can restore a checkpoint before installing PHP when the run,
+pinned taps/core, architecture, variant and toolchain match. Other runs retain
+the installed-payload comparison. Missing or invalid checkpoints fall through
+to the normal cache/build path.
 Archives use Zstd level 19 with `--long=27`; Actions uploads use compression level
 zero. Preserve runtime/development files and licenses under the archive policy.
 
 ## Publish and installer updates
+
+The installer runs one PHP loader smoke test before committing. Version
+identification uses php-config. A failed rollback retains its transaction
+directory and reports the recovery path; backups never become release assets
+or R2 objects. Compatibility jobs upload rollback diagnostics as workflow
+artifacts, excluding the backed-up user files.
+
+Recovery publication validates source workflow provenance, the expected matrix,
+successful jobs across attempts, and exact artifact IDs/digests. New runs save
+their build plan; older runs use their own checked-in platform configuration.
+
+Optional extension publication verifies replacement archives on both origins
+before updating manifests. Cleanup protects the union of both manifests during
+partial publication, then removes superseded GitHub assets and R2 objects.
+Preflight cleanup reserves release capacity; post-publication cleanup failures
+are reported and retried on the next publication. An installer with a retired
+archive refreshes its manifest once. Installer-only extension publication also
+reclaims archives left unreferenced by older publishers.
+
+Use `e2e.yml` with `checkout-installer=true` to test candidate installer bytes
+against existing published packages. setup-php first runs without installed PHP,
+then repeats on the hot path; optional packs must come from the private cache.
+The action source remains unchanged. Performance experiments belong on a new
+orphan branch in `shivammathur/test-setup-php`; compare download, verification,
+extraction and installation, with timing reports retained as workflow artifacts.
+If only compression changes, recompress existing tar bytes on Ubuntu, verify
+their decompressed hashes, republish, and remove the temporary workflow. Do not
+compile PHP solely to change compression.
 
 Each `php-X.Y` release contains eight architecture/variant archives, a manifest
 and `install.sh`. The `tap_snapshot` setting is the archive path

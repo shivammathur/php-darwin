@@ -97,6 +97,7 @@ while read -r build ts; do
       .php_src_commit=$php_src_commit | .php_version=$php_version | .platform_key=$platform_key |
       .requested_formula=$requested_formula |
       .runner_image="fixture" | .source_hash=$source_hash |
+      .build_inputs={schema:1,builder_sha256:$source_hash,source_records:[{repository:"Homebrew/homebrew-core",path:"Formula/o/openssl@3.rb",sha256:$source_hash}]} |
       .state_paths=[("etc/php/" + $config_id + "/pear.conf")] | .tap_formulae=[$formula] |
       .tap_snapshot=$tap_snapshot |
       .thread_safety=$thread_safety
@@ -118,6 +119,8 @@ export GH_INSTALLER=$gh_installer
 HOMEBREW_EXTENSIONS_COMMIT="$extension_source_commit" PHP_VERSION="$version" PATH="$fake_bin:$PATH" \
   bash "$script_dir/../../release/publish.sh" "$builds_dir" >/dev/null || \
   php_darwin_die 'publish fixture validation failed'
+jq -e 'all(.assets[]; .build_inputs.schema == 1 and (.build_inputs.source_records | length) == 1)' "$gh_manifest" >/dev/null || \
+  php_darwin_die 'publication lost dependency freshness inputs'
 [ "$(awk 'END { print NR+0 }' "$gh_log")" -eq 5 ] || \
   php_darwin_die 'publisher did not view, create, and upload the release in three phases'
 grep -Eq '^release view php-7\.0 ' "$gh_log" || php_darwin_die 'publisher did not inspect the minor release'

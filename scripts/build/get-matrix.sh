@@ -90,3 +90,13 @@ variant_matrix=$(jq -c --slurpfile include "$variant_entries_file" '.include=$in
 printf 'build-matrix=%s\n' "$build_matrix" >> "${GITHUB_OUTPUT:?}" || php_darwin_die 'could not write the build matrix output'
 printf 'test-matrix=%s\n' "$test_matrix" >> "${GITHUB_OUTPUT:?}" || php_darwin_die 'could not write the test matrix output'
 printf 'variant-matrix=%s\n' "$variant_matrix" >> "${GITHUB_OUTPUT:?}" || php_darwin_die 'could not write the build variant matrix output'
+
+if [ -n "${PHP_DARWIN_BUILD_PLAN:-}" ]; then
+  jq -n --arg version "$php_version" --arg revision "${GITHUB_SHA:?}" \
+    --slurpfile architectures "$build_entries_file" --slurpfile variants "$variant_entries_file" \
+    --slurpfile tests "$test_entries_file" '
+    {schema:1,php_version:$version,revision:$revision,
+     builds:[$architectures[] as $a | $variants[] | {arch:$a.arch,build:.build,ts:.ts}],
+     tests:[$tests[] | {arch,runner}]}
+  ' > "$PHP_DARWIN_BUILD_PLAN" || exit 1
+fi

@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { command, digest, key, packs, inspectTree, packEnvironment, phpApi } = require('../installer/install-extensions.cjs');
+const { recipeInputs } = require('../lib/recipe-inputs.cjs');
 
 const macho = new Set(['cffaedfe', 'cefaedfe', 'feedfacf', 'feedface', 'cafebabe', 'bebafeca']);
 function builderHash() {
@@ -10,6 +11,7 @@ function builderHash() {
     'scripts/build/extension-pack.cjs', 'scripts/build/build-extensions.sh', 'scripts/build/extension-formula.rb',
     'scripts/build/prepare-extension-pack.sh', 'scripts/cache/source-bottle-cache.cjs',
     'scripts/cache/source-bottle-info.rb', 'scripts/cache/source-bottle-install.rb',
+    'scripts/lib/recipe-inputs.cjs', 'scripts/build/formula-build-inputs.sh',
     'scripts/cache/brew-php-darwin-source.rb'];
   return digest(JSON.stringify(inputs.map(file => [file, digest(fs.readFileSync(path.join(root, file)))])));
 }
@@ -46,9 +48,15 @@ function copyRuntime(keg, output) {
 function sourceRecords(formulae) {
   return formulae.map(formula => {
     const recipe = command('brew', ['formula', formula]);
-    const tap = command('brew', ['--repository', formula.includes('/') ? formula.split('/').slice(0, 2).join('/') : 'homebrew/core']);
-    return { formula, repository: formula.includes('/') ? `shivammathur/homebrew-${formula.split('/')[1]}` : 'Homebrew/homebrew-core',
-      path: path.relative(tap, recipe), sha256: digest(fs.readFileSync(recipe)) };
+    const tapName = formula.includes('/') ? formula.split('/').slice(0, 2).join('/') : 'homebrew/core';
+    const tap = command('brew', ['--repository', tapName]);
+    // Release/NTS can use an upstream bottle while other variants use source.
+    // Preserve usable bottle changes, excluding only unrelated platform tags.
+    const mode = 'platforms';
+    const repository = tapName === 'homebrew/core' ? 'Homebrew/homebrew-core' : tapName.replace('/', '/homebrew-');
+    return { formula, repository,
+      path: path.relative(tap, recipe), sha256: digest(fs.readFileSync(recipe)),
+      inputs_schema: 1, inputs_mode: mode, inputs_sha256: recipeInputs(recipe, mode) };
   });
 }
 function packageExtension({ name, php_version, build, thread_safety, architecture, output, extensionDirectory, php }) {
@@ -66,7 +74,7 @@ function packageExtension({ name, php_version, build, thread_safety, architectur
   const info = runtime.size ? JSON.parse(command('brew', ['info', '--json=v2', '--formula', ...runtime])).formulae : [];
   const metadata = { schema: 1, name, php_version, build, thread_safety, architecture,
     php_api: phpApi(path.join(path.dirname(php), 'php-config')),
-    php_semver: command(php, ['-n', '-r', 'echo PHP_VERSION;']),
+    php_semver: command(path.join(path.dirname(php), 'php-config'), ['--version']),
     ...(process.env.PHP_DARWIN_PHP_SRC_COMMIT ? { php_src_commit: process.env.PHP_DARWIN_PHP_SRC_COMMIT } : {}),
     minimum_macos: architecture === 'arm64' ? 14 : 15, modules: packs[name], environment: {},
     source_records: sourceRecords([...new Set([...references, ...runtime])]),

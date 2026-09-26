@@ -21,7 +21,7 @@ function fixture(t) {
   const changed = file('changed'); const linked = file('linked'); const journal = file('journal');
   const run = mode => spawnSync('bash', [path.join(__dirname, '../../installer/install-state.sh'), mode, prefix, packages,
     mode === 'plan' ? existing : changed, mode === 'plan' ? changed : journal, linked], {encoding: 'utf8'});
-  const php = file('prefix/Cellar/php@8.6/8.6.0/bin/php', '#!/usr/bin/env bash\nprintf "called\\n" >> "$PROBE_LOG"\nif [ "$#" = 3 ]; then printf 8.6.0-dev; fi\nexit "${PROBE_STATUS:-0}"\n');
+  const php = file('prefix/Cellar/php@8.6/8.6.0/bin/php', '#!/usr/bin/env bash\nprintf "called\\n" >> "$PROBE_LOG"\nexit "${PROBE_STATUS:-0}"\n');
   fs.chmodSync(php, 0o755);
   const config = file('prefix/Cellar/php@8.6/8.6.0/bin/php-config', '#!/bin/sh\nversion="8.6.0-dev"\necho DO_NOT_EXECUTE\n');
   link('opt/php@8.6', '../Cellar/php@8.6/8.6.0');
@@ -79,10 +79,16 @@ test('planning rejects escaping dependency records and targets', t => {
   }
 });
 
-test('authenticated php-config version and module files require no PHP or php-config execution', t => {
+test('version comes from php-config and one smoke process checks the runtime', t => {
   const f = fixture(t); const result = f.verify();
   assert.equal(result.status, 0, result.stderr); assert.equal(result.stdout, '');
-  assert.equal(fs.existsSync(f.probe), false);
+  assert.equal(fs.readFileSync(f.probe, 'utf8'), 'called\n');
+});
+
+test('default smoke test rejects a broken reused dependency', t => {
+  const f = fixture(t); const result = f.verify({PROBE_STATUS: '127'});
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /runtime smoke test failed/);
 });
 
 test('wrong, missing, duplicate and executable version assignments are rejected without evaluation', t => {

@@ -16,6 +16,7 @@ on:
       - scripts/build/extension-formula.rb
       - scripts/build/supervise-build.cjs
       - scripts/tests/native/source-bottle-*.test.sh
+      - scripts/tests/native/icu-reuse.test.sh
       - scripts/tests/e2e/source-build-lock-live.test.cjs
       - scripts/tests/helpers/**
       - conf/**
@@ -65,6 +66,9 @@ jobs:
         uses: ./.github/actions/node-runtime
       - name: Remove unused Homebrew taps
         run: bash scripts/build/cleanup-taps.sh
+
+      - name: Verify reused ICU development files and bottle recovery
+        run: bash scripts/tests/native/icu-reuse.test.sh
 
       - name: Verify concurrent ownership through the GitHub API
         run: '"$PHP_DARWIN_NODE" scripts/tests/e2e/source-build-lock-live.test.cjs'
