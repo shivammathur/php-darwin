@@ -34,6 +34,8 @@ Verified archive checkpoints support partial reruns and expire after seven days.
 
 Optional Imagick, MongoDB and Memcached packs carry private runtime libraries, licenses and serializer headers. Their standalone installer requires matching PHP release, source, architecture and ABI.
 
+The PHP installer accepts optional extensions in its fifth argument and prepares packs while PHP installs. Activation follows successful runtime verification; pack failures retain setup-php fallback behavior.
+
 Run local checks with `bash scripts/tests/run.sh` and workflow checks with `actionlint`.
 
 [MIT license](LICENSE).
