@@ -277,6 +277,8 @@ test('extension keys include the patched base recipe and actual PHP ABI/configur
   const run = (program, args) => { calls.push([program, args]); return args[0] === '--include-dir' ? f.cacheRoot : args.join(' '); };
   const first = extensionInputs(abstract, '/opt/php', 'release', 'nts', run);
   assert.equal(calls.length, 4);
+  assert.ok(calls.every(([program]) => program === '/opt/php/bin/php-config'));
+  assert.ok(calls.some(([, args]) => args[0] === '--version'));
   assert.equal(first.php.api.ZEND_MODULE_API_NO, '20240924');
   fs.writeFileSync(abstract, 'patched recipe');
   assert.notEqual(keyFor(first), keyFor(extensionInputs(abstract, '/opt/php', 'release', 'nts', run)));

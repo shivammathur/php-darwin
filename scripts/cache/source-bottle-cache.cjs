@@ -263,7 +263,7 @@ function extensionInputs(abstract, phpPrefix, build, ts, run = command) {
   return {
     build, ts, abstract: digest(fs.readFileSync(abstract)),
     php: {
-      version: run(path.join(phpPrefix, 'bin/php'), ['-n', '-r', 'echo PHP_VERSION;']).trim(),
+      version: run(path.join(phpPrefix, 'bin/php-config'), ['--version']).trim(),
       api,
       configure: run(path.join(phpPrefix, 'bin/php-config'), ['--configure-options']).trim(),
       extensionDirectory: run(path.join(phpPrefix, 'bin/php-config'), ['--extension-dir']).trim(),

@@ -172,7 +172,7 @@ validate_runtime() {
   [ "$(command -v php)" = "$brew_prefix/bin/php" ] || \
     php_darwin_die 'the cached PHP binary is not the PATH default'
   command -v php-config >/dev/null 2>&1 || php_darwin_die 'php-config is not linked into the Homebrew prefix'
-  php -d date.timezone=UTC -r "if (strpos(PHP_VERSION, '$version') !== 0) { exit(1); }" || \
+  [[ "$(php-config --version)" = "$version".* ]] || \
     php_darwin_die 'linked PHP does not match the requested version'
   "$php_bin" -d date.timezone=UTC -v || php_darwin_die 'php -v failed'
   "$php_bin" -d date.timezone=UTC -m || php_darwin_die 'php -m failed'

@@ -9,8 +9,11 @@ require 'digest'
 mode, prefix, state_file, *service_directories = ARGV
 raise 'Invalid preservation check' unless %w[snapshot check].include?(mode)
 def php_version(keg)
-  output = IO.popen([File.join(keg, 'bin', 'php'), '-n', '-r', 'echo PHP_VERSION;'], err: File::NULL, &:read)
-  $?.success? ? output : nil
+  output = IO.popen([File.join(keg, 'bin', 'php-config'), '--version'], err: File::NULL, &:read)
+  return nil unless $?.success?
+  # Runtime preservation is a loader smoke test; version discovery uses php-config.
+  works = system(File.join(keg, 'bin', 'php'), '-n', '-r', 'exit(0);', out: File::NULL, err: File::NULL)
+  works ? output.strip : nil
 rescue SystemCallError
   nil
 end

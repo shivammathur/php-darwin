@@ -105,6 +105,13 @@ the installed-payload comparison. Missing or invalid checkpoints fall through
 to the normal cache/build path.
 Archives use Zstd level 19 with `--long=27`; Actions uploads use compression level
 zero. Preserve runtime/development files and licenses under the archive policy.
+A five-round PHP 8.5 [macOS benchmark](https://github.com/shivammathur/test-setup-php/actions/runs/36280295251)
+compared levels 10, 15, 17 and 19 using identical tar contents. Level 19 had the
+fastest median download/hash/extraction on ARM (2.25 seconds); Intel level 17
+was only 0.15 seconds ahead (6.24 versus 6.39), within the observed variation,
+while adding about 5 MB. These are transfer/extraction timings, not total
+installer durations. Keep level 19; the temporary benchmark workflow and
+release fixtures were removed, with measurements retained as Actions artifacts.
 
 ## Publish and installer updates
 
