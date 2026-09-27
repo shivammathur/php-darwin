@@ -571,7 +571,7 @@ trap 'exit 143' TERM
 
 # Optional pack preparation is read-only and overlaps the base PHP install.
 # Node is optional: PHP-only installs and unavailable pack support keep working.
-if [ -n "$extensions_input" ] && extension_node=$(command -v node); then
+if [ -n "$extensions_input" ] && extension_node=$(command -v "${PHP_DARWIN_NODE:-node}"); then
   mkdir -p "$extension_dir" &&
     cat "$script_dir/install-extensions.cjs" > "$extension_dir/install-extensions.cjs" &&
     "$extension_node" "$extension_dir/install-extensions.cjs" select "$extension_dir" "$extensions_input" &&
