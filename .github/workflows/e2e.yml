@@ -112,7 +112,7 @@ jobs:
         uses: ./.github/actions/runner-preflight
 
       - name: Check out the previous installer for the performance control
-        if: matrix.installer == 'baseline'
+        if: inputs.compare-baseline
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: e230e887c5725df45fe7ec245d50d17af0471491
@@ -177,6 +177,12 @@ jobs:
           INPUT_PHP-VERSION: ${{ inputs.php-version }}
           INPUT_GITHUB-TOKEN: ${{ secrets.TOKEN || github.token }}
         run: '"$PHP_DARWIN_NODE" scripts/tests/e2e/downstream.test.cjs .setup-php'
+
+      - name: Compare installers with the same prefetched archive and runner
+        if: inputs.compare-baseline && matrix.installer == 'checkout'
+        env:
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+        run: '"$PHP_DARWIN_NODE" scripts/tests/e2e/performance.test.cjs'
 
       - name: Preserve cache installer diagnostics
         if: always()

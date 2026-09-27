@@ -412,7 +412,9 @@ serializer headers, covering the PECL CLI on 8.3 and setup-php's PECL source
 interface on 8.4+. It checks PHP binary preservation, install provenance and
 serialization roundtrips. `compare-baseline=true` adds independent old-installer
 control jobs. Cold/hot elapsed measurements are CI-only JSONL artifacts; there
-are no production timing processes or noisy wall-clock pass/fail gates.
+are no production timing processes or noisy wall-clock pass/fail gates. Candidate
+jobs also alternate five measured runs per installer on the same runner using
+one authenticated local archive, excluding network time and warming both paths.
 
 Full archive compatibility uses named macOS versions; `macos-latest` is exercised
 separately by `test-homebrew.yml` with published PHP 8.5. That weekly/manual smoke
