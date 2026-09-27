@@ -4,14 +4,20 @@ const {command, githubJSON, retryPolicy, httpError} = require('./extension-trans
 const archivePattern = /^(imagick|mongodb|memcached)-(5\.6|7\.[0-4]|8\.[0-7])-(debug|release)-(nts|zts)-(arm64|x86_64)-[a-f0-9]{64}\.tar\.zst$/;
 const manifestPattern = /^extensions-(5\.6|7\.[0-4]|8\.[0-7])-manifest\.json$/;
 
+function validateManifest(name, manifest) {
+  const match = manifestPattern.exec(name);
+  if (!match || manifest?.schema !== 1 || !Array.isArray(manifest.assets)) throw new Error('Invalid retention manifest');
+  for (const entry of manifest.assets) {
+    validateEntry(entry);
+    if (entry.php_version !== match[1]) throw new Error('Retention manifest PHP version mismatch');
+  }
+  return manifest;
+}
+
 function staleArchives(assets, objects, manifests, retained = []) {
   const live = new Set(retained);
   for (const {name, manifest} of manifests) {
-    const match = manifestPattern.exec(name);
-    if (!match || manifest.schema !== 1 || !Array.isArray(manifest.assets)) throw new Error('Invalid retention manifest');
-    for (const entry of manifest.assets) {
-      validateEntry(entry);
-      if (entry.php_version !== match[1]) throw new Error('Retention manifest PHP version mismatch');
+    for (const entry of validateManifest(name, manifest).assets) {
       live.add(entry.file);
     }
   }
@@ -34,6 +40,7 @@ function retention({env, endpoint, run = command, retry = retryPolicy(), fetcher
   }
   async function prune(retained = [], version) {
     const {assets, objects} = await inventory();
+    const listed = new Map([[origins[0], new Set(assets.map(asset => asset.name))], [origins[1], new Set(objects)]]);
     const names = [...new Set([...assets.map(asset => asset.name), ...objects])].filter(name =>
       manifestPattern.test(name) && (!version || manifestPattern.exec(name)[1] === version));
     const manifests = [];
@@ -44,9 +51,11 @@ function retention({env, endpoint, run = command, retry = retryPolicy(), fetcher
       for (const base of origins) {
         const manifest = await retry(`Read retention ${name}`, async () => {
           const response = await fetcher(`${base}/${name}?retention=${Date.now()}`, {signal: AbortSignal.timeout(30000), cache: 'no-store'});
-          if (response.status === 404) { await response.body?.cancel(); return null; }
+          // An inventoried manifest returning 404 is unreadable, not absent.
+          // Retry it and defer deletion if either commit point stays unknown.
+          if (response.status === 404 && !listed.get(base).has(name)) { await response.body?.cancel(); return null; }
           if (!response.ok) { await response.body?.cancel(); throw httpError(response.status, 'Read retention manifest'); }
-          return response.json();
+          return validateManifest(name, await response.json());
         });
         if (manifest) { manifests.push({name, manifest}); found = true; }
       }

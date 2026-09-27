@@ -1,7 +1,7 @@
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const {staleArchives, retention} = require('../../release/extension-retention.cjs');
-const {key} = require('../../installer/install-extensions.cjs');
+const {key, origins} = require('../../installer/install-extensions.cjs');
 const {retryPolicy} = require('../../release/extension-transfers.cjs');
 
 function entry(hash, version = '8.5', arch = 'arm64') {
@@ -11,6 +11,76 @@ function entry(hash, version = '8.5', arch = 'arm64') {
   value.file = `${key(value)}-${value.sha256}.tar.zst`; return value;
 }
 const manifest = (...assets) => ({schema: 1, assets});
+
+function inventoryFixture({missingOrigin} = {}) {
+  const old = entry('a'), next = entry('b'), orphan = entry('c');
+  const name = 'extensions-8.5-manifest.json', writes = [];
+  const assets = [{name, id: 1}, ...[old, next, orphan].map((item, index) => ({name: item.file, id: index + 2}))];
+  return {old, next, orphan, name, writes, run: async (program, args) => {
+    if (args.includes('DELETE') || args.includes('delete-object')) { writes.push([program, ...args]); return ''; }
+    if (program === 'gh') return JSON.stringify(args.includes('--paginate') ?
+      [assets.filter(asset => missingOrigin !== origins[0] || asset.name !== name)] : {id: 10});
+    return JSON.stringify({Contents: assets.filter(asset => missingOrigin !== origins[1] || asset.name !== name)
+      .map(asset => ({Key: 'extensions/' + asset.name}))});
+  }};
+}
+
+test('an inventoried manifest must be read on both origins before any archives are retired', async () => {
+  for (const failedOrigin of origins) for (const recover of [true, false]) {
+    const f = inventoryFixture(), waits = [];
+    let failedReads = 0;
+    const cleanup = retention({env: {}, endpoint: 'https://example.invalid', run: f.run,
+      retry: retryPolicy({wait: async ms => waits.push(ms)}), fetcher: async url => {
+        if (url.startsWith(failedOrigin) && (++failedReads < 3 || !recover)) return new Response('', {status: 404});
+        return Response.json(manifest(url.startsWith(origins[0]) ? f.old : f.next));
+      }});
+    if (recover) {
+      await cleanup.prune();
+      assert.deepEqual(f.writes.map(args => args[0]), ['aws', 'gh']);
+      assert.ok(f.writes[0].includes('extensions/' + f.orphan.file));
+      assert.equal(f.writes[1].at(-1), 'repos/shivammathur/php-darwin/releases/assets/4');
+    } else {
+      await assert.rejects(cleanup.prune(), /HTTP 404/);
+      assert.deepEqual(f.writes, []);
+    }
+    assert.equal(failedReads, 3);
+    assert.deepEqual(waits, [1000, 2000]);
+  }
+});
+
+test('a manifest absent from an origin inventory may return 404 without blocking cleanup', async () => {
+  for (const missingOrigin of origins) {
+    const f = inventoryFixture({missingOrigin}), waits = [];
+    let missingReads = 0;
+    const cleanup = retention({env: {}, endpoint: 'https://example.invalid', run: f.run,
+      retry: retryPolicy({wait: async ms => waits.push(ms)}), fetcher: async url => {
+        if (url.startsWith(missingOrigin)) { missingReads++; return new Response('', {status: 404}); }
+        return Response.json(manifest(f.old, f.next));
+      }});
+    await cleanup.prune();
+    assert.equal(missingReads, 1);
+    assert.deepEqual(waits, []);
+    assert.equal(cleanup.report.github_deleted, 1);
+    assert.ok(f.writes[0].includes('extensions/' + f.orphan.file));
+  }
+});
+
+test('invalid manifest bodies retry and never permit cleanup from the other origin alone', async () => {
+  for (const body of [null, {}, {schema: 1, assets: [entry('a', '8.4')]}]) {
+    const f = inventoryFixture();
+    let reads = 0;
+    const cleanup = retention({env: {}, endpoint: 'https://example.invalid', run: f.run,
+      retry: retryPolicy({wait: async () => {}}), fetcher: async url => {
+        if (url.startsWith(origins[0])) return Response.json(manifest(f.old));
+        reads++;
+        return Response.json(body);
+      }});
+    await assert.rejects(cleanup.prune(), /Invalid retention manifest|version mismatch/);
+    assert.equal(reads, 3);
+    assert.deepEqual(f.writes, []);
+  }
+});
+
 test('R2 inventory retries malformed JSON three times without deleting from an incomplete listing', async () => {
   for (const recover of [true, false]) {
     let reads = 0;

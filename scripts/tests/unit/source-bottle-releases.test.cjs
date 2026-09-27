@@ -127,6 +127,38 @@ test('preparing newer dependencies preserves the source bottle still approved fo
   assert.equal(await f.cache.restoreCache([path.join(f.root, 'approved')], old.key), old.key);
 });
 
+test('normalized approvals protect legacy source bottles until dependency promotion', async t => {
+  const f = fixture(t, 'cache', true);
+  const old = f.bottle('1', {recipe: 'original recipe'});
+  const metadataFile = path.join(old.directory, 'metadata.json');
+  const metadata = JSON.parse(fs.readFileSync(metadataFile));
+  metadata.key = legacyKeyFor(metadata.inputs);
+  assert.notEqual(metadata.key, old.key);
+  fs.writeFileSync(metadataFile, JSON.stringify(metadata));
+  await f.cache.saveCache([old.directory], metadata.key);
+  const asset = f.state.assets[0], original = Buffer.from(asset.data);
+  const restored = path.join(f.root, 'restored');
+  const updatedInputs = {...old.inputs, recipe: 'edited recipe', environment: {...old.inputs.environment, compiler: 'new clang'}};
+  assert.equal(await f.cache.restoreCache([restored], old.key, [], updatedInputs), old.key);
+  f.cache.dependencyLockFile = path.join(f.root, 'dependencies.json');
+  const approve = directory => {
+    const {key, inputs, sha256} = JSON.parse(fs.readFileSync(path.join(directory, 'metadata.json')));
+    fs.writeFileSync(f.cache.dependencyLockFile, JSON.stringify({schema: 1, core_commit: 'a'.repeat(40), platforms: {
+      arm64: {packages: {libxml2: {version: inputs.version, source: {key, inputs, sha256}}}},
+    }}));
+  };
+  approve(restored);
+  const next = f.bottle('2');
+  await f.cache.saveCache([next.directory], next.key);
+  assert.deepEqual(f.state.deleted, []);
+  assert.deepEqual(asset.data, original, 'migration must not replace the existing release bytes');
+  assert.equal(f.state.assets.length, 2, 'migration must not upload a duplicate bottle');
+  assert.equal(await f.cache.restoreCache([path.join(f.root, 'approved')], old.key, [], old.inputs), old.key);
+  approve(next.directory);
+  await f.cache.saveCache([next.directory], next.key);
+  assert.deepEqual(f.state.deleted, [asset.name], 'retire the legacy bottle only after its replacement is approved');
+});
+
 test('uploads verify GitHub stored digests without downloading and restores prefer Cloudflare', async t => {
   const f = fixture(t);
   const bottle = f.bottle('1');

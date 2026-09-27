@@ -47,8 +47,15 @@ function validatePlatform(platform, arch) {
 function protectedSourceKeys(file = defaultFile) {
   if (!fs.existsSync(file)) return new Set();
   const lock = readLock(file);
+  const {keyFor, legacyKeyFor} = require('./source-bottle-cache.cjs');
   return new Set(Object.values(lock.platforms || {}).flatMap(platform =>
-    Object.values(platform.packages || {}).flatMap(entry => entry.source ? [entry.source.key] : [])));
+    Object.values(platform.packages || {}).flatMap(entry => {
+      if (!entry.source) return [];
+      const {key, inputs} = entry.source;
+      // A legacy restore changes only the local key, preserving its original
+      // inputs and remote asset. Protect both identities until promotion.
+      return inputs ? [key, keyFor(inputs), legacyKeyFor(inputs)] : [key];
+    })));
 }
 
 class ApprovedDependencies {
