@@ -7,6 +7,10 @@ on:
       TOKEN:
         required: false
     inputs:
+      optional-packs:
+        description: Require published optional packs matching the PHP release
+        default: true
+        type: boolean
       checkout-installer:
         default: false
         type: boolean
@@ -15,6 +19,10 @@ on:
         type: string
   workflow_dispatch:
     inputs:
+      optional-packs:
+        description: Require published optional packs matching the PHP release
+        default: true
+        type: boolean
       checkout-installer:
         description: Test the checked-out installer against existing published packages
         default: false
@@ -76,8 +84,8 @@ jobs:
       matrix:
         runner: [macos-15, macos-15-intel]
     env:
-      EXTENSIONS: ${{ (inputs.php-version == '5.6' || inputs.php-version == '7.0') && 'xdebug, imagick, mongodb, memcached' || 'xdebug, pcov, imagick, mongodb, memcached' }}
-      PHP_DARWIN_REQUIRE_PACKS: 'true'
+      EXTENSIONS: ${{ format('{0}{1}', (inputs.php-version == '5.6' || inputs.php-version == '7.0') && 'xdebug' || 'xdebug, pcov', inputs.optional-packs && ', imagick, mongodb, memcached' || '') }}
+      PHP_DARWIN_REQUIRE_PACKS: ${{ inputs.optional-packs }}
       PHP_DARWIN_REQUIRE_PCOV: ${{ (inputs.php-version == '5.6' || inputs.php-version == '7.0') && 'false' || 'true' }}
       PHP_DARWIN_REQUIRE_CACHE: 'true'
       PHP_DARWIN_REQUIRE_XDEBUG: 'true'

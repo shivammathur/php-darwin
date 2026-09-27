@@ -136,6 +136,10 @@ reclaims archives left unreferenced by older publishers.
 Use `e2e.yml` with `checkout-installer=true` to test candidate installer bytes
 against existing published packages. setup-php first runs without installed PHP,
 then repeats on the hot path; optional packs must come from the private cache.
+Standalone E2E runs require optional packs by default. The PHP publication
+workflow tests the PHP archive and bundled coverage modules immediately;
+optional packs have separate compatibility gates and can still target the
+previous PHP patch or nightly commit until their own publication completes.
 The action source remains unchanged. Performance experiments belong on a new
 orphan branch in `shivammathur/test-setup-php`; compare download, verification,
 extraction and installation, with timing reports retained as workflow artifacts.

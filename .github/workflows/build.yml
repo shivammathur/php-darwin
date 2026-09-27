@@ -260,6 +260,9 @@ jobs:
       TOKEN: ${{ secrets.TOKEN }}
     with:
       php-version: ${{ inputs.php-version }}
+      # Optional packs have an independent release cycle and may still target
+      # the previous PHP patch or nightly commit immediately after publication.
+      optional-packs: false
 
   report:
     name: Report cache work and workflow timings
