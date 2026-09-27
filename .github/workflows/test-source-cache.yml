@@ -132,7 +132,7 @@ jobs:
         run: bash scripts/tests/native/source-bottle-native.test.sh verify-config-upgrade
       - name: Upload native bottles and build inputs
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: ./.github/actions/upload-artifacts
         with:
           name: source-bottles-${{ matrix.runner }}
           path: .source-bottle-cache
@@ -200,7 +200,7 @@ jobs:
           diff -u "$RUNNER_TEMP/extensions-cold.txt" "$RUNNER_TEMP/extensions-warm.txt"
       - name: Upload extension bottles and build inputs
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: ./.github/actions/upload-artifacts
         with:
           name: extension-bottles-${{ matrix.runner }}-${{ matrix.build }}-${{ matrix.ts }}
           path: .source-bottle-cache

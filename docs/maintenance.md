@@ -327,6 +327,9 @@ share a budget of twelve extra attempts per job; GitHub operations retain their
 separate bounded policy. Extension rate-limit delays are capped at thirty seconds.
 Immutable extension read retries resume only locally authenticated prefixes,
 validate Content-Range, and check the complete SHA256 before publishing a manifest.
+Actions artifact uploads and downloads also get at most three attempts, keeping
+their original compression, retention and overwrite settings. Successful steps
+are not repeated.
 Transfer retries cover every error, including credential and certificate errors,
 and stop after three attempts. AWS internal retries are disabled where the outer
 loop owns recovery, preventing multiplied attempts. Validation is never bypassed.

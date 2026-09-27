@@ -41,7 +41,7 @@ jobs:
           PHP_VERSIONS: ${{ inputs.php-versions }}
         run: node scripts/release/extension-recovery.cjs plan "$SOURCE_RUN"
       - name: Preserve the exact reused reports and remaining test plan
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: ./.github/actions/upload-artifacts
         with:
           name: extension-recovery-plan
           path: extension-recovery-plan.json
@@ -68,7 +68,7 @@ jobs:
           EXTENSION_ENTRIES: ${{ toJSON(matrix.entries) }}
           GH_TOKEN: ${{ secrets.TOKEN || github.token }}
         run: node scripts/release/extension-batches.cjs reuse
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: ./.github/actions/upload-artifacts
         with:
           overwrite: true
           name: extension-reused-${{ matrix.php_version }}-${{ matrix.architecture }}
@@ -109,7 +109,7 @@ jobs:
         run: '"$PHP_DARWIN_NODE" scripts/build/extension-batch.cjs test'
       - name: Preserve compatibility reports
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: ./.github/actions/upload-artifacts
         with:
           overwrite: true
           name: compatibility-${{ matrix.php_version }}-${{ matrix.runner }}
@@ -153,7 +153,7 @@ jobs:
       - name: Preserve publication diagnostics
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: ./.github/actions/upload-artifacts
         with:
           overwrite: true
           name: publication-report-${{ github.run_id }}-${{ github.run_attempt }}

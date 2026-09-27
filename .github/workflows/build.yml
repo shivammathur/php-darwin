@@ -95,7 +95,7 @@ jobs:
           bash scripts/build/get-matrix.sh
 
       - name: Preserve the expected build and compatibility matrix
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: ./.github/actions/upload-artifacts
         with:
           name: build-plan-${{ inputs.php-version }}
           path: ${{ runner.temp }}/build-plan.json
@@ -289,7 +289,7 @@ jobs:
           GH_TOKEN: ${{ secrets.TOKEN || github.token }}
         run: node scripts/build/workflow-report.cjs workflow
       - name: Upload workflow performance report
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: ./.github/actions/upload-artifacts
         with:
           name: workflow-performance
           path: workflow-performance.json

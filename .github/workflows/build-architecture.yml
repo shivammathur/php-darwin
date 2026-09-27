@@ -167,7 +167,7 @@ jobs:
 
       - name: Upload verified ${{ matrix.build }}/${{ matrix.ts }} checkpoint
         if: ${{ steps.early-checkpoint.outputs.current != 'true' && steps.checkpoint.outputs.current != 'true' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: ./.github/actions/upload-artifacts
         with:
           name: ${{ steps.checkpoint.outputs.name || steps.early-checkpoint.outputs.name }}
           path: ${{ steps.stage.outputs.path }}
@@ -189,7 +189,7 @@ jobs:
 
       - name: Queue missing Cloudflare bottles
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: ./.github/actions/upload-artifacts
         with:
           name: bottle-misses-${{ inputs.php-version }}-${{ inputs.arch }}-${{ matrix.build }}-${{ matrix.ts }}
           path: ${{ runner.temp }}/bottle-misses.jsonl
@@ -200,7 +200,7 @@ jobs:
 
       - name: Queue source-built bottles for Cloudflare
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: ./.github/actions/upload-artifacts
         with:
           name: source-bottle-misses-${{ inputs.php-version }}-${{ inputs.arch }}-${{ matrix.build }}-${{ matrix.ts }}
           path: ${{ runner.temp }}/source-bottle-misses.jsonl
@@ -211,7 +211,7 @@ jobs:
 
       - name: Upload build timing data
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: ./.github/actions/upload-artifacts
         with:
           name: timing-${{ inputs.php-version }}-${{ inputs.arch }}-${{ matrix.build }}-${{ matrix.ts }}
           path: ${{ runner.temp }}/php-darwin-metrics.jsonl
@@ -366,7 +366,7 @@ jobs:
       - name: Preserve installation rollback diagnostics
         if: ${{ failure() }}
         continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: ./.github/actions/upload-artifacts
         with:
           name: install-recovery-${{ inputs.php-version }}-${{ matrix.runner }}
           path: |
