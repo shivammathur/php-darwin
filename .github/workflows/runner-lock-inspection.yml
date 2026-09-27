@@ -1,0 +1,29 @@
+name: Inspect drained Intel runner
+
+on:
+  push:
+    branches: [fix/keg-only-dependency-links]
+    paths: [.github/workflows/runner-lock-inspection.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ${{ 'php-darwin-runner-repair' }}
+    timeout-minutes: 10
+    steps:
+      - name: Inspect Homebrew lock holders
+        shell: bash
+        run: |
+          set -euo pipefail
+          date -u
+          ps -axo pid=,ppid=,pgid=,user=,lstart=,comm=
+          lock=/usr/local/var/homebrew/locks/argon2.formula.lock
+          if [ -f "$lock" ]; then
+            ls -l "$lock"
+            /usr/sbin/lsof -nP "$lock" || true
+            /usr/bin/ruby -e 'File.open(ARGV.fetch(0), "r+") { |f| puts "argon2_lock_available=#{!!f.flock(File::LOCK_EX | File::LOCK_NB)}" }' "$lock"
+          fi
+          /usr/sbin/lsof -nP +D /usr/local/var/homebrew/locks || true
