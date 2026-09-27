@@ -27,7 +27,8 @@ function retention({env, endpoint, run = command, retry = retryPolicy(), fetcher
   async function inventory() {
     const release = await githubJSON(`${route}/tags/extensions`, {run, retry});
     const assets = (await githubJSON(`${route}/${release.id}/assets?per_page=100`, {run, retry, paginate: true})).flat();
-    const listing = JSON.parse(await retry('List extension objects', () => aws(['list-objects-v2', '--prefix', 'extensions/'])));
+    const listing = await retry('List extension objects', async () =>
+      JSON.parse(await aws(['list-objects-v2', '--prefix', 'extensions/'])));
     const objects = (listing.Contents || []).map(object => object.Key.replace(/^extensions\//, ''));
     return {assets, objects};
   }

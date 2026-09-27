@@ -205,7 +205,7 @@ async function publish(records, { download = transfer, run = exec, env = process
           });
         } catch (error) {
           if (status === 404) {
-            const remote = JSON.parse(await retry('Inspect R2 bottle', () => run('aws', ['--endpoint-url', endpoint, 's3api', 'head-object',
+            const remote = await retry('Inspect R2 bottle', async () => JSON.parse(await run('aws', ['--endpoint-url', endpoint, 's3api', 'head-object',
               '--bucket', 'php-darwin', '--key', objectKey(record),
               '--cli-connect-timeout', '5', '--cli-read-timeout', '30'], awsOptions)));
             console.error(`R2 object exists behind public 404: ${objectKey(record)}; ` +

@@ -2,6 +2,7 @@ const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const {staleArchives, retention} = require('../../release/extension-retention.cjs');
 const {key} = require('../../installer/install-extensions.cjs');
+const {retryPolicy} = require('../../release/extension-transfers.cjs');
 
 function entry(hash, version = '8.5', arch = 'arm64') {
   const value = {schema: 1, name: 'imagick', php_version: version, architecture: arch,
@@ -10,6 +11,26 @@ function entry(hash, version = '8.5', arch = 'arm64') {
   value.file = `${key(value)}-${value.sha256}.tar.zst`; return value;
 }
 const manifest = (...assets) => ({schema: 1, assets});
+test('R2 inventory retries malformed JSON three times without deleting from an incomplete listing', async () => {
+  for (const recover of [true, false]) {
+    let reads = 0;
+    const waits = [], writes = [];
+    const cleanup = retention({env: {}, endpoint: 'https://example.invalid',
+      retry: retryPolicy({wait: async ms => waits.push(ms)}),
+      run: async (program, args) => {
+        if (args.includes('DELETE') || args.includes('delete-object')) writes.push(args);
+        if (program === 'gh') return JSON.stringify(args.includes('--paginate') ? [[]] : {id: 1});
+        reads++;
+        return recover && reads === 3 ? '{"Contents":[]}' : '{"Contents":';
+      },
+    });
+    if (recover) assert.deepEqual(await cleanup.prune(), []);
+    else await assert.rejects(cleanup.prune(), SyntaxError);
+    assert.equal(reads, 3);
+    assert.deepEqual(waits, [1000, 2000]);
+    assert.deepEqual(writes, []);
+  }
+});
 test('retention protects both manifest commit points, other PHP versions, and incoming archives', () => {
   const old = entry('a'), next = entry('b'), other = entry('c', '8.4'), orphan = entry('d');
   const assets = [old, next, other, orphan].map(item => ({name: item.file}));

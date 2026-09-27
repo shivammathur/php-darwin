@@ -201,6 +201,28 @@ test('public 404 after upload checks R2 directly and fails without another uploa
   assert.deepEqual(calls, ['s3', 's3api']);
 });
 
+test('R2 object metadata retries malformed JSON without repeating a completed upload', async () => {
+  for (const recover of [true, false]) {
+    let reads = 0, uploads = 0;
+    const work = publish([record()], {env, retry: retryPolicy({wait: async () => {}}),
+      download: async (url, file) => {
+        if (!url.startsWith('https://ghcr.io/')) return 404;
+        fs.writeFileSync(file, bytes);
+        return 200;
+      },
+      run: async (_program, args) => {
+        if (args.includes('head-object')) {
+          reads++;
+          return recover && reads === 3 ? JSON.stringify({ContentLength: bytes.length, ETag: 'fixture'}) : '{';
+        }
+        uploads++;
+      },
+    });
+    await assert.rejects(work, recover ? /verification failed: gcc HTTP 404/ : SyntaxError);
+    assert.equal(reads, 3);
+    assert.equal(uploads, 1);
+  }
+});
 
 test('R2 upload retries permission failures but reuses a committed object after a lost reply', async () => {
   for (const mode of ['lost', 'permission', 'corrupt-readback']) {
