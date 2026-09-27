@@ -17,26 +17,22 @@ function command(program, args, options = {}) {
       // Curl still writes transfer metrics when it times out. Keep stdout
       // available to the reader without exposing arbitrary command output in logs.
       Object.defineProperty(error, 'output', { value: output.trim() });
-      const status = diagnostic.match(/HTTP(?:\/\S+)?\s+(\d{3})\b/);
-      error.transient = (program === 'curl' && [5, 6, 7, 18, 28, 52, 55, 56, 92].includes(code)) ||
-        (status && httpError(status[1], 'Transfer').transient) ||
-        /\b(InternalError|InternalFailure|ServiceUnavailable|SlowDown|RequestTimeout)\b/.test(diagnostic) ||
-        /unexpected EOF|connection reset by peer|TLS handshake timeout|connection timed out|connection was closed before we received a valid response/i.test(diagnostic);
+      error.transient = true;
       reject(error);
     });
   });
 }
-function retryPolicy({ wait = ms => new Promise(resolve => setTimeout(resolve, ms)), budget = 6,
-  attempts = 2, delay = 5000 } = {}) {
+function retryPolicy({ wait = ms => new Promise(resolve => setTimeout(resolve, ms)), budget = 12,
+  attempts = 3, delay = 1000 } = {}) {
   return async (label, work) => {
     for (let attempt = 1; ; attempt++) {
       try { return await work(); }
       catch (error) {
         // Bound both an individual operation and all recovery work in the job.
-        // Permanent errors (credentials, checksums, metadata) never enter here.
-        if (!error.transient || attempt >= attempts || budget-- <= 0) throw error;
+        // Every error gets the same bounded recovery; validation still runs on each attempt.
+        if (attempt >= attempts || budget-- <= 0) throw error;
         const pause = Math.min(Math.max(delay * 2 ** (attempt - 1), error.retryAfterMs || 0), 30000);
-        console.warn(`${label}: transient service failure; recovery attempt ${attempt + 1}/${attempts} in ${pause / 1000} seconds (${budget} remain for this job)`);
+        console.warn(`${label}: transfer failed; recovery attempt ${attempt + 1}/${attempts} in ${pause / 1000} seconds (${budget} remain for this job)`);
         await wait(pause);
       }
     }
@@ -44,7 +40,7 @@ function retryPolicy({ wait = ms => new Promise(resolve => setTimeout(resolve, m
 }
 function httpError(status, label) {
   const error = new Error(`${label}: HTTP ${status}`);
-  error.transient = [408, 429].includes(Number(status)) || (Number(status) >= 500 && Number(status) <= 599);
+  error.transient = true;
   return error;
 }
 function readDiagnostic(output, headerFile, downloaded) {
@@ -127,7 +123,7 @@ function transfers({ directory, env, endpoint, run = command, retry = retryPolic
         if (complete.length === expected.length && digest(complete) === digest(expected)) {
           verified = true; return true;
         }
-        if (transportError?.transient && complete.length) fs.writeFileSync(partial, complete, { mode: 0o600 });
+        if (transportError && complete.length) fs.writeFileSync(partial, complete, { mode: 0o600 });
       }
       if (status === '404' && missing) return false;
       if (/^[45]\d{2}$/.test(status)) {

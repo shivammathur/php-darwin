@@ -70,7 +70,7 @@ test('stale packs and invalid config paths never run an installer; one enabling 
   assert.deepEqual(await activate(root, context, '/opt/homebrew/etc/php/8.6/conf.d', options), ['memcached']);
   assert.deepEqual(calls, ['imagick', 'memcached']);
 });
-test('mirror retries transient HTTP only, caps Retry-After and never promotes a partial file', async t => {
+test('downloads retry all transfer and verification errors on both origins, caps Retry-After and never promotes a partial file', async t => {
   const { download } = require('../../installer/install-extensions.cjs');
   const root = directory(t), file = path.join(root, 'pack');
   let status = 524, calls = 0;
@@ -78,18 +78,18 @@ test('mirror retries transient HTTP only, caps Retry-After and never promotes a 
   t.mock.method(globalThis, 'fetch', async url => {
     calls++;
     if (url.startsWith('https://primary/')) return new Response('', { status: 404 });
-    if (status === 524 && calls === 4) return new Response('good');
+    if (status === 524 && calls === 6) return new Response('good');
     return new Response(status === 200 ? 'evil' : '', { status, headers: { 'retry-after': '999' } });
   });
   const options = { bases: ['https://primary', 'https://mirror'], bytes: 4, sha256: digest('good'), sleep: async ms => waits.push(ms) };
   await download('pack', file, options);
   assert.equal(fs.readFileSync(file, 'utf8'), 'good');
-  assert.deepEqual(waits, [30000, 30000]);
-  assert.equal(calls, 4);
+  assert.deepEqual(waits, [1000, 2000, 30000, 30000]);
+  assert.equal(calls, 6);
   for (const failure of [403, 200, 503]) {
     fs.rmSync(file); calls = 0; waits.length = 0; status = failure;
     await assert.rejects(download('pack', file, options));
-    assert.equal(calls, failure === 503 ? 4 : 2);
+    assert.equal(calls, 6);
     assert.ok(!fs.existsSync(file));
     assert.ok(!fs.existsSync(file + '.partial'));
     fs.writeFileSync(file, 'reset');

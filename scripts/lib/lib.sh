@@ -685,17 +685,11 @@ php_darwin_request_release() {
   local status
   local result=0
   local range=()
-  local attempt=1 attempts=1 connect_timeout=10 delay retry_after
-  local mirror=${PHP_DARWIN_MIRROR_URL-https://artifacts.php-darwin.setup-php.com}
-  local headers=()
+  local attempt=1 attempts=3 connect_timeout=10 delay retry_after
+  local headers=(--dump-header "$2.headers")
   [ -z "${6:-}" ] || range=(--range "$6-")
-  if [ -n "$mirror" ] && [[ "$1" = "${mirror%/}/"* ]]; then
-    attempts=3
-    headers=(--dump-header "$2.headers")
-  fi
 
-  # Allow time for DNS, TLS and redirects on both origins. Give the mirror
-  # bounded recovery from DNS, truncated bodies and transient HTTP errors.
+  # Retry every failed transfer on either origin, with a fixed attempt limit.
   # Each retry replaces its output at the same requested range offset;
   # the archive caller verifies the complete assembled SHA before extraction.
   while :; do
@@ -710,10 +704,7 @@ php_darwin_request_release() {
         "$result" "${status:-000}" "$1" >&2
     fi
     [ "$attempt" -lt "$attempts" ] || break
-    case "$result:$status" in
-      5:*|6:*|7:*|18:*|28:*|52:*|55:*|56:*|92:*|22:408|22:429|22:5??) ;;
-      *) break ;;
-    esac
+    if [ "$result" -eq 0 ] && { [ "$status" = 200 ] || [ "$status" = 206 ]; }; then break; fi
     delay=$((1 << (attempt - 1)))
     retry_after=$(awk 'tolower($1) == "retry-after:" {gsub(/\r/, "", $2); value=$2} END {print value}' "$2.headers" 2>/dev/null) || retry_after=
     if [[ "$retry_after" =~ ^[0-9]{1,6}$ ]]; then
@@ -721,7 +712,7 @@ php_darwin_request_release() {
       [ "$retry_after" -le 30 ] || retry_after=30
       [ "$retry_after" -le "$delay" ] || delay=$retry_after
     fi
-    printf 'php-darwin: retrying mirror transfer %s/%s in %ss\n' "$((attempt + 1))" "$attempts" "$delay" >&2
+    printf 'php-darwin: retrying transfer %s/%s in %ss\n' "$((attempt + 1))" "$attempts" "$delay" >&2
     sleep "$delay"
     attempt=$((attempt + 1))
   done

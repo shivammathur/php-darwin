@@ -47,14 +47,14 @@ function exec(program, args, options = {}) {
     child.on('close', code => {
       if (code === 0) return resolve(output.trim());
       const error = new Error(`${program} exited ${code}`);
-      error.transient = program === 'curl' && [5, 6, 7, 18, 28, 52, 55, 56, 92].includes(code);
+      error.transient = true;
       Object.defineProperty(error, 'output', { value: output.trim() });
       reject(error);
     });
   });
 }
 async function transfer(url, file, { head = false, upstream = false } = {}) {
-  // One attempt here: publication wraps transient failures in its shared retry
+  // One attempt here: publication wraps failures in its shared retry
   // budget, while build prefetch can promptly fall back to normal Homebrew.
   const args = ['-q', '--fail', '--silent', '--show-error', '--location', '--proto', '=https',
     '--proto-redir', '=https', '--connect-timeout', '5', '--max-time', head ? '10' : '180',
@@ -76,7 +76,7 @@ async function pool(items, concurrency, work) {
   }));
 }
 async function prefetch(records, { download = transfer, log = console.log, warn = console.warn,
-  missFile = process.env.PHP_DARWIN_BOTTLE_MISSES } = {}) {
+  missFile = process.env.PHP_DARWIN_BOTTLE_MISSES, retry = retryPolicy() } = {}) {
   await pool(records, 8, async record => {
     validate(record);
     if (!path.isAbsolute(record.cached_download || '')) throw new Error('Missing Homebrew download path');
@@ -87,13 +87,22 @@ async function prefetch(records, { download = transfer, log = console.log, warn 
       if (await validFile(record.cached_download, record.sha256)) {
         result = 'local';
         // Still enqueue a new upstream revision that another job fetched locally.
-        if (await download(publicURL(record), os.devNull, { head: true }) !== 200) result = 'local-miss';
+        const status = await retry('Cloudflare bottle lookup', async () => {
+          const response = await download(publicURL(record), os.devNull, { head: true });
+          if (response !== 200 && response !== 404) throw httpError(response, 'Cloudflare bottle lookup');
+          return response;
+        });
+        if (status !== 200) result = 'local-miss';
       } else {
         await fsp.mkdir(path.dirname(record.cached_download), { recursive: true });
         temporary = `${record.cached_download}.r2-${process.pid}-${crypto.randomUUID()}`;
-        const status = await download(publicURL(record), temporary);
+        const status = await retry('Cloudflare bottle download', async () => {
+          const response = await download(publicURL(record), temporary);
+          if (response !== 200 && response !== 404) throw httpError(response, 'Cloudflare bottle download');
+          if (response === 200 && !await validFile(temporary, record.sha256)) throw new Error('Cloudflare bottle checksum mismatch');
+          return response;
+        });
         if (status === 200) {
-          if (!await validFile(temporary, record.sha256)) throw new Error('Cloudflare bottle checksum mismatch');
           await fsp.rename(temporary, record.cached_download);
           result = 'hit';
         } else if (status !== 404) throw new Error(`Cloudflare returned HTTP ${status}`);
@@ -157,31 +166,52 @@ async function publish(records, { download = transfer, run = exec, env = process
       let status = await readPublic(publicUrl, file);
       if (status !== 200 || !await validFile(file, record.sha256)) {
         if (status !== 200 && status !== 404) throw new Error(`Cloudflare read failed: HTTP ${status}`);
-        status = await download(record.url, file, { upstream });
+        status = await retry('Upstream bottle read', async () => {
+          const response = await download(record.url, file, { upstream });
+          if (response !== 200) throw httpError(response, 'Upstream bottle read failed');
+          if (!await validFile(file, record.sha256)) throw new Error(`Invalid upstream bottle: ${record.formula}`);
+          return response;
+        });
         if (status !== 200 || !await validFile(file, record.sha256)) throw new Error(`Invalid upstream bottle: ${record.formula}`);
         const awsOptions = { env: {
           ...env, AWS_ACCESS_KEY_ID: env.CF_R2_AWS_ACCESS_KEY_ID,
           AWS_SECRET_ACCESS_KEY: env.CF_R2_AWS_SECRET_ACCESS_KEY, AWS_DEFAULT_REGION: 'auto',
-          AWS_EC2_METADATA_DISABLED: 'true', AWS_MAX_ATTEMPTS: '3', AWS_RETRY_MODE: 'standard',
+          AWS_EC2_METADATA_DISABLED: 'true', AWS_MAX_ATTEMPTS: '1', AWS_RETRY_MODE: 'standard',
           AWS_REQUEST_CHECKSUM_CALCULATION: 'when_required', AWS_RESPONSE_CHECKSUM_VALIDATION: 'when_required',
         } };
-        await run('aws', ['--endpoint-url', endpoint, 's3', 'cp', file, `s3://php-darwin/${objectKey(record)}`,
+        let uploadAttempted = false;
+        await retry('R2 bottle upload', async () => {
+          if (uploadAttempted) {
+            // A lost upload reply may still have committed the object. Reconcile
+            // public bytes before sending the same content-addressed file again.
+            const existing = `${file}.existing`;
+            const response = await download(`${publicUrl}?verify=${crypto.randomUUID()}`, existing);
+            if (response === 200 && await validFile(existing, record.sha256)) return;
+            if (response !== 200 && response !== 404) throw httpError(response, 'R2 upload reconciliation');
+          }
+          uploadAttempted = true;
+          await run('aws', ['--endpoint-url', endpoint, 's3', 'cp', file, `s3://php-darwin/${objectKey(record)}`,
           '--cache-control', 'public,max-age=31536000,immutable', '--content-type', contentType,
           '--cli-connect-timeout', '5', '--cli-read-timeout', '60', '--only-show-errors'], awsOptions);
-        // Bypass any negative edge cache populated by the initial miss.
-        status = await readPublic(`${publicUrl}?verify=${crypto.randomUUID()}`, file);
-        if (status !== 200 || !await validFile(file, record.sha256)) {
+        });
+        // Bypass negative edge caches and retry verification without repeating
+        // an upload. Every successful read must also match the expected digest.
+        try {
+          await retry('Verify published bottle', async () => {
+            status = await download(`${publicUrl}?verify=${crypto.randomUUID()}`, file);
+            if (status !== 200 || !await validFile(file, record.sha256)) {
+              throw new Error(`Published bottle verification failed: ${record.formula} HTTP ${status}, expected ${record.sha256}`);
+            }
+          });
+        } catch (error) {
           if (status === 404) {
-            // Diagnose stale public 404s against R2's strongly consistent API;
-            // do not retry an upload or accept an unverified public object.
-            const remote = JSON.parse(await run('aws', ['--endpoint-url', endpoint, 's3api', 'head-object',
+            const remote = JSON.parse(await retry('Inspect R2 bottle', () => run('aws', ['--endpoint-url', endpoint, 's3api', 'head-object',
               '--bucket', 'php-darwin', '--key', objectKey(record),
-              '--cli-connect-timeout', '5', '--cli-read-timeout', '30'], awsOptions));
+              '--cli-connect-timeout', '5', '--cli-read-timeout', '30'], awsOptions)));
             console.error(`R2 object exists behind public 404: ${objectKey(record)}; ` +
               `${remote.ContentLength} bytes, ETag ${remote.ETag}`);
           }
-          throw new Error(`Published bottle verification failed: ${record.formula} HTTP ${status}, ` +
-            `expected ${record.sha256}, received ${await sha256(file)} (${(await fsp.stat(file)).size} bytes)`);
+          throw error;
         }
         result = 'uploaded';
       }

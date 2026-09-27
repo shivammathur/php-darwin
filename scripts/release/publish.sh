@@ -3,6 +3,8 @@
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=scripts/lib/lib.sh
 . "$script_dir/../lib/lib.sh"
+# shellcheck source=scripts/lib/retry.sh
+. "$script_dir/../lib/retry.sh"
 
 builds_dir=${1:?}
 expected_version=${PHP_VERSION:-}
@@ -31,13 +33,13 @@ publish_cleanup() {
     done < <(find "$previous_assets" -type f -print0)
     if [ "${#previous_asset_files[@]}" -gt 0 ]; then
       printf 'Restoring the previous %s release assets after a failed publish\n' "$tag" >&2
-      gh release upload "$tag" "${previous_asset_files[@]}" --clobber \
+      php_darwin_retry gh release upload "$tag" "${previous_asset_files[@]}" --clobber \
         --repo "$release_repository" >/dev/null 2>&1 || \
         printf 'Could not fully restore the previous %s release assets\n' "$tag" >&2
     fi
   elif [ "$cleanup_status" -ne 0 ] && [ "$release_committed" = false ] && \
     [ "$release_created" = true ]; then
-    gh release delete "$tag" --cleanup-tag --yes --repo "$release_repository" >/dev/null 2>&1 || \
+    php_darwin_retry gh release delete "$tag" --cleanup-tag --yes --repo "$release_repository" >/dev/null 2>&1 || \
       printf 'Could not remove the incomplete %s release\n' "$tag" >&2
   fi
   rm -rf "$work_dir"
@@ -245,7 +247,7 @@ bash "$script_dir/../installer/validate-install.sh" >/dev/null || \
 PHP_DARWIN_RELEASE_MANIFEST="$manifest" bash "$script_dir/../installer/generate-install.sh" "$installer" >/dev/null || \
   php_darwin_die 'could not generate the release-specific standalone installer'
 
-if gh release view "$tag" --repo "$release_repository" --json assets > "$release_assets_json" 2>/dev/null; then
+if php_darwin_retry gh release view "$tag" --repo "$release_repository" --json assets > "$release_assets_json" 2>/dev/null; then
   release_exists=true
   mkdir -p "$previous_assets" || php_darwin_die 'could not create the release backup directory'
   jq -e '(.assets | type == "array") and
@@ -265,7 +267,7 @@ if gh release view "$tag" --repo "$release_repository" --json assets > "$release
       "$release_assets_json") || php_darwin_die "could not inspect $mutable_asset digest"
     if [ "$mutable_state" = uploaded ] && \
       { [ -z "$mutable_digest" ] || [[ "$mutable_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; }; then
-      gh release download "$tag" --pattern "$mutable_asset" --dir "$previous_assets" \
+      php_darwin_retry gh release download "$tag" --pattern "$mutable_asset" --clobber --dir "$previous_assets" \
         --repo "$release_repository" || \
         php_darwin_die "could not back up existing release asset $mutable_asset"
       if [ -n "$mutable_digest" ]; then
@@ -278,7 +280,7 @@ if gh release view "$tag" --repo "$release_repository" --json assets > "$release
     fi
   done
 else
-  gh release create "$tag" --repo "$release_repository" --title "PHP $version" \
+  php_darwin_retry gh release create "$tag" --repo "$release_repository" --title "PHP $version" \
     --notes "Architecture-specific Homebrew PHP $version caches for macOS runners." --latest=false || \
     php_darwin_die "could not create release $tag"
   release_created=true
@@ -339,14 +341,14 @@ for upload_file in "${data_upload_files[@]}"; do
           '.assets[] | select(.name == $name) | .apiUrl | select(type == "string" and length > 0)' \
           "$release_assets_json") || php_darwin_die "release asset $upload_name has no API URL"
         invalid_name="$upload_name.invalid.${existing_api_url##*/}"
-        gh api --method PATCH "$existing_api_url" -f "name=$invalid_name" >/dev/null || \
+        php_darwin_retry gh api --method PATCH "$existing_api_url" -f "name=$invalid_name" >/dev/null || \
           php_darwin_die "could not quarantine corrupt release asset $upload_name"
-        if ! gh release upload "$tag" "$upload_file" --repo "$release_repository"; then
-          gh api --method PATCH "$existing_api_url" -f "name=$upload_name" >/dev/null 2>&1 || \
+        if ! php_darwin_upload_immutable "$tag" "$release_repository" "$upload_file"; then
+          php_darwin_retry gh api --method PATCH "$existing_api_url" -f "name=$upload_name" >/dev/null 2>&1 || \
             printf 'Could not restore corrupt release asset name %s\n' "$upload_name" >&2
           php_darwin_die "could not repair release asset $upload_name"
         fi
-        gh release delete-asset "$tag" "$invalid_name" --yes --repo "$release_repository" || \
+        php_darwin_retry gh release delete-asset "$tag" "$invalid_name" --yes --repo "$release_repository" || \
           php_darwin_die "could not remove quarantined release asset $invalid_name"
       fi
       ;;
@@ -354,7 +356,7 @@ for upload_file in "${data_upload_files[@]}"; do
   esac
 done
 if [ "${#upload_files[@]}" -gt 0 ]; then
-  gh release upload "$tag" "${upload_files[@]}" --repo "$release_repository" || \
+  php_darwin_upload_immutable "$tag" "$release_repository" "${upload_files[@]}" || \
     php_darwin_die "could not upload release archives to $tag"
 fi
 # Verify the independent fallback before advertising the new GitHub release.
@@ -363,11 +365,11 @@ if [ "${PHP_DARWIN_MIRROR_REQUIRED:-false}" = true ] || [ -n "${CF_R2_AWS_ACCESS
     php_darwin_die "could not mirror the verified release $tag"
 fi
 mutable_mutation_started=true
-gh release upload "$tag" "$installer" --clobber --repo "$release_repository" || \
+php_darwin_retry gh release upload "$tag" "$installer" --clobber --repo "$release_repository" || \
   php_darwin_die "could not upload the release installer to $tag"
 # The manifest is the release commit point. Upload it only after every archive,
 # checksum, and the matching embedded-manifest installer is available.
-gh release upload "$tag" "$manifest" --clobber --repo "$release_repository" || \
+php_darwin_retry gh release upload "$tag" "$manifest" --clobber --repo "$release_repository" || \
   php_darwin_die "could not commit release assets for $tag"
 release_committed=true
 
@@ -376,7 +378,7 @@ release_committed=true
 # instead of silently installing frozen builds.
 while IFS= read -r stale_asset; do
   [ -n "$stale_asset" ] || continue
-  if ! gh release delete-asset "$tag" "$stale_asset" --yes --repo "$release_repository" \
+  if ! php_darwin_retry gh release delete-asset "$tag" "$stale_asset" --yes --repo "$release_repository" \
     >/dev/null 2>&1; then
     printf 'Could not remove stale release asset %s from %s\n' "$stale_asset" "$tag" >&2
   fi
@@ -384,7 +386,7 @@ done < "$stale_assets"
 retired_cleanup_failed=false
 while IFS= read -r retired_asset; do
   [ -n "$retired_asset" ] || continue
-  if ! gh release delete-asset "$tag" "$retired_asset" --yes --repo "$release_repository" \
+  if ! php_darwin_retry gh release delete-asset "$tag" "$retired_asset" --yes --repo "$release_repository" \
     >/dev/null 2>&1; then
     printf 'Could not remove retired release asset %s from %s\n' "$retired_asset" "$tag" >&2
     retired_cleanup_failed=true

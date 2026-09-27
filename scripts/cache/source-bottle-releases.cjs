@@ -9,6 +9,7 @@ const { spawnSync } = require('node:child_process');
 const { setTimeout: pause } = require('node:timers/promises');
 const { command, brewSource, readBottle, keyFor } = require('./source-bottle-cache.cjs');
 const mirror = require('./source-bottle-mirror.cjs');
+const { retryPolicy } = require('../release/extension-transfers.cjs');
 const { releaseForFormula } = require('./source-cache-layout.cjs');
 
 const sha256 = value => crypto.createHash('sha256').update(value).digest('hex');
@@ -89,6 +90,7 @@ class ReleaseCache {
     this.dependencyLockFile = dependencyLockFile;
     this.versionsToPrune = versionsToPrune;
     this.wait = wait;
+    this.mirrorRetry = retryPolicy({ wait });
     this.warn = warn;
     this.responses = new Map();
   }
@@ -110,17 +112,13 @@ class ReleaseCache {
         }
         return await consume(response);
       } catch (error) {
-        const transient = error.retryable || ['TypeError', 'SyntaxError', 'AbortError', 'TimeoutError'].includes(error.name) ||
-          ['ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'ERR_STREAM_PREMATURE_CLOSE'].includes(error.code);
-        if (!transient || attempt === 4) {
-          // Ownership polling can spend the remaining coordination budget on
-          // transient outages, without retrying permission or validation errors.
-          // DOMException.message can be read-only (fetch timeouts). Preserve
-          // its classification and cause without mutating the original error.
+        if (attempt === 3) {
+          // Keep the original failure without mutating read-only DOMExceptions.
           const failure = new Error(errorDetails(error), { cause: error });
           failure.name = error.name;
           failure.code = error.code;
-          failure.retryable = Boolean(transient);
+          failure.retryable = true;
+          failure.retryExhausted = true;
           throw failure;
         }
         if (this.fallbackRequest && !this.useFallback &&
@@ -133,7 +131,7 @@ class ReleaseCache {
         const serverDelay = retryAfter ? (Number.isFinite(Number(retryAfter)) ? Number(retryAfter) * 1000 : Date.parse(retryAfter) - Date.now()) :
           (response?.headers.get('x-ratelimit-remaining') === '0' && reset ? Number(reset) * 1000 - Date.now() : 0);
         delay = Math.min(60000, Math.max(1000 * 2 ** (attempt - 1), serverDelay || 0));
-        this.warn(`Retrying release cache request (${attempt}/3) in ${delay / 1000}s: ${errorDetails(error)}`);
+        this.warn(`Retrying release cache request (${attempt + 1}/3) in ${delay / 1000}s: ${errorDetails(error)}`);
       } finally {
         // Recreate upload streams on retry and release unused error bodies.
         if (options.body?.destroy) {
@@ -219,8 +217,15 @@ class ReleaseCache {
       const mirrored = useMirror && this.mirrorDownload && mirror.record(asset, this.repository, tag);
       if (mirrored) {
         try {
-          const status = await this.mirrorDownload(mirror.publicURL(mirrored), archive);
-          if (status === 200 && await mirror.validFile(archive, mirrored.sha256)) {
+          const status = await this.mirrorRetry('Cloudflare source bottle read', async () => {
+            const response = await this.mirrorDownload(mirror.publicURL(mirrored), archive);
+            if (response === 404) return response;
+            if (response !== 200 || !await mirror.validFile(archive, mirrored.sha256)) {
+              throw new Error(`Cloudflare source bottle rejected: ${mirrored.formula} (HTTP ${response})`);
+            }
+            return response;
+          });
+          if (status === 200) {
             unpack(archive, directory, key);
             console.log(`Cloudflare source bottle HIT: ${mirrored.formula} ${mirrored.version}`);
             return;
@@ -233,11 +238,12 @@ class ReleaseCache {
         console.log(`Cloudflare source bottle MISS: ${mirrored.formula}; using GitHub fallback and queued for caching`);
         fs.rmSync(archive, { force: true });
       }
-      await this.api(`releases/assets/${asset.id}`, { binary: true, consume: response =>
-        pipeline(Readable.fromWeb(response.body), fs.createWriteStream(archive)) });
-      if (asset.digest && asset.digest !== `sha256:${sha256(fs.readFileSync(archive))}`) {
-        throw new Error('Release source cache archive checksum mismatch');
-      }
+      await this.api(`releases/assets/${asset.id}`, { binary: true, consume: async response => {
+        await pipeline(Readable.fromWeb(response.body), fs.createWriteStream(archive));
+        if (asset.digest && asset.digest !== `sha256:${sha256(fs.readFileSync(archive))}`) {
+          throw new Error('Release source cache archive checksum mismatch');
+        }
+      } });
       unpack(archive, directory, key);
     } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
   }

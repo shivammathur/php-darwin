@@ -3,6 +3,8 @@ set -euo pipefail
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=scripts/lib/lib.sh
 . "$script_dir/../lib/lib.sh"
+# shellcheck source=scripts/lib/retry.sh
+. "$script_dir/../lib/retry.sh"
 staging=${1:?release staging directory required}
 mode=${2:-all}
 case "$mode" in all|installer-only) ;; *) php_darwin_die "invalid mirror mode: $mode" ;; esac
@@ -15,7 +17,7 @@ php_darwin_validate_release_manifest "$manifest" "$version" >/dev/null
 bash -n "$staging/install.sh"
 export AWS_ACCESS_KEY_ID=${CF_R2_AWS_ACCESS_KEY_ID:?}
 export AWS_SECRET_ACCESS_KEY=${CF_R2_AWS_SECRET_ACCESS_KEY:?}
-export AWS_DEFAULT_REGION=auto AWS_EC2_METADATA_DISABLED=true AWS_MAX_ATTEMPTS=3 AWS_RETRY_MODE=standard
+export AWS_DEFAULT_REGION=auto AWS_EC2_METADATA_DISABLED=true AWS_MAX_ATTEMPTS=1 AWS_RETRY_MODE=standard
 export AWS_REQUEST_CHECKSUM_CALCULATION=when_required AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
 endpoint=${CF_R2_AWS_S3_ENDPOINT:?}
 mirror=$(php_darwin_release_mirror shivammathur/php-darwin "$version")
@@ -28,7 +30,7 @@ trap 'exit 143' TERM
 
 upload() {
   local name=$1 cache_control=$2
-  aws --endpoint-url "$endpoint" s3 cp "$staging/$name" "s3://php-darwin/$tag/$name" \
+  php_darwin_retry aws --endpoint-url "$endpoint" s3 cp "$staging/$name" "s3://php-darwin/$tag/$name" \
     --cli-connect-timeout 5 --cli-read-timeout 30 \
     --cache-control "$cache_control" --only-show-errors
 }
@@ -44,10 +46,7 @@ read_public() {
     status=$(curl -q -fsSL --retry 0 --connect-timeout 5 --max-time 45 \
       --speed-limit 1024 --speed-time 5 -w '%{http_code}' "$url" -o "$destination") || result=$?
     if [ "$attempt" -ge 3 ]; then printf '%s' "$status"; return "$result"; fi
-    case "$result:$status" in
-      5:*|6:*|7:*|18:*|28:*|52:*|55:*|56:*|92:*|22:408|22:429|22:5??) ;;
-      *) printf '%s' "$status"; return "$result" ;;
-    esac
+    if [ "$result" -eq 0 ] && [ "$status" = 200 ]; then printf '%s' "$status"; return 0; fi
     delay=$((1 << (attempt - 1)))
     printf 'Cloudflare read %s failed (curl %s, HTTP %s); retry %s/3 in %ss\n' \
       "$name" "$result" "$status" "$((attempt + 1))" "$delay" >&2

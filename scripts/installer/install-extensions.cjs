@@ -44,22 +44,17 @@ function validateEntry(entry) {
       entry.file !== `${key(entry)}-${entry.sha256}.tar.zst`) throw new Error('Invalid extension cache metadata');
   return entry;
 }
-function transientDownload(error) {
-  return error.transient === true || ['TimeoutError', 'AbortError'].includes(error.name) ||
-    ['EAI_AGAIN', 'ENOTFOUND', 'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT',
-      'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT', 'UND_ERR_SOCKET']
-      .includes(error.cause?.code || error.code);
-}
 async function download(name, destination, { sha256, bytes, bases = origins,
   fresh = false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
   if (!safePath(name) || name.includes('/')) throw new Error('Invalid download name');
   let lastError;
   const missing = new Set();
-  for (const [index, base] of bases.entries()) {
-    const attempts = index === 0 ? 1 : 3;
+  for (const base of bases) {
+    const attempts = 3;
     for (let attempt = 1; attempt <= attempts; attempt++) {
       const temporary = `${destination}.partial`;
       try {
+        missing.delete(base);
         // Give archives time to finish on either origin; metadata stays bounded.
         const response = await fetch(`${base}/${name}${fresh ? `?refresh=${Date.now()}` : ''}`, { signal: AbortSignal.timeout(bytes ? 300000 : 30000) });
         if (!response.ok || !response.body) {
@@ -67,7 +62,6 @@ async function download(name, destination, { sha256, bytes, bases = origins,
           const retryAfter = response.headers.get('retry-after');
           if ([404, 410].includes(response.status)) missing.add(base);
           throw Object.assign(new Error(`HTTP ${response.status}`), {
-            transient: [408, 429].includes(response.status) || response.status >= 500,
             retryAfter: /^\d{1,6}$/.test(retryAfter || '') ? Math.min(30, Number(retryAfter)) : 0
           });
         }
@@ -90,9 +84,9 @@ async function download(name, destination, { sha256, bytes, bases = origins,
       } catch (error) {
         lastError = error;
         await fsp.rm(temporary, { force: true });
-        if (attempt === attempts || !transientDownload(error)) break;
+        if (attempt === attempts) break;
         const delay = Math.max(attempt, error.retryAfter || 0);
-        console.warn(`Extension mirror retry ${attempt + 1}/${attempts} in ${delay}s: ${error.message}`);
+        console.warn(`Extension download retry ${attempt + 1}/${attempts} in ${delay}s: ${error.message}`);
         await sleep(delay * 1000);
       }
     }

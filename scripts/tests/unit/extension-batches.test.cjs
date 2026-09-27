@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { key, digest } = require('../../installer/install-extensions.cjs');
-const { buildMatrix, testMatrix, variants, reuse, verifyArchive } = require('../../release/extension-batches.cjs');
+const { buildMatrix, testMatrix, variants, reuse, verifyArchive, downloadArtifact } = require('../../release/extension-batches.cjs');
 const { batch } = require('../../build/extension-batch.cjs');
 const { planRecovery } = require('../../release/extension-recovery.cjs');
 const versions = require('../../../conf/extension-packs.json').versions;
@@ -116,4 +116,33 @@ test('grouped recovery accepts passing checkpoints in a failed job but rejects t
   assert.equal(recovered.entries[0].artifact_id, 11);
   metadata.architecture = 'x86_64'; metadata.file = `${key(metadata)}-${metadata.sha256}.tar.zst`;
   await assert.rejects(planRecovery('123', run, undefined, { download }), /context mismatch/);
+});
+
+
+test('artifact download retries every failure with fresh output and a three-attempt limit', t => {
+  const directory = fixture(t);
+  const payload = path.join(directory, 'payload');
+  fs.mkdirSync(payload);
+  fs.writeFileSync(path.join(payload, 'verified.txt'), 'verified artifact');
+  execFileSync('zip', ['-q', path.join(directory, 'fixture.zip'), 'verified.txt'], {cwd: payload});
+  const bytes = fs.readFileSync(path.join(directory, 'fixture.zip'));
+  for (const mode of ['recover', 'forbidden', 'checksum']) {
+    let attempts = 0;
+    const waits = [], output = path.join(directory, mode);
+    const work = () => downloadArtifact({artifact_id: 42, artifact_digest: `sha256:${digest(bytes)}`}, output, {
+      wait: ms => waits.push(ms),
+      run: (_program, _args, options) => {
+        attempts++;
+        fs.writeSync(options.stdio[1], mode === 'checksum' || attempts < 3 ? Buffer.from('partial') : bytes);
+        return {status: mode === 'forbidden' || attempts < 2 ? 1 : 0, stderr: 'HTTP 403'};
+      }
+    });
+    if (mode === 'recover') {
+      work();
+      assert.equal(fs.readFileSync(path.join(output, 'verified.txt'), 'utf8'), 'verified artifact');
+    } else assert.throws(work, mode === 'checksum' ? /digest mismatch/ : /403/);
+    assert.equal(attempts, 3);
+    assert.deepEqual(waits, [1000, 2000]);
+    assert.equal(fs.existsSync(path.join(output, 'artifact.zip')), false);
+  }
 });

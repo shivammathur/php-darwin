@@ -131,7 +131,7 @@ test('bulk migration paces writes across both transports while reads remain inde
   assert.deepEqual(writes, [1000, 2000, 3000]);
 });
 
-test('quota exhaustion stops all migration transports without starting release-cache retries', async () => {
+test('quota exhaustion keeps migration requests stopped during bounded recovery', async () => {
   const { ReleaseCache } = require('../../cache/source-bottle-releases.cjs');
   let calls = 0;
   const transport = async () => {
@@ -143,7 +143,7 @@ test('quota exhaustion stops all migration transports without starting release-c
   const limited = migrationTransport({ request: transport, fallback: transport, now: () => 1000,
     wait: async () => {} });
   const cache = new ReleaseCache({ repository: 'shivammathur/fixture', token: 'fixture', ...limited,
-    wait: async () => assert.fail('quota errors must not enter the retry loop') });
+    wait: async () => {} });
   await assert.rejects(cache.api('releases'), /quota 0\/1000; resume after 1970-01-01T01:06:40.000Z.*API rate limit exceeded/);
   await assert.rejects(limited.fallbackRequest('fixture'), /Verified destination copies are retained/);
   assert.equal(calls, 1);

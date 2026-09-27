@@ -24,7 +24,7 @@ for build in release debug; do
       formula_file="$tap_path/Formula/$formula.rb"
       [ -f "$formula_file" ] || php_darwin_die "could not read $formula from the local tap"
     else
-      curl --retry 3 --retry-all-errors -fsSL \
+      curl --retry 2 --retry-all-errors -fsSL \
         "${repository/github.com/raw.githubusercontent.com}/$branch/Formula/$formula.rb" \
         -o "$formula_file" || php_darwin_die "could not download $formula"
     fi

@@ -180,8 +180,11 @@ Shared libraries stay in `cache`. Filenames and display labels identify package
 version, macOS, architecture and PHP variant; exact keys and checksums remain intact.
 Build claims use `cache-locks` so they cannot exhaust bottle storage. This avoids
 GitHub's 1,000-assets-per-release limit without deleting reusable builds.
-Transient ownership-poll failures retain the existing claim and retry within
-the coordination deadline; a network outage never authorizes a second builder.
+Ownership reads retry every error up to three attempts, then fail without
+deleting the existing claim. A network outage never authorizes a second builder.
+Healthy owners remain protected throughout the coordination deadline.
+CI repairs an inherited shallow core tap before pinning or timing E2E installs,
+preserving its checked-out revision and keeping `brew update` usable.
 
 Normal PHP and extension cache jobs consume `conf/dependencies.json`. It pins
 Homebrew core and selects the exact dependency bottles for each architecture.
@@ -228,9 +231,9 @@ Normal installs prefer GitHub Releases and fall back to Cloudflare, validating
 the final checksum before extraction. `PHP_DARWIN_PREFER_MIRROR=true` explicitly
 reverses that order and is used during cache construction. Do not change the
 normal setup-php download priority or add retries without diagnosing the cause.
-Mirror requests allow five seconds to connect and retry transient DNS, transport
-and HTTP failures up to three times with bounded backoff. Permanent HTTP errors
-and checksum failures remain failures; archive retries retain full SHA validation.
+Downloads on both origins retry every transport or HTTP error, with at most
+three attempts per origin and bounded backoff. Errors still fail after the limit;
+archive retries retain full SHA validation before extraction.
 
 Preserve existing PHP kegs, configuration, services and unrelated Homebrew state.
 The archive must supply the default `bin/php` link. A writable Homebrew prefix is
@@ -324,17 +327,18 @@ share a budget of twelve extra attempts per job; GitHub operations retain their
 separate bounded policy. Extension rate-limit delays are capped at thirty seconds.
 Immutable extension read retries resume only locally authenticated prefixes,
 validate Content-Range, and check the complete SHA256 before publishing a manifest.
-Base/source mirror writes use the AWS standard retry policy, capped at three attempts.
-Checksums, metadata and credential errors are never retried.
+Transfer retries cover every error, including credential and certificate errors,
+and stop after three attempts. AWS internal retries are disabled where the outer
+loop owns recovery, preventing multiplied attempts. Validation is never bypassed.
 Lost upload responses are reconciled with the remote object before another write.
 Each version's manifest is committed only after all its selected archives are
-verified. A transient failure leaves that version incomplete while independent
+verified. An exhausted failure leaves that version incomplete while independent
 versions continue; the job still fails if any version remains incomplete.
-Permanent errors stop immediately. Publication reports list completed, failed and
+Publication reports list completed, failed and
 remaining versions, plus HTTP timing, received bytes and selected Cloudflare
 headers for each verification read, including timeouts. They omit URLs and
 credentials. Recover only the remaining versions after diagnosing failures.
-Publication has a 30-minute limit. These recovery rules do not add retries to the installer.
+Publication has a 30-minute limit. Healthy transfers do not wait or repeat work.
 Nightly packs also track the PHP source commit, so a new nightly with the same
 version string rebuilds its extension modules while reusing dependency bottles.
 
@@ -369,6 +373,5 @@ The installer enables pack modules and their serializers in an owned `conf.d`
 file, without replacing user configuration. Private library/resource variables
 are written to `GITHUB_ENV` for subsequent action steps. Standalone users can
 source the printed private pack `environment.sh` path. No shell profiles or
-services are modified. Optional mirror downloads retry transient failures up to
-three times with 1/2-second backoff and capped Retry-After; integrity failures
-are not retried on the same origin and every promoted archive is SHA-verified.
+services are modified. Optional downloads retry all errors on either origin with at most three attempts,
+1/2-second backoff and capped Retry-After. Every promoted archive is SHA-verified.

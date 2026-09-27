@@ -69,20 +69,22 @@ function freshnessReason(entry, repositories, phpManifest) {
 function unchanged(entry, repositories, phpManifest) {
   return freshnessReason(entry, repositories, phpManifest) === null;
 }
-async function readManifest(version) {
-  const response = await fetch(`${origins[0]}/extensions-${version}-manifest.json`, { signal: AbortSignal.timeout(15000) });
-  if (!response.ok) {
-    await response.body?.cancel();
-    if (response.status === 404) return { schema: 1, assets: [] };
-    throw httpError(response.status, 'Read extension manifest');
-  }
-  const manifest = await response.json();
-  if (manifest.schema !== 1 || !Array.isArray(manifest.assets)) throw new Error('Invalid published extension manifest');
-  manifest.assets.forEach(validateEntry);
-  return manifest;
+async function readManifest(version, retry = retryPolicy()) {
+  return retry(`Read PHP ${version} extension manifest`, async () => {
+    const response = await fetch(`${origins[0]}/extensions-${version}-manifest.json`, { signal: AbortSignal.timeout(15000) });
+    if (!response.ok) {
+      await response.body?.cancel();
+      if (response.status === 404) return { schema: 1, assets: [] };
+      throw httpError(response.status, 'Read extension manifest');
+    }
+    const manifest = await response.json();
+    if (manifest.schema !== 1 || !Array.isArray(manifest.assets)) throw new Error('Invalid published extension manifest');
+    manifest.assets.forEach(validateEntry);
+    return manifest;
+  });
 }
-async function validatePublishedPHP(entries) {
-  for (const version of new Set(entries.map(entry => entry.php_version))) {
+async function readPHPManifest(version, retry) {
+  return retry(`Read published PHP ${version}`, async () => {
     const response = await fetch(`https://github.com/shivammathur/php-darwin/releases/download/php-${version}/php-${version}-manifest.json`,
       { signal: AbortSignal.timeout(15000), cache: 'no-store' });
     if (!response.ok) {
@@ -93,6 +95,12 @@ async function validatePublishedPHP(entries) {
     if (manifest.schema !== 1 || manifest.php_version !== version || !manifest.php_semver || !Array.isArray(manifest.assets)) {
       throw new Error(`Invalid published PHP ${version} manifest`);
     }
+    return manifest;
+  });
+}
+async function validatePublishedPHP(entries, retry = retryPolicy()) {
+  for (const version of new Set(entries.map(entry => entry.php_version))) {
+    const manifest = await readPHPManifest(version, retry);
     for (const entry of entries.filter(entry => entry.php_version === version)) {
       const semver = manifest.php_src_commit ? entry.php_semver?.split('-')[0] : entry.php_semver;
       if (semver !== manifest.php_semver || (entry.php_src_commit || '') !== (manifest.php_src_commit || '') ||
@@ -110,6 +118,7 @@ async function plan() {
   const modes = (process.env.THREAD_SAFETY || 'nts').split(/\s+/);
   const repositories = { 'shivammathur/homebrew-extensions': path.resolve('homebrew-extensions'), 'Homebrew/homebrew-core': path.resolve('homebrew-core') };
   const include = [], reused = [], selected = [];
+  const retry = retryPolicy();
   const recovery = new Map();
   const resumeRuns = (process.env.RESUME_RUNS || '').trim().split(/\s+/).filter(Boolean);
   // Explicit recovery keeps completed artifacts even if orchestration changed.
@@ -120,11 +129,8 @@ async function plan() {
   }
   for (const php_version of versions) {
     if (!configuration.versions.includes(php_version)) throw new Error('Unsupported PHP version');
-    const existing = await readManifest(php_version);
-    const response = await fetch(`https://github.com/shivammathur/php-darwin/releases/download/php-${php_version}/php-${php_version}-manifest.json`,
-      { signal: AbortSignal.timeout(15000) });
-    if (!response.ok) throw new Error(`Published PHP ${php_version} cache is unavailable`);
-    const phpManifest = await response.json();
+    const existing = await readManifest(php_version, retry);
+    const phpManifest = await readPHPManifest(php_version, retry);
     for (const name of selectedPacks) for (const build of builds) for (const thread_safety of modes) for (const architecture of Object.keys(platforms)) {
       if (!Object.hasOwn(configuration.packs, name)) throw new Error('Unknown extension pack');
       const context = { name, php_version, build, thread_safety, architecture };
@@ -210,7 +216,7 @@ async function publish(directory, { run = transferCommand, retry = retryPolicy()
   if (new Set(entries.map(({ entry }) => key(entry))).size !== entries.length) throw new Error('Invalid extension publish batch');
   // Recovery may outlive a PHP release or nightly API update. Reject its stale
   // packs before uploads, even when their earlier compatibility reports passed.
-  await validatePublishedPHP(entries.map(({ entry }) => entry));
+  await validatePublishedPHP(entries.map(({ entry }) => entry), retry);
   const repo = 'shivammathur/php-darwin';
   const release = 'extensions';
   const env = { ...process.env, AWS_ACCESS_KEY_ID: process.env.CF_R2_AWS_ACCESS_KEY_ID,
@@ -219,17 +225,10 @@ async function publish(directory, { run = transferCommand, retry = retryPolicy()
     AWS_RESPONSE_CHECKSUM_VALIDATION: 'when_required' };
   if (!env.AWS_ACCESS_KEY_ID || !env.AWS_SECRET_ACCESS_KEY || !process.env.CF_R2_AWS_S3_ENDPOINT) throw new Error('Cloudflare credentials are required');
   const response = await retry('Inspect extension release', async () => {
-    let result;
-    try {
-      result = await fetch(`https://api.github.com/repos/${repo}/releases/tags/${release}`, {
-        headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, 'X-GitHub-Api-Version': '2022-11-28' },
-        signal: AbortSignal.timeout(15000),
-      });
-    } catch (error) {
-      error.transient = error.name === 'TimeoutError' ||
-        ['ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN'].includes(error.cause?.code);
-      throw error;
-    }
+    const result = await fetch(`https://api.github.com/repos/${repo}/releases/tags/${release}`, {
+      headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, 'X-GitHub-Api-Version': '2022-11-28' },
+      signal: AbortSignal.timeout(15000),
+    });
     await result.body?.cancel();
     if (!result.ok && result.status !== 404) throw httpError(result.status, 'Inspect extension release');
     return result;
@@ -248,7 +247,7 @@ async function publish(directory, { run = transferCommand, retry = retryPolicy()
     if (entries.length) await cleanup.capacity([...incoming,
       ...new Set(entries.map(({ entry }) => `extensions-${entry.php_version}-manifest.json`)), 'install-extensions.cjs']);
     // Commit each PHP-version manifest only after every referenced archive is
-    // uploaded and verified. A transient failure in another version must not
+    // uploaded and verified. A failure in another version must not
     // discard that progress. Permanent validation/authentication failures stop.
     for (const version of new Set(entries.map(({ entry }) => entry.php_version))) {
       try {
@@ -257,14 +256,14 @@ async function publish(directory, { run = transferCommand, retry = retryPolicy()
           await transfer.github(archive, true);
           await transfer.mirror(archive, true);
         }
-        const previous = await retry(`Read PHP ${version} manifest`, () => readManifest(version));
+        const previous = await readManifest(version, retry);
         const merged = new Map(previous.assets.map(entry => [key(entry), entry]));
         for (const { entry } of selected) merged.set(key(entry), entry);
         const manifest = path.join(staging, `extensions-${version}-manifest.json`);
         fs.writeFileSync(manifest, JSON.stringify({ schema: 1, assets: [...merged.values()].sort((a, b) => key(a).localeCompare(key(b))) }, null, 2) + '\n');
         // Recheck after transfers in case PHP changed while immutable archives
         // were uploading. Keep those archives available for recovery.
-        await validatePublishedPHP(selected.map(({ entry }) => entry));
+        await validatePublishedPHP(selected.map(({ entry }) => entry), retry);
         await transfer.mirror(manifest, false);
         await transfer.github(manifest, false);
         publishedVersions.push(version);
@@ -275,7 +274,6 @@ async function publish(directory, { run = transferCommand, retry = retryPolicy()
         }
       } catch (error) {
         failedVersions.push({ php_version: version, error: error.message });
-        if (!error.transient) throw error;
         console.error(`PHP ${version} publication incomplete; continuing independent versions: ${error.message}`);
       }
     }

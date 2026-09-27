@@ -45,6 +45,8 @@ php_darwin_start_archive_hash() {
   actual_hash=$(php_darwin_sha256 "$1")
 }
 php_darwin_wait_for_archive_hash() { :; }
+# Backoff arithmetic is tested separately; retain real socket timeouts here.
+sleep() { :; }
 ruby -rsocket - "$work_dir" <<'RUBY' &
 directory = ARGV.fetch(0)
 server = TCPServer.new('127.0.0.1', 0)
@@ -116,7 +118,7 @@ RUBY
 server_pid=$!
 for _ in {1..50}; do
   [ ! -s "$work_dir/port" ] || break
-  sleep 0.1
+  command sleep 0.1
 done
 [ -s "$work_dir/port" ] || php_darwin_die 'download fixture server did not start'
 base=http://127.0.0.1:$(cat "$work_dir/port")
@@ -141,10 +143,12 @@ for route in unavailable missing partial corrupt stall error-stall trickle; do
   : > "$work_dir/requests"
   download_started=$SECONDS
   php_darwin_download_release_archive || php_darwin_die "$route did not recover from the mirror"
-  [ "$route" != trickle ] || [ "$((SECONDS - download_started))" -lt 20 ] || \
+  [ "$route" != trickle ] || [ "$((SECONDS - download_started))" -lt 60 ] || \
     php_darwin_die 'a trickling primary origin delayed mirror failover'
   cmp -s "$archive" "$work_dir/fixture" || php_darwin_die "$route retained invalid bytes"
-  [ "$(wc -l < "$work_dir/requests" | tr -d ' ')" = 2 ] || php_darwin_die "$route retried the broken origin"
+  count=4
+  [ "$route" != corrupt ] || count=2
+  [ "$(wc -l < "$work_dir/requests" | tr -d ' ')" = "$count" ] || php_darwin_die "$route exceeded bounded origin retries"
 done
 # Resume only the missing immutable bytes; verify the final, combined digest.
 export PHP_DARWIN_MIRROR_URL="$base/range"
@@ -155,7 +159,7 @@ php_darwin_download_release_archive || php_darwin_die 'partial archive did not r
 [ "$(cat "$work_dir/hashes")" = 17 ] || php_darwin_die 'hashed incomplete bytes before resuming'
 [ "$(cat "$work_dir/range")" = 5 ] || php_darwin_die 'wrong resume offset'
 cmp -s "$archive" "$work_dir/fixture" || php_darwin_die 'resumed bytes differ'
-[ "$(wc -l < "$work_dir/requests" | tr -d ' ')" = 2 ] || php_darwin_die 'resume retried an origin'
+[ "$(wc -l < "$work_dir/requests" | tr -d ' ')" = 4 ] || php_darwin_die 'resume exceeded bounded origin retries'
 export PHP_DARWIN_MIRROR_URL="$base/wrong-range"
 if php_darwin_download_release_archive; then php_darwin_die 'accepted corrupt range response'; fi
 [ "$release_archive_error" = checksum ] || php_darwin_die 'corrupt resumed bytes lost their checksum error'
@@ -166,7 +170,7 @@ PHP_DARWIN_RELEASE_URL="$base/complete-timeout/archive"
 : > "$work_dir/hashes"
 php_darwin_download_release_archive || php_darwin_die 'discarded a verified complete download'
 [ "$(cat "$work_dir/hashes")" = 17 ] || php_darwin_die 'did not verify the complete errored response'
-[ "$(wc -l < "$work_dir/requests" | tr -d ' ')" = 1 ] || php_darwin_die 'redownloaded a verified archive'
+[ "$(wc -l < "$work_dir/requests" | tr -d ' ')" = 3 ] || php_darwin_die 'late transfer errors exceeded bounded retries'
 export PHP_DARWIN_MIRROR_URL="$base/range"
 for route in corrupt-timeout oversize-timeout; do
   PHP_DARWIN_RELEASE_URL="$base/$route/archive"
@@ -181,7 +185,7 @@ export PHP_DARWIN_MIRROR_URL="$base/good"
 PHP_DARWIN_RELEASE_URL="$base/burst/archive"
 download_started=$SECONDS
 php_darwin_download_release_archive || php_darwin_die 'burst then stall did not recover'
-[ "$((SECONDS - download_started))" -lt 20 ] || php_darwin_die 'primary exceeded its low-speed time budget'
+[ "$((SECONDS - download_started))" -lt 60 ] || php_darwin_die 'primary exceeded its low-speed time budget'
 cmp -s "$archive" "$work_dir/fixture" || php_darwin_die 'ignored range appended a full response'
 # An error response must fail over on its headers, without waiting for its body.
 PHP_DARWIN_RELEASE_URL="$base/error-stall/archive"
@@ -229,7 +233,7 @@ PHP_DARWIN_RELEASE_URL="$base/partial/archive"
 : > "$work_dir/requests"
 php_darwin_download_release_archive || php_darwin_die 'mirror range retries failed'
 cmp -s "$archive" "$work_dir/fixture" || php_darwin_die 'mirror retries assembled corrupt bytes'
-[ "$(wc -l < "$work_dir/requests" | tr -d ' ')" = 4 ] || php_darwin_die 'mirror range retry count changed'
+[ "$(wc -l < "$work_dir/requests" | tr -d ' ')" = 6 ] || php_darwin_die 'mirror range retry count changed'
 [ "$(cat "$work_dir/range")" = 5 ] || php_darwin_die 'mirror retries changed the requested offset'
 for route in retry-http always-524 forbidden; do
   export PHP_DARWIN_MIRROR_URL="$base/$route"
@@ -241,8 +245,7 @@ for route in retry-http always-524 forbidden; do
     forbidden) [ "$status" = 403 ] ;;
   esac || php_darwin_die 'mirror HTTP retry classification failed'
   count=3
-  [ "$route" != forbidden ] || count=1
-  [ "$(wc -l < "$work_dir/requests" | tr -d ' ')" = "$count" ] || php_darwin_die 'unbounded or permanent-error retry'
+  [ "$(wc -l < "$work_dir/requests" | tr -d ' ')" = "$count" ] || php_darwin_die 'unbounded error retry'
   [ ! -e "$work_dir/body.headers" ] || php_darwin_die 'mirror retry headers were not cleaned'
 done
 # DNS/connection failures carry no HTTP response. Simulate those exact curl

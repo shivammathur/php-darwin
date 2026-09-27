@@ -86,6 +86,8 @@ case "$url" in
     ;;
 esac
 EOF
+printf '#!/usr/bin/env bash\nexit 0\n' > "$fake_bin/sleep"
+chmod 0755 "$fake_bin/sleep"
 chmod 0755 "$fake_bin/curl" || php_darwin_die 'could not prepare the restore curl fixture'
 
 restore() {
@@ -118,8 +120,10 @@ for mode in missing corrupt; do
   restore "$mode" "$work_dir/$mode" >/dev/null || php_darwin_die "$mode Cloudflare cache did not use GitHub fallback"
   [ "$(grep -c '^https://github.com/' "$work_dir/requests")" = 5 ] || \
     php_darwin_die 'fallback did not download the manifest and four archives once'
-  [ "$(grep -c '^https://artifacts.php-darwin.setup-php.com/' "$work_dir/requests")" = 5 ] || \
-    php_darwin_die 'cache restore retried Cloudflare'
+  expected=5
+  [ "$mode" != missing ] || expected=15
+  [ "$(grep -c '^https://artifacts.php-darwin.setup-php.com/' "$work_dir/requests")" = "$expected" ] || \
+    php_darwin_die 'cache restore exceeded bounded Cloudflare retries'
 done
 if restore corrupt-all-archives "$work_dir/corrupt-all" > /dev/null 2>&1; then
   php_darwin_die 'cache construction accepted corrupt archives'

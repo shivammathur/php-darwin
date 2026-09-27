@@ -18,6 +18,12 @@ else
   printf 'false\n' > "${RUNNER_TEMP:?}/php-darwin-e2e-existing-config.txt"
 fi
 php_darwin_configure_homebrew_environment
+# A previous cache build may have left an old shallow core checkout. Repair its
+# history before timing installs so the later brew-update gate tests the cache.
+core=$(brew --repository homebrew/core) || exit 1
+if [ -d "$core/.git" ]; then
+  bash "$script_dir/../../build/ensure-core-history.sh" "$core" || exit 1
+fi
 bash "$script_dir/check-preserved-homebrew.sh" snapshot "$brew_prefix" "$preserved_homebrew" \
   "$HOME/Library/LaunchAgents" /Library/LaunchAgents /Library/LaunchDaemons || \
   php_darwin_die 'could not record existing PHP and services'

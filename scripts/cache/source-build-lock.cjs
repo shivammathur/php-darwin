@@ -41,6 +41,7 @@ class SourceBuildLock {
     const release = await this.cache.release(true, this.cache.partition ? 'cache-locks' : this.cache.tag);
     const started = this.now();
     let announced = false;
+    let failures = 0;
     let delay = 10000;
     while (this.now() - started < this.timeout) {
       try {
@@ -94,10 +95,11 @@ class SourceBuildLock {
           this.cache.warn(`Waiting for source bottle ${key} owned by job ${claimant.job}`);
           announced = true;
         }
+        failures = 0;
       } catch (error) {
-        if (!error.retryable) throw error;
+        if (error.retryExhausted || ++failures >= 3) throw error;
         // An unavailable owner check is not evidence of an abandoned build.
-        // Keep the claim intact and recheck within the existing wait deadline.
+        // Keep the claim intact, with at most three consecutive failed checks.
         this.cache.warn(`Source ownership check unavailable; retaining the claim for ${key}: ${error.message}`);
       }
       const remaining = this.timeout - (this.now() - started);

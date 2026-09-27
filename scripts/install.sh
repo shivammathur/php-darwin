@@ -686,17 +686,11 @@ php_darwin_request_release() {
   local status
   local result=0
   local range=()
-  local attempt=1 attempts=1 connect_timeout=10 delay retry_after
-  local mirror=${PHP_DARWIN_MIRROR_URL-https://artifacts.php-darwin.setup-php.com}
-  local headers=()
+  local attempt=1 attempts=3 connect_timeout=10 delay retry_after
+  local headers=(--dump-header "$2.headers")
   [ -z "${6:-}" ] || range=(--range "$6-")
-  if [ -n "$mirror" ] && [[ "$1" = "${mirror%/}/"* ]]; then
-    attempts=3
-    headers=(--dump-header "$2.headers")
-  fi
 
-  # Allow time for DNS, TLS and redirects on both origins. Give the mirror
-  # bounded recovery from DNS, truncated bodies and transient HTTP errors.
+  # Retry every failed transfer on either origin, with a fixed attempt limit.
   # Each retry replaces its output at the same requested range offset;
   # the archive caller verifies the complete assembled SHA before extraction.
   while :; do
@@ -711,10 +705,7 @@ php_darwin_request_release() {
         "$result" "${status:-000}" "$1" >&2
     fi
     [ "$attempt" -lt "$attempts" ] || break
-    case "$result:$status" in
-      5:*|6:*|7:*|18:*|28:*|52:*|55:*|56:*|92:*|22:408|22:429|22:5??) ;;
-      *) break ;;
-    esac
+    if [ "$result" -eq 0 ] && { [ "$status" = 200 ] || [ "$status" = 206 ]; }; then break; fi
     delay=$((1 << (attempt - 1)))
     retry_after=$(awk 'tolower($1) == "retry-after:" {gsub(/\r/, "", $2); value=$2} END {print value}' "$2.headers" 2>/dev/null) || retry_after=
     if [[ "$retry_after" =~ ^[0-9]{1,6}$ ]]; then
@@ -722,7 +713,7 @@ php_darwin_request_release() {
       [ "$retry_after" -le 30 ] || retry_after=30
       [ "$retry_after" -le "$delay" ] || delay=$retry_after
     fi
-    printf 'php-darwin: retrying mirror transfer %s/%s in %ss\n' "$((attempt + 1))" "$attempts" "$delay" >&2
+    printf 'php-darwin: retrying transfer %s/%s in %ss\n' "$((attempt + 1))" "$attempts" "$delay" >&2
     sleep "$delay"
     attempt=$((attempt + 1))
   done
@@ -1210,22 +1201,17 @@ function validateEntry(entry) {
       entry.file !== `${key(entry)}-${entry.sha256}.tar.zst`) throw new Error('Invalid extension cache metadata');
   return entry;
 }
-function transientDownload(error) {
-  return error.transient === true || ['TimeoutError', 'AbortError'].includes(error.name) ||
-    ['EAI_AGAIN', 'ENOTFOUND', 'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT',
-      'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT', 'UND_ERR_SOCKET']
-      .includes(error.cause?.code || error.code);
-}
 async function download(name, destination, { sha256, bytes, bases = origins,
   fresh = false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
   if (!safePath(name) || name.includes('/')) throw new Error('Invalid download name');
   let lastError;
   const missing = new Set();
-  for (const [index, base] of bases.entries()) {
-    const attempts = index === 0 ? 1 : 3;
+  for (const base of bases) {
+    const attempts = 3;
     for (let attempt = 1; attempt <= attempts; attempt++) {
       const temporary = `${destination}.partial`;
       try {
+        missing.delete(base);
         // Give archives time to finish on either origin; metadata stays bounded.
         const response = await fetch(`${base}/${name}${fresh ? `?refresh=${Date.now()}` : ''}`, { signal: AbortSignal.timeout(bytes ? 300000 : 30000) });
         if (!response.ok || !response.body) {
@@ -1233,7 +1219,6 @@ async function download(name, destination, { sha256, bytes, bases = origins,
           const retryAfter = response.headers.get('retry-after');
           if ([404, 410].includes(response.status)) missing.add(base);
           throw Object.assign(new Error(`HTTP ${response.status}`), {
-            transient: [408, 429].includes(response.status) || response.status >= 500,
             retryAfter: /^\d{1,6}$/.test(retryAfter || '') ? Math.min(30, Number(retryAfter)) : 0
           });
         }
@@ -1256,9 +1241,9 @@ async function download(name, destination, { sha256, bytes, bases = origins,
       } catch (error) {
         lastError = error;
         await fsp.rm(temporary, { force: true });
-        if (attempt === attempts || !transientDownload(error)) break;
+        if (attempt === attempts) break;
         const delay = Math.max(attempt, error.retryAfter || 0);
-        console.warn(`Extension mirror retry ${attempt + 1}/${attempts} in ${delay}s: ${error.message}`);
+        console.warn(`Extension download retry ${attempt + 1}/${attempts} in ${delay}s: ${error.message}`);
         await sleep(delay * 1000);
       }
     }
@@ -2143,7 +2128,7 @@ while read -r build ts; do
   if [ -n "$tap_path" ]; then
     cp "$tap_path/Formula/$formula.rb" "$formula_file" || php_darwin_die "could not read $formula from the local tap"
   else
-    curl --retry 3 --retry-all-errors -fsSL \
+    curl --retry 2 --retry-all-errors -fsSL \
       "${repository/github.com/raw.githubusercontent.com}/$branch/Formula/$formula.rb" \
       -o "$formula_file" || php_darwin_die "could not download $formula"
   fi

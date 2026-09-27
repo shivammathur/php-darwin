@@ -55,8 +55,10 @@ case "${1:-}/${2:-}" in
       case "${GH_FAIL_UPLOAD_ONCE_MATCH:-}" in
         '') ;;
         *) case "$argument" in *"$GH_FAIL_UPLOAD_ONCE_MATCH"*)
-          if [ ! -f "${GH_FAIL_UPLOAD_ONCE_MARKER:?}" ]; then
-            : > "$GH_FAIL_UPLOAD_ONCE_MARKER" || exit 1
+          attempts=0
+          [ ! -f "${GH_FAIL_UPLOAD_ONCE_MARKER:?}" ] || read -r attempts < "$GH_FAIL_UPLOAD_ONCE_MARKER"
+          if [ "$attempts" -lt "${GH_FAIL_UPLOAD_ATTEMPTS:-1}" ]; then
+            printf '%s\n' "$((attempts + 1))" > "$GH_FAIL_UPLOAD_ONCE_MARKER" || exit 1
             exit 1
           fi
           ;;

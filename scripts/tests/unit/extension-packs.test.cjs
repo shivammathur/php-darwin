@@ -87,7 +87,7 @@ test('publication requires the current PHP release and exact nightly source for 
   status = 404;
   await assert.rejects(validatePublishedPHP([metadata]), /HTTP 404/);
 });
-test('publication verifies bytes and current PHP before committing manifests without retrying permanent failures', async t => {
+test('publication verifies bytes and current PHP before committing manifests with bounded retries', async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-publish-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   for (const name of ['CF_R2_AWS_ACCESS_KEY_ID', 'CF_R2_AWS_SECRET_ACCESS_KEY', 'CF_R2_AWS_S3_ENDPOINT']) {
@@ -136,7 +136,7 @@ test('publication verifies bytes and current PHP before committing manifests wit
     if (failure) {
       await assert.rejects(publish(directory, { run }), /upload rejected|curl exited 28|Checksum\/size mismatch|HTTP 404|refusing stale extension publication/);
       if (failure === 'stale') assert.equal(calls.length, 0, 'reject stale packs before any external writes');
-      assert.equal(calls.filter(call => call.program === 'aws' && call.args.includes('put-object')).length, failure === 'stale' ? 0 : 1);
+      assert.equal(calls.filter(call => call.program === 'aws' && call.args.includes('put-object')).length, failure === 'stale' ? 0 : ['upload', '404'].includes(failure) ? 3 : 1);
       assert.ok(!calls.some(call => call.args.some(arg => arg.endsWith('-manifest.json'))));
     } else {
       await publish(directory, { run });
@@ -149,7 +149,7 @@ test('publication verifies bytes and current PHP before committing manifests wit
     }
   }
 });
-test('transient publication failures preserve completed versions and do not publish an incomplete version', async t => {
+test('all publication failures preserve completed versions and do not publish an incomplete version', async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-independent-publish-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   for (const name of ['CF_R2_AWS_ACCESS_KEY_ID', 'CF_R2_AWS_SECRET_ACCESS_KEY', 'CF_R2_AWS_S3_ENDPOINT', 'EXTENSION_PUBLISH_REPORT']) {
@@ -194,14 +194,13 @@ test('transient publication failures preserve completed versions and do not publ
     await assert.rejects(publish(directory, { run, retry: async (_label, work) => work() }), /stalled archive/);
     const report = JSON.parse(fs.readFileSync(process.env.EXTENSION_PUBLISH_REPORT));
     assert.equal(report.success, false);
-    assert.deepEqual(report.published_versions, transient ? ['8.3', '8.5'] : ['8.3']);
-    assert.deepEqual(report.remaining_versions, transient ? ['8.4'] : ['8.4', '8.5']);
+    assert.deepEqual(report.published_versions, ['8.3', '8.5']);
+    assert.deepEqual(report.remaining_versions, ['8.4']);
     assert.deepEqual(report.failed_versions.map(item => item.php_version), ['8.4']);
     const manifests = calls.filter(call => call.program === 'gh' && call.args[0] === 'release')
       .map(call => path.basename(call.args[3])).filter(name => name.endsWith('-manifest.json'));
-    assert.deepEqual(manifests, transient ? ['extensions-8.3-manifest.json', 'extensions-8.5-manifest.json'] : ['extensions-8.3-manifest.json']);
+    assert.deepEqual(manifests, ['extensions-8.3-manifest.json', 'extensions-8.5-manifest.json']);
     assert.ok(!calls.some(call => call.args.some(arg => arg.endsWith('install-extensions.cjs'))));
-    if (!transient) assert.ok(!calls.some(call => call.args.some(arg => /imagick-8.5-/.test(arg))));
   }
 });
 test('scheduled batches cover every configured PHP version within both matrix limits', () => {
@@ -327,7 +326,7 @@ test('retired archives refresh the manifest once and install the replacement wit
     res.writeHead(404); res.end();
   });
   assert.deepEqual(await prefetch(directory, context, ['imagick'], {bases: [url], prepare: async () => {}}), ['imagick']);
-  assert.equal(refreshed, 1); assert.equal(oldReads, 1);
+  assert.equal(refreshed, 1); assert.equal(oldReads, 3);
   assert.equal(JSON.parse(fs.readFileSync(path.join(directory, 'imagick.json'))).sha256, next.sha256);
   assert.equal(fs.readFileSync(path.join(directory, next.file), 'utf8'), 'new');
 });
@@ -376,7 +375,7 @@ test('a checksum failure uses the mirror and never promotes corrupt bytes', asyn
   const paths = [];
   const { directory, url } = await fixture(t, (req, res) => { paths.push(req.url); res.end(req.url.startsWith('/primary/') ? 'evil' : content); });
   await download('pack.tar.zst', path.join(directory, 'pack'), { bases: [url + '/primary', url + '/mirror'], sha256: digest(content), bytes: 4 });
-  assert.deepEqual(paths, ['/primary/pack.tar.zst', '/mirror/pack.tar.zst']);
+  assert.deepEqual(paths, ['/primary/pack.tar.zst', '/primary/pack.tar.zst', '/primary/pack.tar.zst', '/mirror/pack.tar.zst']);
   assert.equal(fs.readFileSync(path.join(directory, 'pack'), 'utf8'), 'good');
   assert.ok(!fs.existsSync(path.join(directory, 'pack.partial')));
 });

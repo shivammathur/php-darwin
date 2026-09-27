@@ -152,7 +152,7 @@ test('uploads verify GitHub stored digests without downloading and restores pref
   assert.equal(fs.existsSync(f.cache.mirrorMissFile), false);
 });
 
-test('missing, corrupt and unavailable Cloudflare source bottles fall back once and queue the exact digest', async t => {
+test('Cloudflare source bottle errors exhaust bounded retries before one GitHub fallback', async t => {
   for (const failure of ['missing', 'corrupt', 'unavailable']) {
     const f = fixture(t);
     const bottle = f.bottle('1');
@@ -171,7 +171,7 @@ test('missing, corrupt and unavailable Cloudflare source bottles fall back once 
     const restored = path.join(f.root, 'mirror-fallback');
     assert.equal(await f.cache.restoreCache([restored], bottle.key), bottle.key);
     assert.ok(readBottle(restored, bottle.key));
-    assert.equal(attempts, 1);
+    assert.equal(attempts, failure === 'missing' ? 1 : 3);
     assert.equal(githubDownloads, 1);
     assert.deepEqual(JSON.parse(fs.readFileSync(f.cache.mirrorMissFile)), mirror.record(f.state.assets[0]));
   }
@@ -291,7 +291,7 @@ test('a lost ownership upload reply preserves the original claim', async t => {
   assert.equal(f.state.assets.length, 0);
 });
 
-test('ownership polling survives exhausted transport retries without taking a live claim', async t => {
+test('ownership polling recovers within three transport attempts without taking a live claim', async t => {
   const f = fixture(t), key = f.bottle('1').key;
   const first = new SourceBuildLock(f.cache, {owner: {job: 1, run: 10, attempt: 1}});
   const claim = await first.acquire(key);
@@ -301,22 +301,22 @@ test('ownership polling survives exhausted transport retries without taking a li
     if (endpoint !== 'actions/jobs/1') return;
     assert.ok(f.state.assets.some(asset => asset.id === claim.id));
     checks++;
-    if (checks <= 8) throw new DOMException('GitHub connection timed out', 'TimeoutError');
-    if (checks === 9) return Response.json({run_id: 10, status: 'in_progress'});
+    if (checks <= 2) throw new DOMException('GitHub connection timed out', 'TimeoutError');
+    if (checks === 3) return Response.json({run_id: 10, status: 'in_progress'});
     return Response.json({run_id: 10, status: 'completed'});
   };
   const second = new SourceBuildLock(f.cache, {owner: {job: 2, run: 11, attempt: 1}, now: () => now, timeout: 120000});
   let builds = 0;
   await second.run(key, async () => {
     builds++;
-    assert.equal(checks, 10);
+    assert.equal(checks, 4);
     assert.ok(!f.state.assets.some(asset => asset.id === claim.id));
   });
   assert.equal(builds, 1);
   assert.equal(f.state.assets.length, 0);
 });
 
-test('an owner-check outage remains bounded and permission errors still stop immediately', async t => {
+test('all exhausted owner-check errors remain bounded and preserve live claims', async t => {
   for (const status of [503, 403]) {
     const f = fixture(t), key = f.bottle('1').key;
     const first = new SourceBuildLock(f.cache, {owner: {job: 1, run: 10, attempt: 1}});
@@ -329,11 +329,11 @@ test('an owner-check outage remains bounded and permission errors still stop imm
     };
     const second = new SourceBuildLock(f.cache, {owner: {job: 2, run: 11, attempt: 1}, now: () => now, timeout: 20000});
     await assert.rejects(second.run(key, () => assert.fail('must not compile while ownership is unknown')),
-      status === 503 ? /Timed out waiting/ : /403/);
+      /503|403/);
     assert.ok(f.state.assets.some(asset => asset.id === claim.id));
     assert.equal(f.state.deleted.length, 0);
-    if (status === 403) {assert.equal(checks, 1); assert.equal(now, started);}
-    else assert.ok(now - started <= 27000);
+    assert.equal(checks, 3);
+    assert.equal(now - started, 3000);
   }
 });
 
@@ -408,7 +408,7 @@ test('artifact ZIP requests use the Actions media type while streaming binary da
     accept: 'application/vnd.github+json', consume: response => response.text() }), 'zip bytes');
 });
 
-test('release requests retry transient responses and respect rate-limit backoff', async t => {
+test('release requests retry failed responses and respect rate-limit backoff', async t => {
   const f = fixture(t);
   const responses = [new Response('temporarily unavailable', { status: 503 }),
     new Response('rate limited', { status: 429, headers: { 'retry-after': '7' } })];
@@ -417,19 +417,19 @@ test('release requests retry transient responses and respect rate-limit backoff'
   assert.deepEqual(f.state.delays, [1000, 7000]);
 });
 
-test('release requests stop after bounded retries and do not retry permission failures', async t => {
+test('release requests stop after three attempts including permission failures', async t => {
   const f = fixture(t);
   let attempts = 0;
   f.state.intercept = () => { attempts++; return new Response('unavailable', { status: 503 }); };
   await assert.rejects(f.cache.release(), /503/);
-  assert.equal(attempts, 4);
-  assert.deepEqual(f.state.delays, [1000, 2000, 4000]);
+  assert.equal(attempts, 3);
+  assert.deepEqual(f.state.delays, [1000, 2000]);
   f.state.delays = [];
   attempts = 0;
   f.state.intercept = () => { attempts++; return new Response('forbidden', { status: 403 }); };
   await assert.rejects(f.cache.release(), /403/);
-  assert.equal(attempts, 1);
-  assert.deepEqual(f.state.delays, []);
+  assert.equal(attempts, 3);
+  assert.deepEqual(f.state.delays, [1000, 2000]);
 });
 
 test('a lost upload response recreates the stream and verifies the existing winner', async t => {
@@ -682,7 +682,7 @@ test('a full legacy release remains reusable while new bottles and claims use se
   await assert.rejects(f.cache.restoreCache([restored], current.key, [], old.inputs), /matching build inputs/);
 });
 
-test('release capacity and unknown 422 failures stop immediately without starting a compile', async t => {
+test('release capacity and unknown 422 failures exhaust bounded retries without starting a compile', async t => {
   for (const body of [{ errors: [{ resource: 'ReleaseAsset', field: 'file_count', code: 'custom',
     message: 'file_count limited to 1000 assets per release' }] }, { message: 'Validation failed' }]) {
     const f = fixture(t);
@@ -697,8 +697,8 @@ test('release capacity and unknown 422 failures stop immediately without startin
     const lock = new SourceBuildLock(f.cache, { owner: { job: 1, run: 10, attempt: 1 } });
     await assert.rejects(lock.run(bottle.key, () => assert.fail('must not compile without ownership')), /Source build claim: HTTP 422/);
     await assert.rejects(f.cache.saveCache([bottle.directory], bottle.key), /Source bottle upload: HTTP 422/);
-    assert.equal(requests, 2);
-    assert.deepEqual(f.state.delays, []);
+    assert.equal(requests, 6);
+    assert.deepEqual(f.state.delays, [1000, 2000, 1000, 2000]);
   }
 });
 

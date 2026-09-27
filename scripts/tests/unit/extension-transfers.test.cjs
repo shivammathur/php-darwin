@@ -70,23 +70,23 @@ for (const backend of ['github', 'cloudflare']) {
     const f = fixture(t, `${backend}-response`), transfer = f.create();
     await transfer[backend === 'github' ? 'github' : 'mirror'](f.file, true);
     assert.equal(f.calls.filter(c => c.args.includes('upload') || c.args.includes('put-object')).length, 1);
-    assert.deepEqual(f.waits, [5000]);
+    assert.deepEqual(f.waits, [1000]);
   });
 }
 test('a transient edge failure retries once and does not reupload a valid object', async t => {
   const f = fixture(t, 'edge-503');
   f.cloudflare.set(path.basename(f.file), fs.readFileSync(f.file));
   await f.create().mirror(f.file, true);
-  assert.deepEqual(f.waits, [5000]);
+  assert.deepEqual(f.waits, [1000]);
   assert.ok(!f.calls.some(c => c.args.includes('put-object')));
 });
-test('corrupt immutable objects and credential failures stop immediately without retries or replacement', async t => {
+test('corrupt objects and credential failures exhaust retries without committing manifests', async t => {
   for (const failure of ['checksum', 'credentials']) {
     const f = fixture(t, failure);
     if (failure === 'checksum') f.cloudflare.set(path.basename(f.file), Buffer.from('corrupt'));
     await assert.rejects(f.create().mirror(f.file, true), /Checksum|AccessDenied/);
-    assert.deepEqual(f.waits, []);
-    assert.equal(f.calls.filter(c => c.args.includes('put-object')).length, failure === 'checksum' ? 0 : 1);
+    assert.deepEqual(f.waits, [1000, 2000]);
+    assert.equal(f.calls.filter(c => c.args.includes('put-object')).length, failure === 'checksum' ? 0 : 3);
   }
 });
 test('mutable manifests are replaced only when their bytes differ', async t => {
@@ -98,17 +98,17 @@ test('mutable manifests are replaced only when their bytes differ', async t => {
   assert.ok(f.calls.filter(c => c.program === 'curl').every(c => new URL(c.args.at(-1)).search.startsWith('?verify=')));
 });
 test('recovery is bounded per operation and by a shared job budget', async () => {
-  const waits = [], retry = retryPolicy({ budget: 2, wait: async ms => waits.push(ms) });
+  const waits = [], retry = retryPolicy({ budget: 3, wait: async ms => waits.push(ms) });
   let calls = 0;
   await assert.rejects(retry('persistent outage', async () => { calls++; throw httpError(503, 'outage'); }));
-  assert.equal(calls, 2);
+  assert.equal(calls, 3);
   let attempts = 0;
   await retry('temporary outage', async () => { if (!attempts++) throw httpError(502, 'outage'); });
   calls = 0;
   await assert.rejects(retry('budget exhausted', async () => { calls++; throw httpError(503, 'outage'); }));
   assert.equal(calls, 1);
-  assert.deepEqual(waits, [5000, 5000]);
-  for (const status of [400, 401, 403, 404, 422]) assert.equal(httpError(status, 'test').transient, false);
+  assert.deepEqual(waits, [1000, 2000, 1000]);
+  for (const status of [400, 401, 403, 404, 422]) assert.equal(httpError(status, 'test').transient, true);
   for (const status of [408, 429, 500, 502, 503, 504, 520, 522, 523, 524]) assert.equal(httpError(status, 'test').transient, true);
 });
 test('retry backoff respects a bounded server delay', async () => {
@@ -177,15 +177,15 @@ test('Cloudflare body recovery is bounded, resumes authenticated bytes, and fail
       assert.equal(transfer.report.reads.at(-1).verified, true);
     }
     if (mode === 'transient' || mode === 'resume' || mode === 'exhausted') assert.deepEqual(waits, [1000, 2000]);
-    if (mode === 'corrupt' || mode === 'permanent') { assert.equal(requests.length, 1); assert.deepEqual(waits, []); }
+    if (['bad-range', 'corrupt', 'permanent'].includes(mode)) { assert.equal(requests.length, 3); assert.deepEqual(waits, [1000, 2000]); }
     assert.ok(requests.length <= 3);
     assert.ok(!fs.readdirSync(directory).some(name => name.startsWith('verify-')), 'failed and successful operations clean partial files');
   }
 });
-test('process diagnostics distinguish retryable service errors from permanent failures', async () => {
-  for (const [message, transient] of [['HTTP 503: service unavailable', true], ['AccessDenied: no permission', false],
+test('process diagnostics retain errors while every failure remains eligible for bounded retry', async () => {
+  for (const [message, transient] of [['HTTP 503: service unavailable', true], ['AccessDenied: no permission', true],
     ['Connection was closed before we received a valid response from endpoint URL', true],
-    ['InternalError: internal connectivity issue', true], ['SSL certificate verification failed', false]]) {
+    ['InternalError: internal connectivity issue', true], ['SSL certificate verification failed', true]]) {
     await assert.rejects(command(process.execPath, ['-e', 'process.stderr.write(process.argv[1]);process.exit(1)', message]),
       error => Boolean(error.transient) === transient && error.message.includes(message));
   }

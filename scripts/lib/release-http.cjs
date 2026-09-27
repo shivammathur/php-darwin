@@ -54,7 +54,7 @@ async function curlRequest(url, { method = 'GET', headers = {}, body, signal } =
     fs.unlinkSync(config);
     if (code !== 0) {
       const error = new Error(`curl exit ${code}: ${stderr.trim()}`);
-      error.retryable = [5, 6, 7, 16, 18, 28, 35, 52, 55, 56, 92].includes(code);
+      error.retryable = true;
       throw error;
     }
     const status = Number(stdout);

@@ -31,13 +31,8 @@ test('recovery binds successful main builds to exact live artifact IDs and every
       return run(program, args);
     };
     const operation = planRecovery('123', flaky, retryPolicy({ wait: async () => {} }));
-    if (status === 502) {
-      assert.deepEqual(await operation, result);
-      assert.equal(attempts, 2);
-    } else {
-      await assert.rejects(operation, /403/);
-      assert.equal(attempts, 1);
-    }
+    assert.deepEqual(await operation, result);
+    assert.equal(attempts, 2);
   }
   artifacts[0].expired = true;
   await assert.rejects(planRecovery('123', run), /Missing or ambiguous/);

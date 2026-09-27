@@ -22,6 +22,8 @@ extension_source_commit=89abcdef0123456789abcdef0123456789abcdef
 extensions_source_hash=$(printf '%064d' 9)
 mkdir -p "$builds_dir" "$fake_bin" || php_darwin_die 'could not create publish fixtures'
 cp "$script_dir/../fixtures/gh.sh" "$fake_bin/gh" || php_darwin_die 'could not copy the gh fixture'
+printf '#!/usr/bin/env bash\nexit 0\n' > "$fake_bin/sleep"
+chmod 0755 "$fake_bin/sleep"
 chmod 0755 "$fake_bin/gh" || php_darwin_die 'could not make the gh fixture executable'
 
 php_darwin_test_release_assets() {
@@ -121,7 +123,7 @@ HOMEBREW_EXTENSIONS_COMMIT="$extension_source_commit" PHP_VERSION="$version" PAT
   php_darwin_die 'publish fixture validation failed'
 jq -e 'all(.assets[]; .build_inputs.schema == 1 and (.build_inputs.source_records | length) == 1)' "$gh_manifest" >/dev/null || \
   php_darwin_die 'publication lost dependency freshness inputs'
-[ "$(awk 'END { print NR+0 }' "$gh_log")" -eq 5 ] || \
+[ "$(awk 'END { print NR+0 }' "$gh_log")" -eq 7 ] || \
   php_darwin_die 'publisher did not view, create, and upload the release in three phases'
 grep -Eq '^release view php-7\.0 ' "$gh_log" || php_darwin_die 'publisher did not inspect the minor release'
 grep -Eq '^release create php-7\.0 ' "$gh_log" || php_darwin_die 'publisher did not create the minor release'
@@ -380,7 +382,7 @@ invalid_manifest_upload_marker="$work_dir/invalid-manifest-upload.marker"
 : > "$gh_log" || php_darwin_die 'could not reset the invalid-manifest rollback log'
 if GH_RELEASE_EXISTS=true GH_RELEASE_ASSETS_JSON="$invalid_previous_json" \
   GH_PREVIOUS_ASSETS="$invalid_previous_generation" \
-  GH_FAIL_UPLOAD_ONCE_MATCH='php-7.0-manifest.json' \
+  GH_FAIL_UPLOAD_ATTEMPTS=3 GH_FAIL_UPLOAD_ONCE_MATCH='php-7.0-manifest.json' \
   GH_FAIL_UPLOAD_ONCE_MARKER="$invalid_manifest_upload_marker" \
   PHP_VERSION="$version" PATH="$fake_bin:$PATH" bash "$script_dir/../../release/publish.sh" "$builds_dir" \
   >/dev/null 2>&1; then
@@ -562,15 +564,15 @@ GH_RELEASE_EXISTS=true GH_RELEASE_ASSETS_JSON="$incomplete_mutable_json" \
 upload_once_marker="$work_dir/upload-once.marker"
 : > "$gh_log" || php_darwin_die 'could not reset the publish rollback log'
 if GH_RELEASE_EXISTS=true GH_RELEASE_ASSETS_JSON="$current_generation_json" \
-  GH_PREVIOUS_ASSETS="$current_generation" GH_FAIL_UPLOAD_ONCE_MATCH='php-7.0-manifest.json' \
+  GH_PREVIOUS_ASSETS="$current_generation" GH_FAIL_UPLOAD_ATTEMPTS=3 GH_FAIL_UPLOAD_ONCE_MATCH='php-7.0-manifest.json' \
   GH_FAIL_UPLOAD_ONCE_MARKER="$upload_once_marker" \
   PHP_VERSION="$version" PATH="$fake_bin:$PATH" bash "$script_dir/../../release/publish.sh" "$builds_dir" \
   >/dev/null 2>&1; then
   php_darwin_die 'publish rollback fixture unexpectedly succeeded'
 fi
-grep -Eq '^release download php-7\.0 --pattern install\.sh --dir .* --repo shivammathur/php-darwin$' \
+grep -Eq '^release download php-7\.0 --pattern install\.sh --clobber --dir .* --repo shivammathur/php-darwin$' \
   "$gh_log" || php_darwin_die 'publisher did not back up the existing installer'
-grep -Eq '^release download php-7\.0 --pattern php-7\.0-manifest\.json --dir .* --repo shivammathur/php-darwin$' \
+grep -Eq '^release download php-7\.0 --pattern php-7\.0-manifest\.json --clobber --dir .* --repo shivammathur/php-darwin$' \
   "$gh_log" || php_darwin_die 'publisher did not back up the existing manifest'
 tail -n 1 "$gh_log" | grep -Eq \
   '^release upload php-7\.0 .*/previous-assets/(install\.sh|php-7\.0-manifest\.json) .*/previous-assets/(install\.sh|php-7\.0-manifest\.json) --clobber --repo shivammathur/php-darwin$' || \

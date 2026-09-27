@@ -1,5 +1,5 @@
 name: Download artifacts with bounded retries
-description: Retry transient artifact listing or transfer failures without changing the selected run or artifacts
+description: Retry artifact listing or transfer failures without changing the selected run or artifacts
 inputs:
   artifact-ids:
     description: Exact artifact IDs, for recovery from a fixed set of successful builds

@@ -5,8 +5,8 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
-const { prefetch, matrix, publish, publicURL, key, validate } = require('../../cache/upstream-bottle-cache.cjs');
-const { retryPolicy } = require('../../release/extension-transfers.cjs');
+const { prefetch, matrix, publish, publicURL, key, validate, exec } = require('../../cache/upstream-bottle-cache.cjs');
+const { retryPolicy, command } = require('../../release/extension-transfers.cjs');
 const bytes = Buffer.from('a verified bottle archive');
 const digest = crypto.createHash('sha256').update(bytes).digest('hex');
 function record(overrides = {}) {
@@ -17,7 +17,7 @@ function fixture(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'bottle-cache-test-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   return { record: record({ cached_download: path.join(directory, 'downloads', 'gcc.tar.gz') }),
-    directory, missFile: path.join(directory, 'misses.jsonl'), log: () => {}, warn: () => {} };
+    retry: retryPolicy({ wait: async () => {} }), directory, missFile: path.join(directory, 'misses.jsonl'), log: () => {}, warn: () => {} };
 }
 test('tools entry point loads the resolver without partially initialized cache exports', t => {
   const f = fixture(t);
@@ -91,7 +91,7 @@ test('publish checks upstream and public download hashes and uses only the bottl
   }, run: async (program, args, options) => {
     assert.equal(program, 'aws');
     assert.ok(args.includes(`s3://php-darwin/${key(record())}`));
-    assert.equal(options.env.AWS_MAX_ATTEMPTS, '3');
+    assert.equal(options.env.AWS_MAX_ATTEMPTS, '1');
     assert.equal(options.env.AWS_ACCESS_KEY_ID, env.CF_R2_AWS_ACCESS_KEY_ID);
     uploaded = true;
   } });
@@ -115,7 +115,7 @@ test('existing verified objects require no upstream request or upload', async ()
   assert.equal(result[0].result, 'existing');
 });
 
-test('source mirror publication retries transient reads without uploads and bounds persistent failures', async () => {
+test('source mirror publication retries all failed reads without uploads and bounds persistent failures', async () => {
   for (const mode of ['recover', 'timeout', 'forbidden']) {
     const waits = [];
     let reads = 0;
@@ -129,9 +129,57 @@ test('source mirror publication retries transient reads without uploads and boun
     }, run: async () => assert.fail('read failures must not trigger uploads') });
     if (mode === 'recover') assert.equal((await work)[0].result, 'existing');
     else await assert.rejects(work, mode === 'timeout' ? /body timeout/ : /403/);
-    assert.equal(reads, mode === 'forbidden' ? 1 : 3);
-    assert.deepEqual(waits, mode === 'forbidden' ? [] : [1000, 2000]);
+    assert.equal(reads, 3);
+    assert.deepEqual(waits, [1000, 2000]);
   }
+});
+
+test('both curl process adapters retry any error within the same bound', async t => {
+  const f = fixture(t);
+  fs.writeFileSync(path.join(f.directory, 'curl'), '#!/bin/sh\nprintf "000"\nexit "$1"\n', { mode: 0o755 });
+  const options = { env: { ...process.env, PATH: `${f.directory}${path.delimiter}${process.env.PATH}` } };
+  for (const run of [exec, command]) {
+    for (const code of [16, 35, 58, 60, 77, 3, 23]) {
+      await assert.rejects(run('curl', [String(code)], options), error => {
+        assert.equal(Boolean(error.transient), true);
+        assert.equal(error.output, '000');
+        return true;
+      });
+    }
+  }
+  for (const mode of ['recover', 'persistent', 'certificate']) {
+    let reads = 0;
+    const waits = [];
+    const retry = retryPolicy({ attempts: 3, budget: 12, delay: 1000, wait: async pause => waits.push(pause) });
+    const work = publish([record()], { env, retry, download: async (_url, file) => {
+      if (++reads < 3 || mode !== 'recover') await exec('curl', [mode === 'certificate' ? '60' : '35'], options);
+      fs.writeFileSync(file, bytes);
+      return 200;
+    }, run: async () => assert.fail('TLS read recovery must not upload or rebuild a valid bottle') });
+    if (mode === 'recover') assert.equal((await work)[0].result, 'existing');
+    else await assert.rejects(work, /curl exited/);
+    assert.equal(reads, 3);
+    assert.deepEqual(waits, [1000, 2000]);
+  }
+});
+
+test('upstream source downloads share the bounded retry policy before one verified upload', async () => {
+  let uploaded = false, upstreamReads = 0, uploads = 0;
+  const waits = [];
+  const result = await publish([record()], { env,
+    retry: retryPolicy({ attempts: 3, delay: 1000, wait: async pause => waits.push(pause) }),
+    download: async (url, file) => {
+      if (url.startsWith('https://ghcr.io/')) {
+        if (++upstreamReads === 1) throw Object.assign(new Error('TLS reset'), { transient: true });
+        if (upstreamReads === 2) return 503;
+      } else if (!uploaded) return 404;
+      fs.writeFileSync(file, bytes); return 200;
+    }, run: async () => { uploaded = true; uploads++; },
+  });
+  assert.equal(result[0].result, 'uploaded');
+  assert.equal(upstreamReads, 3);
+  assert.equal(uploads, 1);
+  assert.deepEqual(waits, [1000, 2000]);
 });
 
 test('public 404 after upload checks R2 directly and fails without another upload', async () => {
@@ -142,7 +190,7 @@ test('public 404 after upload checks R2 directly and fails without another uploa
     return upstream ? 200 : 404;
   }, run: async (program, args, options) => {
     assert.equal(program, 'aws');
-    assert.equal(options.env.AWS_MAX_ATTEMPTS, '3');
+    assert.equal(options.env.AWS_MAX_ATTEMPTS, '1');
     calls.push(args[2]);
     if (args[2] === 's3api') {
       assert.ok(args.includes('head-object'));
@@ -151,4 +199,29 @@ test('public 404 after upload checks R2 directly and fails without another uploa
     }
   } }), /verification failed: gcc HTTP 404/);
   assert.deepEqual(calls, ['s3', 's3api']);
+});
+
+
+test('R2 upload retries permission failures but reuses a committed object after a lost reply', async () => {
+  for (const mode of ['lost', 'permission', 'corrupt-readback']) {
+    let uploaded = false, uploads = 0, readbacks = 0;
+    const waits = [];
+    const work = publish([record()], {env, retry: retryPolicy({wait: async ms => waits.push(ms)}),
+      download: async (url, file) => {
+        if (!url.startsWith('https://ghcr.io/') && !uploaded) return 404;
+        const corrupt = uploaded && mode === 'corrupt-readback' && ++readbacks < 3;
+        fs.writeFileSync(file, corrupt ? 'corrupt response' : bytes);
+        return 200;
+      }, run: async (_program, _args, options) => {
+        uploads++;
+        assert.equal(options.env.AWS_MAX_ATTEMPTS, '1');
+        if (mode === 'permission') throw new Error('AccessDenied');
+        uploaded = true;
+        if (mode === 'lost') throw new Error('lost successful upload reply');
+      }
+    });
+    if (mode === 'permission') { await assert.rejects(work, /AccessDenied/); assert.equal(uploads, 3); }
+    else { assert.equal((await work)[0].result, 'uploaded'); assert.equal(uploads, 1); }
+    assert.deepEqual(waits, mode === 'lost' ? [1000] : [1000, 2000]);
+  }
 });
