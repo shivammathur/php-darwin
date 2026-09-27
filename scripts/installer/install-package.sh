@@ -1014,8 +1014,10 @@ if [ "${#linked_dependency_references[@]}" -gt 0 ]; then
     php_darwin_die 'could not refresh existing Homebrew paths after dependency unlinking'
 fi
 
-cat "$preserved_dependency_links_file" >> "$exclude_file" || \
-  php_darwin_die 'could not preserve newer dependency links'
+if [ -s "$preserved_dependency_links_file" ]; then
+  cat "$preserved_dependency_links_file" >> "$exclude_file" || \
+    php_darwin_die 'could not preserve newer dependency links'
+fi
 
 # Preserved PEAR and configuration files were moved aside for rollback. Do not
 # extract replacement copies that would immediately be discarded on success.

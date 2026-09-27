@@ -19,8 +19,13 @@ begin
   # Reuse newer active dependencies without downgrading their opt or public
   # links. Still extract missing cached kegs and track them for rollback.
   preserved = packages.each_with_object({}) do |(name, target, _), set|
+    next if mode == 'receipts' && !selected.key?(name)
     opt = File.join(prefix, 'opt', name)
-    next unless File.symlink?(opt) && File.directory?(opt)
+    next unless File.symlink?(opt)
+    # Most installs already have this exact link. Avoid resolving its entire
+    # Cellar path (and loading version comparison) on that common path.
+    next if File.readlink(opt) == target
+    next unless File.directory?(opt)
     active = File.realpath(opt)
     next unless File.dirname(active) == File.join(prefix, 'Cellar', name)
     current, cached = File.basename(active), File.basename(target)
@@ -53,10 +58,13 @@ begin
     File.write(output_file, changed.map { |name| name + "\n" }.join)
     File.write(linked_file, linked.map { |name| name + "\n" }.join)
     if preserved_links_file && links_file
-      paths = File.readlines(links_file, chomp: true).each_with_object([]) do |line, result|
-        name, target = line.split("\t", 2)
-        formula = target && target.match(%r{(?:\A|/)Cellar/([^/]+)/})
-        result << name if formula && preserved.key?(formula[1])
+      paths = []
+      unless preserved.empty?
+        File.foreach(links_file, chomp: true) do |line|
+          name, target = line.split("\t", 2)
+          formula = target && target.match(%r{(?:\A|/)Cellar/([^/]+)/})
+          paths << name if formula && preserved.key?(formula[1])
+        end
       end
       File.write(preserved_links_file, paths.map { |name| name + "\n" }.join)
     end
