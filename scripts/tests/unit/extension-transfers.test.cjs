@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const http = require('node:http');
-const { command, retryPolicy, httpError, readDiagnostic, transfers } = require('../../release/extension-transfers.cjs');
+const { command, retryPolicy, httpError, readDiagnostic, transfers, githubJSON } = require('../../release/extension-transfers.cjs');
 const { digest } = require('../../installer/install-extensions.cjs');
 
 function fixture(t, failure) {
@@ -43,6 +43,26 @@ function fixture(t, failure) {
   const create = () => transfers({ directory, endpoint: 'https://test.invalid', env: { AWS_MAX_ATTEMPTS: '1' }, run, retry, cloudflareRetry: retry });
   return { file, calls, waits, github, cloudflare, create };
 }
+test('GitHub JSON reads retry truncated responses and stop after three malformed responses', async () => {
+  for (const recover of [true, false]) {
+    let calls = 0;
+    const waits = [];
+    const request = githubJSON('repos/example/project/actions/runs', {
+      paginate: true,
+      retry: retryPolicy({wait: async ms => waits.push(ms)}),
+      run: async (program, args) => {
+        assert.equal(program, 'gh');
+        assert.deepEqual(args, ['api', '--paginate', '--slurp', 'repos/example/project/actions/runs']);
+        calls++;
+        return recover && calls === 3 ? '[{"workflow_runs":[]}]' : '[{"workflow_runs":';
+      },
+    });
+    if (recover) assert.deepEqual(await request, [{workflow_runs: []}]);
+    else await assert.rejects(request, SyntaxError);
+    assert.equal(calls, 3);
+    assert.deepEqual(waits, [1000, 2000]);
+  }
+});
 test('resuming publication reuses matching GitHub digests and fully verified Cloudflare bytes', async t => {
   const f = fixture(t), first = f.create();
   await first.github(f.file, true); await first.mirror(f.file, true);

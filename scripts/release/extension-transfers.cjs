@@ -61,8 +61,8 @@ function readDiagnostic(output, headerFile, downloaded) {
   return { ...result, headers };
 }
 async function githubJSON(route, { run = command, retry = retryPolicy(), paginate = false } = {}) {
-  const result = await retry(`Read ${route}`, () => run('gh', ['api', ...(paginate ? ['--paginate', '--slurp'] : []), route]));
-  return JSON.parse(result);
+  return retry(`Read ${route}`, async () => JSON.parse(await run('gh',
+    ['api', ...(paginate ? ['--paginate', '--slurp'] : []), route])));
 }
 async function workflowJobs(route, attempts, options = {}) {
   if (!Number.isSafeInteger(attempts) || attempts < 1) throw new Error('Invalid source run attempt');
