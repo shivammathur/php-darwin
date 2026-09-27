@@ -86,19 +86,19 @@ jobs:
           bash scripts/tests/native/source-bottle-native.test.sh verify
           bash scripts/tests/native/source-bottle-native.test.sh verify-outdated
           bash scripts/tests/native/source-bottle-native.test.sh reset
-      - name: Restore both packages from the release cache
+      - name: Restore all packages from the release cache
         id: warm
         uses: ./.github/actions/source-cache
         with:
           formula: php-darwin/source-cache-test/php-darwin-cache-app
           release: source-bottles-test-${{ github.run_id }}
-      - name: Verify both builds were reused
+      - name: Verify all builds were reused
         env:
           BUILT: ${{ steps.warm.outputs.built }}
           RESTORED: ${{ steps.warm.outputs.restored }}
         run: |
           test "$BUILT" = 0
-          test "$RESTORED" = 2
+          test "$RESTORED" = 3
           bash scripts/tests/native/source-bottle-native.test.sh verify
           bash scripts/tests/native/source-bottle-native.test.sh reset
           bash scripts/tests/native/source-bottle-native.test.sh bump

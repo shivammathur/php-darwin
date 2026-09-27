@@ -130,7 +130,11 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
     // Do not let each subsequent brew install expand it again: --build-bottle
     // would otherwise demand upgrades to the installed PHP build tool's own
     // runtime libraries, which are unrelated to building an extension.
-    const flags = ['--verbose', '--ignore-dependencies', ...(target && skipLink ? ['--skip-link'] : [])];
+    // Direct requests may auto-link versioned keg-only formulae in Homebrew.
+    // Preserve dependency semantics so legacy Autoconf cannot claim the global
+    // commands before an extension installs modern Autoconf.
+    const flags = ['--verbose', '--ignore-dependencies', ...(!target ? ['--as-dependency'] : []),
+      ...(target && skipLink ? ['--skip-link'] : [])];
     if (item.installed) {
       // A restored PHP cache can select an older keg while the current version
       // remains installed. Point opt at the planned keg without deleting either.

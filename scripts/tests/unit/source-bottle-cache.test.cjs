@@ -123,6 +123,18 @@ test('reuse libxml2 across PHP builds and rebuild both when libxml2 changes', as
   assert.deepEqual(await install(f.args), { built: 2, restored: 0 });
 });
 
+test('dependencies stay dependency installs for source builds and restored bottles', async t => {
+  const f = fixture(t);
+  for (const expected of [{built: 2, restored: 0}, {built: 0, restored: 2}]) {
+    assert.deepEqual(await install(f.args), expected);
+    const installs = f.events.filter(args => args[0] === 'install');
+    assert.equal(installs.length, 2);
+    assert.ok(installs[0].includes('--as-dependency'));
+    assert.ok(!installs[1].includes('--as-dependency'));
+    f.freshRunner();
+  }
+});
+
 test('cache outages and concurrent saves do not discard successful source builds', async t => {
   const f = fixture(t);
   f.args.cache.restoreCache = async () => { throw new Error('cache unavailable'); };
@@ -214,7 +226,8 @@ test('missing upstream bottles are prefetched together and install still retries
   assert.deepEqual(await install(f.args), { built: 1, restored: 0 });
   assert.deepEqual(f.warnings, ['Upstream bottle prefetch incomplete: temporary download failure']);
   assert.deepEqual(f.events.filter(args => args[0] === 'install' && !args.includes('--build-bottle')),
-    [['install', '--formula', '--verbose', '--ignore-dependencies', 'aspell'], ['install', '--formula', '--verbose', '--ignore-dependencies', 'gcc']]);
+    [['install', '--formula', '--verbose', '--ignore-dependencies', '--as-dependency', 'aspell'],
+      ['install', '--formula', '--verbose', '--ignore-dependencies', '--as-dependency', 'gcc']]);
   f.args.run = run;
   f.freshRunner();
   assert.deepEqual(await install(f.args), { built: 0, restored: 1 });
@@ -296,5 +309,5 @@ test('Cloudflare prefetch completes before upstream fetch and leaves normal inst
     f.events.push(['cloudflare']);
   };
   await install(f.args);
-  assert.deepEqual(f.events, [['cloudflare'], ['install', '--formula', '--verbose', '--ignore-dependencies', 'libxml2']]);
+  assert.deepEqual(f.events, [['cloudflare'], ['install', '--formula', '--verbose', '--ignore-dependencies', '--as-dependency', 'libxml2']]);
 });

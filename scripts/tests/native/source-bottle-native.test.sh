@@ -7,6 +7,7 @@ export HOMEBREW_NO_AUTOREMOVE=1 HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1
 tap=php-darwin/source-cache-test
 library="$tap/php-darwin-cache-lib"
 app="$tap/php-darwin-cache-app"
+tool="$tap/php-darwin-cache-tool@1"
 fixtures="${GITHUB_WORKSPACE:?}/.source-cache-fixtures"
 
 case "${1:?}" in
@@ -51,6 +52,24 @@ class PhpDarwinCacheLib < Formula
   end
 end
 EOF
+    cat > "$tap_path/Formula/php-darwin-cache-tool@1.rb" <<EOF
+class PhpDarwinCacheToolAT1 < Formula
+  desc "Versioned build tool linking regression fixture"
+  homepage "https://github.com/shivammathur/php-darwin"
+  url "file://$fixtures/source.tar.gz"
+  version "1.0.0"
+  sha256 "$source_hash"
+  license "MIT"
+  keg_only :versioned_formula
+  def install
+    # The consumer owns this command in the global prefix. A dependency must
+    # retain its private copy without taking the consumer's command name.
+    (buildpath/"php-darwin-cache-app").write "#!/bin/sh\\necho dependency\\n"
+    bin.install "php-darwin-cache-app"
+    chmod 0755, bin/"php-darwin-cache-app"
+  end
+end
+EOF
     cat > "$tap_path/Formula/php-darwin-cache-app.rb" <<EOF
 class PhpDarwinCacheApp < Formula
   desc "Source bottle cache test consumer"
@@ -60,6 +79,7 @@ class PhpDarwinCacheApp < Formula
   sha256 "$source_hash"
   license "MIT"
   depends_on "$library"
+  depends_on "$tool" => :build
   def install
     dependency = Formula["$library"]
     system ENV.cc, "app.c", "-I#{dependency.opt_include}", "-L#{dependency.opt_lib}",
@@ -147,6 +167,15 @@ JS
     ;;
   verify)
     [ "$("$(brew --prefix "$app")/bin/php-darwin-cache-app")" = 42 ]
+    [ "$("$(brew --prefix)/bin/php-darwin-cache-app")" = 42 ]
+    python3 - "$(brew --cellar)" <<'PY'
+import json, pathlib, sys
+cellar = pathlib.Path(sys.argv[1])
+for name in ['php-darwin-cache-lib', 'php-darwin-cache-tool@1']:
+    receipt = next((cellar/name).glob('*/INSTALL_RECEIPT.json'))
+    assert json.loads(receipt.read_text())['installed_on_request'] is False, name
+print('Versioned build tool stays private; dependency receipts are not direct requests')
+PY
     [ "$(cat "$(brew --prefix)/var/php-darwin-source-cache-test/postinstall")" = ready ]
     brew linkage --test "$app" "$library"
     # Verify the actual native packages, not just cache status messages.
@@ -157,7 +186,7 @@ JS
     done < <(find .source-bottle-cache -name '*.tar.gz' -print0)
     ;;
   reset)
-    brew uninstall --force --ignore-dependencies "$app" "$library"
+    brew uninstall --force --ignore-dependencies "$app" "$library" "$tool"
     rm -rf .source-bottle-cache
     rm -f "$(brew --prefix)/var/php-darwin-source-cache-test/postinstall"
     ;;
@@ -237,7 +266,7 @@ JS
     ;;
   cleanup)
     if brew tap | grep -Fxq "$tap"; then
-      brew uninstall --force --ignore-dependencies "$app" "$library" || true
+      brew uninstall --force --ignore-dependencies "$app" "$library" "$tool" || true
       HOMEBREW_DEVELOPER=1 brew untap "$tap" || true
     fi
     rm -rf "$(brew --prefix)/var/php-darwin-source-cache-test"
