@@ -11,7 +11,8 @@ function execute(program, args, env) {
 function batch(entries, mode, { run = execute, output = 'builds/extensions', indexOutput = 'builds/index' } = {}) {
   if (!['build', 'test'].includes(mode)) throw new Error('Invalid batch mode');
   const failures = [], index = [];
-  let corePinned = false;
+  let corePinned = process.env.PHP_DARWIN_CORE_PREPARED === process.env.HOMEBREW_CORE_COMMIT &&
+    /^[a-f0-9]{40}$/.test(process.env.HOMEBREW_CORE_COMMIT || '');
   for (const variant of variants(entries)) {
     const env = { ...process.env, PHP_VERSION: variant.php_version, ARCH: variant.architecture,
       BUILD: variant.build, TS: variant.thread_safety };
@@ -22,7 +23,7 @@ function batch(entries, mode, { run = execute, output = 'builds/extensions', ind
     fs.writeFileSync(env.GITHUB_ENV, '');
     console.log(`::group::Prepare PHP ${variant.php_version} ${variant.build}/${variant.thread_safety}`);
     try {
-      run('bash', ['scripts/build/prepare-extension-pack.sh'], env);
+      run('bash', ['scripts/build/prepare-extension-pack.sh', mode], env);
       for (const line of fs.readFileSync(env.GITHUB_ENV, 'utf8').split('\n')) {
         const match = /^(PHP_DARWIN_PHP_SRC_COMMIT)=([a-f0-9]{40})$/.exec(line);
         if (match) env[match[1]] = match[2];

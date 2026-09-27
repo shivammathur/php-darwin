@@ -28,14 +28,15 @@ function writeArchive(folder, metadata) {
   fs.writeFileSync(path.join(folder, 'validation.txt'), JSON.stringify({ name: metadata.name, sha256: metadata.sha256,
     install_seconds: 52, php_preserved: true, services_preserved: true }));
 }
-test('all 336 packs use 28 build jobs and 56 compatibility jobs, retaining every variant', () => {
+test('all 336 packs use 28 build jobs and 42 compatibility jobs, retaining every variant', () => {
   const entries = versions.flatMap(php_version => ['arm64', 'x86_64'].flatMap(architecture =>
     ['debug', 'release'].flatMap(build => ['nts', 'zts'].flatMap(thread_safety =>
       ['imagick', 'mongodb', 'memcached'].map(name => ({ php_version, architecture, build, thread_safety, name }))))));
   assert.equal(entries.length, 336);
   assert.equal(buildMatrix(entries).include.length, 28);
   const tests = testMatrix(entries).include;
-  assert.equal(tests.length, 56);
+  assert.equal(tests.length, 42);
+  assert.ok(tests.every(item => item.runner !== 'macos-latest'));
   assert.equal(buildMatrix(entries).include.filter(item => item.runner === 'macos-15-intel').length, 14);
   assert.equal(tests.filter(item => item.runner === 'macos-26-intel').length, 14);
   for (const job of [...buildMatrix(entries).include, ...tests]) {
@@ -144,5 +145,28 @@ test('artifact download retries every failure with fresh output and a three-atte
     assert.equal(attempts, 3);
     assert.deepEqual(waits, [1000, 2000]);
     assert.equal(fs.existsSync(path.join(output, 'artifact.zip')), false);
+  }
+});
+
+test('test mode accepts flattened and grouped artifacts and rejects missing variants without build preparation', t => {
+  const directory = fixture(t), previous = process.env.RUNNER_TEMP;
+  process.env.RUNNER_TEMP = directory;
+  t.after(() => { if (previous === undefined) delete process.env.RUNNER_TEMP; else process.env.RUNNER_TEMP = previous; });
+  for (const grouped of [false, true]) {
+    const output = path.join(directory, String(grouped)), selected = entry();
+    writeArchive(grouped ? path.join(output, `extension-${key(selected)}`) : output, selected);
+    let validated = 0;
+    const run = (_program, args, env) => {
+      if (args[0] === 'scripts/build/prepare-extension-pack.sh') assert.equal(args[1], 'test');
+      else {
+        assert.equal(args[0], 'scripts/tests/native/extension-pack.test.cjs');
+        assert.equal(fs.existsSync(path.join(env.EXTENSION_PACK_OUTPUT, 'validation.txt')), false);
+        validated++;
+        writeArchive(env.EXTENSION_PACK_OUTPUT, selected);
+      }
+    };
+    batch([selected], 'test', {run, output});
+    assert.equal(validated, 1);
+    assert.throws(() => batch([{...selected, thread_safety: 'zts'}], 'test', {run, output}), /Failed test variants/);
   }
 });

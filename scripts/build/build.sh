@@ -195,7 +195,9 @@ install_formula() {
   local semver_output
 
   [ -s "$before_manifest" ] || php_darwin_die 'the clean Homebrew snapshot is missing'
-  brew install --verbose "$tap/$requested_formula" || php_darwin_die "could not install $requested_formula"
+  if [ "$stage" != finalize ]; then
+    brew install --verbose "$tap/$requested_formula" || php_darwin_die "could not install $requested_formula"
+  fi
   brew unlink "$formula" >/dev/null 2>&1 || true
   brew link --overwrite --force "$formula" || php_darwin_die "could not link $formula after building"
 
@@ -824,7 +826,7 @@ reset_homebrew() {
 case "$stage" in
   prepare) prepare_homebrew ;;
   cleanup) clean_homebrew ;;
-  install) install_formula ;;
+  install|finalize) install_formula ;;
   package) package_cache ;;
   verify) verify_cache ;;
   reset) reset_homebrew ;;
@@ -836,5 +838,5 @@ case "$stage" in
     package_cache
     verify_cache
     ;;
-  *) php_darwin_die 'usage: build.sh prepare|cleanup|install|package|verify|reset|all' ;;
+  *) php_darwin_die 'usage: build.sh prepare|cleanup|install|finalize|package|verify|reset|all' ;;
 esac

@@ -2,9 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { command, digest, key, validateEntry, origins } = require('../installer/install-extensions.cjs');
 const configuration = require('../../conf/extension-packs.json');
-const compatibleBuilders = require('../../conf/extension-builder-compatibility.json');
 const platforms = require('../../conf/platforms.json');
-const { builderHash } = require('../build/extension-pack.cjs');
 const { buildMatrix, testMatrix } = require('./extension-batches.cjs');
 const { retention } = require('./extension-retention.cjs');
 const { recipeCurrent } = require('../lib/recipe-inputs.cjs');
@@ -14,7 +12,7 @@ const root = path.resolve(__dirname, '../..');
 function versionBatches(value = configuration.versions.join(' ')) {
   const versions = [...new Set(value.trim().split(/\s+/))];
   if (versions.some(version => !configuration.versions.includes(version))) throw new Error('Unsupported PHP version');
-  // All fourteen versions now fit in 28 build and 56 compatibility jobs.
+  // All fourteen versions now fit in 28 build and 42 compatibility jobs.
   return [versions];
 }
 async function dispatch({ versions = process.env.PHP_VERSIONS || undefined, afterRun = process.env.AFTER_RUN,
@@ -42,17 +40,10 @@ async function dispatch({ versions = process.env.PHP_VERSIONS || undefined, afte
     console.log(`Dispatched optional extension caches for PHP ${batch.join(', ')}`);
   }
 }
-function compatibleBuilder(previous, current = builderHash()) {
-  // Reviewed cache transport/preparation changes need not repack valid binaries.
-  // Bind each exception to an exact current hash so future builder edits still
-  // invalidate it; PHP and every recorded recipe are checked separately below.
-  return previous === current || (compatibleBuilders[current] || []).includes(previous);
-}
 function freshnessReason(entry, repositories, phpManifest) {
   try {
     validateEntry(entry);
     const phpVersion = phpManifest.php_src_commit ? entry.php_semver?.split('-')[0] : entry.php_semver;
-    if (!compatibleBuilder(entry.builder_sha256)) return 'builder changed';
     if (phpVersion !== phpManifest.php_semver ||
         (phpManifest.php_src_commit || '') !== (entry.php_src_commit || '')) return 'PHP release changed';
     if (!entry.source_records?.length) return 'missing recipe records';
@@ -306,7 +297,7 @@ async function publish(directory, { run = transferCommand, retry = retryPolicy()
     fs.rmSync(staging, { recursive: true, force: true });
   }
 }
-module.exports = { unchanged, freshnessReason, compatibleBuilder, builderHash, readManifest, plan, publish, compatibilityMatrix, versionBatches, dispatch, validatePublishRun, validatePublishedPHP };
+module.exports = { unchanged, freshnessReason, readManifest, plan, publish, compatibilityMatrix, versionBatches, dispatch, validatePublishRun, validatePublishedPHP };
 if (require.main === module) (async () => {
   if (process.argv[2] === 'dispatch') await dispatch();
   else if (process.argv[2] === 'plan') await plan();

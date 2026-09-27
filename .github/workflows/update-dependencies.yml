@@ -109,6 +109,8 @@ jobs:
           done
       - name: Remove installed formulae before dependency preparation
         run: '"$PHP_DARWIN_NODE" scripts/cache/update-dependencies.cjs clean'
+      - name: Check the cleaned Homebrew environment
+        run: bash scripts/build/check-homebrew.sh
       - name: Bootstrap the formula-input reader from its pinned upstream bottle
         run: brew install --formula --force-bottle jq
       - name: Build or restore dependencies without building PHP
@@ -125,6 +127,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Save dependency diagnostics
+        continue-on-error: true
         if: always()
         uses: ./.github/actions/upload-artifacts
         with:

@@ -3,11 +3,11 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const {current, builderHash} = require('../../build/package-inputs.cjs');
+const {current} = require('../../build/package-inputs.cjs');
 const {recipeInputs} = require('../../lib/recipe-inputs.cjs');
 const {digest} = require('../../installer/install-extensions.cjs');
 
-test('dependency and builder changes invalidate packages; unrelated bottles retain cache hits', t => {
+test('dependency changes invalidate packages; php-darwin revisions and unrelated bottles retain cache hits', t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'package-inputs-'));
   t.after(() => fs.rmSync(root, {recursive: true, force: true}));
   const file = path.join(root, 'formula.rb');
@@ -16,7 +16,7 @@ test('dependency and builder changes invalidate packages; unrelated bottles reta
   fs.writeFileSync(file, recipe);
   const record = {repository: 'Homebrew/homebrew-core', path: 'formula.rb', sha256: digest(recipe),
     inputs_schema: 1, inputs_mode: 'platforms', inputs_sha256: recipeInputs(file)};
-  const inputs = {schema: 1, builder_sha256: builderHash(), source_records: [record]};
+  const inputs = {schema: 1, builder_sha256: 'a'.repeat(64), source_records: [record]};
   const manifest = {assets: [{build_inputs: inputs}]}, repositories = {'Homebrew/homebrew-core': root};
   assert.equal(current(manifest, repositories), true);
   fs.writeFileSync(file, recipe.replace('b'.repeat(64), 'c'.repeat(64)));
@@ -26,7 +26,10 @@ test('dependency and builder changes invalidate packages; unrelated bottles reta
   fs.writeFileSync(file, recipe.replace('lib-1', 'lib-2'));
   assert.equal(current(manifest, repositories), false);
   fs.writeFileSync(file, recipe);
-  assert.equal(current(manifest, repositories, 'f'.repeat(64)), false);
+  inputs.builder_sha256 = 'f'.repeat(64);
+  assert.equal(current(manifest, repositories), true);
+  delete inputs.builder_sha256;
+  assert.equal(current(manifest, repositories), true);
   assert.equal(current({assets: [{}]}, repositories), false);
   delete inputs.source_records;
   assert.equal(current(manifest, repositories), false);

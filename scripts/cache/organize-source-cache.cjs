@@ -6,7 +6,7 @@ const { pipeline } = require('node:stream/promises');
 const { setTimeout: pause } = require('node:timers/promises');
 const { curlRequest } = require('../lib/release-http.cjs');
 const { ReleaseCache, assetIdentity, unpack, family, checkUploadResponse } = require('./source-bottle-releases.cjs');
-const { keyFor } = require('./source-bottle-cache.cjs');
+const { validKey } = require('./source-bottle-cache.cjs');
 const { releaseForFormula, legacyRelease } = require('./source-cache-layout.cjs');
 const mirror = require('./source-bottle-mirror.cjs');
 
@@ -142,7 +142,7 @@ async function copy(cache, entry, release, existing, { mirrorDownload = mirror.t
     const verified = path.join(temporary, 'verified');
     unpack(archive, verified, identity.key);
     const metadata = JSON.parse(fs.readFileSync(path.join(verified, 'metadata.json')));
-    if (keyFor(metadata.inputs) !== identity.key || family(metadata.inputs) !== identity.group ||
+    if (!validKey(metadata.inputs, identity.key) || family(metadata.inputs) !== identity.group ||
         metadata.inputs.version !== identity.version || releaseForFormula(metadata.inputs.formula) !== target) {
       throw new Error(`Source metadata differs: ${asset.name}`);
     }

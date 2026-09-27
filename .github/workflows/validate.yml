@@ -2,7 +2,7 @@ name: Validate workflows and cache scripts
 
 on:
   push:
-    branches: ['**']
+    branches: [main]
     paths: ['.github/**', 'scripts/**', 'conf/**', 'templates/**']
   pull_request:
     paths: ['.github/**', 'scripts/**', 'conf/**', 'templates/**']
@@ -38,7 +38,7 @@ jobs:
           "$RUNNER_TEMP/actionlint/actionlint"
       - name: Preserve the Actions Node runtime
         uses: ./.github/actions/node-runtime
-      - name: Verify helpers can run without Node on PATH
+      - name: Verify the preserved Node runtime works without Node on PATH
         run: PATH=/nonexistent "$PHP_DARWIN_NODE" -e 'require("node:assert/strict").ok(process.versions.node)'
       - name: Upload an artifact transfer fixture
         id: upload-fixture

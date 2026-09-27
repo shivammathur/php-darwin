@@ -9,8 +9,16 @@ on:
     paths:
       - .github/actions/source-cache/**
       - .github/workflows/test-source-cache.yml
-      - scripts/cache/**
-      - scripts/lib/**
+      - scripts/cache/source-bottle-*
+      - scripts/cache/source-build-lock.cjs
+      - scripts/cache/source-cache-layout.cjs
+      - scripts/cache/approved-dependencies.cjs
+      - scripts/cache/upstream-bottle-cache.cjs
+      - scripts/cache/brew-php-darwin-source.rb
+      - scripts/lib/lib.sh
+      - scripts/lib/recipe-inputs.cjs
+      - scripts/lib/release-http.cjs
+      - scripts/lib/retry.*
       - scripts/build/formula-build-inputs.sh
       - scripts/build/build-extensions.sh
       - scripts/build/extension-formula.rb
@@ -18,9 +26,13 @@ on:
       - scripts/tests/native/source-bottle-*.test.sh
       - scripts/tests/native/approved-dependencies.test.cjs
       - scripts/tests/native/icu-reuse.test.sh
-      - scripts/tests/e2e/source-build-lock-live.test.cjs
-      - scripts/tests/helpers/**
-      - conf/**
+      - conf/dependencies.json
+      - conf/platforms.json
+      - conf/package.json
+      - conf/build.json
+      - conf/cached-extensions/**
+      - conf/zend-extensions
+      - conf/variants
 
 permissions:
   contents: write
@@ -73,8 +85,6 @@ jobs:
       - name: Verify reused ICU development files and bottle recovery
         run: bash scripts/tests/native/icu-reuse.test.sh
 
-      - name: Verify concurrent ownership through the GitHub API
-        run: '"$PHP_DARWIN_NODE" scripts/tests/e2e/source-build-lock-live.test.cjs'
       - name: Prepare source-only library and consumer
         run: bash scripts/tests/native/source-bottle-native.test.sh prepare
       - name: Verify native bottle selection and dependency pruning

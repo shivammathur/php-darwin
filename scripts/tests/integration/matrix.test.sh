@@ -17,7 +17,7 @@ full_test=$(sed -n 's/^test-matrix=//p' "$full_output")
 full_variants=$(sed -n 's/^variant-matrix=//p' "$full_output")
 jq -e '
   .include == [
-    {php:"8.5",arch:"arm64",runner:"macos-14",test_runners:["macos-14","macos-15","macos-26","macos-latest"]},
+    {php:"8.5",arch:"arm64",runner:"macos-14",test_runners:["macos-14","macos-15","macos-26"]},
     {php:"8.5",arch:"x86_64",runner:"macos-15-intel",test_runners:["macos-15-intel","macos-26-intel"]}
   ]
 ' <<< "$full_build" >/dev/null || php_darwin_die 'full architecture matrix uses incorrect build runners'
@@ -32,11 +32,10 @@ jq -e '
     {php:"8.5",arch:"arm64",runner:"macos-14"},
     {php:"8.5",arch:"arm64",runner:"macos-15"},
     {php:"8.5",arch:"arm64",runner:"macos-26"},
-    {php:"8.5",arch:"arm64",runner:"macos-latest"},
     {php:"8.5",arch:"x86_64",runner:"macos-15-intel"},
     {php:"8.5",arch:"x86_64",runner:"macos-26-intel"}
   ]
-' <<< "$full_test" >/dev/null || php_darwin_die 'full test matrix does not cover every free macOS runner'
+' <<< "$full_test" >/dev/null || php_darwin_die 'full test matrix does not cover every named macOS version'
 
 for version in $(php_darwin_nightly_versions); do
   nightly_output="$work_dir/nightly-$version.txt"
@@ -130,4 +129,4 @@ macos-15-intel x86_64
 macos-26-intel x86_64
 RUNNERS
 
-printf 'Workflow matrix validation passed (8 variant builds, 6 compatibility tests, partial publishing)\n'
+printf 'Workflow matrix validation passed (8 variant builds, 5 compatibility tests, partial publishing)\n'

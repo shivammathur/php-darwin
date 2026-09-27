@@ -70,7 +70,6 @@ jobs:
       build: ${{ steps.freshness.outputs.build }}
       homebrew-extensions-commit: ${{ steps.freshness.outputs.homebrew-extensions-commit }}
       homebrew-php-commit: ${{ steps.freshness.outputs.homebrew-php-commit }}
-      php-src-commit: ${{ steps.freshness.outputs.php-src-commit }}
       php-version: ${{ steps.freshness.outputs.php-version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -93,10 +92,15 @@ jobs:
           path: homebrew-extensions
           persist-credentials: false
 
+      - name: Select approved dependency recipes
+        id: core
+        run: bash scripts/build/source-commit.sh core
+
       - name: Check out Homebrew core for dependency freshness
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Homebrew/homebrew-core
+          ref: ${{ steps.core.outputs.commit }}
           path: homebrew-core
           persist-credentials: false
 

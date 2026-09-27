@@ -83,6 +83,6 @@ jobs:
       homebrew-extensions-commit: ${{ inputs.homebrew-extensions-commit || '' }}
       publish: ${{ inputs.publish }}
       source-cache-release: ${{ inputs.source-cache-release || 'cache' }}
-      reuse-archives: ${{ github.event_name == 'schedule' || inputs.reuse-archives }}
+      reuse-archives: ${{ inputs.reuse-archives }}
       force-source: ${{ inputs.force-source || false }}
       force: ${{ inputs.force || false }}

@@ -1,0 +1,46 @@
+name: Test source-cache coordination
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: &paths
+      - .github/workflows/test-source-lock.yml
+      - scripts/cache/source-build-lock.cjs
+      - scripts/cache/source-bottle-releases.cjs
+      - scripts/lib/release-http.cjs
+      - scripts/lib/retry.cjs
+      - scripts/tests/e2e/source-build-lock-live.test.cjs
+  pull_request:
+    paths: *paths
+permissions:
+  contents: write
+  actions: read
+jobs:
+  coordination:
+    # Release writes are not available to fork pull requests. Local unit tests
+    # still cover the lock implementation for those contributions.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      CACHE_RELEASE: source-bottles-test-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Create the isolated coordination release
+        run: |
+          id=$(gh api --method POST "repos/$GH_REPO/releases" \
+            -f tag_name="$CACHE_RELEASE" -f target_commitish="$GITHUB_SHA" \
+            -f name="$CACHE_RELEASE" -F draft=true -F prerelease=true --jq .id)
+          echo "CACHE_RELEASE_ID=$id" >> "$GITHUB_ENV"
+      - name: Verify concurrent ownership and fallback transfers
+        run: node scripts/tests/e2e/source-build-lock-live.test.cjs
+      - name: Remove the isolated test release
+        if: always()
+        run: |
+          if [ -n "${CACHE_RELEASE_ID:-}" ]; then
+            gh api --method DELETE "repos/$GH_REPO/releases/$CACHE_RELEASE_ID"
+          fi

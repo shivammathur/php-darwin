@@ -7,7 +7,7 @@ const { curlRequest, errorDetails } = require('../lib/release-http.cjs');
 const { pipeline, finished } = require('node:stream/promises');
 const { spawnSync } = require('node:child_process');
 const { setTimeout: pause } = require('node:timers/promises');
-const { command, brewSource, readBottle, keyFor } = require('./source-bottle-cache.cjs');
+const { command, brewSource, readBottle, keyFor, validKey } = require('./source-bottle-cache.cjs');
 const mirror = require('./source-bottle-mirror.cjs');
 const { retryPolicy } = require('../release/extension-transfers.cjs');
 const { releaseForFormula } = require('./source-cache-layout.cjs');
@@ -249,7 +249,7 @@ class ReleaseCache {
   }
 
   async restoreCache([directory], key, _restoreKeys = [], inputs) {
-    if (this.partition && (!inputs || keyFor(inputs) !== key)) throw new Error('Source cache lookup requires matching build inputs');
+    if (this.partition && (!inputs || !validKey(inputs, key))) throw new Error('Source cache lookup requires matching build inputs');
     const tags = this.partition ? [...new Set([this.bottleTag(inputs), this.tag,
       `cache-source-${family(inputs).slice(0, 2)}`])] : [this.tag];
     this.lastLookup = { key, assets: [] };
@@ -259,9 +259,42 @@ class ReleaseCache {
       const assets = await this.assets(release);
       this.lastLookup.assets.push(...assets);
       const asset = assets.find(asset => asset.state !== 'starter' && assetIdentity(asset)?.key === key);
-      if (!asset) continue;
-      await this.download(asset, directory, key, { tag });
-      return key;
+      if (asset) {
+        await this.download(asset, directory, key, { tag });
+        return key;
+      }
+      if (!inputs || keyFor(inputs) !== key) continue;
+      // Older caches hashed recipe bytes and compiler details. Reuse only a
+      // checksum-verified bottle with the same software versions and target.
+      const candidates = assets.filter(item => {
+        const identity = assetIdentity(item);
+        return item.state !== 'starter' && identity?.group === family(inputs) && identity.version === inputs.version;
+      }).sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)).slice(0, 3);
+      for (const candidate of candidates) {
+        const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'source-bottle-legacy-'));
+        try {
+          const oldKey = assetIdentity(candidate).key;
+          await this.download(candidate, temporary, oldKey, {tag});
+          const metadata = JSON.parse(fs.readFileSync(path.join(temporary, 'metadata.json')));
+          if (!metadata.inputs || !validKey(metadata.inputs, oldKey)) continue;
+          const previous = {...metadata.inputs};
+          // Legacy nightly PHP keys recorded the complete source recipe hash.
+          // An identical recipe proves the source commit when it was not yet
+          // recorded separately; never equate two nightlies by semver alone.
+          if (!previous.source_commit && inputs.source_commit && /^[a-f0-9]{64}$/.test(inputs.recipe || '') &&
+              previous.recipe === inputs.recipe) {
+            previous.source_commit = inputs.source_commit;
+          }
+          if (keyFor(previous) !== key) continue;
+          fs.mkdirSync(directory, {recursive: true});
+          fs.copyFileSync(path.join(temporary, metadata.file), path.join(directory, metadata.file));
+          // This is a local alias only: leave the original release and mirror intact.
+          fs.writeFileSync(path.join(directory, 'metadata.json'), JSON.stringify({...metadata, key, inputs: previous}));
+          readBottle(directory, key);
+          return key;
+        } catch (error) { this.warn(`Ignoring incompatible source bottle ${candidate.id}: ${error.message}`); }
+        finally { fs.rmSync(temporary, {recursive: true, force: true}); }
+      }
     }
   }
 

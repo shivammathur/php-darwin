@@ -14,7 +14,12 @@ function canonical(value) {
   if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])]));
   return value;
 }
-function checkpointKey(inputs) { return sha(JSON.stringify(canonical(inputs))); }
+function legacyCheckpointKey(inputs) { return sha(JSON.stringify(canonical(inputs))); }
+function checkpointKey(inputs) {
+  // The repository revision is provenance, not the version of cached software.
+  const {revision, ...software} = inputs;
+  return legacyCheckpointKey(software);
+}
 
 function kegDigest(root) {
   const hash = crypto.createHash('sha256');
@@ -78,14 +83,14 @@ function verifyCheckpoint(directory, expected) {
   const metadataBytes = fs.readFileSync(path.join(directory, item.metadata));
   const metadata = JSON.parse(metadataBytes);
   const checksum = fs.readFileSync(path.join(directory, item.archive + '.sha256'), 'utf8').trim().split(/\s+/);
-  if (checkpoint.schema !== 1 || checkpoint.key !== item.key || checkpointKey(checkpoint.inputs) !== item.key ||
+  if (checkpoint.schema !== 1 || ![item.key, legacyCheckpointKey(checkpoint.inputs)].includes(checkpoint.key) || checkpointKey(checkpoint.inputs) !== item.key ||
       checkpoint.archive !== item.archive || checkpoint.metadata_sha256 !== sha(metadataBytes) ||
       checksum.length !== 2 || checksum[1] !== item.archive || checksum[0] !== checkpoint.sha256 ||
       !/^[0-9a-f]{64}$/.test(checksum[0]) || sha(fs.readFileSync(path.join(directory, item.archive))) !== checksum[0] ||
       metadata.archive !== item.archive || metadata.php_version !== expected.php || metadata.build !== expected.build || metadata.thread_safety !== expected.ts ||
       metadata.architecture !== expected.arch || metadata.homebrew_php_commit !== expected.phpCommit ||
       metadata.homebrew_extensions_commit !== expected.extensionsCommit) throw new Error('Archive checkpoint integrity/input mismatch');
-  return item;
+  return {...item, name: item.prefix + checkpoint.key};
 }
 
 async function downloadCheckpoint(cache, artifact, directory, expected, { early = false } = {}) {
@@ -119,7 +124,7 @@ function earlyCompatible(inputs, expected) {
   // remain fixed across partial reruns. Never infer payload equality from just
   // a PHP version, or reuse an older run before inspecting installed kegs.
   return /^[a-f0-9]{40}$/.test(expected.coreCommit || '') &&
-    ['php', 'arch', 'build', 'ts', 'revision', 'phpCommit', 'extensionsCommit', 'coreCommit']
+    ['php', 'arch', 'build', 'ts', 'phpCommit', 'extensionsCommit', 'coreCommit']
       .every(field => inputs?.[field] === expected[field]) &&
     JSON.stringify(canonical(inputs.platform)) === JSON.stringify(canonical(expected.platform));
 }
@@ -142,7 +147,7 @@ async function restoreEarly(cache, expected, builds, { runId = process.env.GITHU
         fs.mkdirSync(builds, {recursive: true});
         for (const file of item.files) fs.copyFileSync(path.join(directory, file), path.join(builds, file));
         recordMetric({kind: 'checkpoint', result: 'restored-early', artifact: artifact.id});
-        return {inputs, ...identity(inputs), hit: true, current: true};
+        return {inputs, ...identity(inputs), hit: true, current: artifact.name === identity(inputs).name};
       } catch (error) { cache.warn(`Ignoring early checkpoint ${artifact.id}: ${error.message}`); }
       finally { fs.rmSync(directory, {recursive: true, force: true}); }
     }
@@ -156,8 +161,18 @@ async function restoreCheckpoint(cache, inputs, builds, { reuse = true, temporar
   if (reuse) {
     try {
       const result = await cache.api(`actions/artifacts?per_page=100&name=${encodeURIComponent(item.name)}`);
-      const candidates = result.artifacts.filter(artifact => artifact.name === item.name && !artifact.expired &&
-        artifact.workflow_run?.head_sha === inputs.revision).slice(0, 3);
+      let candidates = result.artifacts.filter(artifact => artifact.name === item.name && !artifact.expired).slice(0, 3);
+      if (!candidates.length) {
+        // Existing checkpoints included the repository revision in their name.
+        // Compare their verified software/payload inputs rather than discarding
+        // successful archives solely because the workflow code changed.
+        for (let page = 1; page <= 5 && candidates.length < 3; page++) {
+          const previous = await cache.api(`actions/artifacts?per_page=100&page=${page}`);
+          candidates.push(...previous.artifacts.filter(artifact => !artifact.expired && artifact.name.startsWith(item.prefix)));
+          if (previous.artifacts.length < 100) break;
+        }
+        candidates = candidates.slice(0, 3);
+      }
       for (const artifact of candidates) {
         const directory = fs.mkdtempSync(path.join(temporary, 'php-darwin-checkpoint-'));
         try {
@@ -165,7 +180,7 @@ async function restoreCheckpoint(cache, inputs, builds, { reuse = true, temporar
           fs.mkdirSync(builds, { recursive: true });
           for (const file of item.files) fs.copyFileSync(path.join(directory, file), path.join(builds, file));
           recordMetric({ kind: 'checkpoint', result: 'restored', key: item.key, artifact: artifact.id, elapsedMs: Date.now() - started });
-          return { ...item, hit: true, current: String(artifact.workflow_run.id) === process.env.GITHUB_RUN_ID };
+          return { ...item, hit: true, current: artifact.name === item.name && String(artifact.workflow_run.id) === process.env.GITHUB_RUN_ID };
         } catch (error) { cache.warn(`Ignoring archive checkpoint ${artifact.id}: ${error.message}`); }
         finally { fs.rmSync(directory, { recursive: true, force: true }); }
       }

@@ -44,16 +44,17 @@ test('early reuse restores only this run with identical pinned sources and toolc
   const expected = {...f.inputs}; delete expected.packages;
   const options = {runId: '10', temporary: f.root};
   assert.equal((await restoreEarly(f.cache, expected, f.builds, options)).hit, true);
-  for (const field of ['revision', 'phpCommit', 'extensionsCommit', 'coreCommit', 'platform']) {
+  for (const field of ['phpCommit', 'extensionsCommit', 'coreCommit', 'platform']) {
     assert.equal((await restoreEarly(f.cache, {...expected, [field]: 'changed'}, f.builds, options)).hit, false);
   }
   assert.equal((await restoreEarly(f.cache, expected, f.builds, {...options, reuse: false})).hit, false);
 });
 
-test('archive fingerprints cover variants, workflow, source, dependency bytes and toolchain', () => {
+test('archive fingerprints ignore php-darwin revisions but cover software and platform inputs', () => {
   const inputs = { php: '8.6', arch: 'arm64', build: 'debug', ts: 'zts', revision: 'a',
     phpCommit: 'b', extensionsCommit: 'c', platform: { compiler: 'clang-1' }, packages: [{ payload: 'a' }] };
-  for (const key of Object.keys(inputs)) assert.notEqual(checkpointKey(inputs), checkpointKey({ ...inputs, [key]: 'changed' }));
+  for (const key of Object.keys(inputs).filter(key => key !== 'revision')) assert.notEqual(checkpointKey(inputs), checkpointKey({ ...inputs, [key]: 'changed' }));
+  assert.equal(checkpointKey(inputs), checkpointKey({...inputs, revision: 'different-code'}));
   assert.equal(checkpointKey({ a: 1, b: { c: 2, d: 3 } }), checkpointKey({ b: { d: 3, c: 2 }, a: 1 }));
 });
 
@@ -102,6 +103,7 @@ test('changed inputs, expired artifacts, and explicit rebuilds cannot hit a chec
     if (inputs === f.inputs) f.artifact.expired = true;
     assert.equal((await restoreCheckpoint(f.cache, inputs, path.join(f.root, 'miss'), { temporary: f.root })).hit, false);
   }
+  f.warnings.length = 0;
   f.cache.api = async () => { throw new Error('must not perform a lookup'); };
   assert.equal((await restoreCheckpoint(f.cache, f.inputs, f.builds, { reuse: false })).hit, false);
   assert.deepEqual(f.warnings, []);
@@ -127,4 +129,26 @@ test('checkpoint cleanup waits for upload and preserves other variants and archi
   artifacts.push({ id: 4, name: f.item.name });
   await pruneCheckpoints(cache, f.item, '10');
   assert.deepEqual(deleted, ['actions/artifacts/1']);
+});
+
+test('legacy checkpoint bytes survive a php-darwin revision change without repackaging', async t => {
+  const f = fixture(t);
+  const sorted = value => Array.isArray(value) ? value.map(sorted) : value && typeof value === 'object' ?
+    Object.fromEntries(Object.keys(value).sort().map(key => [key, sorted(value[key])])) : value;
+  const legacyKey = crypto.createHash('sha256').update(JSON.stringify(sorted(f.inputs))).digest('hex');
+  const checkpoint = path.join(f.staged, f.item.checkpoint);
+  const metadata = JSON.parse(fs.readFileSync(checkpoint));
+  metadata.key = legacyKey;
+  fs.writeFileSync(checkpoint, JSON.stringify(metadata));
+  command('zip', ['-q', f.zip, ...f.item.files], {cwd: f.staged});
+  const data = fs.readFileSync(f.zip);
+  f.artifact.name = f.item.prefix + legacyKey;
+  f.artifact.digest = 'sha256:' + crypto.createHash('sha256').update(data).digest('hex');
+  f.cache.api = async (route, options) => route.startsWith('actions/artifacts?') ?
+    {artifacts: [f.artifact]} : options.consume(new Response(data));
+  const destination = path.join(f.root, 'legacy-restored');
+  const result = await restoreCheckpoint(f.cache, {...f.inputs, revision: 'f'.repeat(40)}, destination, {temporary: f.root});
+  assert.equal(result.hit, true);
+  assert.equal(fs.readFileSync(path.join(destination, f.item.archive), 'utf8'), 'verified native archive fixture');
+  assert.deepEqual(f.warnings, []);
 });

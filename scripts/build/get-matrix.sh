@@ -71,7 +71,7 @@ for requested_arch in "${arch_values[@]}"; do
   arch=$(php_darwin_normalize_arch "$requested_arch") || exit 1
   runner=$(php_darwin_platform_value "$arch" build_runner) || \
     php_darwin_die "build runner is not configured for $arch"
-  test_runners=$(php_darwin_platform_value "$arch" test_runners | jq -c .) || \
+  test_runners=$(php_darwin_platform_value "$arch" test_runners | jq -c 'map(select(. != "macos-latest"))') || \
     php_darwin_die "test runners are not configured for $arch"
   jq -cn --arg php "$php_version" --arg arch "$arch" --arg runner "$runner" --argjson tests "$test_runners" \
     '{php:$php,arch:$arch,runner:$runner,test_runners:$tests}' >> "$build_entries_file"

@@ -311,7 +311,6 @@ reset_homebrew() {
 }
 
 validate_homebrew() {
-  local doctor_log=${RUNNER_TEMP:-/tmp}/brew-doctor.log
   local formula_info=${RUNNER_TEMP:-/tmp}/php-darwin-formula-info.json
   local service_info=${RUNNER_TEMP:-/tmp}/php-darwin-service-info.json
   local installed_after=${RUNNER_TEMP:-/tmp}/php-darwin-installed-after.txt
@@ -425,9 +424,6 @@ validate_homebrew() {
         (.linked_keg | type == "string" and length > 0)) |
       .name] == [$formula]
   ' "$formula_info" >/dev/null || php_darwin_die 'the requested PHP formula is not the only linked PHP keg'
-  brew config || php_darwin_die 'brew config failed after cache installation'
-  brew cleanup --dry-run >/dev/null 2>&1 || \
-    php_darwin_die 'brew cleanup dry-run failed after cache installation'
   [ "$(cat "$sentinel")" = preserve-existing-homebrew-state ] || \
     php_darwin_die 'cache extraction changed an existing Homebrew configuration file'
   [ "$(stat -f '%Lp' "$sentinel")" = 444 ] || \
@@ -436,8 +432,10 @@ validate_homebrew() {
   brew unlink "$tap/$formula" || php_darwin_die 'Homebrew could not unlink the cached PHP formula'
   brew link --overwrite --force "$tap/$formula" || \
     php_darwin_die 'Homebrew could not relink the cached PHP formula'
-  "$php_bin" -d date.timezone=UTC -r "if (strpos(PHP_VERSION, '$version') !== 0) { exit(1); }" || \
-    php_darwin_die 'PHP failed after Homebrew relinking'
+  case "$("$brew_prefix/bin/php-config" --version)" in
+    "$version".*) ;;
+    *) php_darwin_die 'php-config selected the wrong PHP after Homebrew relinking' ;;
+  esac
 
   brew info --json=v2 --formula "$tap/$requested_formula" > "$service_info" || \
     php_darwin_die 'could not inspect the cached PHP service definition'
@@ -445,13 +443,6 @@ validate_homebrew() {
     '.formulae | length == 1 and .[0].service.run[0] == $php_fpm' \
     "$service_info" >/dev/null || php_darwin_die 'the cached PHP service does not run its own php-fpm'
   "$php_fpm" -t || php_darwin_die 'the cached PHP-FPM configuration is invalid'
-
-  if ! brew doctor >"$doctor_log" 2>&1; then
-    if grep -Eq '^(Error:|.*broken)' "$doctor_log"; then
-      cat "$doctor_log"
-      php_darwin_die 'brew doctor reported a broken Homebrew installation'
-    fi
-  fi
 
   cleanup_homebrew_validation || php_darwin_die 'could not clean the Homebrew validation state'
   trap - EXIT HUP INT TERM

@@ -92,13 +92,16 @@ downloads on persistent runners. Never substitute an older bottle for a new dige
 
 Packages without usable upstream bottles use the `cache` GitHub Release for
 source-build metadata and locks. Their bundles also use Cloudflare first.
-Keys include recipe, dependency and toolchain inputs; PHP extensions additionally
-include PHP API and variant inputs. Unrelated bottle additions must not invalidate
-source builds. Existing configuration is restored after source bottling, including
-failed builds; service data is not staged. Keep configure/make output visible.
+Keys include software and dependency versions plus the target platform; PHP
+extensions additionally include the PHP API and variant. Nightly PHP source
+commits identify their software version. Recipe bytes and runner toolchain
+changes do not invalidate source bottles. Legacy keys remain readable, with
+checksum and software identity verification before reuse. Existing configuration
+is restored after source bottling, including failed builds; service data is not staged. Keep configure/make output visible.
 
-Archive checkpoints last seven days and require matching workflow revision,
-inputs and verified payloads. They are separate from reusable source bottles.
+Archive checkpoints last seven days and require matching software inputs and
+verified payloads. The php-darwin repository revision is provenance only.
+Checkpoints are separate from reusable source bottles.
 Partial reruns can restore a checkpoint before installing PHP when the run,
 pinned taps/core, architecture, variant and toolchain match. Other runs retain
 the installed-payload comparison. Missing or invalid checkpoints fall through
@@ -319,13 +322,12 @@ Ubuntu jobs download exact artifact IDs, verify archive hashes and native report
 and retain their bytes; Macs only build unpublished gaps and run compatibility.
 Already published variants are retained when their PHP release/source commit still
 matches. Normal runs without `resume-runs` apply full recipe freshness checks.
-The planner logs why each pack needs rebuilding. `extension-builder-compatibility.json`
-records reviewed, artifact-equivalent builder changes, scoped to exact old and
-current hashes; it never bypasses PHP or recipe checks. The initial mapping covers
-archive-tool bootstrap, tap trust and source-cache coordination changes from
-`fb68665` to `850998d`, validated against the published packs and native reports.
-Add a mapping only after reviewing the builder diff and verifying existing artifacts;
-unlisted builder changes still invalidate the cache.
+The planner logs why each pack needs rebuilding. PHP Darwin implementation changes
+and repository revisions do not invalidate PHP, extension or dependency caches.
+Historical builder hashes in published metadata are ignored. Dependency upgrades
+remain explicit through `update-dependencies.yml`; a missing approved dependency
+fails instead of compiling in an ordinary PHP cache job. Replacing unchanged
+software versions requires an explicit cache repair.
 This recovery path works for both architectures. Regular Homebrew ARM bottles
 cannot replace debug/ZTS or development-PHP extension binaries; missing matching
 binaries and Mach-O relocation/signing still require macOS.
@@ -390,3 +392,23 @@ are written to `GITHUB_ENV` for subsequent action steps. Standalone users can
 source the printed private pack `environment.sh` path. No shell profiles or
 services are modified. Optional downloads retry all errors on either origin with at most three attempts,
 1/2-second backoff and capped Retry-After. Every promoted archive is SHA-verified.
+
+### Workflow validation and runner maintenance
+
+Full archive compatibility uses named macOS versions; `macos-latest` is exercised
+separately by `test-homebrew.yml` with published PHP 8.5. That weekly/manual smoke
+also checks `brew update`, outside every PHP publication's cold/hot install gate.
+`brew config` and `brew doctor` run once after cleanup, before build/test work;
+per-variant checks retain receipts, linkage, relinking, FPM and preservation.
+The manual `test.yml` and normal architecture tests share the `test-cache` action,
+including runner recovery, architecture validation and rollback diagnostics.
+
+`validate.yml` and `test-runner-preflight.yml` run on main pushes and pull requests;
+use workflow_dispatch to validate an un-PR branch. `test-source-lock.yml` exercises
+live coordination once on Ubuntu. Isolated test releases remain drafts so
+repository release immutability cannot block temporary lock assets.
+Source-cache native tests have scoped path
+filters and still intentionally build isolated fixtures; do not dispatch that
+workflow for a no-build validation request. Use existing published/archive inputs
+for those requests. Timing and diagnostic upload failures do not block publication;
+required archives, compatibility evidence and approval snapshots remain gates.

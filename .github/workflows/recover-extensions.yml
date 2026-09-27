@@ -26,9 +26,7 @@ jobs:
       matrix: ${{ steps.plan.outputs.matrix }}
       test-count: ${{ steps.plan.outputs.test-count }}
       reuse: ${{ steps.plan.outputs.reuse }}
-      artifact-ids: ${{ steps.plan.outputs.artifact-ids }}
       keys: ${{ steps.plan.outputs.keys }}
-      extensions-commit: ${{ steps.sources.outputs.commit }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -46,11 +44,6 @@ jobs:
           name: extension-recovery-plan
           path: extension-recovery-plan.json
           if-no-files-found: error
-      - name: Pin the extension tap used during test preparation
-        id: sources
-        env:
-          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
-        run: echo "commit=$(gh api repos/shivammathur/homebrew-extensions/commits/main --jq .sha)" >> "$GITHUB_OUTPUT"
 
   reuse:
     needs: plan
@@ -88,7 +81,6 @@ jobs:
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     env:
       EXTENSION_ENTRIES: ${{ toJSON(matrix.entries) }}
-      HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.plan.outputs.extensions-commit }}
       HOMEBREW_NO_AUTO_UPDATE: '1'
       HOMEBREW_NO_INSTALL_CLEANUP: '1'
       HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: '1'
@@ -96,6 +88,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: ./.github/actions/runner-preflight
       - uses: ./.github/actions/node-runtime
       - name: Restore archive tools
         run: |

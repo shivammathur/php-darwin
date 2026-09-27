@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { ReleaseCache, family, releaseAsset, assetIdentity } = require('../../cache/source-bottle-releases.cjs');
-const { keyFor, readBottle } = require('../../cache/source-bottle-cache.cjs');
+const { keyFor, legacyKeyFor, readBottle } = require('../../cache/source-bottle-cache.cjs');
 const { SourceBuildLock } = require('../../cache/source-build-lock.cjs');
 const mirror = require('../../cache/source-bottle-mirror.cjs');
 const digest = value => crypto.createHash('sha256').update(value).digest('hex');
@@ -621,20 +621,20 @@ test('legacy assets restore and are pruned when a readable replacement is verifi
   assert.deepEqual(f.state.assets.map(asset => asset.name), [current.name]);
 });
 
-test('same-version builds retain distinct inputs and ignore edited display labels', async t => {
+test('same-version recipe edits reuse one cache and ignore edited display labels', async t => {
   const f = fixture(t);
   const first = f.bottle('1', { recipe: 'first' });
   const second = f.bottle('1', { recipe: 'second' });
   await f.cache.saveCache([first.directory], first.key);
   f.state.assets[0].label = 'Custom display name';
   await f.cache.saveCache([second.directory], second.key);
-  assert.equal(f.state.assets.length, 2);
+  assert.equal(f.state.assets.length, 1);
   assert.deepEqual(f.state.deleted, []);
   assert.equal(await f.cache.restoreCache([path.join(f.root, 'first')], first.key), first.key);
   assert.equal(await f.cache.restoreCache([path.join(f.root, 'second')], second.key), second.key);
   const next = f.bottle('2');
   await f.cache.saveCache([next.directory], next.key);
-  assert.deepEqual(f.state.deleted.sort(), [first.name, second.name].sort());
+  assert.deepEqual(f.state.deleted, [first.name]);
 });
 
 test('a full legacy release remains reusable while new bottles and claims use separate releases', async t => {
@@ -715,4 +715,47 @@ test('mirror records accept only production source shards and preserve digest-ba
     assert.equal(mirror.record(asset, 'shivammathur/php-darwin', tag), undefined);
     assert.throws(() => mirror.portable({ ...legacy, url: legacy.url.replace('/cache/', `/${tag}/`) }));
   }
+});
+
+
+test('legacy PHP and dependency keys restore across code edits without replacing release bytes', async t => {
+  for (const formula of ['gcc', 'shivammathur/php/php@8.5', 'shivammathur/extensions/imagick@8.5']) {
+    const f = fixture(t, 'cache', true);
+    const old = f.bottle('1', {formula, recipe: 'old',
+      context: formula.includes('extensions') ? {build: 'debug', ts: 'zts', abstract: 'old', php: {version: '8.5.0', api: {PHP_API_VERSION: '123'}}} : undefined});
+    const file = path.join(old.directory, 'metadata.json');
+    const metadata = JSON.parse(fs.readFileSync(file));
+    metadata.key = legacyKeyFor(metadata.inputs);
+    fs.writeFileSync(file, JSON.stringify(metadata));
+    await f.cache.saveCache([old.directory], metadata.key);
+    const original = Buffer.from(f.state.assets[0].data);
+    const updated = {...old.inputs, recipe: 'patched', environment: {...old.inputs.environment, compiler: 'new clang'}};
+    if (updated.context) updated.context = {...updated.context, abstract: 'patched'};
+    const key = keyFor(updated), destination = path.join(f.root, 'restored');
+    assert.equal(await f.cache.restoreCache([destination], key, [], updated), key);
+    assert.ok(readBottle(destination, key));
+    assert.deepEqual(f.state.assets[0].data, original);
+    assert.deepEqual(f.state.deleted, []);
+    const incompatible = {...updated, dependencies: [{name: 'libxml2', version: '2'}]};
+    assert.equal(await f.cache.restoreCache([path.join(f.root, 'incompatible')], keyFor(incompatible), [], incompatible), undefined);
+    f.state.assets[0].data[0] ^= 1;
+    assert.equal(await f.cache.restoreCache([path.join(f.root, 'corrupt')], key, [], updated), undefined);
+  }
+});
+
+test('legacy nightly PHP requires an identical source recipe and new keys distinguish php-src commits', async t => {
+  const f = fixture(t, 'cache', true);
+  const old = f.bottle('8.6.0', {formula: 'shivammathur/php/php@8.6', recipe: 'c'.repeat(64)});
+  const file = path.join(old.directory, 'metadata.json');
+  const metadata = JSON.parse(fs.readFileSync(file));
+  metadata.key = legacyKeyFor(metadata.inputs);
+  fs.writeFileSync(file, JSON.stringify(metadata));
+  await f.cache.saveCache([old.directory], metadata.key);
+  const inputs = {...old.inputs, source_commit: 'a'.repeat(40)};
+  const destination = path.join(f.root, 'nightly');
+  assert.equal(await f.cache.restoreCache([destination], keyFor(inputs), [], inputs), keyFor(inputs));
+  assert.ok(readBottle(destination, keyFor(inputs)));
+  const next = {...inputs, source_commit: 'b'.repeat(40), recipe: 'd'.repeat(64)};
+  assert.notEqual(keyFor(next), keyFor(inputs));
+  assert.equal(await f.cache.restoreCache([path.join(f.root, 'next')], keyFor(next), [], next), undefined);
 });

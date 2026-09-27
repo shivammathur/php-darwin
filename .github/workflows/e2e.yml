@@ -149,11 +149,6 @@ jobs:
       - name: Verify the hot installation
         run: bash scripts/tests/e2e/setup-php.test.sh
 
-      - name: Update Homebrew after the cache installation
-        run: |
-          source scripts/lib/retry.sh
-          php_darwin_retry brew update
-
       - name: Preserve cache installer diagnostics
         if: always()
         continue-on-error: true

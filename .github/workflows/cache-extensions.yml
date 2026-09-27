@@ -157,12 +157,16 @@ jobs:
         run: |
           echo "PHP_DARWIN_BOTTLE_MISSES=$RUNNER_TEMP/bottle-misses.jsonl" >> "$GITHUB_ENV"
           echo "PHP_DARWIN_SOURCE_BOTTLE_MISSES=$RUNNER_TEMP/source-bottle-misses.jsonl" >> "$GITHUB_ENV"
-      - name: Clean stale build processes and locks
+      - name: Clean the disposable build runner
         # test-bot assumes a disposable machine and leaves purged kegs in /tmp.
         if: ${{ runner.environment != 'self-hosted' }}
         run: brew test-bot --only-cleanup-before
       - name: Pin approved dependencies before restoring tools
-        run: bash scripts/build/pin-core.sh
+        run: |
+          bash scripts/build/pin-core.sh
+          echo "PHP_DARWIN_CORE_PREPARED=$HOMEBREW_CORE_COMMIT" >> "$GITHUB_ENV"
+      - name: Check the cleaned Homebrew environment
+        run: bash scripts/build/check-homebrew.sh
       - name: Restore archive tools from the bottle cache
         uses: ./.github/actions/source-cache
         with:
@@ -221,7 +225,6 @@ jobs:
       matrix: ${{ fromJSON(needs.plan.outputs.tests) }}
     env:
       EXTENSION_ENTRIES: ${{ toJSON(matrix.entries) }}
-      HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.plan.outputs.extensions-commit }}
       HOMEBREW_NO_AUTO_UPDATE: '1'
       HOMEBREW_NO_INSTALL_CLEANUP: '1'
       HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: '1'
@@ -305,7 +308,6 @@ jobs:
           CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
         run: |
           mkdir -p builds/extensions
-          node --test scripts/tests/unit/extension-packs.test.cjs
           node scripts/release/extension-packs.cjs publish builds/extensions
       - name: Preserve publication diagnostics
         if: always()

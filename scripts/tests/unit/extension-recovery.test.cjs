@@ -19,7 +19,7 @@ test('recovery binds successful main builds to exact live artifact IDs and every
   const result = await planRecovery('123', run);
   assert.equal(result.entries.length, 1);
   assert.equal(result.entries[0].artifact_id, 42);
-  assert.deepEqual(result.matrix.include.map(context => context.runner).sort(), ['macos-15', 'macos-26', 'macos-latest']);
+  assert.deepEqual(result.matrix.include.map(context => context.runner).sort(), ['macos-15', 'macos-26']);
   for (const context of result.matrix.include) {
     assert.deepEqual(context.entries.map(entry => entry.name), ['mongodb']);
     assert.equal(context.entries[0].artifact_id, 42);
@@ -68,7 +68,7 @@ test('version-scoped recovery excludes obsolete archives before downloads and re
   const entry = { schema: 1, name: 'mongodb', php_version: '8.5', build: 'release', thread_safety: 'nts', architecture: 'arm64',
     sha256: 'b'.repeat(64), inputs_sha256: 'c'.repeat(64), php_api: '20250926', minimum_macos: 14, bytes: 100 };
   entry.file = `${key(entry)}-${entry.sha256}.tar.zst`;
-  const runners = ['macos-15', 'macos-26', 'macos-latest'];
+  const runners = ['macos-15', 'macos-26'];
   const jobs = [
     { name: 'imagick / PHP 7.4 / release-nts / arm64', status: 'completed', conclusion: 'success' },
     // The excluded individual build deliberately has no available payload.
@@ -101,10 +101,10 @@ test('version-scoped recovery excludes obsolete archives before downloads and re
   assert.deepEqual(result.entries.map(value => [key(value), value.artifact_id]),
     [['imagick-7.4-release-nts-arm64', 1], [key(entry), 12]]);
   assert.ok(result.matrix.include.every(group => group.php_version === '7.4'));
-  assert.equal(result.matrix.include.length, 3);
-  assert.equal(result.verified.length, 3);
+  assert.equal(result.matrix.include.length, 2);
+  assert.equal(result.verified.length, 2);
   assert.ok(result.verified.every(group => group.archives[0].sha256 === entry.sha256));
-  assert.deepEqual(downloaded, [11, 20, 21, 22]);
+  assert.deepEqual(downloaded, [11, 20, 21]);
   await assert.rejects(planRecovery('123', run, undefined, { ...options, phpVersions: '7.4 8.4' }), /no successful/);
   await assert.rejects(planRecovery('123', run, undefined, { ...options, phpVersions: '8.6' }), /Missing or ambiguous/);
 });

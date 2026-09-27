@@ -4,17 +4,6 @@ const { command, digest, key, packs, inspectTree, packEnvironment, phpApi } = re
 const { recipeInputs } = require('../lib/recipe-inputs.cjs');
 
 const macho = new Set(['cffaedfe', 'cefaedfe', 'feedfacf', 'feedface', 'cafebabe', 'bebafeca']);
-function builderHash() {
-  const root = path.resolve(__dirname, '../..');
-  const inputs = ['conf/extension-packs.json', 'conf/platforms.json',
-    '.github/actions/source-cache/main.cjs',
-    'scripts/build/extension-pack.cjs', 'scripts/build/build-extensions.sh', 'scripts/build/extension-formula.rb',
-    'scripts/build/prepare-extension-pack.sh', 'scripts/cache/source-bottle-cache.cjs', 'scripts/cache/approved-dependencies.cjs',
-    'scripts/cache/source-bottle-info.rb', 'scripts/cache/source-bottle-install.rb',
-    'scripts/lib/recipe-inputs.cjs', 'scripts/build/formula-build-inputs.sh',
-    'scripts/cache/brew-php-darwin-source.rb'];
-  return digest(JSON.stringify(inputs.map(file => [file, digest(fs.readFileSync(path.join(root, file)))])));
-}
 function isMachO(file) {
   const fd = fs.openSync(file, 'r');
   const header = Buffer.alloc(4);
@@ -83,7 +72,6 @@ function packageExtension({ name, php_version, build, thread_safety, architectur
   const tap = command('brew', ['--repository', 'shivammathur/extensions']);
   metadata.source_records.push({ repository: 'shivammathur/homebrew-extensions', path: 'Abstract/abstract-php-extension.rb',
     sha256: digest(command('git', ['-C', tap, 'show', 'HEAD:Abstract/abstract-php-extension.rb']) + '\n') });
-  metadata.builder_sha256 = builderHash();
   metadata.inputs_sha256 = digest(JSON.stringify(metadata));
   fs.mkdirSync(output, { recursive: true });
   const stage = fs.mkdtempSync(path.join(output, '.pack-'));
@@ -202,7 +190,7 @@ function packageExtension({ name, php_version, build, thread_safety, architectur
     return entry;
   } finally { fs.rmSync(stage, { recursive: true, force: true }); }
 }
-module.exports = { packageExtension, isMachO, dependencies, copyRuntime, sourceRecords, builderHash };
+module.exports = { packageExtension, isMachO, dependencies, copyRuntime, sourceRecords };
 if (require.main === module) {
   try {
     packageExtension({ name: process.env.EXTENSION_PACK, php_version: process.env.PHP_VERSION, build: process.env.BUILD,

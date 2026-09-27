@@ -22,7 +22,7 @@ function validatePlatform(platform, arch) {
       !platform.packages || !Object.keys(platform.packages).length) {
     throw new Error(`Dependency bottles have not been prepared for ${arch}`);
   }
-  const { keyFor } = require('./source-bottle-cache.cjs');
+  const { validKey } = require('./source-bottle-cache.cjs');
   for (const [formula, entry] of Object.entries(platform.packages)) {
     if (!formulaPattern.test(formula) || !/^[A-Za-z0-9+_.-]+$/.test(entry.version || '') ||
         Boolean(entry.bottle) === Boolean(entry.source)) throw new Error(`Invalid approved dependency: ${formula}`);
@@ -34,7 +34,7 @@ function validatePlatform(platform, arch) {
     } else {
       const { key, inputs, sha256 } = entry.source;
       const env = inputs?.environment;
-      if (!hex.test(sha256 || '') || !inputs || keyFor(inputs) !== key ||
+      if (!hex.test(sha256 || '') || !inputs || !validKey(inputs, key) ||
           inputs.formula !== formula || inputs.version !== entry.version ||
           env?.arch !== arch || String(env.macos) !== String(platform.macos) || env.prefix !== platform.prefix) {
         throw new Error(`Approved source bottle identity differs: ${formula}`);

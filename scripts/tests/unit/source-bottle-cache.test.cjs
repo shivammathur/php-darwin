@@ -150,7 +150,8 @@ test('reuse libxml2 across PHP builds and rebuild both when libxml2 changes', as
   assert.deepEqual(await install(f.args), { built: 2, restored: 0 });
   f.freshRunner();
   f.state.compiler = 'clang-2';
-  assert.deepEqual(await install(f.args), { built: 2, restored: 0 });
+  f.state.recipe = 'changed build code';
+  assert.deepEqual(await install(f.args), { built: 0, restored: 2 });
 });
 
 test('approved dependencies survive compiler and recipe fingerprint changes without rebuilding', async t => {
@@ -167,9 +168,8 @@ test('approved dependencies survive compiler and recipe fingerprint changes with
   f.freshRunner();
   f.state.compiler = 'clang-2';
   f.state.recipe = 'different installed recipe provenance';
-  assert.deepEqual(await install(f.args), {built: 1, restored: 1});
-  assert.deepEqual(f.events.filter(args => args.includes('--build-bottle')).map(args => args.at(-1)),
-    ['shivammathur/php/php@8.4']);
+  assert.deepEqual(await install(f.args), {built: 0, restored: 2});
+  assert.deepEqual(f.events.filter(args => args.includes('--build-bottle')), []);
   f.freshRunner();
   f.state.library = '1.0.1';
   await assert.rejects(install(f.args), /not in the approved snapshot/);
@@ -327,11 +327,19 @@ test('missing upstream bottles are prefetched together and install still retries
   assert.deepEqual(f.events[0], ['fetch', '--formula', 'aspell', 'gcc']);
 });
 
-test('keys distinguish recipes, platforms, dependencies, and PHP variants', () => {
-  const baseline = { formula: 'php', version: '8.4', recipe: 'abc', arch: 'arm64', macos: '14', deps: 'libxml2-1' };
-  for (const [field, value] of Object.entries({ formula: 'php-debug-zts', version: '8.5',
-    recipe: 'def', arch: 'x86_64', macos: '15', deps: 'libxml2-2' })) {
-    assert.notEqual(keyFor(baseline), keyFor({ ...baseline, [field]: value }));
+test('keys use software versions, target platforms and variants; code and toolchain changes retain hits', () => {
+  for (const formula of ['libxml2', 'shivammathur/php/php@8.5']) {
+    const baseline = {formula, version: '1.0', recipe: 'abc',
+      environment: {arch: 'arm64', macos: '14', prefix: '/opt/homebrew', compiler: 'clang-1'},
+      dependencies: [{name: 'openssl', version: '3.6', recipe: 'old'}]};
+    assert.equal(keyFor(baseline), keyFor({...baseline, recipe: 'new',
+      environment: {...baseline.environment, compiler: 'clang-2'},
+      dependencies: [{name: 'openssl', version: '3.6', recipe: 'patched'}]}));
+    for (const changed of [{version: '1.0.1'}, {formula: 'other'},
+      {environment: {...baseline.environment, arch: 'x86_64'}},
+      {dependencies: [{name: 'openssl', version: '3.7'}]}, {source_commit: 'a'.repeat(40)}]) {
+      assert.notEqual(keyFor(baseline), keyFor({...baseline, ...changed}));
+    }
   }
 });
 
@@ -359,7 +367,6 @@ test('extension variants bypass upstream bottles, preserve skip-link, and isolat
   assert.deepEqual(await install(f.args), { built: 0, restored: 1 });
   assert.ok(f.events.find(args => args.at(-1).endsWith('.tar.gz')).includes('--skip-link'));
   for (const context of [
-    { ...f.args.context, abstract: 'patched' },
     { ...f.args.context, build: 'release' },
     { ...f.args.context, ts: 'nts' },
     { ...f.args.context, php: { api: '20250925' } },
@@ -369,7 +376,7 @@ test('extension variants bypass upstream bottles, preserve skip-link, and isolat
   }
 });
 
-test('extension keys include the patched base recipe and actual PHP ABI/configuration', t => {
+test('extension keys retain hits after patching build code and use php-config for ABI identity', t => {
   const f = fixture(t);
   const abstract = path.join(f.cacheRoot, 'abstract.rb');
   fs.mkdirSync(f.cacheRoot);
@@ -387,7 +394,9 @@ test('extension keys include the patched base recipe and actual PHP ABI/configur
   assert.ok(calls.some(([, args]) => args[0] === '--version'));
   assert.equal(first.php.api.ZEND_MODULE_API_NO, '20240924');
   fs.writeFileSync(abstract, 'patched recipe');
-  assert.notEqual(keyFor(first), keyFor(extensionInputs(abstract, '/opt/php', 'release', 'nts', run)));
+  assert.deepEqual(first.php, extensionInputs(abstract, '/opt/php', 'release', 'nts', run).php);
+  const inputs = {formula: 'extension', version: '1', context: first};
+  assert.equal(keyFor(inputs), keyFor({...inputs, context: extensionInputs(abstract, '/opt/php', 'release', 'nts', run)}));
 });
 
 test('Cloudflare prefetch completes before upstream fetch and leaves normal installation intact', async t => {

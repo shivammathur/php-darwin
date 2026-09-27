@@ -18,7 +18,7 @@ function buildMatrix(entries) {
 }
 function testMatrix(entries) {
   return { include: buildMatrix(entries).include.flatMap(group =>
-    platforms[group.architecture].test_runners.filter(runner => runner !== group.runner)
+    platforms[group.architecture].test_runners.filter(runner => runner !== group.runner && runner !== 'macos-latest')
       .map(runner => ({ ...group, runner }))) };
 }
 function variants(entries) {

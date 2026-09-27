@@ -57,7 +57,7 @@ async function main() {
     '. scripts/lib/lib.sh; requested=$(php_darwin_requested_formula "$PHP_VERSION" "$BUILD" "$TS") || exit 1; printf "%s/%s" "$(php_darwin_package_config tap)" "$requested"'
   ]).trim();
   const result = await install({ formula, cache, approvedDependencies, forceSource: process.env['INPUT_FORCE-SOURCE'] === 'true' });
-  if (!override) command('bash', ['scripts/build/build.sh', 'install'], { inherit: true });
+  if (!override) command('bash', ['scripts/build/build.sh', 'finalize'], { inherit: true });
   writeOutputs(result);
 }
 

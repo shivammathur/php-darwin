@@ -6,7 +6,7 @@ const os = require('node:os');
 const http = require('node:http');
 const { execFileSync } = require('node:child_process');
 const { prefetch, download, digest, key, validateEntry, validateContext, safePath, inspectTree, packEnvironment, relocateResources, phpApi, prepareArchive, movePrepared, runtimeContext } = require('../../installer/install-extensions.cjs');
-const { unchanged, freshnessReason, compatibleBuilder, builderHash, compatibilityMatrix, versionBatches, dispatch, publish, validatePublishRun, validatePublishedPHP } = require('../../release/extension-packs.cjs');
+const { unchanged, freshnessReason, compatibilityMatrix, versionBatches, dispatch, publish, validatePublishRun, validatePublishedPHP } = require('../../release/extension-packs.cjs');
 const { copyRuntime } = require('../../build/extension-pack.cjs');
 const { buildMatrix } = require('../../release/extension-batches.cjs');
 
@@ -259,10 +259,10 @@ test('follow-up batches start only after a successful prerequisite', async () =>
     if (args[0] === 'api') return JSON.stringify({ status: ready ? 'completed' : 'in_progress', conclusion: ready ? 'success' : null });
     assert.ok(ready);
   };
-  await dispatch({ afterRun: '123', run, wait: async delay => { assert.equal(delay, 60000); ready = true; } });
+  await dispatch({ repository: 'shivammathur/php-darwin', afterRun: '123', run, wait: async delay => { assert.equal(delay, 60000); ready = true; } });
   assert.equal(calls.filter(args => args[0] === 'workflow').length, 1);
   for (const conclusion of ['failure', 'cancelled', 'timed_out']) {
-    await assert.rejects(dispatch({ afterRun: '123', run: (_program, args) => {
+    await assert.rejects(dispatch({ repository: 'shivammathur/php-darwin', afterRun: '123', run: (_program, args) => {
       assert.equal(args[0], 'api');
       return JSON.stringify({ status: 'completed', conclusion });
     } }), /Prerequisite run/);
@@ -517,11 +517,11 @@ test('runtime copies retain licenses and codec descriptors without dangling manu
     assert.ok(!fs.existsSync(path.join(output, file)));
   }
 });
-test('freshness tracks dependency recipes, PHP releases and builder changes', t => {
+test('freshness tracks software inputs and ignores php-darwin builder revisions', t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-freshness-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   fs.writeFileSync(path.join(directory, 'formula.rb'), 'original');
-  const metadata = { ...entry('imagick'), builder_sha256: builderHash(), php_semver: '8.4.26',
+  const metadata = { ...entry('imagick'), builder_sha256: 'a'.repeat(64), php_semver: '8.4.26',
     source_records: [{ repository: 'core', path: 'formula.rb', sha256: digest('original') }] };
   const repositories = { core: directory };
   assert.ok(unchanged(metadata, repositories, { php_semver: '8.4.26' }));
@@ -532,35 +532,18 @@ test('freshness tracks dependency recipes, PHP releases and builder changes', t 
   nightly.file = `${key(nightly)}-${nightly.sha256}.tar.zst`;
   assert.ok(unchanged(nightly, repositories, { php_semver: '8.7.0', php_src_commit: nightly.php_src_commit }));
   assert.equal(unchanged(nightly, repositories, { php_semver: '8.7.0', php_src_commit: 'b'.repeat(40) }), false);
-  assert.equal(unchanged({ ...metadata, builder_sha256: '0'.repeat(64) }, repositories, { php_semver: '8.4.26' }), false);
-  assert.equal(freshnessReason({ ...metadata, builder_sha256: '0'.repeat(64) }, repositories, { php_semver: '8.4.26' }), 'builder changed');
+  assert.equal(unchanged({ ...metadata, builder_sha256: '0'.repeat(64) }, repositories, { php_semver: '8.4.26' }), true);
+  assert.equal(freshnessReason({ ...metadata, builder_sha256: '0'.repeat(64) }, repositories, { php_semver: '8.4.26' }), null);
   fs.writeFileSync(path.join(directory, 'formula.rb'), 'updated dependency');
   assert.equal(unchanged(metadata, repositories, { php_semver: '8.4.26' }), false);
   assert.equal(freshnessReason(metadata, repositories, { php_semver: '8.4.26' }), 'recipe changed: core/formula.rb');
 });
-test('reviewed builder compatibility retains recipe and PHP invalidation', t => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-builder-compatibility-'));
-  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
-  const previous = '7b2d334fd6d1f3e86b137329154d9ef0091a58e6ba2f9cc8f35f5d9cd5c119da';
-  const current = 'ddaa46669f024e98a8e40ef867dd3c04def51ec59d4711ec1057ad97bb7614fa';
-  assert.equal(compatibleBuilder(previous, current), true);
-  assert.equal(compatibleBuilder(previous, 'f'.repeat(64)), false);
-  assert.equal(compatibleBuilder('0'.repeat(64), current), false);
-  assert.equal(compatibleBuilder(current, previous), false);
-  fs.writeFileSync(path.join(directory, 'formula.rb'), 'original');
-  const metadata = { ...entry('imagick'), builder_sha256: previous, php_semver: '8.4.26',
-    source_records: [{ repository: 'core', path: 'formula.rb', sha256: digest('original') }] };
-  const repositories = { core: directory };
-  assert.equal(unchanged(metadata, repositories, { php_semver: '8.4.26' }), true);
-  assert.equal(unchanged(metadata, repositories, { php_semver: '8.4.27' }), false);
-  fs.writeFileSync(path.join(directory, 'formula.rb'), 'changed');
-  assert.equal(unchanged(metadata, repositories, { php_semver: '8.4.26' }), false);
-});
+
 test('compatibility covers newer hosts while build jobs validate the build platforms', () => {
   const entries = ['arm64', 'x86_64'].flatMap(architecture => ['imagick', 'mongodb', 'memcached'].map(name =>
     ({ ...context, architecture, name })));
   const { include } = compatibilityMatrix(entries);
-  assert.equal(include.length, 4);
+  assert.equal(include.length, 3);
   assert.ok(!include.some(item => item.runner === 'macos-15-intel'));
   assert.ok(include.some(item => item.runner === 'macos-26-intel'));
   for (const item of include) assert.deepEqual(item.entries.map(entry => entry.name), ['imagick', 'mongodb', 'memcached']);

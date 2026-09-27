@@ -266,6 +266,7 @@ jobs:
 
   report:
     name: Report cache work and workflow timings
+    continue-on-error: true
     if: ${{ always() }}
     needs: [matrix, architecture, cache-bottles, publish, e2e]
     runs-on: ubuntu-latest

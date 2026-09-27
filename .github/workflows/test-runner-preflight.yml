@@ -2,7 +2,7 @@ name: Test runner process recovery
 on:
   workflow_dispatch:
   push:
-    branches: ['**']
+    branches: [main]
     paths:
       - .github/actions/runner-preflight/**
       - .github/workflows/test-runner-preflight.yml

@@ -26,9 +26,28 @@ function brewSource(mode, args, { run = command, ...options } = {}) {
   });
 }
 
-function keyFor(inputs) {
+function legacyKeyFor(inputs) {
   return `php-darwin-source-v1-${digest(JSON.stringify(inputs))}`;
 }
+
+function softwareInputs(inputs) {
+  const environment = inputs.environment || {};
+  const php = inputs.context?.php;
+  // Recipes, build scripts and runner toolchain updates are provenance only.
+  // Keep installed dependency versions and the target ABI/platform distinct.
+  return {
+    formula: inputs.formula, version: inputs.version, source_commit: inputs.source_commit,
+    environment: {arch: environment.arch, macos: environment.macos, prefix: environment.prefix},
+    dependencies: (inputs.dependencies || []).map(dependency => ({
+      name: dependency.name, version: dependency.version,
+    })).sort((a, b) => a.name.localeCompare(b.name)),
+    ...(inputs.context ? {context: {build: inputs.context.build, ts: inputs.context.ts,
+      php: php && {version: php.version, api: php.api, source_commit: php.source_commit}}} : {}),
+  };
+}
+
+function keyFor(inputs) { return legacyKeyFor(softwareInputs(inputs)); }
+function validKey(inputs, key) { return keyFor(inputs) === key || legacyKeyFor(inputs) === key; }
 
 function inspect(mode, formulae, forceSource = false) {
   return JSON.parse(brewSource('info', [mode, JSON.stringify(formulae), String(forceSource)]));
@@ -40,7 +59,9 @@ function recipeHash(recipe) {
 
 function buildInputs(formula, environment) {
   const [info] = inspect('inputs', [formula.full_name]);
+  const sourceCommit = fs.readFileSync(info.recipe, 'utf8').match(/^\s*url "https:\/\/github\.com\/php\/php-src\/archive\/([a-f0-9]{40})\.tar\.gz/m)?.[1];
   return {
+    ...(sourceCommit ? {source_commit: sourceCommit} : {}),
     environment, formula: info.full_name, version: info.version, recipe: recipeHash(info.recipe),
     dependencies: info.dependencies.map(dep => ({ ...dep, recipe: recipeHash(dep.recipe) })),
   };
@@ -309,4 +330,4 @@ function extensionInputs(abstract, phpPrefix, build, ts, run = command) {
   };
 }
 
-module.exports = { command, brewSource, keyFor, readBottle, install, extensionInputs, environment, recipeHash };
+module.exports = { command, brewSource, keyFor, legacyKeyFor, validKey, softwareInputs, readBottle, install, extensionInputs, environment, recipeHash };
