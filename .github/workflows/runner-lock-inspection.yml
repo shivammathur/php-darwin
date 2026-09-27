@@ -19,38 +19,9 @@ jobs:
       HOMEBREW_DEVELOPER: '1'
       CACHE_RELEASE: source-bottles-test-${{ github.run_id }}
     steps:
-      - name: Stop the verified orphaned Homebrew process
+      - name: Verify Homebrew locks are available
         shell: bash
         run: |
-          set -euo pipefail
-          python3 - <<'PYTHON'
-          import os, signal, subprocess, time
-          pid = 86016
-          expected_start = 'Sun Sep 27 05:57:16 2026'
-          def field(name):
-              return subprocess.check_output(['ps', '-p', str(pid), '-o', name + '='], text=True).strip()
-          def same_process():
-              try: return field('lstart') == expected_start
-              except subprocess.CalledProcessError: return False
-          assert same_process(), 'Process identity changed; refusing cleanup'
-          assert field('ppid') == '1', 'Process is not orphaned'
-          assert field('comm') == '/usr/local/Homebrew/Library/Homebrew/vendor/portable-ruby/current/bin/ruby'
-          assert int(field('uid')) == os.getuid(), 'Process is not owned by the runner user'
-          argv = field('args')
-          assert 'brew.rb' in argv and 'install' in argv and 'imagick@8.5' in argv, 'Unexpected Homebrew invocation'
-          holders = subprocess.check_output(['/usr/sbin/lsof', '-t', '/usr/local/var/homebrew/locks/argon2.formula.lock'], text=True).split()
-          assert str(pid) in holders, 'Expected process no longer holds the Argon2 lock'
-          print('Confirmed orphaned Imagick installation and Argon2 lock ownership; sending SIGTERM')
-          os.kill(pid, signal.SIGTERM)
-          for _ in range(30):
-              if not same_process(): break
-              time.sleep(0.1)
-          if same_process():
-              print('Verified orphan still running; sending SIGKILL')
-              os.kill(pid, signal.SIGKILL)
-              time.sleep(1)
-          assert not same_process(), 'Orphaned Homebrew process survived cleanup'
-          PYTHON
           /usr/bin/ruby -e 'File.open(ARGV.fetch(0), "r+") { |f| abort "Argon2 lock still held" unless f.flock(File::LOCK_EX | File::LOCK_NB); puts "Argon2 lock is available" }' /usr/local/var/homebrew/locks/argon2.formula.lock
           /usr/sbin/lsof -nP +D /usr/local/var/homebrew/locks || true
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -61,7 +32,11 @@ jobs:
       - name: Prepare isolated native regression test
         id: prepare
         run: |
-          gh release create "$CACHE_RELEASE" --target "$GITHUB_SHA" --title "$CACHE_RELEASE" --notes 'Temporary runner repair verification.' --prerelease --latest=false
+          "$PHP_DARWIN_NODE" - <<'JS'
+          const { ReleaseCache } = require('./scripts/cache/source-bottle-releases.cjs');
+          new ReleaseCache({ tag: process.env.CACHE_RELEASE }).release(true)
+            .catch(error => { console.error(error); process.exitCode = 1; });
+          JS
           bash scripts/tests/native/source-bottle-native.test.sh prepare
       - name: Install private versioned build dependency
         uses: ./.github/actions/source-cache
@@ -95,7 +70,20 @@ jobs:
           retention-days: 2
           compression-level: 0
       - name: Remove native fixtures
-        if: ${{ always() && steps.prepare.outcome == 'success' }}
+        if: ${{ always() && steps.prepare.outcome != 'skipped' }}
         run: |
           bash scripts/tests/native/source-bottle-native.test.sh cleanup
-          gh release delete "$CACHE_RELEASE" --yes --cleanup-tag
+  cleanup:
+    if: always()
+    needs: inspect
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remove the isolated fixture release
+        env:
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+          GH_REPO: ${{ github.repository }}
+          CACHE_RELEASE: source-bottles-test-${{ github.run_id }}
+        run: |
+          if gh release view "$CACHE_RELEASE" >/dev/null 2>&1; then
+            gh release delete "$CACHE_RELEASE" --yes --cleanup-tag
+          fi
