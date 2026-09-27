@@ -80,7 +80,7 @@ function readBottle(directory, key) {
 }
 
 async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
-  forceSource = false, skipLink = false, context, dependencyRoots, approvedDependencies,
+  forceSource = false, skipLink = false, context, dependencyRoots, approvedDependencies, preparedTargets = [],
   run = command, query = inspect, inputs = buildInputs, buildEnvironment = environment,
   log = console.log, warn = console.warn, prefetch = prefetchBottles }) {
   if (!/^(?:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/)?[A-Za-z0-9@+_.-]+$/.test(formula)) {
@@ -99,11 +99,23 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
     throw new Error('Invalid dependency preparation roots');
   }
   const resolved = query(dependencyRoots ? 'seed' : 'plan', requested, dependencyRoots ? true : forceSource);
+  if (!Array.isArray(preparedTargets) || preparedTargets.some(name =>
+    !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/[A-Za-z0-9@+_.-]+$/.test(name))) {
+    throw new Error('Invalid prepared package targets');
+  }
+  // A pack can depend on a member already restored/built in this invocation
+  // with the same PHP ABI. It is a package target, not an external dependency.
+  // Never let this exemption compile a missing member as an unkeyed dependency.
+  for (const item of resolved) {
+    if (preparedTargets.includes(item.full_name) && !item.installed) {
+      throw new Error(`Previously prepared target is no longer installed: ${item.full_name}`);
+    }
+  }
   // Dependency preparation never builds PHP or an extension. Packaging tools
   // remain in this union even when requested as roots. Tap-owned build tools
   // are dependencies too; exclude only the actual PHP/extension roots.
   // Homebrew can canonicalize php@CURRENT to php, so use resolved root names.
-  const packageRoots = new Set([...requested, ...resolved.filter(item => item.requested).map(item => item.full_name)]
+  const packageRoots = new Set([...requested, ...preparedTargets, ...resolved.filter(item => item.requested).map(item => item.full_name)]
     .filter(name => name.includes('/')));
   const plan = dependencyRoots ? resolved.filter(item => !packageRoots.has(item.full_name)) : resolved;
   const requestedTarget = dependencyRoots ? undefined : plan.at(-1);

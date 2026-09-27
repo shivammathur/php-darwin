@@ -34,9 +34,11 @@ async function main() {
       context.php.source_commit = process.env.PHP_DARWIN_PHP_SRC_COMMIT;
     }
     const result = { built: 0, restored: 0 };
+    const preparedTargets = [];
     for (const formula of formulae) {
-      const installed = await install({ formula, cache, context, skipLink: true, approvedDependencies,
+      const installed = await install({ formula, cache, context, skipLink: true, approvedDependencies, preparedTargets,
         forceSource: !!context.php.source_commit || process.env.BUILD !== 'release' || process.env.TS !== 'nts' || process.env['INPUT_FORCE-SOURCE'] === 'true' });
+      preparedTargets.push(formula);
       result.built += installed.built;
       result.restored += installed.restored;
     }

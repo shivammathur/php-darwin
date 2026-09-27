@@ -7,6 +7,35 @@ const { install, keyFor, readBottle, extensionInputs } = require('../../cache/so
 const { withFreshConfiguration } = require('../../cache/source-bottle-config.cjs');
 const { ApprovedDependencies } = require('../../cache/approved-dependencies.cjs');
 
+test('pack consumers reuse only installed targets prepared in the same invocation while external dependencies stay locked', async () => {
+  const igbinary = 'shivammathur/extensions/igbinary@8.6';
+  const msgpack = 'shivammathur/extensions/msgpack@8.6';
+  const formula = 'shivammathur/extensions/memcached@8.6';
+  const bottle = {formula: 'jq', version: '1.8.2', tag: 'all', sha256: 'a'.repeat(64),
+    url: `https://ghcr.io/v2/homebrew/core/jq/blobs/sha256:${'a'.repeat(64)}`};
+  const approvedDependencies = new ApprovedDependencies({platforms: {arm64: {
+    macos: 14, prefix: '/opt/homebrew', packages: {jq: {version: '1.8.2', bottle}},
+  }}});
+  const plan = [
+    {full_name: 'jq', version: '1.8.2', installed: true},
+    {full_name: igbinary, version: '3.2.16_2', installed: true},
+    {full_name: msgpack, version: '3.0.1_1', installed: true},
+    {full_name: formula, version: '3.4.0', installed: true},
+  ];
+  const args = {formula, approvedDependencies, query: () => plan, log() {},
+    buildEnvironment: () => ({arch: 'arm64', macos: '14', prefix: '/opt/homebrew'}),
+    run() {assert.fail('Prepared targets and installed approved dependencies must be reused');},
+  };
+  await assert.rejects(install(args), /igbinary.*not in the approved snapshot/);
+  assert.deepEqual(await install({...args, preparedTargets: [igbinary, msgpack]}), {built: 0, restored: 0});
+  plan[1].installed = false;
+  await assert.rejects(install({...args, preparedTargets: [igbinary, msgpack]}), /Previously prepared target is no longer installed/);
+  plan[1].installed = true;
+  plan.unshift({full_name: 'shivammathur/php/bison@2.7', version: '2.7.1', installed: true});
+  await assert.rejects(install({...args, preparedTargets: [igbinary, msgpack]}), /bison.*not in the approved snapshot/);
+  await assert.rejects(install({...args, preparedTargets: ['jq']}), /Invalid prepared package targets/);
+});
+
 test('source builds bottle clean defaults and restore existing configuration on success or failure', t => {
   const prefix = fs.mkdtempSync(path.join(os.tmpdir(), 'php-darwin-source-config-'));
   t.after(() => fs.rmSync(prefix, { recursive: true, force: true }));
