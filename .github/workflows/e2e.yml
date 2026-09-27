@@ -115,7 +115,7 @@ jobs:
         if: matrix.installer == 'baseline'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: e230e88
+          ref: e230e887c5725df45fe7ec245d50d17af0471491
           path: .baseline
           persist-credentials: false
 
