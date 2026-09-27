@@ -88,6 +88,7 @@ jobs:
       PHP_DARWIN_REQUIRE_PACKS: ${{ inputs.optional-packs }}
       PHP_DARWIN_REQUIRE_PCOV: ${{ (inputs.php-version == '5.6' || inputs.php-version == '7.0') && 'false' || 'true' }}
       PHP_DARWIN_REQUIRE_CACHE: 'true'
+      PHP_DARWIN_REQUIRE_INSTALL_TIMING: 'true'
       PHP_DARWIN_REQUIRE_XDEBUG: 'true'
       PHP_VERSION: ${{ inputs.php-version }}
     steps:

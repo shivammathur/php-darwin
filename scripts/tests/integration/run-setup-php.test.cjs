@@ -19,7 +19,12 @@ test('unchanged setup-php runs outside darwin parent paths and cleans up after s
     copied = path.dirname(path.dirname(file));
     assert.equal(copied.includes('darwin'), false);
     assert.equal(fs.readFileSync(file, 'utf8'), script);
-    return require('node:child_process').spawnSync(node, [file], { ...options, env: { ...process.env, FIXTURE_EXIT: '7' } });
+    assert.equal(options.env.runner, 'github');
+    assert.equal(options.env.RUNNER_ENVIRONMENT, 'github-hosted');
+    assert.ok(options.env.ImageOS && options.env.ImageVersion);
+    assert.equal(options.env.ACT, '');
+    assert.equal(options.env.CONTAINER, '');
+    return require('node:child_process').spawnSync(node, [file], { ...options, env: { ...options.env, FIXTURE_EXIT: '7' } });
   }), 7);
   assert.equal(fs.existsSync(copied), false);
   assert.equal(fs.existsSync(path.join(root, 'src/scripts/run.sh')), false);

@@ -140,7 +140,10 @@ Standalone E2E runs require optional packs by default. The PHP publication
 workflow tests the PHP archive and bundled coverage modules immediately;
 optional packs have separate compatibility gates and can still target the
 previous PHP patch or nightly commit until their own publication completes.
-The action source remains unchanged. Performance experiments belong on a new
+The action source remains unchanged. The harness supplies hosted-runner context
+on repository self-hosted macOS machines and requires cache-installer timing
+evidence, because stock setup-php skips the cache on self-hosted installations.
+Performance experiments belong on a new
 orphan branch in `shivammathur/test-setup-php`; compare download, verification,
 extraction and installation, with timing reports retained as workflow artifacts.
 If only compression changes, recompress existing tar bytes on Ubuntu, verify
