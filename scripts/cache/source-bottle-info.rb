@@ -69,6 +69,7 @@ def installed_inputs(dependency)
 end
 
 resolved = formulae.map { |name| Formulary.factory(name) }
+requested_names = resolved.map(&:full_name)
 if %w[plan seed].include?(mode)
   resolved = resolved.flat_map do |formula|
     source_dependencies(formula, planning: true, force_source:, ignore_installed: mode == "seed")
@@ -81,10 +82,12 @@ records = resolved.map do |formula|
   record = {
     name: formula.name,
     full_name: formula.full_name,
+    requested: requested_names.include?(formula.full_name),
     version: formula.pkg_version.to_s,
     prefix: formula.prefix.to_s,
     recipe: formula.path.to_s,
     installed: current_installation?(formula),
+    installed_versions: formula.installed_kegs.map { |keg| keg.version.to_s },
     missing_build_files: missing_build_files(formula),
     select_current: current_installation?(formula) &&
       (!formula.opt_prefix.exist? || formula.opt_prefix.realpath != formula.latest_installed_prefix.realpath),

@@ -69,6 +69,9 @@ jobs:
         run: |
           bash scripts/build/cleanup-taps.sh
           brew tap --force homebrew/core
+          export HOMEBREW_CORE_COMMIT
+          HOMEBREW_CORE_COMMIT=$(node scripts/cache/approved-dependencies.cjs core)
+          bash scripts/build/pin-core.sh
           for tap in shivammathur/php shivammathur/extensions; do
             brew tap "$tap"
             brew trust "$tap"

@@ -59,6 +59,7 @@ Homebrew handles bottle installation, relocation and linking.
 | `mirror.yml` | Mirror published PHP packages or refresh their installers |
 | `validate.yml` | Run local regression tests and artifact-transfer checks |
 | `test-source-cache.yml` | Test native source builds and cold/warm restoration |
+| `update-dependencies.yml` | Prepare, verify and approve dependency bottles independently of PHP cache builds |
 | `test.yml` / `e2e.yml` | Validate build artifacts and published installations |
 
 ## Development

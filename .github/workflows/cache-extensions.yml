@@ -59,6 +59,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Select the approved dependency snapshot
+        id: dependencies
+        run: echo "core=$(node scripts/cache/approved-dependencies.cjs core)" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: shivammathur/homebrew-extensions
@@ -67,6 +70,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Homebrew/homebrew-core
+          ref: ${{ steps.dependencies.outputs.core }}
           path: homebrew-core
           persist-credentials: false
       - name: Record formula snapshots
@@ -155,6 +159,8 @@ jobs:
         # test-bot assumes a disposable machine and leaves purged kegs in /tmp.
         if: ${{ runner.environment != 'self-hosted' }}
         run: brew test-bot --only-cleanup-before
+      - name: Pin approved dependencies before restoring tools
+        run: bash scripts/build/pin-core.sh
       - name: Restore archive tools from the bottle cache
         uses: ./.github/actions/source-cache
         with:

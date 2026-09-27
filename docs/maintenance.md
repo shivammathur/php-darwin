@@ -180,6 +180,29 @@ Shared libraries stay in `cache`. Filenames and display labels identify package
 version, macOS, architecture and PHP variant; exact keys and checksums remain intact.
 Build claims use `cache-locks` so they cannot exhaust bottle storage. This avoids
 GitHub's 1,000-assets-per-release limit without deleting reusable builds.
+
+Normal PHP and extension cache jobs consume `conf/dependencies.json`. It pins
+Homebrew core and selects the exact dependency bottles for each architecture.
+An installed, healthy keg at the approved version can be reused; otherwise the
+approved bottle is restored. A different runner compiler, SDK or installed
+dependency recipe does not cause an approved build tool such as GCC to compile
+again. PHP and extension targets can still compile when their own inputs change.
+An unapproved dependency version or unavailable approved bottle stops with a
+dependency-update instruction instead of silently upgrading or compiling it.
+
+Run `update-dependencies.yml` on `main` to upgrade dependencies. Its optional
+`homebrew-core-commit` input selects a specific revision; an empty input selects
+current Homebrew core. The job prepares dependencies for all PHP variants,
+coverage extensions, optional packs and archive tools on both baseline platforms.
+It then clears the installed formulae on those CI runners, restores the proposed
+set with zero source builds, checks native linkage, and verifies warm reuse.
+Only matching successful proofs from both architectures can promote the new
+snapshot. `publish=false` keeps the proposed snapshot as a workflow artifact.
+Timing data and validation reports remain workflow artifacts. The previous
+approved source bottles are protected while a replacement is prepared.
+
+Dependency updates do not force a PHP rebuild. Subsequent normal cache jobs
+compare their actual PHP, extension and runtime dependency inputs as usual.
 The `organize-source-cache.yml` workflow inventories misplaced bottles, copies
 and verifies their exact bytes, then removes the old copies and empty legacy
 shard releases. It resumes verified copies and refuses cleanup while builds hold

@@ -1,0 +1,201 @@
+name: Update approved dependency bottles
+run-name: Prepare and validate dependency bottles
+
+on:
+  workflow_dispatch:
+    inputs:
+      homebrew-core-commit:
+        description: Homebrew core commit to approve (empty selects current main)
+        type: string
+      publish:
+        description: Promote the verified dependency snapshot on main
+        type: boolean
+        default: true
+  # Bootstrap the initial snapshot before enabling this policy on main.
+  push:
+    branches: [fix/dependency-cache-policy]
+    paths: [.github/workflows/update-dependencies.yml]
+
+concurrency:
+  group: approved-dependency-update
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      core: ${{ steps.core.outputs.commit }}
+      php: ${{ steps.php.outputs.commit }}
+      extensions: ${{ steps.extensions.outputs.commit }}
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Resolve the dependency update
+        id: core
+        env:
+          PHP_DARWIN_UPDATE_DEPENDENCIES: 'true'
+          PINNED_COMMIT: ${{ inputs.homebrew-core-commit }}
+          BOOTSTRAP: ${{ github.event_name == 'push' }}
+        run: |
+          if [ "$BOOTSTRAP" = true ]; then
+            export PINNED_COMMIT
+            PINNED_COMMIT=$(node scripts/cache/approved-dependencies.cjs core)
+          fi
+          bash scripts/build/source-commit.sh core
+      - name: Pin PHP formula roots
+        id: php
+        run: bash scripts/build/source-commit.sh
+      - name: Pin extension formula roots
+        id: extensions
+        run: bash scripts/build/source-commit.sh extensions
+      - name: Select baseline build runners
+        id: matrix
+        run: |
+          node - <<'JS'
+          const fs = require('node:fs');
+          const platforms = require('./conf/platforms.json');
+          const matrix = {include: Object.entries(platforms).map(([arch, item]) => ({arch, runner: item.build_runner}))};
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `matrix=${JSON.stringify(matrix)}\n`);
+          JS
+
+  prepare:
+    needs: plan
+    name: Prepare approved dependencies on ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 240
+    permissions:
+      contents: write
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+      HOMEBREW_CORE_COMMIT: ${{ needs.plan.outputs.core }}
+      HOMEBREW_PHP_COMMIT: ${{ needs.plan.outputs.php }}
+      HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.plan.outputs.extensions }}
+      HOMEBREW_DEVELOPER: '1'
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_INSTALL_FROM_API: '1'
+      HOMEBREW_NO_INSTALL_CLEANUP: '1'
+      HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: '1'
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Preserve the Actions Node runtime
+        uses: ./.github/actions/node-runtime
+      - name: Initialize dependency timing artifacts
+        run: |
+          {
+            echo "PHP_DARWIN_METRICS=$RUNNER_TEMP/dependency-metrics.jsonl"
+            echo "PHP_DARWIN_BOTTLE_MISSES=$RUNNER_TEMP/bottle-misses.jsonl"
+            echo "PHP_DARWIN_SOURCE_BOTTLE_MISSES=$RUNNER_TEMP/source-bottle-misses.jsonl"
+          } >> "$GITHUB_ENV"
+          : > "$RUNNER_TEMP/dependency-metrics.jsonl"
+          : > "$RUNNER_TEMP/bottle-misses.jsonl"
+          : > "$RUNNER_TEMP/source-bottle-misses.jsonl"
+      - name: Prepare the approved formula snapshots
+        run: |
+          bash scripts/build/cleanup-taps.sh
+          bash scripts/build/pin-core.sh
+          for tap in shivammathur/php shivammathur/extensions; do
+            brew tap "$tap"
+            brew trust "$tap"
+            repository=$(brew --repository "$tap")
+            if [ "$tap" = shivammathur/php ]; then commit=$HOMEBREW_PHP_COMMIT; else commit=$HOMEBREW_EXTENSIONS_COMMIT; fi
+            git -C "$repository" fetch --no-tags origin "$commit"
+            git -C "$repository" checkout --detach "$commit"
+          done
+      - name: Remove installed formulae before dependency preparation
+        run: '"$PHP_DARWIN_NODE" scripts/cache/update-dependencies.cjs clean'
+      - name: Bootstrap the formula-input reader from its pinned upstream bottle
+        run: brew install --formula --force-bottle jq
+      - name: Build or restore dependencies without building PHP
+        run: '"$PHP_DARWIN_NODE" scripts/cache/update-dependencies.cjs prepare'
+      - name: Prove cold and warm installs require no dependency compilation
+        run: '"$PHP_DARWIN_NODE" scripts/cache/update-dependencies.cjs verify'
+      - name: Save the verified dependency snapshot
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: approved-dependencies-${{ matrix.arch }}
+          path: |
+            dependencies-${{ matrix.arch }}.json
+            dependency-verification-${{ matrix.arch }}.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Save dependency diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dependency-diagnostics-${{ matrix.arch }}
+          path: |
+            dependency-roots.json
+            dependency-plan.json
+            ${{ runner.temp }}/dependency-metrics.jsonl
+          if-no-files-found: ignore
+          retention-days: 7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: bottle-misses-dependencies-${{ matrix.arch }}
+          path: ${{ runner.temp }}/bottle-misses.jsonl
+          retention-days: 7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: source-bottle-misses-dependencies-${{ matrix.arch }}
+          path: ${{ runner.temp }}/source-bottle-misses.jsonl
+          retention-days: 7
+
+  mirror:
+    needs: prepare
+    name: Verify approved dependency bottles on Cloudflare
+    uses: ./.github/workflows/cache-bottles.yml
+    permissions:
+      contents: read
+      actions: read
+    with:
+      seed: false
+    secrets:
+      TOKEN: ${{ secrets.TOKEN }}
+      CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
+      CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
+      CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
+
+  approve:
+    needs: [plan, prepare, mirror]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: approved-dependencies-*
+          path: candidates
+          merge-multiple: true
+          digest-mismatch: error
+      - name: Require verified snapshots for both architectures
+        run: node scripts/cache/update-dependencies.cjs merge candidates approved-dependencies.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: approved-dependency-snapshot
+          path: approved-dependencies.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Promote dependencies for subsequent cache jobs
+        if: github.event_name == 'workflow_dispatch' && inputs.publish
+        env:
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+        run: node scripts/cache/update-dependencies.cjs promote approved-dependencies.json

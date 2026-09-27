@@ -9,7 +9,7 @@ function builderHash() {
   const inputs = ['conf/extension-packs.json', 'conf/platforms.json',
     '.github/actions/source-cache/main.cjs',
     'scripts/build/extension-pack.cjs', 'scripts/build/build-extensions.sh', 'scripts/build/extension-formula.rb',
-    'scripts/build/prepare-extension-pack.sh', 'scripts/cache/source-bottle-cache.cjs',
+    'scripts/build/prepare-extension-pack.sh', 'scripts/cache/source-bottle-cache.cjs', 'scripts/cache/approved-dependencies.cjs',
     'scripts/cache/source-bottle-info.rb', 'scripts/cache/source-bottle-install.rb',
     'scripts/lib/recipe-inputs.cjs', 'scripts/build/formula-build-inputs.sh',
     'scripts/cache/brew-php-darwin-source.rb'];

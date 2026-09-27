@@ -5,6 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { install, keyFor, readBottle, extensionInputs } = require('../../cache/source-bottle-cache.cjs');
 const { withFreshConfiguration } = require('../../cache/source-bottle-config.cjs');
+const { ApprovedDependencies } = require('../../cache/approved-dependencies.cjs');
 
 test('source builds bottle clean defaults and restore existing configuration on success or failure', t => {
   const prefix = fs.mkdtempSync(path.join(os.tmpdir(), 'php-darwin-source-config-'));
@@ -121,6 +122,69 @@ test('reuse libxml2 across PHP builds and rebuild both when libxml2 changes', as
   f.freshRunner();
   f.state.compiler = 'clang-2';
   assert.deepEqual(await install(f.args), { built: 2, restored: 0 });
+});
+
+test('approved dependencies survive compiler and recipe fingerprint changes without rebuilding', async t => {
+  const f = fixture(t);
+  f.args.buildEnvironment = () => ({ arch: 'arm64', macos: '14', prefix: '/opt/homebrew', compiler: f.state.compiler });
+  await install(f.args);
+  const metadata = fs.readdirSync(f.store).map(key =>
+    JSON.parse(fs.readFileSync(path.join(f.store, key, 'metadata.json')))).find(item => item.inputs.formula === 'libxml2');
+  f.args.approvedDependencies = new ApprovedDependencies({ platforms: { arm64: {
+    macos: 14, prefix: '/opt/homebrew', packages: {libxml2: {version: '1.0', source: {
+      key: metadata.key, inputs: metadata.inputs, sha256: metadata.sha256,
+    }}},
+  }}});
+  f.freshRunner();
+  f.state.compiler = 'clang-2';
+  f.state.recipe = 'different installed recipe provenance';
+  assert.deepEqual(await install(f.args), {built: 1, restored: 1});
+  assert.deepEqual(f.events.filter(args => args.includes('--build-bottle')).map(args => args.at(-1)),
+    ['shivammathur/php/php@8.4']);
+  f.freshRunner();
+  f.state.library = '1.0.1';
+  await assert.rejects(install(f.args), /not in the approved snapshot/);
+  assert.deepEqual(f.events, []);
+});
+
+test('an unavailable approved dependency never falls back to a source build', async t => {
+  const f = fixture(t);
+  f.args.buildEnvironment = () => ({arch: 'arm64', macos: '14', prefix: '/opt/homebrew'});
+  await install(f.args);
+  const metadata = fs.readdirSync(f.store).map(key =>
+    JSON.parse(fs.readFileSync(path.join(f.store, key, 'metadata.json')))).find(item => item.inputs.formula === 'libxml2');
+  f.args.approvedDependencies = new ApprovedDependencies({platforms: {arm64: {
+    macos: 14, prefix: '/opt/homebrew', packages: {libxml2: {version: '1.0', source: {
+      key: metadata.key, inputs: metadata.inputs, sha256: metadata.sha256,
+    }}},
+  }}});
+  f.freshRunner();
+  f.args.cache.restoreCache = async () => undefined;
+  await assert.rejects(install(f.args), /compilation is restricted/);
+  assert.deepEqual(f.events, []);
+});
+
+test('dependency preparation excludes PHP and extensions and preserves dependency linking', async t => {
+  const f = fixture(t);
+  f.args.dependencyRoots = [f.args.formula, 'shivammathur/extensions/xdebug@8.4'];
+  f.args.query = (mode, roots, force) => {
+    assert.equal(mode, 'seed');
+    assert.equal(force, true);
+    assert.deepEqual(roots, f.args.dependencyRoots);
+    return [
+      {full_name: 'libxml2', name: 'libxml2', version: '1.0'},
+      {full_name: 'shivammathur/php/bison@2.7', name: 'bison@2.7', version: '2.7.1', bottled: true},
+      {full_name: f.args.formula, version: '8.4.1'},
+      {full_name: 'shivammathur/php/php', version: '8.5.0', requested: true},
+      {full_name: 'shivammathur/extensions/xdebug@8.4', version: '3.5.0'},
+    ];
+  };
+  assert.deepEqual(await install(f.args), {built: 1, restored: 0});
+  const built = f.events.filter(args => args.includes('--build-bottle'));
+  assert.equal(built.length, 1);
+  assert.equal(built[0].at(-1), 'libxml2');
+  assert.ok(built[0].includes('--as-dependency'));
+  assert.ok(f.events.find(args => args[0] === 'install' && args.at(-1) === 'shivammathur/php/bison@2.7').includes('--as-dependency'));
 });
 
 test('dependencies stay dependency installs for source builds and restored bottles', async t => {

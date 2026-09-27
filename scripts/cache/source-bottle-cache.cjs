@@ -80,7 +80,7 @@ function readBottle(directory, key) {
 }
 
 async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
-  forceSource = false, skipLink = false, context,
+  forceSource = false, skipLink = false, context, dependencyRoots, approvedDependencies,
   run = command, query = inspect, inputs = buildInputs, buildEnvironment = environment,
   log = console.log, warn = console.warn, prefetch = prefetchBottles }) {
   if (!/^(?:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/)?[A-Za-z0-9@+_.-]+$/.test(formula)) {
@@ -93,18 +93,34 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
     process.env[`HOMEBREW_${option}`] = '1';
   }
   process.env.HOMEBREW_VERBOSE_USING_DOTS = '0';
-  const plan = query('plan', [formula], forceSource);
+  const requested = dependencyRoots || [formula];
+  if (!Array.isArray(requested) || !requested.length || requested.some(name =>
+    !/^(?:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/)?[A-Za-z0-9@+_.-]+$/.test(name))) {
+    throw new Error('Invalid dependency preparation roots');
+  }
+  const resolved = query(dependencyRoots ? 'seed' : 'plan', requested, dependencyRoots ? true : forceSource);
+  // Dependency preparation never builds PHP or an extension. Packaging tools
+  // remain in this union even when requested as roots. Tap-owned build tools
+  // are dependencies too; exclude only the actual PHP/extension roots.
+  // Homebrew can canonicalize php@CURRENT to php, so use resolved root names.
+  const packageRoots = new Set([...requested, ...resolved.filter(item => item.requested).map(item => item.full_name)]
+    .filter(name => name.includes('/')));
+  const plan = dependencyRoots ? resolved.filter(item => !packageRoots.has(item.full_name)) : resolved;
+  const requestedTarget = dependencyRoots ? undefined : plan.at(-1);
   const platform = buildEnvironment();
-  log(`Dependency plan for ${formula} (${platform.arch || "unknown arch"}, macOS ${platform.macos || "unknown"}):`);
+  if (approvedDependencies) approvedDependencies.validatePlan(plan, platform, { targets: [...packageRoots] });
+  log(`Dependency plan for ${dependencyRoots ? 'all configured roots' : formula} (${platform.arch || "unknown arch"}, macOS ${platform.macos || "unknown"}):`);
   for (const item of plan) {
     log(`  ${item.full_name} ${item.version}: ${item.installed ? "current keg" :
+      approvedDependencies?.has(item) ? "approved dependency bottle" :
       item.bottled && !(item === plan.at(-1) && forceSource) ? "upstream bottle" : "exact source cache or cold source build"}`);
   }
   const result = { built: 0, restored: 0 };
+  if (approvedDependencies) await approvedDependencies.prefetch(plan, { cacheRoot });
   // Homebrew installs the plan one formula at a time. Fetch all missing
   // upstream bottles in one command so its download queue can run concurrently.
-  const bottled = plan.filter((item, index) => !item.installed && item.bottled &&
-    !(index === plan.length - 1 && forceSource)).map(item => item.full_name);
+  const bottled = plan.filter(item => !item.installed && item.bottled &&
+    !(item === requestedTarget && forceSource) && !approvedDependencies?.has(item)).map(item => item.full_name);
   await prefetch(plan.filter(item => bottled.includes(item.full_name) && item.bottle).map(item => item.bottle), { log, warn });
   if (bottled.length > 1) {
     const started = Date.now();
@@ -125,7 +141,7 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
     const started = Date.now();
     const metric = values => recordMetric({ kind: 'source', formula: item.full_name,
       elapsedMs: Date.now() - started, ...values });
-    const target = item === plan.at(-1);
+    const target = item === requestedTarget;
     // The complete dependency plan is installed in topological order here.
     // Do not let each subsequent brew install expand it again: --build-bottle
     // would otherwise demand upgrades to the installed PHP build tool's own
@@ -140,6 +156,12 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
       // remains installed. Point opt at the planned keg without deleting either.
       if (item.select_current) brewSource('select', [item.full_name], { run, inherit: true });
       metric({ result: 'preinstalled' });
+      continue;
+    }
+    if (approvedDependencies?.has(item)) {
+      const restored = await approvedDependencies.restore(item, { cache, cacheRoot, run, flags });
+      if (restored.source) result.restored++;
+      metric({ result: restored.source ? 'approved-source' : 'approved-upstream', key: restored.key });
       continue;
     }
     if (item.bottled && !(target && forceSource)) {

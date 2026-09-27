@@ -73,6 +73,7 @@ class ReleaseCache {
     tag = 'cache', partition = tag === 'cache', request = fetch, fallbackRequest = request === fetch ? curlRequest : undefined,
     mirrorDownload = request === fetch ? mirror.transfer : undefined,
     mirrorMissFile = process.env.PHP_DARWIN_SOURCE_BOTTLE_MISSES,
+    dependencyLockFile,
     versionsToPrune = olderVersions, wait = pause, warn = console.warn } = {}) {
     if (!/^shivammathur\/[A-Za-z0-9_.-]+$/.test(repository || '') || !token) {
       throw new Error('Release source cache requires a shivammathur repository and GH_TOKEN');
@@ -85,6 +86,7 @@ class ReleaseCache {
     this.fallbackRequest = fallbackRequest;
     this.mirrorDownload = mirrorDownload;
     this.mirrorMissFile = mirrorMissFile;
+    this.dependencyLockFile = dependencyLockFile;
     this.versionsToPrune = versionsToPrune;
     this.wait = wait;
     this.warn = warn;
@@ -313,6 +315,9 @@ class ReleaseCache {
       const related = assets.map(asset => ({ asset, identity: assetIdentity(asset) }))
         .filter(entry => entry.identity?.group === group);
       const obsolete = this.versionsToPrune(related.map(entry => entry.identity.version));
+      // Preparing a new dependency generation must not remove the bottles
+      // still selected by ordinary cache jobs before promotion succeeds.
+      const protectedKeys = require('./approved-dependencies.cjs').protectedSourceKeys(this.dependencyLockFile);
       if (obsolete.includes(metadata.inputs.version)) {
         // An older job can finish after a newer upload. Verify that replacement
         // too; its own uploader may have failed before completing read-back.
@@ -320,7 +325,7 @@ class ReleaseCache {
         await this.download(newer.asset, path.join(temporary, 'replacement'), newer.identity.key, { tag });
       }
       for (const { asset, identity } of related) {
-        if (obsolete.includes(identity.version)) {
+        if (obsolete.includes(identity.version) && !protectedKeys.has(identity.key)) {
           await this.api(`releases/assets/${asset.id}`, { method: 'DELETE', allow: [404] });
         }
       }

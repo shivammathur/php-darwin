@@ -16,6 +16,7 @@ on:
       - scripts/build/extension-formula.rb
       - scripts/build/supervise-build.cjs
       - scripts/tests/native/source-bottle-*.test.sh
+      - scripts/tests/native/approved-dependencies.test.cjs
       - scripts/tests/native/icu-reuse.test.sh
       - scripts/tests/e2e/source-build-lock-live.test.cjs
       - scripts/tests/helpers/**
@@ -81,6 +82,7 @@ jobs:
         with:
           formula: php-darwin/source-cache-test/php-darwin-cache-app
           release: source-bottles-test-${{ github.run_id }}
+          dependency-mode: update
       - name: Verify first installation and clear local packages
         run: |
           bash scripts/tests/native/source-bottle-native.test.sh verify
@@ -92,6 +94,7 @@ jobs:
         with:
           formula: php-darwin/source-cache-test/php-darwin-cache-app
           release: source-bottles-test-${{ github.run_id }}
+          dependency-mode: update
       - name: Verify all builds were reused
         env:
           BUILT: ${{ steps.warm.outputs.built }}
@@ -100,6 +103,7 @@ jobs:
           test "$BUILT" = 0
           test "$RESTORED" = 3
           bash scripts/tests/native/source-bottle-native.test.sh verify
+          "$PHP_DARWIN_NODE" scripts/tests/native/approved-dependencies.test.cjs
           bash scripts/tests/native/source-bottle-native.test.sh reset
           bash scripts/tests/native/source-bottle-native.test.sh bump
       - name: Build a new consumer with the cached library
@@ -108,6 +112,7 @@ jobs:
         with:
           formula: php-darwin/source-cache-test/php-darwin-cache-app
           release: source-bottles-test-${{ github.run_id }}
+          dependency-mode: update
       - name: Verify unchanged library reuse and native packages
         env:
           RESTORED: ${{ steps.changed.outputs.restored }}
@@ -122,6 +127,7 @@ jobs:
         with:
           formula: php-darwin/source-cache-test/php-darwin-cache-lib
           release: source-bottles-test-${{ github.run_id }}
+          dependency-mode: update
       - name: Verify clean bottle defaults and preservation of existing files
         run: bash scripts/tests/native/source-bottle-native.test.sh verify-config-upgrade
       - name: Upload native bottles and build inputs
@@ -170,6 +176,7 @@ jobs:
           stage: extensions
           force-source: 'true'
           release: source-bottles-test-${{ github.run_id }}
+          dependency-mode: update
       - name: Verify modules and clear the local cache
         run: |
           bash scripts/tests/native/source-bottle-extensions.test.sh verify > "$RUNNER_TEMP/extensions-cold.txt"
@@ -181,6 +188,7 @@ jobs:
           stage: extensions
           force-source: 'true'
           release: source-bottles-test-${{ github.run_id }}
+          dependency-mode: update
       - name: Verify reuse and identical loadable modules
         env:
           BUILT: ${{ steps.warm.outputs.built }}

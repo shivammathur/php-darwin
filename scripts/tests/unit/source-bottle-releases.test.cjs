@@ -114,6 +114,19 @@ test('persistent release round-trip and pruning only older versions in the same 
   assert.ok(!f.state.assets.some(asset => asset.name === old.name));
 });
 
+test('preparing newer dependencies preserves the source bottle still approved for cache jobs', async t => {
+  const f = fixture(t), old = f.bottle('1'), next = f.bottle('2');
+  const file = path.join(f.root, 'dependencies.json');
+  fs.writeFileSync(file, JSON.stringify({schema: 1, core_commit: 'a'.repeat(40), platforms: {
+    arm64: {packages: {libxml2: {source: {key: old.key}}}},
+  }}));
+  f.cache.dependencyLockFile = file;
+  await f.cache.saveCache([old.directory], old.key);
+  await f.cache.saveCache([next.directory], next.key);
+  assert.deepEqual(f.state.deleted, []);
+  assert.equal(await f.cache.restoreCache([path.join(f.root, 'approved')], old.key), old.key);
+});
+
 test('uploads verify GitHub stored digests without downloading and restores prefer Cloudflare', async t => {
   const f = fixture(t);
   const bottle = f.bottle('1');
