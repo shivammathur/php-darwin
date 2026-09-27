@@ -23,10 +23,6 @@ on:
           - macos-latest
         required: true
         type: choice
-      trace-install:
-        description: Trace installer commands to diagnose slow or failed installs
-        default: false
-        type: boolean
 
 permissions:
   actions: read
@@ -42,7 +38,6 @@ jobs:
     timeout-minutes: 90
     env:
       PHP_VERSION: ${{ inputs.php-version }}
-      PHP_DARWIN_TRACE_INSTALL: ${{ inputs.trace-install }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -55,4 +50,3 @@ jobs:
           runner: ${{ inputs.runner }}
           run-id: ${{ inputs.run-id }}
           github-token: ${{ secrets.TOKEN || github.token }}
-          trace-install: ${{ inputs.trace-install }}

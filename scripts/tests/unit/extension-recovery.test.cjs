@@ -123,7 +123,7 @@ test('recovery reuses only successful compatibility jobs with reports for the ex
   const jobs = matrix.include.map((group, i) => ({ id: i + 1, name: `Test PHP 8.0 on ${group.runner}`, status: 'completed',
     conclusion: i ? 'failure' : 'success' }));
   const artifacts = matrix.include.map((group, i) => ({ id: i + 10, name: `compatibility-8.0-${group.runner}`, digest: `sha256:${'b'.repeat(64)}` }));
-  const report = { name: entry.name, sha256: entry.sha256, bytes: entry.bytes, install_seconds: 1,
+  const report = { name: entry.name, sha256: entry.sha256, bytes: entry.bytes,
     php_preserved: true, services_preserved: true };
   let calls = 0;
   const download = (artifact, folder) => {
@@ -135,12 +135,13 @@ test('recovery reuses only successful compatibility jobs with reports for the ex
   assert.deepEqual(result.matrix.include, [matrix.include[1]]);
   assert.deepEqual(result.verified[0].archives, [{ key: key(entry), sha256: entry.sha256, bytes: entry.bytes }]);
   assert.equal(calls, 1, 'a failed job cannot reuse reports left by its producer');
-  for (const seconds of [0, 10, 52, 300]) {
+  // Timing from legacy reports is optional and never affects correctness.
+  for (const seconds of [undefined, null, -1, 0, 52, 300]) {
     report.install_seconds = seconds;
     assert.equal(reuseCompatibility(matrix, jobs, artifacts, download).verified.length, 1);
   }
-  for (const [field, invalid] of [['sha256', 'c'.repeat(64)], ['bytes', 200], ['install_seconds', null],
-    ['install_seconds', -1], ['php_preserved', false], ['services_preserved', false]]) {
+  for (const [field, invalid] of [['sha256', 'c'.repeat(64)], ['bytes', 200],
+    ['php_preserved', false], ['services_preserved', false]]) {
     const previous = report[field]; report[field] = invalid;
     assert.equal(reuseCompatibility(matrix, jobs, artifacts, download).matrix.include.length, 2);
     report[field] = previous;

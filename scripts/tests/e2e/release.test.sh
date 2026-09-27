@@ -20,7 +20,6 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-started=$SECONDS
 if [ -n "${PHP_DARWIN_TEST_INSTALLER:-}" ]; then
   cp "$PHP_DARWIN_TEST_INSTALLER" "$installer" || exit 1
 else
@@ -40,7 +39,5 @@ for url in "${urls[@]}"; do
 done
 [ "$status" = 200 ] || php_darwin_die "could not download the PHP $version release installer"
 fi
-BASH_ENV="$script_dir/../helpers/trace-install-phases.sh" bash "$installer" "$version" release nts || \
+bash "$installer" "$version" release nts || \
   php_darwin_die "the PHP $version release installer failed"
-elapsed=$((SECONDS - started))
-printf 'Published cache download and installation completed in %ss\n' "$elapsed"

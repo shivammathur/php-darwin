@@ -94,7 +94,6 @@ async function download(name, destination, { sha256, bytes, bases = origins,
   throw Object.assign(new Error(`Could not download ${name}: ${lastError.message}`), { retired: missing.size === bases.length });
 }
 async function prefetch(directory, context, requested, options = {}) {
-  const started = performance.now();
   validateContext(context);
   const names = [...new Set(requested)];
   if (!names.length || names.some(name => !Object.hasOwn(packs, name))) throw new Error('Invalid requested extensions');
@@ -143,7 +142,6 @@ async function prefetch(directory, context, requested, options = {}) {
   results.forEach((result, index) => {
     if (result.status === 'rejected') console.warn(`Extension cache ${names[index]}: ${result.reason.message}`);
   });
-  console.log(`Extension cache preparation completed in ${((performance.now() - started) / 1000).toFixed(3)} seconds`);
   return results.filter(result => result.status === 'fulfilled').map(result => result.value);
 }
 // Keep the action's raw input opaque until it reaches the installer. Only
@@ -367,7 +365,6 @@ function movePrepared(stage, destination) {
   }
 }
 function install(directory, name, { phpConfig = 'php-config', php = 'php' } = {}) {
-  const started = performance.now();
   const entry = readEntry(directory, name);
   const actual = runtimeContext(phpConfig, php);
   if (entry.name !== name || !['php_version', 'build', 'thread_safety', 'architecture', 'php_api'].every(field => actual[field] === entry[field])) {
@@ -419,7 +416,7 @@ function install(directory, name, { phpConfig = 'php-config', php = 'php' } = {}
     fs.writeFileSync(path.join(directory, `${name}.env`), Object.entries(environment).map(([variable, value]) => `${variable}=${value}\n`).join(''));
     fs.writeFileSync(path.join(directory, `${name}.modules`), metadata.modules.join('\n') + '\n');
     committed = true;
-    console.log(`Installed ${name} from its separate extension cache in ${((performance.now() - started) / 1000).toFixed(3)} seconds`);
+    console.log(`Installed ${name} from its separate extension cache`);
     return { modules: metadata.modules, environment, destination };
   } finally {
     if (!committed) for (const item of previous.reverse()) {

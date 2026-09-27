@@ -120,26 +120,9 @@ prepare_homebrew() {
 }
 
 install_cache() {
-  local started=$SECONDS
-  local bash_options=()
-  local installer_bash=bash
-  if [ "${PHP_DARWIN_TRACE_INSTALL:-false}" = true ]; then
-    # macOS /bin/bash 3.2 cannot separate xtrace from diagnostic stderr.
-    # A separate descriptor prevents traces from corrupting captured validation.
-    installer_bash="$brew_prefix/bin/bash"
-    # The version expression must expand in the Bash being checked.
-    # shellcheck disable=SC2016
-    if [ ! -x "$installer_bash" ] || ! "$installer_bash" -c '[ "$BASH_VERSINFO" -ge 4 ]'; then
-      php_darwin_die 'install tracing requires Homebrew Bash 4 or newer'
-    fi
-    exec 3>&2
-    export PS4='+${SECONDS}s ${BASH_SOURCE}:${LINENO}: ' BASH_XTRACEFD=3
-    bash_options=(-x)
-  fi
-  BASH_ENV="$script_dir/../helpers/trace-install-phases.sh" "$installer_bash" "${bash_options[@]}" "$script_dir/../../installer/install-package.sh" "$version" "$build" "$ts" "$archive" 3>&2 || \
+  bash "$script_dir/../../installer/install-package.sh" "$version" "$build" "$ts" "$archive" || \
     php_darwin_die 'cache installation failed'
-  local elapsed=$((SECONDS - started))
-  printf 'Cache installation completed for %s in %ss\n' "$asset" "$elapsed"
+  printf 'Cache installation completed for %s\n' "$asset"
   preserved_homebrew_state check
 }
 

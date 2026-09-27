@@ -144,8 +144,9 @@ workflow tests the PHP archive and bundled coverage modules immediately;
 optional packs have separate compatibility gates and can still target the
 previous PHP patch or nightly commit until their own publication completes.
 The action source remains unchanged. The harness supplies hosted-runner context
-on repository self-hosted macOS machines and requires cache-installer timing
-evidence, because stock setup-php skips the cache on self-hosted installations.
+on repository self-hosted macOS machines and verifies archive provenance, cached
+modules and the absence of source builds, because stock setup-php skips the cache
+on self-hosted installations.
 Performance experiments belong on a new
 orphan branch in `shivammathur/test-setup-php`; compare download, verification,
 extraction and installation, with timing reports retained as workflow artifacts.
@@ -186,7 +187,7 @@ GitHub's 1,000-assets-per-release limit without deleting reusable builds.
 Ownership reads retry every error up to three attempts, then fail without
 deleting the existing claim. A network outage never authorizes a second builder.
 Healthy owners remain protected throughout the coordination deadline.
-CI repairs an inherited shallow core tap before pinning or timing E2E installs,
+CI repairs an inherited shallow core tap before pinning or running E2E installs,
 preserving its checked-out revision and keeping `brew update` usable.
 
 Before Homebrew operations, self-hosted macOS jobs run a bounded process preflight.
@@ -257,13 +258,11 @@ Passwordless sudo remains a prerequisite for setup-php. Its self-hosted path may
 reuse installed PHP or invoke Homebrew; direct release tests establish cache
 coverage separately.
 
-Installation timings are informational and do not gate builds, compatibility,
-recovery or publication. Performance benchmarks and optimization are separate
-from packaging; direct release timings include bootstrap and archive downloads.
-QA helpers record phases through `BASH_ENV` without
-adding probes to production installers. `test.yml` has an `trace-install`
-input for detailed diagnostics. `PHP_DARWIN_VERIFY_RUNTIME=true` also enables
-runtime/extension probes during an installation.
+Production installers and routine install tests contain no elapsed-time probes
+or performance gates. Native reports prove archive identity and preservation;
+older reports with timing fields remain compatible. Performance experiments use
+separate test tooling. Error messages retain the failing installation phase, and
+`PHP_DARWIN_VERIFY_RUNTIME=true` enables additional extension load checks.
 
 Use the `workflow-performance` and per-build timing artifacts to separate runner
 queueing, dependency fetching, source compilation and publication. Check cache
@@ -309,7 +308,7 @@ successful builds and pins their artifact IDs and archive hashes. Optionally set
 example when another version's PHP API changed after the source run. Omit it to
 select all versions; unsupported, duplicate or unavailable selections fail.
 A successful compatibility job is reused only when its checksum-verified reports match every
-selected archive and confirm preservation with a valid timing report.
+selected archive and confirm preservation of PHP and services.
 Only missing or failed groups run the current native checks. The recovery plan
 artifact records reused evidence; publication waits for every remaining group.
 Failed builds remain excluded and can be rebuilt separately. Missing or expired

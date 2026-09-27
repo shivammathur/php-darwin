@@ -50,8 +50,8 @@ function verifyArchive(directory, expected) {
   const archive = path.join(folder, entry.file), bytes = fs.readFileSync(archive);
   if (digest(bytes) !== entry.sha256 || bytes.length !== entry.bytes) throw new Error(`Invalid archive bytes: ${key(entry)}`);
   const report = JSON.parse(fs.readFileSync(path.join(folder, 'validation.txt')));
-  if (report.name !== entry.name || report.sha256 !== entry.sha256 || !Number.isFinite(report.install_seconds) ||
-      report.install_seconds < 0 || !report.php_preserved || !report.services_preserved) throw new Error(`Invalid native report: ${key(entry)}`);
+  if (report.name !== entry.name || report.sha256 !== entry.sha256 ||
+      report.php_preserved !== true || report.services_preserved !== true) throw new Error(`Invalid native report: ${key(entry)}`);
   return { entry, directory: folder };
 }
 function downloadArtifact(artifact, directory, { run = spawnSync,

@@ -21,7 +21,7 @@ const preservationArgs = [prefix, path.join(temporary, 'preserved-homebrew.json'
   path.join(process.env.HOME, 'Library/LaunchAgents'), '/Library/LaunchAgents', '/Library/LaunchDaemons'];
 // A pre-existing FPM crash loop can change brew's status label between reads.
 // Verify service definitions and every existing PHP runtime instead; these
-// checks run outside the measured installation and never control services.
+// checks never control services.
 command('bash', [preservationCheck, 'snapshot', ...preservationArgs]);
 const extensionDirectory = command(phpConfig, ['--extension-dir']);
 // Keep the modules produced during the build outside PHP's extension directory
@@ -38,11 +38,8 @@ try {
       previous.push({ target, backup });
     }
   }
-  const started = performance.now();
   const result = install(temporary, name, { php, phpConfig });
-  const elapsed = (performance.now() - started) / 1000;
   assert.equal(fs.statSync(result.destination).mode & 0o777, 0o755, 'Runtime must be accessible to other PHP process users');
-  console.log(`Optional ${name} installation took ${elapsed.toFixed(3)}s`);
   const load = result.modules.flatMap(module => ['-d', `extension=${extensionDirectory}/${module}.so`]);
   const checks = {
     imagick: '$i=new Imagick(); $i->newImage(16,16,"white"); foreach (["PNG","JPEG","WEBP"] as $f) { $i->setImageFormat($f); if (strlen($i->getImageBlob())<10) { exit(1); } } try { $i->importImagePixels(0,0,1,1,"RGB",Imagick::PIXEL_CHAR,[1]); exit(1); } catch (ImagickException $e) { if (strpos($e->getMessage(),"incorrect number of elements") === false) { throw $e; } } echo "PNG JPEG WEBP and pixel validation passed\\n";',
@@ -58,7 +55,7 @@ try {
   }
   assert.equal(digest(fs.readFileSync(fs.realpathSync(php))), phpHash);
   console.log(command('bash', [preservationCheck, 'check', ...preservationArgs]));
-  const report = { name, sha256: entry.sha256, install_seconds: elapsed, bytes: entry.bytes, php_preserved: true, services_preserved: true };
+  const report = { name, sha256: entry.sha256, bytes: entry.bytes, php_preserved: true, services_preserved: true };
   fs.writeFileSync(path.join(output, 'validation.txt'), JSON.stringify(report) + '\n');
   console.log(JSON.stringify(report));
 } finally {

@@ -90,7 +90,6 @@ jobs:
       PHP_DARWIN_REQUIRE_PACKS: ${{ inputs.optional-packs }}
       PHP_DARWIN_REQUIRE_PCOV: ${{ (inputs.php-version == '5.6' || inputs.php-version == '7.0') && 'false' || 'true' }}
       PHP_DARWIN_REQUIRE_CACHE: 'true'
-      PHP_DARWIN_REQUIRE_INSTALL_TIMING: 'true'
       PHP_DARWIN_REQUIRE_XDEBUG: 'true'
       PHP_VERSION: ${{ inputs.php-version }}
     steps:
@@ -127,7 +126,7 @@ jobs:
         # Stock setup-php needs a parent directory without "darwin". The helper
         # copies its dist/src verbatim; the repository and action stay unchanged.
         env:
-          BASH_ENV: ${{ github.workspace }}/scripts/tests/helpers/trace-install-phases.sh
+          BASH_ENV: ${{ github.workspace }}/scripts/tests/helpers/setup-php-installer.sh
           INPUT_PHP-VERSION: ${{ inputs.php-version }}
           INPUT_EXTENSIONS: ${{ env.EXTENSIONS }}
           INPUT_INI-FILE: production
@@ -139,7 +138,7 @@ jobs:
 
       - name: Run setup-php again on the hot path
         env:
-          BASH_ENV: ${{ github.workspace }}/scripts/tests/helpers/trace-install-phases.sh
+          BASH_ENV: ${{ github.workspace }}/scripts/tests/helpers/setup-php-installer.sh
           INPUT_PHP-VERSION: ${{ inputs.php-version }}
           INPUT_EXTENSIONS: ${{ env.EXTENSIONS }}
           INPUT_INI-FILE: production
@@ -155,8 +154,6 @@ jobs:
         uses: ./.github/actions/upload-artifacts
         with:
           name: setup-php-${{ inputs.php-version }}-${{ matrix.runner }}
-          path: |
-            ${{ runner.temp }}/php-darwin-setup-install.log
-            ${{ runner.temp }}/php-darwin-setup-install-seconds.txt
+          path: ${{ runner.temp }}/php-darwin-setup-install.log
           if-no-files-found: ignore
           retention-days: 7

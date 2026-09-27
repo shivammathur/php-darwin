@@ -28,6 +28,6 @@ snapshot matching PHP; `tap_snapshot` is its path relative to the Homebrew prefi
 
 Installation preserves existing PHP kegs, configuration and services, and makes
 cached PHP the default through the archived `bin/php` link. Compatibility gates
-check correctness and preservation; timings are reported for separate performance
-work, without blocking publication. Timing probes belong to test helpers; source
-builds retain verbose configure/make output.
+check correctness and preservation. Production installers and routine install tests
+contain no timing probes or performance gates. Separate performance experiments
+may report timings as workflow artifacts; source builds retain verbose configure/make output.

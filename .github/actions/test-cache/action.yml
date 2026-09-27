@@ -25,9 +25,6 @@ inputs:
   github-token:
     default: ${{ github.token }}
     description: Token for reading the source run
-  trace-install:
-    default: 'false'
-    description: Trace cache installation
 runs:
   using: composite
   steps:
@@ -39,7 +36,6 @@ runs:
         RUNNER: ${{ inputs.runner }}
         EXPECTED_ARCH: ${{ inputs.arch }}
         PHP_VERSION: ${{ inputs.php-version }}
-        PHP_DARWIN_TRACE_INSTALL: ${{ inputs.trace-install }}
       run: |
         arch=$(RUNNER="$RUNNER" GITHUB_OUTPUT='' bash scripts/tests/helpers/get-test-target.sh)
         source scripts/lib/lib.sh
@@ -49,7 +45,6 @@ runs:
         echo "arch=$arch" >> "$GITHUB_OUTPUT"
         echo "ARCH=$arch" >> "$GITHUB_ENV"
         echo "PHP_VERSION=$PHP_VERSION" >> "$GITHUB_ENV"
-        echo "PHP_DARWIN_TRACE_INSTALL=$PHP_DARWIN_TRACE_INSTALL" >> "$GITHUB_ENV"
     - name: Remove unused Homebrew taps
       shell: bash
       run: bash scripts/build/cleanup-taps.sh

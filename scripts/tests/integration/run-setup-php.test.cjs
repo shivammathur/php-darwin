@@ -30,3 +30,24 @@ test('unchanged setup-php runs outside darwin parent paths and cleans up after s
   assert.equal(fs.existsSync(path.join(root, 'src/scripts/run.sh')), false);
   assert.equal(fs.readFileSync(path.join(root, 'src/scripts/darwin.sh'), 'utf8'), 'unchanged');
 });
+
+test('the setup-php hook selects candidate installer bytes and preserves failures without timing instrumentation', t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'php-installer-hook-'));
+  t.after(() => fs.rmSync(root, {recursive: true, force: true}));
+  const candidate = path.join(root, 'candidate.sh');
+  fs.writeFileSync(candidate, 'printf "candidate %s %s %s\\n" "$@"\nexit "${FIXTURE_EXIT:-0}"\n');
+  const env = {...process.env, BASH_ENV: path.resolve(__dirname, '../helpers/setup-php-installer.sh'),
+    repo: 'php-darwin', RUNNER_TEMP: root, PHP_DARWIN_TEST_INSTALLER: candidate};
+  const run = (script, patch = {}) => require('node:child_process').spawnSync('bash', ['-c', script],
+    {encoding: 'utf8', env: {...env, ...patch}});
+  for (const status of [0, 7]) {
+    const result = run('bash /tmp/install.sh 8.5 release nts', {FIXTURE_EXIT: String(status)});
+    assert.equal(result.status, status, result.stderr);
+    assert.match(result.stdout, /candidate 8\.5 release nts/);
+  }
+  assert.match(fs.readFileSync(path.join(root, 'php-darwin-setup-install.log'), 'utf8'), /candidate 8\.5 release nts/);
+  assert.deepEqual(fs.readdirSync(root).sort(), ['candidate.sh', 'php-darwin-setup-install.log']);
+  const unrelated = run('bash -c "printf unrelated"');
+  assert.equal(unrelated.status, 0, unrelated.stderr);
+  assert.equal(unrelated.stdout, 'unrelated');
+});

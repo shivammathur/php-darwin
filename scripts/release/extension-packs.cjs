@@ -200,8 +200,8 @@ async function publish(directory, { run = transferCommand, retry = retryPolicy()
     const bytes = fs.readFileSync(archive);
     if (digest(bytes) !== entry.sha256 || bytes.length !== entry.bytes) throw new Error('Invalid extension publish artifact');
     const report = JSON.parse(fs.readFileSync(path.join(path.dirname(file), 'validation.txt')));
-    if (report.name !== entry.name || report.sha256 !== entry.sha256 || !Number.isFinite(report.install_seconds) ||
-        report.install_seconds < 0 || !report.php_preserved || !report.services_preserved) throw new Error('Extension validation did not pass');
+    if (report.name !== entry.name || report.sha256 !== entry.sha256 ||
+        report.php_preserved !== true || report.services_preserved !== true) throw new Error('Extension validation did not pass');
     return { entry, archive };
   });
   if (new Set(entries.map(({ entry }) => key(entry))).size !== entries.length) throw new Error('Invalid extension publish batch');
