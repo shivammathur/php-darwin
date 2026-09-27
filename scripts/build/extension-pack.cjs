@@ -48,6 +48,14 @@ function sourceRecords(formulae) {
       inputs_schema: 1, inputs_mode: mode, inputs_sha256: recipeInputs(recipe, mode) };
   });
 }
+function copyHeaders(moduleKeg, module, phpVersion, stage) {
+  const source = path.join(moduleKeg, 'include/php/ext', `${module}@${phpVersion}`);
+  const destination = path.join(stage, 'headers', module);
+  fs.cpSync(source, destination, { recursive: true, verbatimSymlinks: true });
+  if (!fs.statSync(path.join(destination, module === 'msgpack' ? 'php_msgpack.h' : 'igbinary.h')).isFile()) {
+    throw new Error(`Missing ${module} development headers`);
+  }
+}
 function packageExtension({ name, php_version, build, thread_safety, architecture, output, extensionDirectory, php }) {
   if (!Object.hasOwn(packs, name)) throw new Error('Unknown extension pack');
   output = path.resolve(output);
@@ -66,6 +74,7 @@ function packageExtension({ name, php_version, build, thread_safety, architectur
     php_semver: command(path.join(path.dirname(php), 'php-config'), ['--version']),
     ...(process.env.PHP_DARWIN_PHP_SRC_COMMIT ? { php_src_commit: process.env.PHP_DARWIN_PHP_SRC_COMMIT } : {}),
     minimum_macos: architecture === 'arm64' ? 14 : 15, modules: packs[name], environment: {},
+    ...(name === 'memcached' ? { headers: ['igbinary', 'msgpack'] } : {}),
     source_records: sourceRecords([...new Set([...references, ...runtime])]),
     dependencies: info.map(formula => ({ name: formula.name,
       versions: [path.basename(fs.realpathSync(path.join(prefix, 'opt', formula.name)))] })) };
@@ -82,6 +91,7 @@ function packageExtension({ name, php_version, build, thread_safety, architectur
       const source = path.join(extensionDirectory, `${module}.so`);
       fs.copyFileSync(source, path.join(stage, 'modules', `${module}.so`));
       const moduleKeg = fs.realpathSync(path.join(prefix, 'opt', `${module}@${php_version}`));
+      if (metadata.headers?.includes(module)) copyHeaders(moduleKeg, module, php_version, stage);
       const licenseDir = path.join(stage, 'licenses', module);
       fs.mkdirSync(licenseDir, { recursive: true });
       for (const file of files(moduleKeg)) if (fs.lstatSync(file).isFile() &&
@@ -190,7 +200,7 @@ function packageExtension({ name, php_version, build, thread_safety, architectur
     return entry;
   } finally { fs.rmSync(stage, { recursive: true, force: true }); }
 }
-module.exports = { packageExtension, isMachO, dependencies, copyRuntime, sourceRecords };
+module.exports = { packageExtension, isMachO, dependencies, copyRuntime, copyHeaders, sourceRecords };
 if (require.main === module) {
   try {
     packageExtension({ name: process.env.EXTENSION_PACK, php_version: process.env.PHP_VERSION, build: process.env.BUILD,

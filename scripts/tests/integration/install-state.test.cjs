@@ -19,8 +19,10 @@ function fixture(t) {
   const packages = file('packages', 'php@8.6\t../Cellar/php@8.6/8.6.0\tfalse\nlibxml2\t../Cellar/libxml2/2.15\tfalse\nopenssl@3\t../Cellar/openssl@3/3.6\ttrue\n');
   const existing = file('existing', 'Cellar/libxml2/2.14\nCellar/openssl@3/3.6\n');
   const changed = file('changed'); const linked = file('linked'); const journal = file('journal');
+  const excluded = file('excluded');
+  const links = file('links', 'opt/libxml2\t../Cellar/libxml2/2.15\nbin/xml2-config\t../Cellar/libxml2/2.15/bin/xml2-config\ninclude/new-header.h\t../Cellar/libxml2/2.15/include/new-header.h\nopt/php@8.6\t../Cellar/php@8.6/8.6.0\n');
   const run = mode => spawnSync('bash', [path.join(__dirname, '../../installer/install-state.sh'), mode, prefix, packages,
-    mode === 'plan' ? existing : changed, mode === 'plan' ? changed : journal, linked], {encoding: 'utf8'});
+    mode === 'plan' ? existing : changed, mode === 'plan' ? changed : journal, linked, excluded, links], {encoding: 'utf8'});
   const php = file('prefix/Cellar/php@8.6/8.6.0/bin/php', '#!/usr/bin/env bash\nprintf "called\\n" >> "$PROBE_LOG"\nexit "${PROBE_STATUS:-0}"\n');
   fs.chmodSync(php, 0o755);
   const config = file('prefix/Cellar/php@8.6/8.6.0/bin/php-config', '#!/bin/sh\nversion="8.6.0-dev"\necho DO_NOT_EXECUTE\n');
@@ -30,8 +32,28 @@ function fixture(t) {
   const probe = path.join(root, 'php-calls');
   const verify = (env = {}) => spawnSync('bash', [path.join(__dirname, '../../installer/verify-runtime.sh'), prefix, 'php@8.6', '8.6.0-dev', extensions],
     {encoding: 'utf8', env: {...process.env, PHP_DARWIN_VERIFY_RUNTIME: 'false', PROBE_LOG: probe, ...env}});
-  return {root, prefix, file, link, packages, existing, changed, linked, journal, run, php, config, module, extensions, probe, verify};
+  return {root, prefix, file, link, packages, existing, changed, linked, journal, excluded, run, php, config, module, extensions, probe, verify};
 }
+
+test('newer dependencies keep opt and public links while missing cached kegs remain rollback-owned', t => {
+  const f = fixture(t);
+  for (const version of ['2.16', '2.15_1', '2.100', 'unrecognized-version']) {
+    f.file(`prefix/Cellar/libxml2/${version}/file`);
+    f.file('prefix/Cellar/openssl@3/3.6/file');
+    f.link('opt/libxml2', `../Cellar/libxml2/${version}`);
+    f.link('var/homebrew/linked/libxml2', `../../../Cellar/libxml2/${version}`);
+    assert.equal(f.run('plan').status, 0);
+    assert.match(fs.readFileSync(f.changed, 'utf8'), /libxml2/);
+    assert.equal(fs.readFileSync(f.linked, 'utf8'), '');
+    assert.equal(fs.readFileSync(f.excluded, 'utf8'), 'opt/libxml2\nbin/xml2-config\ninclude/new-header.h\n');
+    f.file('prefix/Cellar/libxml2/2.15/file');
+    const result = f.run('receipts'); assert.equal(result.status, 0, result.stderr);
+    assert.equal(fs.readlinkSync(path.join(f.prefix, 'opt/libxml2')), `../Cellar/libxml2/${version}`);
+    assert.equal(fs.readFileSync(f.journal, 'utf8'), '');
+    fs.unlinkSync(path.join(f.prefix, 'opt/libxml2'));
+    fs.unlinkSync(path.join(f.prefix, 'var/homebrew/linked/libxml2'));
+  }
+});
 
 test('package planning reuses exact kegs and only unlinks linked changed non-keg-only dependencies', t => {
   const f = fixture(t);
@@ -40,6 +62,45 @@ test('package planning reuses exact kegs and only unlinks linked changed non-keg
   assert.equal(fs.readFileSync(f.changed, 'utf8'), 'php@8.6\nlibxml2\n');
   assert.equal(fs.readFileSync(f.linked, 'utf8'), 'libxml2\n');
   assert.equal(fs.readlinkSync(path.join(f.prefix, 'var/homebrew/linked/libxml2')), '../../../Cellar/libxml2/2.14');
+});
+
+test('Homebrew revisions sort after upstream versions, not as upstream patch numbers', t => {
+  const f = fixture(t);
+  for (const [cached, active, preserved] of [['2.15_9', '2.15.1', true], ['2.15.1', '2.15_9', false],
+    ['2.15_1', '2.15_2', true], ['2.15_2', '2.15_1', false]]) {
+    fs.writeFileSync(f.packages, `libxml2\t../Cellar/libxml2/${cached}\ttrue\n`);
+    fs.writeFileSync(f.changed, 'libxml2\n');
+    for (const version of [cached, active]) f.file(`prefix/Cellar/libxml2/${version}/file`);
+    f.link('opt/libxml2', `../Cellar/libxml2/${active}`);
+    const result = f.run('receipts'); assert.equal(result.status, 0, result.stderr);
+    assert.equal(fs.readlinkSync(path.join(f.prefix, 'opt/libxml2')), `../Cellar/libxml2/${preserved ? active : cached}`);
+    fs.unlinkSync(path.join(f.prefix, 'opt/libxml2'));
+  }
+});
+
+test('preserving a newer opt link keeps an existing native library consumer working', {skip: process.platform !== 'darwin'}, t => {
+  const f = fixture(t);
+  const opt = path.join(f.prefix, 'opt/libxml2');
+  f.link('opt/libxml2', '../Cellar/libxml2/2.16');
+  const compile = args => {
+    const result = spawnSync('cc', args, {encoding: 'utf8'});
+    assert.equal(result.status, 0, result.stderr);
+  };
+  for (const [version, code] of [['2.15', 'int old_api(void) { return 0; }'],
+    ['2.16', 'int old_api(void) { return 0; } int new_api(void) { return 0; }']]) {
+    const source = f.file(`library-${version}.c`, code);
+    const output = f.file(`prefix/Cellar/libxml2/${version}/lib/libfixture.dylib`);
+    compile(['-dynamiclib', source, '-install_name', `${opt}/lib/libfixture.dylib`, '-o', output]);
+  }
+  const source = f.file('consumer.c', 'extern int new_api(void); int main(void) { return new_api(); }');
+  const consumer = path.join(f.root, 'consumer');
+  compile([source, `${opt}/lib/libfixture.dylib`, '-o', consumer]);
+  f.file('prefix/Cellar/openssl@3/3.6/file');
+  assert.equal(spawnSync(consumer).status, 0);
+  assert.equal(f.run('plan').status, 0);
+  assert.equal(f.run('receipts').status, 0);
+  const result = spawnSync(consumer, [], {encoding: 'utf8'});
+  assert.equal(result.status, 0, result.stderr);
 });
 
 test('opt updates journal old targets and leave reused packages unchanged', t => {

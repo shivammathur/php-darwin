@@ -15,7 +15,15 @@ function runSetupPhp(source, run = spawnSync) {
     const env = { ...process.env, runner: 'github', RUNNER_ENVIRONMENT: 'github-hosted',
       ImageOS: process.env.ImageOS || 'macos15', ImageVersion: process.env.ImageVersion || 'php-darwin-e2e',
       ACT: '', CONTAINER: '' };
+    const started = performance.now();
     const result = run(process.execPath, [path.join(directory, 'dist/index.js')], { stdio: 'inherit', env });
+    if (process.env.PHP_DARWIN_TEST_TIMINGS) {
+      const record = { installer: process.env.PHP_DARWIN_TEST_LABEL, phase: process.env.PHP_DARWIN_TEST_PHASE,
+        seconds: (performance.now() - started) / 1000, status: result.status,
+        architecture: process.arch, php: process.env['INPUT_PHP-VERSION'], extensions: process.env.INPUT_EXTENSIONS };
+      fs.appendFileSync(process.env.PHP_DARWIN_TEST_TIMINGS, JSON.stringify(record) + '\n');
+      console.log(JSON.stringify(record));
+    }
     if (result.error) throw result.error;
     return result.status ?? 1;
   } finally {

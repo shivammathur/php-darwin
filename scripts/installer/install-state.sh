@@ -6,7 +6,7 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 php_darwin_ruby - "$@" <<'PHP_DARWIN_INSTALL_STATE_RUBY'
 begin
-  mode, prefix, packages_file, selected_file, output_file, linked_file = ARGV
+  mode, prefix, packages_file, selected_file, output_file, linked_file, preserved_links_file, links_file = ARGV
   packages = File.readlines(packages_file, chomp: true).map do |line|
     name, target, keg_only, extra = line.split("\t", -1)
     raise 'invalid package record' unless extra.nil? && %w[true false].include?(keg_only) &&
@@ -16,6 +16,25 @@ begin
     [name, target, keg_only]
   end
   selected = File.readlines(selected_file, chomp: true).each_with_object({}) { |name, set| set[name] = true }
+  # Reuse newer active dependencies without downgrading their opt or public
+  # links. Still extract missing cached kegs and track them for rollback.
+  preserved = packages.each_with_object({}) do |(name, target, _), set|
+    opt = File.join(prefix, 'opt', name)
+    next unless File.symlink?(opt) && File.directory?(opt)
+    active = File.realpath(opt)
+    next unless File.dirname(active) == File.join(prefix, 'Cellar', name)
+    current, cached = File.basename(active), File.basename(target)
+    next if current == cached
+    require 'rubygems'
+    versions = [current, cached].map { |version| version.match(/\A(.+?)(?:_(\d+))?\z/) }
+    # Unknown version formats are not permission to replace a working library.
+    if !versions.all? { |version| Gem::Version.correct?(version[1]) }
+      set[name] = true
+    else
+      active_version, cached_version = versions.map { |version| [Gem::Version.new(version[1]), version[2].to_i] }
+      set[name] = true if (active_version <=> cached_version) == 1
+    end
+  end
   case mode
   when 'plan'
     existing_names = selected.keys.each_with_object({}) { |keg, set| set[keg.split('/')[1]] = true }
@@ -23,6 +42,7 @@ begin
     packages.each do |name, target, keg_only|
       next if selected.key?(target.delete_prefix('../'))
       changed << name
+      next if preserved.key?(name)
       next unless keg_only == 'false' && existing_names.key?(name)
       path = File.join(prefix, 'var/homebrew/linked', name)
       next unless File.symlink?(path)
@@ -32,11 +52,20 @@ begin
     end
     File.write(output_file, changed.map { |name| name + "\n" }.join)
     File.write(linked_file, linked.map { |name| name + "\n" }.join)
+    if preserved_links_file && links_file
+      paths = File.readlines(links_file, chomp: true).each_with_object([]) do |line, result|
+        name, target = line.split("\t", 2)
+        formula = target && target.match(%r{(?:\A|/)Cellar/([^/]+)/})
+        result << name if formula && preserved.key?(formula[1])
+      end
+      File.write(preserved_links_file, paths.map { |name| name + "\n" }.join)
+    end
   when 'receipts'
     replacements = []
     packages.each do |name, target, _|
       raise "cache did not install #{target}" unless File.directory?(File.join(prefix, target.delete_prefix('../')))
       next unless selected.key?(name)
+      next if preserved.key?(name)
       path = File.join(prefix, 'opt', name)
       stat = begin
         File.lstat(path)

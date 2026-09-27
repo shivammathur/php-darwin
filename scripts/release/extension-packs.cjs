@@ -43,6 +43,9 @@ async function dispatch({ versions = process.env.PHP_VERSIONS || undefined, afte
 function freshnessReason(entry, repositories, phpManifest) {
   try {
     validateEntry(entry);
+    if (entry.name === 'memcached' && JSON.stringify(entry.headers) !== JSON.stringify(['igbinary', 'msgpack'])) {
+      return 'missing serializer development headers';
+    }
     const phpVersion = phpManifest.php_src_commit ? entry.php_semver?.split('-')[0] : entry.php_semver;
     if (phpVersion !== phpManifest.php_semver ||
         (phpManifest.php_src_commit || '') !== (entry.php_src_commit || '')) return 'PHP release changed';

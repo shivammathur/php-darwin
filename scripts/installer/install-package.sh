@@ -993,8 +993,10 @@ bash "$script_dir/existing-paths.sh" "$brew_prefix" "$exclude_file" \
   "$existing_kegs" "$managed_paths_file" "$package_kegs_file" || \
   php_darwin_die 'could not record existing Homebrew paths'
 dependency_links_file="$tmp_dir/dependency-links.txt"
+preserved_dependency_links_file="$tmp_dir/preserved-dependency-links.txt"
 bash "$script_dir/install-state.sh" plan "$brew_prefix" \
-  "$packages_file" "$existing_kegs" "$changed_formulae_file" "$dependency_links_file" || \
+  "$packages_file" "$existing_kegs" "$changed_formulae_file" "$dependency_links_file" \
+  "$preserved_dependency_links_file" "$links_file" || \
   php_darwin_die 'could not plan cached Homebrew package changes'
 while IFS= read -r package_name; do
   [ "$package_name" = "$formula" ] || linked_dependency_references+=("$package_name")
@@ -1011,6 +1013,9 @@ if [ "${#linked_dependency_references[@]}" -gt 0 ]; then
     "$archive_roots_file" "$existing_kegs" "$managed_paths_file" "$package_kegs_file" || \
     php_darwin_die 'could not refresh existing Homebrew paths after dependency unlinking'
 fi
+
+cat "$preserved_dependency_links_file" >> "$exclude_file" || \
+  php_darwin_die 'could not preserve newer dependency links'
 
 # Preserved PEAR and configuration files were moved aside for rollback. Do not
 # extract replacement copies that would immediately be discarded on success.

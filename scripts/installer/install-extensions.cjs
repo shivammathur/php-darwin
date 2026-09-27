@@ -253,8 +253,7 @@ async function activate(directory, base, scanDirectory, { installPack = installD
   }
   return enabled;
 }
-function phpApi(phpConfig = 'php-config') {
-  const include = command(phpConfig, ['--include-dir']);
+function phpApi(phpConfig = 'php-config', include = command(phpConfig, ['--include-dir'])) {
   const header = fs.readFileSync(path.join(include, 'Zend/zend_modules.h'), 'utf8');
   const match = header.match(/^#define\s+ZEND_MODULE_API_NO\s+(\d{8})\b/m);
   if (!match) throw new Error('Missing PHP module API in installed headers');
@@ -265,10 +264,11 @@ function runtimeContext(phpConfig = 'php-config') {
   if (!/^\d+\.\d+\.\d+(?:[A-Za-z+-][0-9A-Za-z.+-]*)?$/.test(version)) throw new Error('Invalid php-config version');
   const flags = command(phpConfig, ['--configure-options']).replaceAll("'", '').split(/\s+/);
   const enabled = option => flags.includes(option) || flags.includes(option + '=yes');
+  const include = command(phpConfig, ['--include-dir']);
   return { php_version: version.split('.').slice(0, 2).join('.'), build: enabled('--enable-debug') ? 'debug' : 'release',
     thread_safety: enabled('--enable-zts') || enabled('--enable-maintainer-zts') ? 'zts' : 'nts',
     architecture: process.arch === 'arm64' ? 'arm64' : 'x86_64',
-    php_api: phpApi(phpConfig), extension_dir: command(phpConfig, ['--extension-dir']) };
+    php_api: phpApi(phpConfig, include), include_dir: include, extension_dir: command(phpConfig, ['--extension-dir']) };
 }
 function inspectTree(root) {
   function walk(directory) {
@@ -326,6 +326,13 @@ function preparedMetadata(stage, entry) {
   }
   for (const module of metadata.modules) {
     if (!fs.lstatSync(path.join(stage, 'modules', `${module}.so`)).isFile()) throw new Error('Missing extension module');
+  }
+  if (JSON.stringify(metadata.headers) !== JSON.stringify(entry.headers) ||
+      (metadata.headers !== undefined && (metadata.name !== 'memcached' ||
+       JSON.stringify(metadata.headers) !== JSON.stringify(['igbinary', 'msgpack'])))) throw new Error('Invalid pack headers');
+  for (const module of metadata.headers || []) {
+    const header = path.join(stage, 'headers', module, module === 'msgpack' ? 'php_msgpack.h' : 'igbinary.h');
+    if (!fs.lstatSync(header).isFile()) throw new Error(`Missing ${module} development headers`);
   }
   return metadata;
 }
@@ -403,13 +410,25 @@ function install(directory, name, { phpConfig = 'php-config', php = 'php' } = {}
     for (const module of metadata.modules) {
       const target = path.join(actual.extension_dir, `${module}.so`);
       // Serializer modules can already be supplied by the PHP cache or user.
-      if (module !== name && fs.existsSync(target)) continue;
+      if (module !== name && fs.existsSync(target) &&
+          !(fs.lstatSync(target).isSymbolicLink() && fs.realpathSync(target).startsWith(store + path.sep))) continue;
       const backup = path.join(directory, `${module}.previous`);
       let hadPrevious = false;
       try { fs.lstatSync(target); fs.renameSync(target, backup); hadPrevious = true; }
       catch (error) { if (error.code !== 'ENOENT') throw error; }
       previous.push({ target, backup, hadPrevious });
       fs.symlinkSync(path.join(destination, 'modules', `${module}.so`), target);
+      if (metadata.headers?.includes(module)) {
+        const include = path.join(actual.include_dir, 'ext');
+        if (!fs.realpathSync(include).startsWith(prefix + '/')) throw new Error('Invalid PHP include directory');
+        const target = path.join(include, module);
+        const backup = path.join(directory, `${module}.headers.previous`);
+        let hadPrevious = false;
+        try { fs.lstatSync(target); fs.renameSync(target, backup); hadPrevious = true; }
+        catch (error) { if (error.code !== 'ENOENT') throw error; }
+        previous.push({ target, backup, hadPrevious });
+        fs.symlinkSync(path.join(destination, 'headers', module), target);
+      }
     }
     const installedArgs = metadata.modules.flatMap(module => ['-d', `extension=${path.join(actual.extension_dir, `${module}.so`)}`]);
     command(php, ['-n', ...installedArgs, '-r', `exit(extension_loaded('${name}') ? 0 : 1);`], { env: { ...process.env, ...environment } });
@@ -423,7 +442,7 @@ function install(directory, name, { phpConfig = 'php-config', php = 'php' } = {}
       fs.rmSync(item.target, { force: true });
       if (item.hadPrevious) fs.renameSync(item.backup, item.target);
     }
-    else for (const item of previous) if (item.hadPrevious) fs.rmSync(item.backup, { force: true });
+    else for (const item of previous) if (item.hadPrevious) fs.rmSync(item.backup, { recursive: true, force: true });
     fs.rmSync(stage, { recursive: true, force: true });
   }
 }

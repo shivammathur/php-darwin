@@ -24,6 +24,7 @@ const preservationArgs = [prefix, path.join(temporary, 'preserved-homebrew.json'
 // checks never control services.
 command('bash', [preservationCheck, 'snapshot', ...preservationArgs]);
 const extensionDirectory = command(phpConfig, ['--extension-dir']);
+const includeDirectory = command(phpConfig, ['--include-dir']);
 // Keep the modules produced during the build outside PHP's extension directory
 // so this test proves the optional archive supplies them itself.
 const previous = [];
@@ -38,6 +39,15 @@ try {
       previous.push({ target, backup });
     }
   }
+  for (const module of entry.headers || []) {
+    const target = path.join(includeDirectory, 'ext', module);
+    try {
+      fs.lstatSync(target);
+      const backup = path.join(temporary, `${module}.headers.build`);
+      fs.renameSync(target, backup);
+      previous.push({ target, backup });
+    } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  }
   const result = install(temporary, name, { php, phpConfig });
   assert.equal(fs.statSync(result.destination).mode & 0o777, 0o755, 'Runtime must be accessible to other PHP process users');
   const load = result.modules.flatMap(module => ['-d', `extension=${extensionDirectory}/${module}.so`]);
@@ -47,6 +57,23 @@ try {
     memcached: '$m=new Memcached(); foreach ([Memcached::SERIALIZER_PHP,Memcached::SERIALIZER_IGBINARY,Memcached::SERIALIZER_MSGPACK] as $s) { if (!$m->setOption(Memcached::OPT_SERIALIZER,$s)) { exit(1); } } echo "PHP igbinary msgpack serializers passed\\n";',
   };
   console.log(command(php, ['-n', ...load, '-r', checks[name]], { env: { ...process.env, ...result.environment } }));
+  if (name === 'memcached') {
+    assert.deepEqual(entry.headers, ['igbinary', 'msgpack']);
+    const consumer = path.join(temporary, 'consumer.c');
+    fs.writeFileSync(consumer, '#include <php.h>\n#include <ext/igbinary/igbinary.h>\n#include <ext/msgpack/php_msgpack.h>\n');
+    command('cc', ['-fsyntax-only', ...command(phpConfig, ['--includes']).split(/\s+/), consumer]);
+    console.log('Pack-only serializer development headers compile');
+    if (entry.php_version === '8.4' && entry.build === 'release' && entry.thread_safety === 'nts') {
+      const failingPhp = path.join(temporary, 'failing-php');
+      fs.writeFileSync(failingPhp, `#!/bin/sh\ncase "$*" in *"extension=${extensionDirectory}/"*) exit 1;; esac\nexec "${php}" "$@"\n`, { mode: 0o755 });
+      const targets = [...entry.modules.map(module => path.join(extensionDirectory, `${module}.so`)),
+        ...entry.headers.map(module => path.join(includeDirectory, 'ext', module))];
+      const before = targets.map(file => fs.readlinkSync(file));
+      assert.throws(() => install(temporary, name, { php: failingPhp, phpConfig }));
+      assert.deepEqual(targets.map(file => fs.readlinkSync(file)), before, 'Failed activation must restore both modules and headers');
+      console.log('Serializer module/header transaction rollback passed');
+    }
+  }
   if (name === 'mongodb') {
     assert.ok(result.environment.SASL_PATH, 'MongoDB must use its private SASL plugins');
     const viewer = path.resolve(result.environment.SASL_PATH, '../../sbin/pluginviewer');
@@ -60,6 +87,7 @@ try {
   console.log(JSON.stringify(report));
 } finally {
   for (const module of entry.modules) fs.rmSync(path.join(extensionDirectory, `${module}.so`), { force: true });
+  for (const module of entry.headers || []) fs.rmSync(path.join(includeDirectory, 'ext', module), { force: true });
   for (const item of previous) fs.renameSync(item.backup, item.target);
   fs.rmSync(temporary, { recursive: true, force: true });
 }

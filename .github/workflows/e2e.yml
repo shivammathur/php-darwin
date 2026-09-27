@@ -7,6 +7,10 @@ on:
       TOKEN:
         required: false
     inputs:
+      compare-baseline:
+        description: Also measure the previous cache installer on independent runners
+        default: false
+        type: boolean
       optional-packs:
         description: Require published optional packs matching the PHP release
         default: true
@@ -19,6 +23,10 @@ on:
         type: string
   workflow_dispatch:
     inputs:
+      compare-baseline:
+        description: Also measure the previous cache installer on independent runners
+        default: false
+        type: boolean
       optional-packs:
         description: Require published optional packs matching the PHP release
         default: true
@@ -78,13 +86,14 @@ jobs:
         run: bash scripts/tests/e2e/setup-php.test.sh
 
   setup-php:
-    name: Install PHP ${{ inputs.php-version }} through setup-php on ${{ matrix.runner }}
+    name: Install PHP ${{ inputs.php-version }} through setup-php (${{ matrix.installer }}) on ${{ matrix.runner }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         runner: [macos-15, macos-15-intel]
+        installer: ${{ inputs.compare-baseline && fromJSON('["checkout", "baseline"]') || fromJSON('["checkout"]') }}
     env:
       EXTENSIONS: ${{ format('{0}{1}', (inputs.php-version == '5.6' || inputs.php-version == '7.0') && 'xdebug' || 'xdebug, pcov', inputs.optional-packs && ', imagick, mongodb, memcached' || '') }}
       PHP_DARWIN_REQUIRE_PACKS: ${{ inputs.optional-packs }}
@@ -92,12 +101,23 @@ jobs:
       PHP_DARWIN_REQUIRE_CACHE: 'true'
       PHP_DARWIN_REQUIRE_XDEBUG: 'true'
       PHP_VERSION: ${{ inputs.php-version }}
+      PHP_DARWIN_TEST_INSTALLER: ${{ matrix.installer == 'baseline' && format('{0}/.baseline/scripts/install.sh', github.workspace) || (inputs.checkout-installer && format('{0}/scripts/install.sh', github.workspace) || '') }}
+      PHP_DARWIN_TEST_TIMINGS: ${{ github.workspace }}/php-darwin-timings.jsonl
+      PHP_DARWIN_TEST_LABEL: ${{ matrix.installer }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Recover abandoned Homebrew installers
         uses: ./.github/actions/runner-preflight
+
+      - name: Check out the previous installer for the performance control
+        if: matrix.installer == 'baseline'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: e230e88
+          path: .baseline
+          persist-credentials: false
 
       - name: Remove unused Homebrew taps
         run: bash scripts/build/cleanup-taps.sh
@@ -115,7 +135,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: shivammathur/setup-php
-          ref: f3d967b8bc6d6fbb17cb0e2ffd56cf304d0290ba
+          ref: 2c253bfdb2619dd9b1764905d5b5e7488adfc104
           path: .setup-php
           persist-credentials: false
 
@@ -126,6 +146,7 @@ jobs:
         # Stock setup-php needs a parent directory without "darwin". The helper
         # copies its dist/src verbatim; the repository and action stay unchanged.
         env:
+          PHP_DARWIN_TEST_PHASE: cold
           BASH_ENV: ${{ github.workspace }}/scripts/tests/helpers/setup-php-installer.sh
           INPUT_PHP-VERSION: ${{ inputs.php-version }}
           INPUT_EXTENSIONS: ${{ env.EXTENSIONS }}
@@ -138,6 +159,7 @@ jobs:
 
       - name: Run setup-php again on the hot path
         env:
+          PHP_DARWIN_TEST_PHASE: hot
           BASH_ENV: ${{ github.workspace }}/scripts/tests/helpers/setup-php-installer.sh
           INPUT_PHP-VERSION: ${{ inputs.php-version }}
           INPUT_EXTENSIONS: ${{ env.EXTENSIONS }}
@@ -148,12 +170,22 @@ jobs:
       - name: Verify the hot installation
         run: bash scripts/tests/e2e/setup-php.test.sh
 
+      - name: Install and exercise ordinary Brew and PECL extensions
+        if: matrix.installer == 'checkout' && inputs.optional-packs && contains(fromJSON('["8.3", "8.4", "8.5"]'), inputs.php-version)
+        env:
+          BASH_ENV: ${{ github.workspace }}/scripts/tests/helpers/setup-php-installer.sh
+          INPUT_PHP-VERSION: ${{ inputs.php-version }}
+          INPUT_GITHUB-TOKEN: ${{ secrets.TOKEN || github.token }}
+        run: '"$PHP_DARWIN_NODE" scripts/tests/e2e/downstream.test.cjs .setup-php'
+
       - name: Preserve cache installer diagnostics
         if: always()
         continue-on-error: true
         uses: ./.github/actions/upload-artifacts
         with:
-          name: setup-php-${{ inputs.php-version }}-${{ matrix.runner }}
-          path: ${{ runner.temp }}/php-darwin-setup-install.log
+          name: setup-php-${{ inputs.php-version }}-${{ matrix.installer }}-${{ matrix.runner }}
+          path: |
+            ${{ runner.temp }}/php-darwin-setup-install.log
+            ${{ github.workspace }}/php-darwin-timings.jsonl
           if-no-files-found: ignore
           retention-days: 7

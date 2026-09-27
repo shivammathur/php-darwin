@@ -1410,8 +1410,7 @@ async function activate(directory, base, scanDirectory, { installPack = installD
   }
   return enabled;
 }
-function phpApi(phpConfig = 'php-config') {
-  const include = command(phpConfig, ['--include-dir']);
+function phpApi(phpConfig = 'php-config', include = command(phpConfig, ['--include-dir'])) {
   const header = fs.readFileSync(path.join(include, 'Zend/zend_modules.h'), 'utf8');
   const match = header.match(/^#define\s+ZEND_MODULE_API_NO\s+(\d{8})\b/m);
   if (!match) throw new Error('Missing PHP module API in installed headers');
@@ -1422,10 +1421,11 @@ function runtimeContext(phpConfig = 'php-config') {
   if (!/^\d+\.\d+\.\d+(?:[A-Za-z+-][0-9A-Za-z.+-]*)?$/.test(version)) throw new Error('Invalid php-config version');
   const flags = command(phpConfig, ['--configure-options']).replaceAll("'", '').split(/\s+/);
   const enabled = option => flags.includes(option) || flags.includes(option + '=yes');
+  const include = command(phpConfig, ['--include-dir']);
   return { php_version: version.split('.').slice(0, 2).join('.'), build: enabled('--enable-debug') ? 'debug' : 'release',
     thread_safety: enabled('--enable-zts') || enabled('--enable-maintainer-zts') ? 'zts' : 'nts',
     architecture: process.arch === 'arm64' ? 'arm64' : 'x86_64',
-    php_api: phpApi(phpConfig), extension_dir: command(phpConfig, ['--extension-dir']) };
+    php_api: phpApi(phpConfig, include), include_dir: include, extension_dir: command(phpConfig, ['--extension-dir']) };
 }
 function inspectTree(root) {
   function walk(directory) {
@@ -1483,6 +1483,13 @@ function preparedMetadata(stage, entry) {
   }
   for (const module of metadata.modules) {
     if (!fs.lstatSync(path.join(stage, 'modules', `${module}.so`)).isFile()) throw new Error('Missing extension module');
+  }
+  if (JSON.stringify(metadata.headers) !== JSON.stringify(entry.headers) ||
+      (metadata.headers !== undefined && (metadata.name !== 'memcached' ||
+       JSON.stringify(metadata.headers) !== JSON.stringify(['igbinary', 'msgpack'])))) throw new Error('Invalid pack headers');
+  for (const module of metadata.headers || []) {
+    const header = path.join(stage, 'headers', module, module === 'msgpack' ? 'php_msgpack.h' : 'igbinary.h');
+    if (!fs.lstatSync(header).isFile()) throw new Error(`Missing ${module} development headers`);
   }
   return metadata;
 }
@@ -1560,13 +1567,25 @@ function install(directory, name, { phpConfig = 'php-config', php = 'php' } = {}
     for (const module of metadata.modules) {
       const target = path.join(actual.extension_dir, `${module}.so`);
       // Serializer modules can already be supplied by the PHP cache or user.
-      if (module !== name && fs.existsSync(target)) continue;
+      if (module !== name && fs.existsSync(target) &&
+          !(fs.lstatSync(target).isSymbolicLink() && fs.realpathSync(target).startsWith(store + path.sep))) continue;
       const backup = path.join(directory, `${module}.previous`);
       let hadPrevious = false;
       try { fs.lstatSync(target); fs.renameSync(target, backup); hadPrevious = true; }
       catch (error) { if (error.code !== 'ENOENT') throw error; }
       previous.push({ target, backup, hadPrevious });
       fs.symlinkSync(path.join(destination, 'modules', `${module}.so`), target);
+      if (metadata.headers?.includes(module)) {
+        const include = path.join(actual.include_dir, 'ext');
+        if (!fs.realpathSync(include).startsWith(prefix + '/')) throw new Error('Invalid PHP include directory');
+        const target = path.join(include, module);
+        const backup = path.join(directory, `${module}.headers.previous`);
+        let hadPrevious = false;
+        try { fs.lstatSync(target); fs.renameSync(target, backup); hadPrevious = true; }
+        catch (error) { if (error.code !== 'ENOENT') throw error; }
+        previous.push({ target, backup, hadPrevious });
+        fs.symlinkSync(path.join(destination, 'headers', module), target);
+      }
     }
     const installedArgs = metadata.modules.flatMap(module => ['-d', `extension=${path.join(actual.extension_dir, `${module}.so`)}`]);
     command(php, ['-n', ...installedArgs, '-r', `exit(extension_loaded('${name}') ? 0 : 1);`], { env: { ...process.env, ...environment } });
@@ -1580,7 +1599,7 @@ function install(directory, name, { phpConfig = 'php-config', php = 'php' } = {}
       fs.rmSync(item.target, { force: true });
       if (item.hadPrevious) fs.renameSync(item.backup, item.target);
     }
-    else for (const item of previous) if (item.hadPrevious) fs.rmSync(item.backup, { force: true });
+    else for (const item of previous) if (item.hadPrevious) fs.rmSync(item.backup, { recursive: true, force: true });
     fs.rmSync(stage, { recursive: true, force: true });
   }
 }
@@ -2764,7 +2783,7 @@ php_darwin_install_state() (
 
 php_darwin_ruby - "$@" <<'PHP_DARWIN_INSTALL_STATE_RUBY'
 begin
-  mode, prefix, packages_file, selected_file, output_file, linked_file = ARGV
+  mode, prefix, packages_file, selected_file, output_file, linked_file, preserved_links_file, links_file = ARGV
   packages = File.readlines(packages_file, chomp: true).map do |line|
     name, target, keg_only, extra = line.split("\t", -1)
     raise 'invalid package record' unless extra.nil? && %w[true false].include?(keg_only) &&
@@ -2774,6 +2793,25 @@ begin
     [name, target, keg_only]
   end
   selected = File.readlines(selected_file, chomp: true).each_with_object({}) { |name, set| set[name] = true }
+  # Reuse newer active dependencies without downgrading their opt or public
+  # links. Still extract missing cached kegs and track them for rollback.
+  preserved = packages.each_with_object({}) do |(name, target, _), set|
+    opt = File.join(prefix, 'opt', name)
+    next unless File.symlink?(opt) && File.directory?(opt)
+    active = File.realpath(opt)
+    next unless File.dirname(active) == File.join(prefix, 'Cellar', name)
+    current, cached = File.basename(active), File.basename(target)
+    next if current == cached
+    require 'rubygems'
+    versions = [current, cached].map { |version| version.match(/\A(.+?)(?:_(\d+))?\z/) }
+    # Unknown version formats are not permission to replace a working library.
+    if !versions.all? { |version| Gem::Version.correct?(version[1]) }
+      set[name] = true
+    else
+      active_version, cached_version = versions.map { |version| [Gem::Version.new(version[1]), version[2].to_i] }
+      set[name] = true if (active_version <=> cached_version) == 1
+    end
+  end
   case mode
   when 'plan'
     existing_names = selected.keys.each_with_object({}) { |keg, set| set[keg.split('/')[1]] = true }
@@ -2781,6 +2819,7 @@ begin
     packages.each do |name, target, keg_only|
       next if selected.key?(target.delete_prefix('../'))
       changed << name
+      next if preserved.key?(name)
       next unless keg_only == 'false' && existing_names.key?(name)
       path = File.join(prefix, 'var/homebrew/linked', name)
       next unless File.symlink?(path)
@@ -2790,11 +2829,20 @@ begin
     end
     File.write(output_file, changed.map { |name| name + "\n" }.join)
     File.write(linked_file, linked.map { |name| name + "\n" }.join)
+    if preserved_links_file && links_file
+      paths = File.readlines(links_file, chomp: true).each_with_object([]) do |line, result|
+        name, target = line.split("\t", 2)
+        formula = target && target.match(%r{(?:\A|/)Cellar/([^/]+)/})
+        result << name if formula && preserved.key?(formula[1])
+      end
+      File.write(preserved_links_file, paths.map { |name| name + "\n" }.join)
+    end
   when 'receipts'
     replacements = []
     packages.each do |name, target, _|
       raise "cache did not install #{target}" unless File.directory?(File.join(prefix, target.delete_prefix('../')))
       next unless selected.key?(name)
+      next if preserved.key?(name)
       path = File.join(prefix, 'opt', name)
       stat = begin
         File.lstat(path)
@@ -3888,8 +3936,10 @@ php_darwin_existing_paths "$brew_prefix" "$exclude_file" \
   "$existing_kegs" "$managed_paths_file" "$package_kegs_file" || \
   php_darwin_die 'could not record existing Homebrew paths'
 dependency_links_file="$tmp_dir/dependency-links.txt"
+preserved_dependency_links_file="$tmp_dir/preserved-dependency-links.txt"
 php_darwin_install_state plan "$brew_prefix" \
-  "$packages_file" "$existing_kegs" "$changed_formulae_file" "$dependency_links_file" || \
+  "$packages_file" "$existing_kegs" "$changed_formulae_file" "$dependency_links_file" \
+  "$preserved_dependency_links_file" "$links_file" || \
   php_darwin_die 'could not plan cached Homebrew package changes'
 while IFS= read -r package_name; do
   [ "$package_name" = "$formula" ] || linked_dependency_references+=("$package_name")
@@ -3906,6 +3956,9 @@ if [ "${#linked_dependency_references[@]}" -gt 0 ]; then
     "$archive_roots_file" "$existing_kegs" "$managed_paths_file" "$package_kegs_file" || \
     php_darwin_die 'could not refresh existing Homebrew paths after dependency unlinking'
 fi
+
+cat "$preserved_dependency_links_file" >> "$exclude_file" || \
+  php_darwin_die 'could not preserve newer dependency links'
 
 # Preserved PEAR and configuration files were moved aside for rollback. Do not
 # extract replacement copies that would immediately be discarded on success.

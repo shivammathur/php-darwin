@@ -7,10 +7,21 @@ const http = require('node:http');
 const { execFileSync } = require('node:child_process');
 const { prefetch, download, digest, key, validateEntry, validateContext, safePath, inspectTree, packEnvironment, relocateResources, phpApi, prepareArchive, movePrepared, runtimeContext } = require('../../installer/install-extensions.cjs');
 const { unchanged, freshnessReason, compatibilityMatrix, versionBatches, dispatch, publish, validatePublishRun, validatePublishedPHP } = require('../../release/extension-packs.cjs');
-const { copyRuntime } = require('../../build/extension-pack.cjs');
+const { copyRuntime, copyHeaders } = require('../../build/extension-pack.cjs');
 const { buildMatrix } = require('../../release/extension-batches.cjs');
 
 const context = { php_version: '8.4', build: 'release', thread_safety: 'nts', architecture: 'arm64' };
+test('serializer development headers retain their companion files at standard include paths', t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pack-headers-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const source = path.join(root, 'keg/include/php/ext/igbinary@8.4');
+  fs.mkdirSync(source, { recursive: true });
+  for (const name of ['igbinary.h', 'php_igbinary.h', 'igbinary_macros.h']) fs.writeFileSync(path.join(source, name), name);
+  copyHeaders(path.join(root, 'keg'), 'igbinary', '8.4', path.join(root, 'pack'));
+  assert.deepEqual(fs.readdirSync(path.join(root, 'pack/headers/igbinary')), fs.readdirSync(source));
+  assert.equal(freshnessReason(entry('memcached'), {}, { php_semver: '8.4.26' }), 'missing serializer development headers');
+  assert.equal(freshnessReason({ ...entry('memcached'), headers: ['igbinary', 'msgpack'] }, {}, { php_semver: '8.4.26' }), 'missing recipe records');
+});
 test('publication recovery accepts only completed main builds with every compatibility job passing', async () => {
   const source = { status: 'completed', conclusion: 'failure', head_branch: 'main', run_attempt: 1,
     head_repository: { full_name: 'shivammathur/php-darwin' }, path: '.github/workflows/cache-extensions.yml' };

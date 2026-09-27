@@ -392,7 +392,26 @@ source the printed private pack `environment.sh` path. No shell profiles or
 services are modified. Optional downloads retry all errors on either origin with at most three attempts,
 1/2-second backoff and capped Retry-After. Every promoted archive is SHA-verified.
 
+Memcached packs also carry igbinary/msgpack development headers, exposed under
+`php-config --include-dir` at `ext/igbinary` and `ext/msgpack`. Headers and modules
+are activated and rolled back together. Independently installed serializers are
+left untouched; their provider remains responsible for their headers. Only old
+Memcached packs are invalidated for this packaging change, not PHP, Imagick or
+MongoDB archives. Existing source-bottle caches remain reusable.
+
+The PHP installer preserves newer active dependency kegs' opt and public links.
+Missing archived kegs are still tracked for rollback. The runtime smoke test must
+pass against the preserved libraries before installation commits; an incompatible
+library fails installation rather than downgrading other Homebrew consumers.
+
 ### Workflow validation and runner maintenance
+
+`e2e.yml` pins the current setup-php implementation and, for PHP 8.3-8.5 with
+optional packs enabled, installs Brew YAML and PECL Redis with both cached
+serializer headers. It checks PHP binary preservation, install provenance and
+serialization roundtrips. `compare-baseline=true` adds independent old-installer
+control jobs. Cold/hot elapsed measurements are CI-only JSONL artifacts; there
+are no production timing processes or noisy wall-clock pass/fail gates.
 
 Full archive compatibility uses named macOS versions; `macos-latest` is exercised
 separately by `test-homebrew.yml` with published PHP 8.5. That weekly/manual smoke
