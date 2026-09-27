@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
+const { spawnSync, execFileSync } = require('node:child_process');
 const { command, digest } = require('../../installer/install-extensions.cjs');
 
 assert.equal(process.env.GITHUB_ACTIONS, 'true', 'This fixture reinstalls PHP on a CI runner');
@@ -10,8 +10,9 @@ assert.match(version, /^\d+\.\d+$/);
 const architecture = process.arch === 'arm64' ? 'arm64' : 'x86_64';
 const directory = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP, 'php-install-performance-'));
 try {
-  const download = file => command('gh', ['release', 'download', `php-${version}`, '--repo', 'shivammathur/php-darwin',
-    '--pattern', file, '--dir', directory]);
+  const download = file => command('/usr/bin/curl', ['--fail', '--silent', '--show-error', '--location', '--retry', '2',
+    '--connect-timeout', '10', '--max-time', '120', '--output', path.join(directory, file),
+    `https://github.com/shivammathur/php-darwin/releases/download/php-${version}/${encodeURIComponent(file)}`]);
   download(`php-${version}-manifest.json`);
   const manifest = JSON.parse(fs.readFileSync(path.join(directory, `php-${version}-manifest.json`)));
   const asset = manifest.assets.find(a => a.architecture === architecture && a.build === 'release' && a.thread_safety === 'nts');
@@ -21,7 +22,7 @@ try {
   fs.renameSync(path.join(directory, asset.download), archive);
   assert.equal(digest(fs.readFileSync(archive)), asset.sha256);
   const metadata = asset.name.replace(/\.tar\.zst$/, '.json');
-  fs.writeFileSync(path.join(directory, metadata), command('tar', ['--zstd', '-xOf', archive, `var/php-darwin/${metadata}`]));
+  fs.writeFileSync(path.join(directory, metadata), execFileSync('tar', ['--zstd', '-xOf', archive, `var/php-darwin/${metadata}`]));
   fs.writeFileSync(archive + '.sha256', `${asset.sha256}  ${asset.name}\n`);
   const samples = { baseline: [], checkout: [] };
   // Warm both paths, then alternate their order on the same dependency state.

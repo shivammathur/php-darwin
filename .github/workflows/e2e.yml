@@ -180,8 +180,6 @@ jobs:
 
       - name: Compare installers with the same prefetched archive and runner
         if: inputs.compare-baseline && matrix.installer == 'checkout'
-        env:
-          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
         run: '"$PHP_DARWIN_NODE" scripts/tests/e2e/performance.test.cjs'
 
       - name: Preserve cache installer diagnostics
