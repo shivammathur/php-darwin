@@ -180,6 +180,8 @@ Shared libraries stay in `cache`. Filenames and display labels identify package
 version, macOS, architecture and PHP variant; exact keys and checksums remain intact.
 Build claims use `cache-locks` so they cannot exhaust bottle storage. This avoids
 GitHub's 1,000-assets-per-release limit without deleting reusable builds.
+Transient ownership-poll failures retain the existing claim and retry within
+the coordination deadline; a network outage never authorizes a second builder.
 
 Normal PHP and extension cache jobs consume `conf/dependencies.json`. It pins
 Homebrew core and selects the exact dependency bottles for each architecture.

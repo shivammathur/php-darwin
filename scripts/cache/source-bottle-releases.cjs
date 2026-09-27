@@ -113,8 +113,15 @@ class ReleaseCache {
         const transient = error.retryable || ['TypeError', 'SyntaxError', 'AbortError', 'TimeoutError'].includes(error.name) ||
           ['ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'ERR_STREAM_PREMATURE_CLOSE'].includes(error.code);
         if (!transient || attempt === 4) {
-          error.message = errorDetails(error);
-          throw error;
+          // Ownership polling can spend the remaining coordination budget on
+          // transient outages, without retrying permission or validation errors.
+          // DOMException.message can be read-only (fetch timeouts). Preserve
+          // its classification and cause without mutating the original error.
+          const failure = new Error(errorDetails(error), { cause: error });
+          failure.name = error.name;
+          failure.code = error.code;
+          failure.retryable = Boolean(transient);
+          throw failure;
         }
         if (this.fallbackRequest && !this.useFallback &&
             (!response || ['TypeError', 'AbortError', 'TimeoutError'].includes(error.name))) {

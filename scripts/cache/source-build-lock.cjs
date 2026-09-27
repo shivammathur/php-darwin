@@ -43,57 +43,66 @@ class SourceBuildLock {
     let announced = false;
     let delay = 10000;
     while (this.now() - started < this.timeout) {
-      let asset = (await this.cache.assets(release)).find(asset => asset.name === name);
-      if (!asset) {
-        const data = Buffer.from(label);
-        await this.cache.transfer(
-          `https://uploads.github.com/repos/${this.cache.repository}/releases/${release.id}/assets?` +
-          new URLSearchParams({ name, label }), () => ({
-            method: 'POST', headers: { Authorization: `Bearer ${this.cache.token}`,
-              'Content-Type': 'application/json', 'Content-Length': String(data.length) },
-            body: Readable.from([data]), duplex: 'half',
-          }), async response => {
-            await require('./source-bottle-releases.cjs').checkUploadResponse(response, 'Source build claim');
-            if (!response.ok && response.status !== 422) {
-              const error = new Error(`Source build claim on release ${release.id}: HTTP ${response.status}`);
-              error.retryable = response.status === 404;
-              throw error;
-            }
-          });
-        asset = (await this.cache.assets(release)).find(asset => asset.name === name);
+      try {
+        let asset = (await this.cache.assets(release)).find(asset => asset.name === name);
         if (!asset) {
-          // A competing owner may finish between our 422 and this read. A new
-          // successful upload may also need time to appear in the asset list.
-          await this.cache.wait(1000);
+          const data = Buffer.from(label);
+          await this.cache.transfer(
+            `https://uploads.github.com/repos/${this.cache.repository}/releases/${release.id}/assets?` +
+            new URLSearchParams({ name, label }), () => ({
+              method: 'POST', headers: { Authorization: `Bearer ${this.cache.token}`,
+                'Content-Type': 'application/json', 'Content-Length': String(data.length) },
+              body: Readable.from([data]), duplex: 'half',
+            }), async response => {
+              await require('./source-bottle-releases.cjs').checkUploadResponse(response, 'Source build claim');
+              if (!response.ok && response.status !== 422) {
+                const error = new Error(`Source build claim on release ${release.id}: HTTP ${response.status}`);
+                error.retryable = response.status === 404;
+                throw error;
+              }
+            });
+          asset = (await this.cache.assets(release)).find(asset => asset.name === name);
+          if (!asset) {
+            // A competing owner may finish between our 422 and this read. A new
+            // successful upload may also need time to appear in the asset list.
+            await this.cache.wait(1000);
+            continue;
+          }
+        }
+        let claimant;
+        try { claimant = JSON.parse(asset.label); } catch { /* Foreign/malformed claims fail closed. */ }
+        if (asset.state === 'uploaded' && claimant?.nonce === owner.nonce) {
+          return { id: asset.id, waitedMs: this.now() - started };
+        }
+        if (claimant?.nonce === owner.nonce && asset.state === 'starter') {
+          // This process owns the failed upload; no other builder can own it.
+          await this.cache.api(`releases/assets/${asset.id}`, { method: 'DELETE', allow: [404] });
           continue;
         }
+        if (!Number.isSafeInteger(claimant?.job) || claimant.job <= 0 ||
+            !Number.isSafeInteger(claimant?.run) || claimant.run <= 0) {
+          throw new Error(`Invalid source build owner for ${key}`);
+        }
+        const job = await this.cache.api(`actions/jobs/${claimant.job}`, { allow: [404] });
+        const expired = this.now() - Date.parse(asset.created_at) >= this.timeout;
+        if ((job?.run_id === claimant.run && job.status === 'completed') || (!job && expired)) {
+          // Delete the immutable asset ID, never a name which a new owner could reuse.
+          await this.cache.api(`releases/assets/${asset.id}`, { method: 'DELETE', allow: [404] });
+          continue;
+        }
+        if (!announced) {
+          this.cache.warn(`Waiting for source bottle ${key} owned by job ${claimant.job}`);
+          announced = true;
+        }
+      } catch (error) {
+        if (!error.retryable) throw error;
+        // An unavailable owner check is not evidence of an abandoned build.
+        // Keep the claim intact and recheck within the existing wait deadline.
+        this.cache.warn(`Source ownership check unavailable; retaining the claim for ${key}: ${error.message}`);
       }
-      let claimant;
-      try { claimant = JSON.parse(asset.label); } catch { /* Foreign/malformed claims fail closed. */ }
-      if (asset.state === 'uploaded' && claimant?.nonce === owner.nonce) {
-        return { id: asset.id, waitedMs: this.now() - started };
-      }
-      if (claimant?.nonce === owner.nonce && asset.state === 'starter') {
-        // This process owns the failed upload; no other builder can own it.
-        await this.cache.api(`releases/assets/${asset.id}`, { method: 'DELETE', allow: [404] });
-        continue;
-      }
-      if (!Number.isSafeInteger(claimant?.job) || claimant.job <= 0 ||
-          !Number.isSafeInteger(claimant?.run) || claimant.run <= 0) {
-        throw new Error(`Invalid source build owner for ${key}`);
-      }
-      const job = await this.cache.api(`actions/jobs/${claimant.job}`, { allow: [404] });
-      const expired = this.now() - Date.parse(asset.created_at) >= this.timeout;
-      if ((job?.run_id === claimant.run && job.status === 'completed') || (!job && expired)) {
-        // Delete the immutable asset ID, never a name which a new owner could reuse.
-        await this.cache.api(`releases/assets/${asset.id}`, { method: 'DELETE', allow: [404] });
-        continue;
-      }
-      if (!announced) {
-        this.cache.warn(`Waiting for source bottle ${key} owned by job ${claimant.job}`);
-        announced = true;
-      }
-      await this.cache.wait(delay);
+      const remaining = this.timeout - (this.now() - started);
+      if (remaining <= 0) break;
+      await this.cache.wait(Math.min(delay, remaining));
       delay = Math.min(delay * 2, 60000);
     }
     throw new Error(`Timed out waiting for source build ${key}`);

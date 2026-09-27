@@ -291,6 +291,52 @@ test('a lost ownership upload reply preserves the original claim', async t => {
   assert.equal(f.state.assets.length, 0);
 });
 
+test('ownership polling survives exhausted transport retries without taking a live claim', async t => {
+  const f = fixture(t), key = f.bottle('1').key;
+  const first = new SourceBuildLock(f.cache, {owner: {job: 1, run: 10, attempt: 1}});
+  const claim = await first.acquire(key);
+  let now = Date.now(), checks = 0;
+  f.cache.wait = async delay => {now += delay;};
+  f.state.intercept = endpoint => {
+    if (endpoint !== 'actions/jobs/1') return;
+    assert.ok(f.state.assets.some(asset => asset.id === claim.id));
+    checks++;
+    if (checks <= 8) throw new DOMException('GitHub connection timed out', 'TimeoutError');
+    if (checks === 9) return Response.json({run_id: 10, status: 'in_progress'});
+    return Response.json({run_id: 10, status: 'completed'});
+  };
+  const second = new SourceBuildLock(f.cache, {owner: {job: 2, run: 11, attempt: 1}, now: () => now, timeout: 120000});
+  let builds = 0;
+  await second.run(key, async () => {
+    builds++;
+    assert.equal(checks, 10);
+    assert.ok(!f.state.assets.some(asset => asset.id === claim.id));
+  });
+  assert.equal(builds, 1);
+  assert.equal(f.state.assets.length, 0);
+});
+
+test('an owner-check outage remains bounded and permission errors still stop immediately', async t => {
+  for (const status of [503, 403]) {
+    const f = fixture(t), key = f.bottle('1').key;
+    const first = new SourceBuildLock(f.cache, {owner: {job: 1, run: 10, attempt: 1}});
+    const claim = await first.acquire(key);
+    let now = Date.now(), checks = 0;
+    const started = now;
+    f.cache.wait = async delay => {now += delay;};
+    f.state.intercept = endpoint => {
+      if (endpoint === 'actions/jobs/1') {checks++; return new Response('unavailable', {status});}
+    };
+    const second = new SourceBuildLock(f.cache, {owner: {job: 2, run: 11, attempt: 1}, now: () => now, timeout: 20000});
+    await assert.rejects(second.run(key, () => assert.fail('must not compile while ownership is unknown')),
+      status === 503 ? /Timed out waiting/ : /403/);
+    assert.ok(f.state.assets.some(asset => asset.id === claim.id));
+    assert.equal(f.state.deleted.length, 0);
+    if (status === 403) {assert.equal(checks, 1); assert.equal(now, started);}
+    else assert.ok(now - started <= 27000);
+  }
+});
+
 test('transient upload 404s are retried before claiming ownership', async t => {
   const f = fixture(t);
   let uploads = 0;
