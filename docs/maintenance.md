@@ -408,7 +408,8 @@ library fails installation rather than downgrading other Homebrew consumers.
 
 `e2e.yml` pins the current setup-php implementation and, for PHP 8.3-8.5 with
 optional packs enabled, installs Brew YAML and PECL Redis with both cached
-serializer headers. It checks PHP binary preservation, install provenance and
+serializer headers, covering the PECL CLI on 8.3 and setup-php's PECL source
+interface on 8.4+. It checks PHP binary preservation, install provenance and
 serialization roundtrips. `compare-baseline=true` adds independent old-installer
 control jobs. Cold/hot elapsed measurements are CI-only JSONL artifacts; there
 are no production timing processes or noisy wall-clock pass/fail gates.

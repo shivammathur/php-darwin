@@ -19,6 +19,7 @@ for (const [module, header] of [['igbinary', 'igbinary.h'], ['msgpack', 'php_msg
 const { spawnSync } = require('node:child_process');
 spawnSync('brew', ['uninstall', '--force', '--ignore-dependencies', `yaml@${version}`], { stdio: 'inherit' });
 spawnSync('pecl', ['uninstall', 'redis'], { stdio: 'inherit' });
+fs.rmSync('/tmp/redis-6.3.0', { recursive: true, force: true });
 const extensionDirectory = command('php-config', ['--extension-dir']);
 for (const module of ['redis', 'yaml']) fs.rmSync(path.join(extensionDirectory, `${module}.so`), { force: true });
 Object.assign(process.env, { INPUT_EXTENSIONS: 'memcached, yaml, redis-6.3.0', 'INPUT_COVERAGE': 'none',
@@ -27,7 +28,15 @@ Object.assign(process.env, { INPUT_EXTENSIONS: 'memcached, yaml, redis-6.3.0', '
 assert.equal(runSetupPhp(process.argv[2]), 0, 'setup-php downstream installation failed');
 assert.equal(digest(fs.readFileSync(fs.realpathSync(php))), original, 'Extension installation must not replace cached PHP');
 assert.match(command('brew', ['list', '--versions', `shivammathur/extensions/yaml@${version}`]), /yaml@/);
-assert.match(command('pecl', ['info', 'redis']), /6\.3\.0/);
+if (version === '8.3') assert.match(command('pecl', ['info', 'redis']), /6\.3\.0/);
+else {
+  // On PHP 8.4+, setup-php's PECL route uses phpize/make directly so there
+  // is no PEAR registry entry. Require a fresh source build with both options.
+  const configure = fs.readFileSync('/tmp/redis-6.3.0/config.log', 'utf8');
+  assert.match(configure, /--enable-redis-igbinary=yes/);
+  assert.match(configure, /--enable-redis-msgpack=yes/);
+  assert.ok(fs.statSync('/tmp/redis-6.3.0/modules/redis.so').isFile());
+}
 console.log(command('php', ['-r', `
   if (phpversion('redis') !== '6.3.0' || yaml_parse("cache: 42")['cache'] !== 42) { exit(1); }
   $r = new Redis(); $value = ['cache' => [42, true, null]];
