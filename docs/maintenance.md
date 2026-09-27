@@ -186,6 +186,18 @@ Healthy owners remain protected throughout the coordination deadline.
 CI repairs an inherited shallow core tap before pinning or timing E2E installs,
 preserving its checked-out revision and keeping `brew update` usable.
 
+Before Homebrew operations, self-hosted macOS jobs run a bounded process preflight.
+It only recovers an orphaned portable-Ruby Homebrew install/reinstall/upgrade owned
+by the runner user, started before the current job, and holding an exclusive lock
+in that architecture's Homebrew prefix. Recovery requires exactly one active
+`Runner.Worker` and proves it is the current action's ancestor. Other active jobs,
+services, newer processes and ambiguous owners are left alone. Process identities
+are checked again before TERM and KILL; termination has a 1.5-second grace period.
+Lock files and cached packages are never deleted. Unavailable inspection tools
+produce a diagnostic without adding a workflow failure. Hosted runners and local
+invocations skip this recovery. `test-runner-preflight.yml` exercises real process
+and lock recovery in private fixtures on both architectures without building PHP.
+
 Normal PHP and extension cache jobs consume `conf/dependencies.json`. It pins
 Homebrew core and selects the exact dependency bottles for each architecture.
 An installed, healthy keg at the approved version can be reused; otherwise the

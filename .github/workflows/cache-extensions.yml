@@ -150,6 +150,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Recover abandoned Homebrew installers
+        uses: ./.github/actions/runner-preflight
       - uses: ./.github/actions/node-runtime
       - name: Record dependency cache misses
         run: |
@@ -227,6 +229,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Recover abandoned Homebrew installers
+        uses: ./.github/actions/runner-preflight
       - uses: ./.github/actions/node-runtime
       - name: Restore archive tools
         run: |
