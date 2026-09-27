@@ -94,7 +94,7 @@ test('pinning core keeps a full checkout updateable on later runner jobs', t => 
   t.after(() => { if (previous === undefined) delete process.env.RUNNER_TEMP; else process.env.RUNNER_TEMP = previous; });
   batch([entry()], 'build', { output: path.join(directory, 'packs'), indexOutput: path.join(directory, 'index'),
     run: (program, args, buildEnv) => {
-      if (args[0] === '-euc') execFileSync(program, args, { env: { ...env, PATH: `${bin}:${env.PATH}`,
+      if (args[0] === 'scripts/build/pin-core.sh') execFileSync(program, args, { env: { ...env, PATH: `${bin}:${env.PATH}`,
         CORE_FIXTURE: core, HOMEBREW_CORE_COMMIT: commit }, stdio: 'pipe' });
       if (args.includes('.github/actions/source-cache/main.cjs')) writeArchive(buildEnv.EXTENSION_PACK_OUTPUT, entry());
     } });

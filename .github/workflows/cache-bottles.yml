@@ -77,7 +77,7 @@ jobs:
             brew trust "$tap"
             repository=$(brew --repository "$tap")
             git -C "$repository" fetch --depth=1 origin main
-            git -C "$repository" checkout --detach FETCH_HEAD
+            git -C "$repository" checkout --detach --force FETCH_HEAD
           done
       - name: Resolve runtime and source-build dependencies
         run: bash scripts/cache/seed-bottle-plan.sh
