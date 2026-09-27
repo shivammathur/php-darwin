@@ -28,6 +28,9 @@ on:
         description: Publish verified optional archives
         default: true
         type: boolean
+      resume-runs:
+        description: Completed source run IDs, oldest to newest; reuse successful packs and build only unpublished gaps
+        type: string
 
 permissions:
   contents: read
@@ -83,8 +86,42 @@ jobs:
           BUILDS: ${{ inputs.builds }}
           THREAD_SAFETY: ${{ inputs.ts }}
           FORCE: ${{ inputs.force }}
+          RESUME_RUNS: ${{ inputs.resume-runs }}
           GH_TOKEN: ${{ secrets.TOKEN || github.token }}
         run: node scripts/release/extension-packs.cjs plan
+
+  reuse:
+    needs: plan
+    if: needs.plan.outputs.reuse-count != '0'
+    name: Reuse PHP ${{ matrix.php_version }} / ${{ matrix.architecture }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.reuse) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Recover exact verified archives without Homebrew or compilation
+        env:
+          EXTENSION_ENTRIES: ${{ toJSON(matrix.entries) }}
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+        run: node scripts/release/extension-batches.cjs reuse
+      - uses: ./.github/actions/upload-artifacts
+        with:
+          overwrite: true
+          name: extension-reused-${{ matrix.php_version }}-${{ matrix.architecture }}
+          path: builds/extensions/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+      - uses: ./.github/actions/upload-artifacts
+        with:
+          overwrite: true
+          name: extension-index-reused-${{ matrix.php_version }}-${{ matrix.architecture }}
+          path: builds/index/entries.json
+          if-no-files-found: error
 
   build:
     needs: plan
@@ -174,12 +211,13 @@ jobs:
           compression-level: 0
 
   compatibility:
-    needs: [plan, build]
+    needs: [plan, build, reuse]
     name: Test PHP ${{ matrix.php_version }} on ${{ matrix.runner }}
     if: >-
       always() && !cancelled() && needs.plan.outputs.selected-count != '0' &&
       needs.plan.result == 'success' &&
-      (needs.build.result == 'success' || needs.build.result == 'skipped')
+      (needs.build.result == 'success' || needs.build.result == 'skipped') &&
+      (needs.reuse.result == 'success' || needs.reuse.result == 'skipped')
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     strategy:
@@ -231,10 +269,11 @@ jobs:
       CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
 
   publish:
-    needs: [plan, build, compatibility]
+    needs: [plan, build, reuse, compatibility]
     if: >-
       always() && !cancelled() && needs.plan.result == 'success' &&
       (needs.build.result == 'success' || needs.build.result == 'skipped') &&
+      (needs.reuse.result == 'success' || needs.reuse.result == 'skipped') &&
       (needs.compatibility.result == 'success' || needs.compatibility.result == 'skipped') &&
       github.ref == 'refs/heads/main' && inputs.publish
     runs-on: ubuntu-latest

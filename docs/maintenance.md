@@ -36,4 +36,6 @@ The PHP installer accepts optional extensions in its fifth argument and prepares
 
 `cache-extensions.yml` batches extension builds and compatibility tests. `update-extensions.yml` dispatches scheduled refreshes. Publication verifies archives on both origins before committing each manifest.
 
+`recover-extensions.yml` reuses verified successful artifacts and compatibility reports. `publish-extensions.yml` retries validated publication or updates only the standalone extension installer.
+
 Local tests use temporary fixtures. Native tests run on the configured macOS Actions runners.

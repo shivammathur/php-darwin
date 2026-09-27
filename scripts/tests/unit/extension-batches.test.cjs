@@ -7,6 +7,7 @@ const { execFileSync } = require('node:child_process');
 const { key, digest } = require('../../installer/install-extensions.cjs');
 const { buildMatrix, testMatrix, variants, reuse, verifyArchive, downloadArtifact } = require('../../release/extension-batches.cjs');
 const { batch } = require('../../build/extension-batch.cjs');
+const { planRecovery } = require('../../release/extension-recovery.cjs');
 const versions = require('../../../conf/extension-packs.json').versions;
 
 function fixture(t) {
@@ -101,6 +102,21 @@ test('pinning core keeps a full checkout updateable on later runner jobs', t => 
   assert.equal(git('-C', core, 'rev-parse', 'HEAD'), commit);
   assert.equal(git('-C', core, 'rev-parse', '--is-shallow-repository'), 'false');
   assert.equal(git('-C', core, 'rev-list', '--count', 'HEAD'), '2');
+});
+test('grouped recovery accepts passing checkpoints in a failed job but rejects the wrong bundle context', async t => {
+  fixture(t);
+  const metadata = entry();
+  const source = { status: 'completed', head_branch: 'main', run_attempt: 1, head_sha: 'a'.repeat(40),
+    head_repository: { full_name: 'shivammathur/php-darwin' }, path: '.github/workflows/cache-extensions.yml' };
+  const artifacts = [{ id: 10, name: 'extension-index-built-8.4-arm64' }, { id: 11, name: 'extension-built-8.4-arm64' }];
+  const run = (_program, args) => JSON.stringify(args.at(-1).includes('/jobs?') ? [{ jobs: [{ name: 'Cache PHP 8.4 / arm64', conclusion: 'failure' }] }] :
+    args.at(-1).includes('/artifacts?') ? [{ artifacts }] : source);
+  const download = (artifact, folder) => { assert.equal(artifact.artifact_id, 10); fs.writeFileSync(path.join(folder, 'entries.json'), JSON.stringify([metadata])); };
+  const recovered = await planRecovery('123', run, undefined, { download });
+  assert.equal(recovered.entries.length, 1);
+  assert.equal(recovered.entries[0].artifact_id, 11);
+  metadata.architecture = 'x86_64'; metadata.file = `${key(metadata)}-${metadata.sha256}.tar.zst`;
+  await assert.rejects(planRecovery('123', run, undefined, { download }), /context mismatch/);
 });
 
 

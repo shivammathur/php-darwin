@@ -1,0 +1,157 @@
+name: Recover extension cache validation
+run-name: Recover extension caches from run ${{ inputs.run-id }}
+on:
+  workflow_dispatch:
+    inputs:
+      run-id:
+        description: Completed extension build run to test with the current workflow
+        required: true
+        type: string
+      php-versions:
+        description: Space-separated PHP versions to recover (empty selects all)
+        required: false
+        type: string
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: extension-recovery-${{ inputs.run-id }}
+  cancel-in-progress: false
+jobs:
+  plan:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      test-count: ${{ steps.plan.outputs.test-count }}
+      reuse: ${{ steps.plan.outputs.reuse }}
+      keys: ${{ steps.plan.outputs.keys }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Select successful build artifacts
+        id: plan
+        env:
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+          SOURCE_RUN: ${{ inputs.run-id }}
+          PHP_VERSIONS: ${{ inputs.php-versions }}
+        run: node scripts/release/extension-recovery.cjs plan "$SOURCE_RUN"
+      - name: Preserve the exact reused reports and remaining test plan
+        uses: ./.github/actions/upload-artifacts
+        with:
+          name: extension-recovery-plan
+          path: extension-recovery-plan.json
+          if-no-files-found: error
+
+  reuse:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.reuse) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Recover exact successful archives on Ubuntu
+        env:
+          EXTENSION_ENTRIES: ${{ toJSON(matrix.entries) }}
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+        run: node scripts/release/extension-batches.cjs reuse
+      - uses: ./.github/actions/upload-artifacts
+        with:
+          overwrite: true
+          name: extension-reused-${{ matrix.php_version }}-${{ matrix.architecture }}
+          path: builds/extensions/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  compatibility:
+    needs: [plan, reuse]
+    if: needs.plan.outputs.test-count != '0'
+    name: Test PHP ${{ matrix.php_version }} on ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      EXTENSION_ENTRIES: ${{ toJSON(matrix.entries) }}
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_INSTALL_CLEANUP: '1'
+      HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/runner-preflight
+      - uses: ./.github/actions/node-runtime
+      - name: Restore archive tools
+        run: |
+          "$PHP_DARWIN_NODE" scripts/cache/upstream-bottle-cache.cjs tools
+          brew install --verbose jq zstd
+      - uses: ./.github/actions/download-artifacts
+        with:
+          name: extension-reused-${{ matrix.php_version }}-${{ matrix.architecture }}
+          path: builds/extensions
+      - name: Test all selected variants without rebuilding
+        run: '"$PHP_DARWIN_NODE" scripts/build/extension-batch.cjs test'
+      - name: Preserve compatibility reports
+        if: always()
+        uses: ./.github/actions/upload-artifacts
+        with:
+          overwrite: true
+          name: compatibility-${{ matrix.php_version }}-${{ matrix.runner }}
+          path: builds/extensions/*/validation.txt
+          if-no-files-found: ignore
+
+  publish:
+    needs: [plan, reuse, compatibility]
+    if: >-
+      always() && !cancelled() && needs.plan.result == 'success' && needs.reuse.result == 'success' &&
+      (needs.compatibility.result == 'success' || needs.compatibility.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      actions: read
+    concurrency:
+      group: extension-cache-publish
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/download-artifacts
+        with:
+          pattern: extension-reused-*
+          path: builds/extensions
+          merge-multiple: 'true'
+      - name: Verify the publication contains exactly the tested variants
+        env:
+          EXTENSION_RECOVERY_KEYS: ${{ needs.plan.outputs.keys }}
+        run: node scripts/release/extension-recovery.cjs verify builds/extensions
+      - name: Publish the verified archives
+        env:
+          EXTENSION_PUBLISH_REPORT: ${{ runner.temp }}/extension-publication.json
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+          CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
+          CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
+          CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
+        run: node scripts/release/extension-packs.cjs publish builds/extensions
+      - name: Preserve publication diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifacts
+        with:
+          overwrite: true
+          name: publication-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/extension-publication.json
+          if-no-files-found: ignore
+      - name: Explain recovery
+        if: failure()
+        run: echo 'Rerun failed jobs to resume publication. Successful native tests and builds do not need to run again.' >> "$GITHUB_STEP_SUMMARY"

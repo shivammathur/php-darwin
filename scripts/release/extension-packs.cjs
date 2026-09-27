@@ -114,7 +114,13 @@ async function plan() {
   const include = [], reused = [], selected = [];
   const retry = retryPolicy();
   const recovery = new Map();
-  const resumeRuns = [];
+  const resumeRuns = (process.env.RESUME_RUNS || '').trim().split(/\s+/).filter(Boolean);
+  // Explicit recovery keeps completed artifacts even if orchestration changed.
+  // Sources are ordered oldest to newest; the latest successful pack wins.
+  for (const id of resumeRuns) {
+    const recovered = await require('./extension-recovery.cjs').planRecovery(id);
+    for (const entry of recovered.entries) recovery.set(key(entry), entry);
+  }
   for (const php_version of versions) {
     if (!configuration.versions.includes(php_version)) throw new Error('Unsupported PHP version');
     const existing = await readManifest(php_version, retry);
