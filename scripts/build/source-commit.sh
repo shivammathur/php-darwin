@@ -17,7 +17,12 @@ case "$source_name" in
     branch=$(php_darwin_package_config extension_tap_branch)
     source_label=homebrew-extensions
     ;;
-  *) php_darwin_die 'usage: source-commit.sh [php|extensions]' ;;
+  core)
+    repository=https://github.com/Homebrew/homebrew-core.git
+    branch=main
+    source_label=homebrew-core
+    ;;
+  *) php_darwin_die 'usage: source-commit.sh [php|extensions|core]' ;;
 esac
 if [ -n "$pinned_commit" ]; then
   [[ "$pinned_commit" =~ ^[0-9a-f]{40}$ ]] || php_darwin_die "invalid pinned $source_label source commit"

@@ -11,7 +11,10 @@ test('preservation checks ignore empty racks, retain existing PHP, and detect ch
   const prefix = path.join(root, 'brew'), services = path.join(root, 'LaunchAgents');
   const binary = path.join(prefix, 'Cellar/php@8.4/8.4.25/bin/php');
   fs.mkdirSync(path.dirname(binary), { recursive: true });
-  fs.writeFileSync(binary, '#!/bin/sh\nprintf 8.4.25\n'); fs.chmodSync(binary, 0o755);
+  const config = path.join(path.dirname(binary), 'php-config');
+  const smoke = `#!/bin/sh\n[ "$1" = -n ] && [ "$2" = -r ] && [ "$3" = 'exit(0);' ]\n`;
+  fs.writeFileSync(binary, smoke, {mode: 0o755});
+  fs.writeFileSync(config, '#!/bin/sh\nprintf 8.4.25\n', {mode: 0o755});
   fs.mkdirSync(path.join(prefix, 'Cellar/php@8.2'), { recursive: true });
   fs.mkdirSync(services);
   const service = path.join(services, 'homebrew.mxcl.php@8.4.plist');
@@ -24,9 +27,12 @@ test('preservation checks ignore empty racks, retain existing PHP, and detect ch
   fs.writeFileSync(service, 'changed service');
   assert.match(run('check').stderr, /service definitions changed/);
   fs.writeFileSync(service, 'existing service');
-  fs.writeFileSync(binary, '#!/bin/sh\nprintf 8.4.26\n');
+  fs.writeFileSync(config, '#!/bin/sh\nprintf 8.4.26\n');
   assert.match(run('check').stderr, /Existing PHP runtime changed or stopped working/);
-  fs.writeFileSync(binary, '#!/bin/sh\nprintf 8.4.25\n');
+  fs.writeFileSync(config, '#!/bin/sh\nprintf 8.4.25\n');
+  fs.writeFileSync(binary, '#!/bin/sh\nexit 1\n');
+  assert.match(run('check').stderr, /Existing PHP runtime changed or stopped working/);
+  fs.writeFileSync(binary, smoke);
   fs.unlinkSync(service);
   assert.match(run('check').stderr, /service definitions changed/);
   fs.writeFileSync(service, 'existing service');

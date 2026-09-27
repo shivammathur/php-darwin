@@ -610,6 +610,8 @@ package_cache() {
     "$script_dir/../../templates/cache-metadata.json" > "$metadata_path" || \
     php_darwin_die 'could not create archive metadata'
 
+  "${PHP_DARWIN_NODE:-node}" "$script_dir/package-inputs.cjs" capture "$metadata_path" || \
+    php_darwin_die 'could not record package dependency inputs'
   internal_metadata_path=$(php_darwin_metadata_path "$asset") || exit 1
   internal_metadata_dir="$brew_prefix/${internal_metadata_path%/*}"
   [ ! -L "$internal_metadata_dir" ] || php_darwin_die 'embedded metadata directory is a symlink'

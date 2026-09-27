@@ -51,19 +51,21 @@ function transientDownload(error) {
       .includes(error.cause?.code || error.code);
 }
 async function download(name, destination, { sha256, bytes, bases = origins,
-  sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
+  fresh = false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
   if (!safePath(name) || name.includes('/')) throw new Error('Invalid download name');
   let lastError;
+  const missing = new Set();
   for (const [index, base] of bases.entries()) {
     const attempts = index === 0 ? 1 : 3;
     for (let attempt = 1; attempt <= attempts; attempt++) {
       const temporary = `${destination}.partial`;
       try {
         // Give archives time to finish on either origin; metadata stays bounded.
-        const response = await fetch(`${base}/${name}`, { signal: AbortSignal.timeout(bytes ? 300000 : 30000) });
+        const response = await fetch(`${base}/${name}${fresh ? `?refresh=${Date.now()}` : ''}`, { signal: AbortSignal.timeout(bytes ? 300000 : 30000) });
         if (!response.ok || !response.body) {
           await response.body?.cancel();
           const retryAfter = response.headers.get('retry-after');
+          if ([404, 410].includes(response.status)) missing.add(base);
           throw Object.assign(new Error(`HTTP ${response.status}`), {
             transient: [408, 429].includes(response.status) || response.status >= 500,
             retryAfter: /^\d{1,6}$/.test(retryAfter || '') ? Math.min(30, Number(retryAfter)) : 0
@@ -95,7 +97,7 @@ async function download(name, destination, { sha256, bytes, bases = origins,
       }
     }
   }
-  throw new Error(`Could not download ${name}: ${lastError.message}`);
+  throw Object.assign(new Error(`Could not download ${name}: ${lastError.message}`), { retired: missing.size === bases.length });
 }
 async function prefetch(directory, context, requested, options = {}) {
   const started = performance.now();
@@ -107,13 +109,32 @@ async function prefetch(directory, context, requested, options = {}) {
   await download(`extensions-${context.php_version}-manifest.json`, manifestPath, options);
   const manifest = JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
   if (manifest.schema !== 1 || !Array.isArray(manifest.assets)) throw new Error('Invalid extension manifest');
-  const results = await Promise.allSettled(names.map(async name => {
+  let refreshed;
+  const select = (manifest, name) => {
+    if (manifest.schema !== 1 || !Array.isArray(manifest.assets)) throw new Error('Invalid extension manifest');
     const candidates = manifest.assets.filter(entry => entry.name === name &&
       Object.entries(context).every(([field, value]) => entry[field] === value));
     if (candidates.length !== 1) throw new Error(`No unique compatible archive for ${name}`);
-    const entry = validateEntry(candidates[0]);
+    return validateEntry(candidates[0]);
+  };
+  const results = await Promise.allSettled(names.map(async name => {
+    let entry = select(manifest, name);
     console.log(`Downloading ${name} cache (${entry.bytes} bytes)`);
-    await download(entry.file, path.join(directory, entry.file), { ...options, sha256: entry.sha256, bytes: entry.bytes });
+    try {
+      await download(entry.file, path.join(directory, entry.file), { ...options, sha256: entry.sha256, bytes: entry.bytes });
+    } catch (error) {
+      if (!error.retired) throw error;
+      // Publication can retire the archive after this install read its manifest.
+      // Refresh once, shared across packs; retain exact context and checksums.
+      refreshed ||= (async () => {
+        await download(`extensions-${context.php_version}-manifest.json`, manifestPath, { ...options, fresh: true });
+        return JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
+      })();
+      const replacement = select(await refreshed, name);
+      if (replacement.file === entry.file) throw error;
+      entry = replacement;
+      await download(entry.file, path.join(directory, entry.file), { ...options, sha256: entry.sha256, bytes: entry.bytes });
+    }
     await fsp.writeFile(path.join(directory, `${name}.json`), JSON.stringify(entry));
     try {
       // Use independent processes so extraction cannot block other downloads.
@@ -247,10 +268,13 @@ function phpApi(phpConfig = 'php-config') {
   if (!match) throw new Error('Missing PHP module API in installed headers');
   return match[1];
 }
-function runtimeContext(phpConfig = 'php-config', php = 'php') {
-  const value = command(php, ['-n', '-r', 'echo PHP_MAJOR_VERSION,".",PHP_MINOR_VERSION," ",PHP_DEBUG," ",PHP_ZTS;']).split(' ');
-  return { php_version: value[0], build: value[1] === '1' ? 'debug' : 'release',
-    thread_safety: value[2] === '1' ? 'zts' : 'nts',
+function runtimeContext(phpConfig = 'php-config') {
+  const version = command(phpConfig, ['--version']);
+  if (!/^\d+\.\d+\.\d+(?:[A-Za-z+-][0-9A-Za-z.+-]*)?$/.test(version)) throw new Error('Invalid php-config version');
+  const flags = command(phpConfig, ['--configure-options']).replaceAll("'", '').split(/\s+/);
+  const enabled = option => flags.includes(option) || flags.includes(option + '=yes');
+  return { php_version: version.split('.').slice(0, 2).join('.'), build: enabled('--enable-debug') ? 'debug' : 'release',
+    thread_safety: enabled('--enable-zts') || enabled('--enable-maintainer-zts') ? 'zts' : 'nts',
     architecture: process.arch === 'arm64' ? 'arm64' : 'x86_64',
     php_api: phpApi(phpConfig), extension_dir: command(phpConfig, ['--extension-dir']) };
 }

@@ -13,7 +13,17 @@ raise "Invalid source bottle mode" unless %w[plan seed inputs archive].include?(
 def current_installation?(formula)
   # Homebrew requires the current formula version, even if an older keg is
   # still installed. Match Dependency#installed? before skipping an update.
-  formula.latest_version_installed?
+  formula.latest_version_installed? && missing_build_files(formula).empty?
+end
+
+def missing_build_files(formula)
+  return [] unless formula.latest_version_installed? && formula.name.match?(/\Aicu4c(?:@[0-9]+)?\z/)
+
+  # Hosted images can retain the current ICU receipt while omitting its
+  # development files. Homebrew then omits ICU from PKG_CONFIG_PATH. Restore
+  # that exact bottle only when the files needed by PHP configure are absent.
+  %w[lib/pkgconfig/icu-uc.pc lib/pkgconfig/icu-i18n.pc include/unicode/utypes.h]
+    .reject { |relative| (formula.latest_installed_prefix/relative).file? }
 end
 
 def source_dependencies(formula, planning:, force_source: false, runtime_only: false, ignore_installed: false)
@@ -75,6 +85,7 @@ records = resolved.map do |formula|
     prefix: formula.prefix.to_s,
     recipe: formula.path.to_s,
     installed: current_installation?(formula),
+    missing_build_files: missing_build_files(formula),
     select_current: current_installation?(formula) &&
       (!formula.opt_prefix.exist? || formula.opt_prefix.realpath != formula.latest_installed_prefix.realpath),
     bottled: installer.pour_bottle?,

@@ -57,6 +57,7 @@ function fingerprint() {
       return { name, type, path: relative, sha256: sha(fs.readFileSync(path.join(platform.prefix, relative))) };
     });
   return { schema: 1, php, arch, build, ts, revision, phpCommit, extensionsCommit,
+    coreCommit: process.env.HOMEBREW_CORE_COMMIT || '',
     platform, extensions, packages: record.packages.map(({ prefix, ...item }) => ({ ...item,
       recipe: recipeHash(item.recipe), payload: kegDigest(prefix) })) };
 }
@@ -87,7 +88,7 @@ function verifyCheckpoint(directory, expected) {
   return item;
 }
 
-async function downloadCheckpoint(cache, artifact, directory, expected) {
+async function downloadCheckpoint(cache, artifact, directory, expected, { early = false } = {}) {
   const item = identity(expected);
   fs.mkdirSync(directory, { recursive: true });
   const zip = path.join(directory, 'artifact.zip');
@@ -106,7 +107,47 @@ async function downloadCheckpoint(cache, artifact, directory, expected) {
     } finally { fs.closeSync(output); }
   }
   fs.unlinkSync(zip);
-  verifyCheckpoint(directory, expected);
+  const inputs = JSON.parse(fs.readFileSync(path.join(directory, item.checkpoint))).inputs;
+  if (early && !earlyCompatible(inputs, expected)) throw new Error('Early checkpoint inputs changed');
+  const verified = verifyCheckpoint(directory, early ? inputs : expected);
+  if (artifact.name !== verified.name) throw new Error('Checkpoint name does not match its inputs');
+  return inputs;
+}
+
+function earlyCompatible(inputs, expected) {
+  // Early reuse is scoped to one workflow run, whose resolved source commits
+  // remain fixed across partial reruns. Never infer payload equality from just
+  // a PHP version, or reuse an older run before inspecting installed kegs.
+  return /^[a-f0-9]{40}$/.test(expected.coreCommit || '') &&
+    ['php', 'arch', 'build', 'ts', 'revision', 'phpCommit', 'extensionsCommit', 'coreCommit']
+      .every(field => inputs?.[field] === expected[field]) &&
+    JSON.stringify(canonical(inputs.platform)) === JSON.stringify(canonical(expected.platform));
+}
+
+async function restoreEarly(cache, expected, builds, { runId = process.env.GITHUB_RUN_ID,
+  temporary = process.env.RUNNER_TEMP, reuse = process.env.REUSE_ARCHIVES !== 'false' } = {}) {
+  if (!reuse || !/^[1-9][0-9]*$/.test(runId || '')) return {hit: false};
+  const item = identity(expected);
+  try {
+    const artifacts = [];
+    for (let page = 1; ; page++) {
+      const response = await cache.api(`actions/runs/${runId}/artifacts?per_page=100&page=${page}`);
+      artifacts.push(...response.artifacts);
+      if (response.artifacts.length < 100) break;
+    }
+    for (const artifact of artifacts.filter(a => !a.expired && a.name.startsWith(item.prefix)).slice(0, 3)) {
+      const directory = fs.mkdtempSync(path.join(temporary, 'php-darwin-early-'));
+      try {
+        const inputs = await downloadCheckpoint(cache, artifact, directory, expected, {early: true});
+        fs.mkdirSync(builds, {recursive: true});
+        for (const file of item.files) fs.copyFileSync(path.join(directory, file), path.join(builds, file));
+        recordMetric({kind: 'checkpoint', result: 'restored-early', artifact: artifact.id});
+        return {inputs, ...identity(inputs), hit: true, current: true};
+      } catch (error) { cache.warn(`Ignoring early checkpoint ${artifact.id}: ${error.message}`); }
+      finally { fs.rmSync(directory, {recursive: true, force: true}); }
+    }
+  } catch (error) { cache.warn(`Early checkpoint lookup unavailable: ${error.message}`); }
+  return {hit: false};
 }
 
 async function restoreCheckpoint(cache, inputs, builds, { reuse = true, temporary = process.env.RUNNER_TEMP } = {}) {
@@ -170,7 +211,16 @@ async function main(stage) {
   const output = values => {
     for (const [name, value] of Object.entries(values)) fs.appendFileSync(process.env.GITHUB_OUTPUT, `${name}=${value}\n`);
   };
-  if (stage === 'restore') {
+  if (stage === 'early') {
+    const env = process.env;
+    const expected = {php: env.PHP_VERSION, arch: env.ARCH, build: env.BUILD, ts: env.TS, revision: env.GITHUB_SHA,
+      phpCommit: env.HOMEBREW_PHP_COMMIT, extensionsCommit: env.HOMEBREW_EXTENSIONS_COMMIT,
+      coreCommit: env.HOMEBREW_CORE_COMMIT, platform: environment()};
+    const result = await restoreEarly(cache, expected, builds);
+    if (result.hit) fs.writeFileSync(statePath, JSON.stringify(result));
+    output({hit: result.hit, current: Boolean(result.current), name: result.name || ''});
+    console.log(`Early archive checkpoint: ${result.hit ? 'restored' : 'miss'}`);
+  } else if (stage === 'restore') {
     const inputs = fingerprint();
     const result = await restoreCheckpoint(cache, inputs, builds, { reuse: process.env.REUSE_ARCHIVES !== 'false' });
     fs.writeFileSync(statePath, JSON.stringify({ inputs, ...result }));
@@ -188,4 +238,4 @@ async function main(stage) {
 }
 
 if (require.main === module) main(process.argv[2]).catch(error => { console.error(error); process.exitCode = 1; });
-module.exports = { checkpointKey, identity, kegDigest, verifyCheckpoint, downloadCheckpoint, restoreCheckpoint, stageCheckpoint, pruneCheckpoints };
+module.exports = { checkpointKey, identity, kegDigest, verifyCheckpoint, downloadCheckpoint, restoreCheckpoint, stageCheckpoint, pruneCheckpoints, earlyCompatible, restoreEarly };

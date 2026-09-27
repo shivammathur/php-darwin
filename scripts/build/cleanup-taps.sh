@@ -21,11 +21,21 @@ while IFS= read -r installed_tap; do
   esac
 done <<< "$installed_taps"
 
-if [ "${#unused_taps[@]}" -gt 0 ]; then
-  if ! HOMEBREW_DEVELOPER=1 brew untap "${unused_taps[@]}" > "$untap_log" 2>&1; then
-    cat "$untap_log" >&2
-    php_darwin_die 'could not remove unused Homebrew taps'
+for unused_tap in "${unused_taps[@]}"; do
+  if ! HOMEBREW_DEVELOPER=1 brew untap --force "$unused_tap" > "$untap_log" 2>&1; then
+    # A cancelled setup-php source fallback can leave root-owned tap files on
+    # persistent CI runners. Repair only this unused checkout, then retry once.
+    tap_path=$(php_darwin_tap_repository_path "$unused_tap") || exit 1
+    if [ "${GITHUB_ACTIONS:-}" = true ] && [ -d "$tap_path" ] && [ ! -L "$tap_path" ] &&
+      sudo -n true && sudo -n chown -R -P "$(id -u):$(id -g)" "$tap_path" &&
+      sudo -n chmod -R u+rwX "$tap_path" &&
+      HOMEBREW_DEVELOPER=1 brew untap --force "$unused_tap" >> "$untap_log" 2>&1; then
+      printf 'Repaired permissions for unused CI tap %s\n' "$unused_tap"
+    else
+      cat "$untap_log" >&2
+      php_darwin_die 'could not remove unused Homebrew taps'
+    fi
   fi
-fi
+done
 
 printf 'Removed %s unused Homebrew tap(s)\n' "${#unused_taps[@]}"

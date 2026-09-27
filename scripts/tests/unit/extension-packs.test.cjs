@@ -5,7 +5,7 @@ const path = require('node:path');
 const os = require('node:os');
 const http = require('node:http');
 const { execFileSync } = require('node:child_process');
-const { prefetch, download, digest, key, validateEntry, validateContext, safePath, inspectTree, packEnvironment, relocateResources, phpApi, prepareArchive, movePrepared } = require('../../installer/install-extensions.cjs');
+const { prefetch, download, digest, key, validateEntry, validateContext, safePath, inspectTree, packEnvironment, relocateResources, phpApi, prepareArchive, movePrepared, runtimeContext } = require('../../installer/install-extensions.cjs');
 const { unchanged, freshnessReason, compatibleBuilder, builderHash, compatibilityMatrix, versionBatches, dispatch, publish, validatePublishRun, validatePublishedPHP } = require('../../release/extension-packs.cjs');
 const { copyRuntime } = require('../../build/extension-pack.cjs');
 const { buildMatrix } = require('../../release/extension-batches.cjs');
@@ -222,7 +222,7 @@ test('scheduled batches cover every configured PHP version within both matrix li
     assert.throws(() => validateContext({ ...context, php_version: version }), /Unsupported/);
   }
 });
-test('installer-only publication leaves every archive and PHP manifest untouched', async t => {
+test('installer-only publication uploads only the installer and inventories retention', async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-installer-publish-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   for (const name of ['CF_R2_AWS_ACCESS_KEY_ID', 'CF_R2_AWS_SECRET_ACCESS_KEY', 'CF_R2_AWS_S3_ENDPOINT']) {
@@ -237,6 +237,7 @@ test('installer-only publication leaves every archive and PHP manifest untouched
   const writes = [];
   await publish(directory, { run: async (program, args) => {
     if (program === 'gh' && args[0] === 'api') return JSON.stringify(args.includes('--paginate') ? [[]] : { id: 1 });
+    if (program === 'aws' && args.includes('list-objects-v2')) return JSON.stringify({Contents: []});
     if (program === 'aws') {
       writes.push(args[args.indexOf('--key') + 1]);
       uploaded = fs.readFileSync(args[args.indexOf('--body') + 1]);
@@ -285,6 +286,21 @@ function entry(name, content = Buffer.from(name)) {
   metadata.file = `${key(metadata)}-${metadata.sha256}.tar.zst`;
   return metadata;
 }
+
+test('extension context uses php-config for version and variant without starting PHP', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'php-config-context-'));
+  t.after(() => fs.rmSync(directory, {recursive: true, force: true}));
+  const config = path.join(directory, 'php-config');
+  fs.mkdirSync(path.join(directory, 'Zend'));
+  fs.writeFileSync(path.join(directory, 'Zend/zend_modules.h'), '#define ZEND_MODULE_API_NO 20260925\n');
+  for (const version of ['8.7.0-dev', '8.7.0alpha1', '8.7.0beta2', '8.7.0RC1', '8.7.0']) for (const flags of ['', '--enable-debug', '--enable-zts', '--enable-debug --enable-maintainer-zts']) {
+    fs.writeFileSync(config, `#!/bin/sh\ncase "$1" in\n--version) echo ${version};;\n--include-dir) dirname "$0";;\n--extension-dir) echo /opt/homebrew/lib/php/pecl;;\n--configure-options) echo "${flags}";;\n*) exit 1;;\nesac\n`, {mode: 0o755});
+    const context = runtimeContext(config, '/must/not/run/php');
+    assert.equal(context.php_version, '8.7');
+    assert.equal(context.build, flags.includes('debug') ? 'debug' : 'release');
+    assert.equal(context.thread_safety, flags.includes('zts') ? 'zts' : 'nts');
+  }
+});
 async function fixture(t, handler) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-unit-'));
   const server = http.createServer(handler);
@@ -296,6 +312,25 @@ async function fixture(t, handler) {
   });
   return { directory, url: `http://127.0.0.1:${server.address().port}` };
 }
+
+test('retired archives refresh the manifest once and install the replacement with its own digest', async t => {
+  const old = entry('imagick', Buffer.from('old')), next = entry('imagick', Buffer.from('new'));
+  let refreshed = 0, oldReads = 0;
+  const {directory, url} = await fixture(t, (req, res) => {
+    if (req.url.startsWith('/extensions-8.4-manifest.json')) {
+      const fresh = req.url.includes('?refresh=');
+      if (fresh) refreshed++;
+      return res.end(JSON.stringify({schema: 1, assets: [fresh ? next : old]}));
+    }
+    if (req.url === '/' + old.file) {oldReads++; res.writeHead(404); return res.end();}
+    if (req.url === '/' + next.file) return res.end('new');
+    res.writeHead(404); res.end();
+  });
+  assert.deepEqual(await prefetch(directory, context, ['imagick'], {bases: [url], prepare: async () => {}}), ['imagick']);
+  assert.equal(refreshed, 1); assert.equal(oldReads, 1);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(directory, 'imagick.json'))).sha256, next.sha256);
+  assert.equal(fs.readFileSync(path.join(directory, next.file), 'utf8'), 'new');
+});
 test('all requested packs download concurrently, with no unrequested downloads', async t => {
   const names = ['imagick', 'mongodb', 'memcached'];
   const assets = names.map(name => entry(name));
@@ -517,7 +552,7 @@ test('reviewed builder compatibility retains recipe and PHP invalidation', t => 
   const metadata = { ...entry('imagick'), builder_sha256: previous, php_semver: '8.4.26',
     source_records: [{ repository: 'core', path: 'formula.rb', sha256: digest('original') }] };
   const repositories = { core: directory };
-  assert.equal(unchanged(metadata, repositories, { php_semver: '8.4.26' }), builderHash() === current);
+  assert.equal(unchanged(metadata, repositories, { php_semver: '8.4.26' }), true);
   assert.equal(unchanged(metadata, repositories, { php_semver: '8.4.27' }), false);
   fs.writeFileSync(path.join(directory, 'formula.rb'), 'changed');
   assert.equal(unchanged(metadata, repositories, { php_semver: '8.4.26' }), false);

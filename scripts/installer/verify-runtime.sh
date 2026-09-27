@@ -43,11 +43,17 @@ while IFS=$'\t' read -r extension extension_type extension_path extra; do
   }
 done < "$extensions"
 
-# Release QA tests PHP and each extension on every supported runner before
-# publication. Keep explicit load probes available for installation diagnostics.
+# Reused Homebrew kegs may have broken loader paths even when their version
+# and receipt look correct. One process checks those paths without recompiling
+# dependencies or using PHP for version discovery.
+"$php_bin" -n -r 'exit(0);' || {
+  printf 'Cached PHP runtime smoke test failed; check the reused dependency paths\n' >&2
+  exit 1
+}
+
+# Release QA tests each extension before publication. Keep the more expensive
+# per-extension probes available for explicit installation diagnostics.
 if [ "${PHP_DARWIN_VERIFY_RUNTIME:-false}" = true ]; then
-  installed_version=$("$php_bin" -n -r 'echo PHP_VERSION;') || exit 1
-  [ "$installed_version" = "$expected_version" ] || exit 1
   while IFS=$'\t' read -r extension extension_type extension_path; do
     "$php_bin" -n -d "$extension_type=$prefix/$extension_path" -r \
       "if (!extension_loaded('$extension')) { exit(1); }" || {

@@ -16,15 +16,23 @@ bash "$script_dir/../helpers/check-preserved-homebrew.sh" check "$brew_prefix" \
   php_darwin_die 'end-to-end installation changed existing PHP or its services'
 formula=$(php_darwin_formula "$version" release nts) || exit 1
 
-# shellcheck disable=SC2016
-php -r '
-  $expected = getenv("PHP_VERSION");
-  $actual = PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION;
-  if ($actual !== $expected) {
-    fwrite(STDERR, "Expected PHP $expected, found $actual\n");
-    exit(1);
-  }
-' || php_darwin_die "PHP $version is not active"
+actual_semver=$(php-config --version) || php_darwin_die 'php-config could not report its version'
+[ "${actual_semver%.*}" = "$version" ] || php_darwin_die "PHP $version is not active"
+
+if [ "${PHP_DARWIN_REQUIRE_PACKS:-false}" = true ]; then
+  php -r 'foreach (["imagick", "mongodb", "igbinary", "msgpack", "memcached"] as $name) {
+    if (!extension_loaded($name)) { fwrite(STDERR, "Missing cached module: $name\n"); exit(1); }
+  }' || php_darwin_die 'optional extension packs were not enabled'
+  extension_dir=$(php-config --extension-dir) || exit 1
+  for extension in imagick mongodb memcached; do
+    module="$extension_dir/$extension.so"
+    [ -L "$module" ] || php_darwin_die "$extension did not use its separate cache"
+    case "$(readlink "$module")" in
+      "$brew_prefix/var/php-darwin/extensions/"*/modules/"$extension.so") ;;
+      *) php_darwin_die "$extension module is outside the private cache" ;;
+    esac
+  done
+fi
 
 if [ "${PHP_DARWIN_REQUIRE_XDEBUG:-false}" = true ]; then
   # shellcheck disable=SC2016
@@ -88,7 +96,7 @@ if [ "${PHP_DARWIN_REQUIRE_CACHE:-false}" = true ]; then
     php_darwin_die 'could not read the published release manifest'
   [ "$tap_commit" = "$manifest_commit" ] || \
     php_darwin_die 'the installed tap snapshot does not match the published cache'
-  actual_semver=$(php -r 'echo PHP_VERSION;') || php_darwin_die 'PHP could not report its version'
+  actual_semver=$(php-config --version) || php_darwin_die 'PHP could not report its version'
   expected_runtime_semver=$expected_semver
   [ "$channel" != nightly ] || expected_runtime_semver="$expected_semver-dev"
   [ "$actual_semver" = "$expected_runtime_semver" ] || \

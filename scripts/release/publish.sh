@@ -175,11 +175,13 @@ while IFS= read -r metadata; do
   printf '%s\n' "$metadata_php_src_commit" >> "$php_src_commits" || \
     php_darwin_die "could not read the PHP source commit from $metadata"
   jq -cn --arg architecture "$metadata_arch" --arg build "$metadata_build" --arg download "$download_asset" \
+    --slurpfile metadata "$metadata" \
     --arg name "$expected_archive" \
     --arg sha256 "$actual_hash" --arg thread_safety "$metadata_ts" --argjson bytes "$archive_bytes" \
     --argjson minimum_macos "$expected_minimum" \
     '{architecture:$architecture,build:$build,bytes:$bytes,download:$download,minimum_macos:$minimum_macos,name:$name,
-      sha256:$sha256,thread_safety:$thread_safety}' >> "$assets_jsonl" || \
+      sha256:$sha256,thread_safety:$thread_safety} +
+      (if $metadata[0].build_inputs then {build_inputs:$metadata[0].build_inputs} else {} end)' >> "$assets_jsonl" || \
     php_darwin_die "could not create the release record for $expected_archive"
 done < "$metadata_list"
 

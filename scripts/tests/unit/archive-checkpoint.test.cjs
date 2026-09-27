@@ -5,13 +5,13 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { command } = require('../../cache/source-bottle-cache.cjs');
-const { checkpointKey, identity, kegDigest, verifyCheckpoint, restoreCheckpoint, stageCheckpoint, pruneCheckpoints } = require('../../cache/archive-checkpoint.cjs');
+const { checkpointKey, identity, kegDigest, verifyCheckpoint, restoreCheckpoint, stageCheckpoint, pruneCheckpoints, restoreEarly } = require('../../cache/archive-checkpoint.cjs');
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'checkpoint-test-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const inputs = { schema: 1, php: '8.6', arch: 'arm64', build: 'debug', ts: 'zts',
-    revision: 'a'.repeat(40), phpCommit: 'b'.repeat(40), extensionsCommit: 'c'.repeat(40),
+    revision: 'a'.repeat(40), phpCommit: 'b'.repeat(40), extensionsCommit: 'c'.repeat(40), coreCommit: 'd'.repeat(40),
     platform: { compiler: 'clang-1', sdk: '14', macos: '14' }, packages: [{ name: 'libxml2', version: '1', payload: 'abc' }] };
   const item = identity(inputs);
   const builds = path.join(root, 'builds');
@@ -36,6 +36,19 @@ function fixture(t) {
   } };
   return { root, inputs, item, builds, staged, zip, artifact, warnings, cache };
 }
+
+test('early reuse restores only this run with identical pinned sources and toolchain', async t => {
+  const f = fixture(t), original = f.cache.api;
+  f.cache.api = async (route, options) => route.startsWith('actions/runs/10/artifacts?') ?
+    {artifacts: [f.artifact]} : original(route, options);
+  const expected = {...f.inputs}; delete expected.packages;
+  const options = {runId: '10', temporary: f.root};
+  assert.equal((await restoreEarly(f.cache, expected, f.builds, options)).hit, true);
+  for (const field of ['revision', 'phpCommit', 'extensionsCommit', 'coreCommit', 'platform']) {
+    assert.equal((await restoreEarly(f.cache, {...expected, [field]: 'changed'}, f.builds, options)).hit, false);
+  }
+  assert.equal((await restoreEarly(f.cache, expected, f.builds, {...options, reuse: false})).hit, false);
+});
 
 test('archive fingerprints cover variants, workflow, source, dependency bytes and toolchain', () => {
   const inputs = { php: '8.6', arch: 'arm64', build: 'debug', ts: 'zts', revision: 'a',

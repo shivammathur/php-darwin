@@ -6,6 +6,8 @@ const compatibleBuilders = require('../../conf/extension-builder-compatibility.j
 const platforms = require('../../conf/platforms.json');
 const { builderHash } = require('../build/extension-pack.cjs');
 const { buildMatrix, testMatrix } = require('./extension-batches.cjs');
+const { retention } = require('./extension-retention.cjs');
+const { recipeCurrent } = require('../lib/recipe-inputs.cjs');
 const { command: transferCommand, retryPolicy, httpError, githubJSON, workflowJobs, transfers } = require('./extension-transfers.cjs');
 const root = path.resolve(__dirname, '../..');
 
@@ -57,8 +59,7 @@ function freshnessReason(entry, repositories, phpManifest) {
     for (const record of entry.source_records) {
       const repository = repositories[record.repository];
       if (!repository || !record.path || record.path.includes('..') || path.isAbsolute(record.path)) return 'invalid recipe record';
-      const file = path.join(repository, record.path);
-      if (!fs.existsSync(file) || digest(fs.readFileSync(file)) !== record.sha256) {
+      if (!recipeCurrent(record, repository)) {
         return `recipe changed: ${record.repository}/${record.path}`;
       }
     }
@@ -239,9 +240,13 @@ async function publish(directory, { run = transferCommand, retry = retryPolicy()
   } else if (!response.ok) throw new Error(`Cannot inspect extension release: HTTP ${response.status}`);
   const staging = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP || '/tmp', 'extension-release-'));
   const transfer = transfers({ directory: staging, env, endpoint: process.env.CF_R2_AWS_S3_ENDPOINT, run, retry });
+  const cleanup = retention({ env, endpoint: process.env.CF_R2_AWS_S3_ENDPOINT, run, retry });
+  const incoming = entries.map(({ entry }) => entry.file);
   const publishedVersions = [], failedVersions = [];
   let failure;
   try {
+    if (entries.length) await cleanup.capacity([...incoming,
+      ...new Set(entries.map(({ entry }) => `extensions-${entry.php_version}-manifest.json`)), 'install-extensions.cjs']);
     // Commit each PHP-version manifest only after every referenced archive is
     // uploaded and verified. A transient failure in another version must not
     // discard that progress. Permanent validation/authentication failures stop.
@@ -263,6 +268,11 @@ async function publish(directory, { run = transferCommand, retry = retryPolicy()
         await transfer.mirror(manifest, false);
         await transfer.github(manifest, false);
         publishedVersions.push(version);
+        try { await cleanup.prune(incoming, version); }
+        catch (error) {
+          cleanup.report.warnings.push(error.message);
+          console.warn(`Published PHP ${version}; retention will resume next time: ${error.message}`);
+        }
       } catch (error) {
         failedVersions.push({ php_version: version, error: error.message });
         if (!error.transient) throw error;
@@ -273,9 +283,16 @@ async function publish(directory, { run = transferCommand, retry = retryPolicy()
     const installer = path.join(root, 'scripts/installer/install-extensions.cjs');
     await transfer.mirror(installer, false);
     await transfer.github(installer, false);
+    if (!entries.length) {
+      try { await cleanup.prune(); }
+      catch (error) {
+        cleanup.report.warnings.push(error.message);
+        console.warn(`Installer published; retention deferred: ${error.message}`);
+      }
+    }
   } catch (error) { failure = error.message; throw error; }
   finally {
-    const report = { ...transfer.report, archives: entries.length, published_versions: publishedVersions,
+    const report = { ...transfer.report, retention: cleanup.report, archives: entries.length, published_versions: publishedVersions,
       remaining_versions: [...new Set(entries.map(({ entry }) => entry.php_version))].filter(version => !publishedVersions.includes(version)),
       failed_versions: failedVersions, success: !failure, ...(failure ? { failure } : {}) };
     // Individual read records are logged above and retained in the artifact;

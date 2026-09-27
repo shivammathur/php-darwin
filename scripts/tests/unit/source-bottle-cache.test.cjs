@@ -90,6 +90,19 @@ function fixture(t) {
     freshRunner() { fs.rmSync(cacheRoot, { recursive: true, force: true }); events.length = 0; } };
 }
 
+test('an incomplete ICU keg restores its upstream bottle without compiling healthy dependencies', async t => {
+  const f = fixture(t);
+  f.args.query = () => [{full_name: 'icu4c@78', version: '78.3', installed: false, bottled: true,
+    missing_build_files: ['lib/pkgconfig/icu-uc.pc']}];
+  f.args.prefetch = async () => {};
+  assert.deepEqual(await install(f.args), {built: 0, restored: 0});
+  assert.deepEqual(f.events, [['reinstall', '--formula', '--verbose', '--force-bottle', 'icu4c@78']]);
+  f.events.length = 0;
+  f.args.query = () => [{full_name: 'icu4c@78', version: '78.3', installed: true, bottled: true, missing_build_files: []}];
+  await install(f.args);
+  assert.deepEqual(f.events, []);
+});
+
 test('reuse libxml2 across PHP builds and rebuild both when libxml2 changes', async t => {
   const f = fixture(t);
   assert.deepEqual(await install(f.args), { built: 2, restored: 0 });
@@ -264,6 +277,8 @@ test('extension keys include the patched base recipe and actual PHP ABI/configur
   const run = (program, args) => { calls.push([program, args]); return args[0] === '--include-dir' ? f.cacheRoot : args.join(' '); };
   const first = extensionInputs(abstract, '/opt/php', 'release', 'nts', run);
   assert.equal(calls.length, 4);
+  assert.ok(calls.every(([program]) => program === '/opt/php/bin/php-config'));
+  assert.ok(calls.some(([, args]) => args[0] === '--version'));
   assert.equal(first.php.api.ZEND_MODULE_API_NO, '20240924');
   fs.writeFileSync(abstract, 'patched recipe');
   assert.notEqual(keyFor(first), keyFor(extensionInputs(abstract, '/opt/php', 'release', 'nts', run)));

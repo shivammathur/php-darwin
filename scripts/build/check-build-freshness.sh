@@ -41,7 +41,8 @@ case "$status" in
         current_commit=$(bash "$script_dir/php-src-commit.sh" "$version") || exit 1
         [ "$(jq -r '.php_src_commit' "$manifest")" = "$current_commit" ] || php_current=false
       fi
-      if [ "$php_current" = true ] && [ "$extensions_current" = true ]; then required=false; fi
+      dependencies_current=$("${PHP_DARWIN_NODE:-node}" "$script_dir/package-inputs.cjs" current "$manifest") || exit 1
+      if [ "$php_current" = true ] && [ "$extensions_current" = true ] && [ "$dependencies_current" = true ]; then required=false; fi
     fi
     ;;
   404) ;;

@@ -74,6 +74,7 @@ write_manifest() {
      homebrew_extensions_commit:$extensions_commit,
      source_hash:$source_hash,assets:.}
   ' "$assets_jsonl" > "$manifest" || php_darwin_die 'could not write the nightly manifest fixture'
+  node "$script_dir/../helpers/add-package-inputs.cjs" "$manifest" "$extensions_path" || exit 1
 }
 
 run_gate() {

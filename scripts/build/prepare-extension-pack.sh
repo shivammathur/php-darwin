@@ -15,7 +15,7 @@ PHP_DARWIN_PREFER_MIRROR=true bash "$script_dir/../install.sh" "$PHP_VERSION" "$
 # Source builds can load build dependencies such as bison@2.7 from this tap,
 # beyond the installed PHP formula trusted by the normal cache installer.
 brew trust "$tap"
-"$(brew --prefix)/opt/$formula/bin/php" -n -v
+"$(brew --prefix)/opt/$formula/bin/php-config" --version
 if [ "$(php_darwin_version_channel "$PHP_VERSION")" = nightly ]; then
   # Read the commit from the tap restored with this PHP, not the moving branch.
   php_src_commit=$(HOMEBREW_PHP_PATH="$tap_path" bash "$script_dir/php-src-commit.sh" "$PHP_VERSION")
