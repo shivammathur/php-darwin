@@ -71,3 +71,38 @@ test('failed rollback retains the only keg backup and transaction diagnostics', 
   assert.equal(fs.readFileSync(path.join(transaction, 'target-keg-backup/user-state'), 'utf8'), 'original');
   assert.match(fs.readFileSync(path.join(transaction, 'rollback.log'), 'utf8'), /injected restoration failure/);
 });
+
+test('PEAR restoration preserves custom settings while rejecting malformed archive defaults', t => {
+  const f = fixture(t), source = fs.readFileSync(path.join(installer, 'install-package.sh'), 'utf8');
+  const start = source.indexOf('PHP_DARWIN_PHASE=homebrew.configure');
+  const configure = source.slice(start, source.indexOf('PHP_DARWIN_PHASE=homebrew.link', start));
+  const config = 'etc/php/8.5/pear.conf', backup = path.join(f.root, 'postinstall-backup');
+  const pear = path.join(f.prefix, config), defaults = `${f.prefix}/share/pear@8.5\n${f.prefix}/lib/php/pecl/20250925\n`;
+  fs.mkdirSync(path.dirname(pear), {recursive: true});
+  fs.mkdirSync(path.join(f.prefix, 'share/pear@8.5'), {recursive: true});
+  fs.mkdirSync(path.join(f.prefix, 'opt/php@8.5'), {recursive: true});
+  fs.symlinkSync('../../lib/php/pecl/20250925', path.join(f.prefix, 'opt/php@8.5/pecl'));
+  fs.mkdirSync(path.join(backup, path.dirname(config)), {recursive: true});
+  fs.writeFileSync(path.join(f.root, 'paths'), `${config}\n`);
+  const run = () => spawnSync('bash', ['-c', `
+    brew_prefix=$1; postinstall_backup_dir=$2; postinstall_paths_file=$3; postinstall_restored_file=$4
+    pear_path=share/pear@8.5; pear_backed_up=false; config_id=8.5; pecl_extension=20250925; formula=php@8.5
+    : > "$postinstall_restored_file"
+    php_darwin_die() { echo "$*" >&2; exit 1; }
+    ${configure}
+  `, 'test', f.prefix, backup, path.join(f.root, 'paths'), path.join(f.root, 'restored')], {encoding: 'utf8'});
+  fs.writeFileSync(pear, defaults);
+  fs.writeFileSync(path.join(backup, config), '/custom/pear/settings\n');
+  let result = run();
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(fs.readFileSync(pear, 'utf8'), '/custom/pear/settings\n');
+  // No prior file now exists: the same non-default data must fail validation.
+  result = run();
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /wrong shared path/);
+  fs.writeFileSync(pear, `${f.prefix}/share/pear@8.5\n/wrong/extensions\n`);
+  assert.match(run().stderr, /wrong extension path/);
+  fs.writeFileSync(pear, defaults);
+  result = run();
+  assert.equal(result.status, 0, result.stderr);
+});

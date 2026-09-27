@@ -1133,11 +1133,15 @@ mkdir -p "$brew_prefix/lib/php/pecl/$pecl_extension" \
   "$brew_prefix/$pear_path/doc" "$brew_prefix/$pear_path/data" "$brew_prefix/$pear_path/cfg" \
   "$brew_prefix/$pear_path/htdocs" "$brew_prefix/$pear_path/test" || \
   php_darwin_die 'could not create formula-managed PEAR and PECL directories'
-[ -s "$brew_prefix/etc/php/$config_id/pear.conf" ] || php_darwin_die 'cache did not install the Homebrew PEAR configuration'
-grep -Fq "$brew_prefix/$pear_path" "$brew_prefix/etc/php/$config_id/pear.conf" || \
-  php_darwin_die 'cached PEAR configuration has the wrong shared path'
-grep -Fq "$brew_prefix/lib/php/pecl/$pecl_extension" "$brew_prefix/etc/php/$config_id/pear.conf" || \
-  php_darwin_die 'cached PEAR configuration has the wrong extension path'
+# Existing PEAR settings may intentionally use a custom shared directory.
+# Validate the archive defaults only when this transaction supplied them.
+if ! grep -Fxq "etc/php/$config_id/pear.conf" "$postinstall_restored_file"; then
+  [ -s "$brew_prefix/etc/php/$config_id/pear.conf" ] || php_darwin_die 'cache did not install the Homebrew PEAR configuration'
+  grep -Fq "$brew_prefix/$pear_path" "$brew_prefix/etc/php/$config_id/pear.conf" || \
+    php_darwin_die 'cached PEAR configuration has the wrong shared path'
+  grep -Fq "$brew_prefix/lib/php/pecl/$pecl_extension" "$brew_prefix/etc/php/$config_id/pear.conf" || \
+    php_darwin_die 'cached PEAR configuration has the wrong extension path'
+fi
 [ -L "$brew_prefix/opt/$formula/pecl" ] && [ -d "$brew_prefix/opt/$formula/pecl" ] || \
   php_darwin_die 'cached PHP PECL link has no shared directory target'
 
