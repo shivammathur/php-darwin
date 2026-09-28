@@ -7,6 +7,7 @@ const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { prefetch, matrix, publish, publicURL, key, validate, exec } = require('../../cache/upstream-bottle-cache.cjs');
 const { retryPolicy, command } = require('../../release/extension-transfers.cjs');
+const { fixture: r2Fixture } = require('../helpers/r2-fixture.cjs');
 const bytes = Buffer.from('a verified bottle archive');
 const digest = crypto.createHash('sha256').update(bytes).digest('hex');
 function record(overrides = {}) {
@@ -81,169 +82,142 @@ test('untrusted records cannot choose upload paths or authenticated network dest
 });
 const env = { CF_R2_AWS_S3_ENDPOINT: `https://${'a'.repeat(32)}.r2.cloudflarestorage.com`,
   CF_R2_AWS_ACCESS_KEY_ID: 'test-access', CF_R2_AWS_SECRET_ACCESS_KEY: 'test-secret' };
-test('publish checks upstream and public download hashes and uses only the bottle prefix', async () => {
-  let uploaded = false, reads = 0;
-  const results = await publish([record()], { env, download: async (url, file, options) => {
-    reads++;
+function publishing(existing = false) {
+  const origin = r2Fixture();
+  if (existing) origin.objects.set(key(record()), bytes);
+  const requests = [], waits = [];
+  const download = async (url, file, options) => {
+    requests.push(url);
     if (url.startsWith('https://ghcr.io/')) assert.equal(options.upstream, true);
-    else if (!uploaded) return 404;
+    else assert.ok(origin.objects.has(key(record())), 'never request the public URL before the object exists');
     fs.writeFileSync(file, bytes); return 200;
-  }, run: async (program, args, options) => {
-    assert.equal(program, 'aws');
-    assert.ok(args.includes(`s3://php-darwin/${key(record())}`));
-    assert.equal(options.env.AWS_MAX_ATTEMPTS, '1');
-    assert.equal(options.env.AWS_ACCESS_KEY_ID, env.CF_R2_AWS_ACCESS_KEY_ID);
-    uploaded = true;
-  } });
-  assert.equal(reads, 3); assert.equal(results[0].result, 'uploaded');
+  };
+  const options = { env, run: origin.run, download, retry: retryPolicy({ wait: async ms => waits.push(ms) }) };
+  return { origin, requests, waits, options };
+}
+test('publication checks R2 directly, verifies upstream and public bytes, and uses a checksum-validated PUT', async () => {
+  const f = publishing();
+  const results = await publish([record()], f.options);
+  assert.equal(f.requests.length, 2);
+  assert.equal(results[0].result, 'uploaded');
+  assert.equal(f.origin.calls.filter(c => c.operation === 'put-object').length, 1);
+  assert.ok(f.origin.calls.every(c => c.key === key(record())));
 });
-test('publication refuses corrupt upstream data and a corrupt public readback', async () => {
+test('publication refuses corrupt upstream data and corrupt public readback', async () => {
   for (const corruptUpstream of [true, false]) {
-    let uploaded = false;
-    await assert.rejects(publish([record()], { env, download: async (url, file) => {
-      if (!url.startsWith('https://ghcr.io/') && !uploaded) return 404;
-      fs.writeFileSync(file, (url.startsWith('https://ghcr.io/') && !corruptUpstream) ? bytes : 'corrupt');
+    const f = publishing();
+    await assert.rejects(publish([record()], { ...f.options, download: async (url, file) => {
+      fs.writeFileSync(file, url.startsWith('https://ghcr.io/') && !corruptUpstream ? bytes : 'corrupt');
       return 200;
-    }, run: async () => { assert.equal(corruptUpstream, false); uploaded = true; } }),
-    corruptUpstream ? /Invalid upstream/ : /verification failed/);
+    } }), corruptUpstream ? /Invalid upstream/ : /verification failed/);
+    assert.equal(f.origin.calls.filter(c => c.operation === 'put-object').length, corruptUpstream ? 0 : 1);
   }
 });
 test('existing verified objects require no upstream request or upload', async () => {
-  const result = await publish([record()], { env, download: async (url, file) => {
-    assert.equal(url, publicURL(record())); fs.writeFileSync(file, bytes); return 200;
-  }, run: async () => { assert.fail('unexpected upload'); } });
+  const f = publishing(true);
+  const result = await publish([record()], f.options);
   assert.equal(result[0].result, 'existing');
+  assert.deepEqual(f.requests, [publicURL(record())]);
+  assert.deepEqual(f.origin.calls.map(c => c.operation), ['head-object', 'get-object']);
 });
-
-test('source mirror publication retries all failed reads without uploads and bounds persistent failures', async () => {
+test('source mirror public failures retry reads without uploads and remain bounded', async () => {
   for (const mode of ['recover', 'timeout', 'forbidden']) {
-    const waits = [];
-    let reads = 0;
-    const retry = retryPolicy({ attempts: 3, budget: 12, delay: 1000, wait: async pause => waits.push(pause) });
-    const work = publish([record()], { env, retry, download: async (_url, file) => {
+    const f = publishing(true); let reads = 0;
+    const work = publish([record()], { ...f.options, download: async (_url, file) => {
       reads++;
-      if (mode === 'timeout') throw Object.assign(new Error('body timeout'), { transient: true });
+      if (mode === 'timeout') throw new Error('body timeout');
       if (mode === 'forbidden') return 403;
       if (reads < 3) return reads === 1 ? 524 : 503;
       fs.writeFileSync(file, bytes); return 200;
-    }, run: async () => assert.fail('read failures must not trigger uploads') });
+    } });
     if (mode === 'recover') assert.equal((await work)[0].result, 'existing');
     else await assert.rejects(work, mode === 'timeout' ? /body timeout/ : /403/);
     assert.equal(reads, 3);
-    assert.deepEqual(waits, [1000, 2000]);
+    assert.deepEqual(f.waits, [1000, 2000]);
+    assert.ok(!f.origin.calls.some(c => c.operation === 'put-object'));
   }
 });
-
-test('both curl process adapters retry any error within the same bound', async t => {
+test('both curl process adapters retain every failure for bounded retry', async t => {
   const f = fixture(t);
   fs.writeFileSync(path.join(f.directory, 'curl'), '#!/bin/sh\nprintf "000"\nexit "$1"\n', { mode: 0o755 });
   const options = { env: { ...process.env, PATH: `${f.directory}${path.delimiter}${process.env.PATH}` } };
-  for (const run of [exec, command]) {
-    for (const code of [16, 35, 58, 60, 77, 3, 23]) {
-      await assert.rejects(run('curl', [String(code)], options), error => {
-        assert.equal(Boolean(error.transient), true);
-        assert.equal(error.output, '000');
-        return true;
-      });
-    }
+  for (const run of [exec, command]) for (const code of [16, 35, 58, 60, 77, 3, 23]) {
+    await assert.rejects(run('curl', [String(code)], options), error => {
+      assert.equal(Boolean(error.transient), true);
+      assert.equal(error.output, '000');
+      return true;
+    });
   }
   for (const mode of ['recover', 'persistent', 'certificate']) {
-    let reads = 0;
-    const waits = [];
-    const retry = retryPolicy({ attempts: 3, budget: 12, delay: 1000, wait: async pause => waits.push(pause) });
-    const work = publish([record()], { env, retry, download: async (_url, file) => {
+    const p = publishing(true); let reads = 0;
+    const work = publish([record()], { ...p.options, download: async (_url, file) => {
       if (++reads < 3 || mode !== 'recover') await exec('curl', [mode === 'certificate' ? '60' : '35'], options);
-      fs.writeFileSync(file, bytes);
-      return 200;
-    }, run: async () => assert.fail('TLS read recovery must not upload or rebuild a valid bottle') });
+      fs.writeFileSync(file, bytes); return 200;
+    } });
     if (mode === 'recover') assert.equal((await work)[0].result, 'existing');
     else await assert.rejects(work, /curl exited/);
     assert.equal(reads, 3);
-    assert.deepEqual(waits, [1000, 2000]);
+    assert.deepEqual(p.waits, [1000, 2000]);
+    assert.ok(!p.origin.calls.some(c => c.operation === 'put-object'));
   }
 });
-
-test('upstream source downloads share the bounded retry policy before one verified upload', async () => {
-  let uploaded = false, upstreamReads = 0, uploads = 0;
-  const waits = [];
-  const result = await publish([record()], { env,
-    retry: retryPolicy({ attempts: 3, delay: 1000, wait: async pause => waits.push(pause) }),
-    download: async (url, file) => {
-      if (url.startsWith('https://ghcr.io/')) {
-        if (++upstreamReads === 1) throw Object.assign(new Error('TLS reset'), { transient: true });
-        if (upstreamReads === 2) return 503;
-      } else if (!uploaded) return 404;
-      fs.writeFileSync(file, bytes); return 200;
-    }, run: async () => { uploaded = true; uploads++; },
-  });
+test('upstream source downloads share the retry budget before one verified upload', async () => {
+  const f = publishing(); let upstreamReads = 0;
+  const result = await publish([record()], { ...f.options, download: async (url, file, options) => {
+    if (url.startsWith('https://ghcr.io/')) {
+      if (++upstreamReads === 1) throw new Error('TLS reset');
+      if (upstreamReads === 2) return 503;
+    }
+    return f.options.download(url, file, options);
+  } });
   assert.equal(result[0].result, 'uploaded');
   assert.equal(upstreamReads, 3);
-  assert.equal(uploads, 1);
-  assert.deepEqual(waits, [1000, 2000]);
+  assert.equal(f.origin.calls.filter(c => c.operation === 'put-object').length, 1);
+  assert.deepEqual(f.waits, [1000, 2000]);
 });
-
-test('public 404 after upload checks R2 directly and fails without another upload', async () => {
-  const calls = [];
-  await assert.rejects(publish([record()], { env, download: async (url, file) => {
-    const upstream = url.startsWith('https://ghcr.io/');
-    fs.writeFileSync(file, upstream ? bytes : 'not found');
-    return upstream ? 200 : 404;
-  }, run: async (program, args, options) => {
-    assert.equal(program, 'aws');
-    assert.equal(options.env.AWS_MAX_ATTEMPTS, '1');
-    calls.push(args[2]);
-    if (args[2] === 's3api') {
-      assert.ok(args.includes('head-object'));
-      assert.equal(args[args.indexOf('--key') + 1], key(record()));
-      return JSON.stringify({ ContentLength: bytes.length, ETag: 'fixture' });
-    }
-  } }), /verification failed: gcc HTTP 404/);
-  assert.deepEqual(calls, ['s3', 's3api']);
+test('public 404 after a verified origin upload retries delivery without uploading again', async () => {
+  const f = publishing();
+  await assert.rejects(publish([record()], { ...f.options, download: async (url, file, options) => {
+    if (!url.startsWith('https://ghcr.io/')) return 404;
+    return f.options.download(url, file, options);
+  } }), /verification failed: gcc HTTP 404.*R2 origin verified/);
+  assert.equal(f.origin.calls.filter(c => c.operation === 'put-object').length, 1);
+  assert.ok(f.origin.objects.has(key(record())));
+  assert.deepEqual(f.waits, [1000, 2000]);
 });
-
-test('R2 object metadata retries malformed JSON without repeating a completed upload', async () => {
+test('R2 metadata retries malformed responses without treating them as missing objects', async () => {
   for (const recover of [true, false]) {
-    let reads = 0, uploads = 0;
-    const work = publish([record()], {env, retry: retryPolicy({wait: async () => {}}),
-      download: async (url, file) => {
-        if (!url.startsWith('https://ghcr.io/')) return 404;
-        fs.writeFileSync(file, bytes);
-        return 200;
-      },
-      run: async (_program, args) => {
-        if (args.includes('head-object')) {
-          reads++;
-          return recover && reads === 3 ? JSON.stringify({ContentLength: bytes.length, ETag: 'fixture'}) : '{';
-        }
-        uploads++;
-      },
-    });
-    await assert.rejects(work, recover ? /verification failed: gcc HTTP 404/ : SyntaxError);
+    const f = publishing(true); let reads = 0;
+    const work = publish([record()], { ...f.options, run: async (program, args, options) => {
+      if (args.includes('head-object') && (++reads < 3 || !recover)) return '{';
+      return f.origin.run(program, args, options);
+    } });
+    if (recover) assert.equal((await work)[0].result, 'existing');
+    else await assert.rejects(work, SyntaxError);
     assert.equal(reads, 3);
-    assert.equal(uploads, 1);
+    assert.ok(!f.origin.calls.some(c => c.operation === 'put-object'));
   }
 });
-
-test('R2 upload retries permission failures but reuses a committed object after a lost reply', async () => {
+test('upload permission failures are bounded and a lost successful reply reuses the committed object', async () => {
   for (const mode of ['lost', 'permission', 'corrupt-readback']) {
-    let uploaded = false, uploads = 0, readbacks = 0;
-    const waits = [];
-    const work = publish([record()], {env, retry: retryPolicy({wait: async ms => waits.push(ms)}),
-      download: async (url, file) => {
-        if (!url.startsWith('https://ghcr.io/') && !uploaded) return 404;
-        const corrupt = uploaded && mode === 'corrupt-readback' && ++readbacks < 3;
-        fs.writeFileSync(file, corrupt ? 'corrupt response' : bytes);
-        return 200;
-      }, run: async (_program, _args, options) => {
-        uploads++;
-        assert.equal(options.env.AWS_MAX_ATTEMPTS, '1');
-        if (mode === 'permission') throw new Error('AccessDenied');
-        uploaded = true;
-        if (mode === 'lost') throw new Error('lost successful upload reply');
+    const f = publishing(); let uploads = 0, readbacks = 0;
+    const work = publish([record()], { ...f.options, download: async (url, file, options) => {
+      if (!url.startsWith('https://ghcr.io/') && mode === 'corrupt-readback' && ++readbacks < 3) {
+        fs.writeFileSync(file, 'corrupt'); return 200;
       }
-    });
+      return f.options.download(url, file, options);
+    }, run: async (program, args, options) => {
+      if (args.includes('put-object')) {
+        uploads++;
+        if (mode === 'permission') throw new Error('AccessDenied');
+        const result = await f.origin.run(program, args, options);
+        if (mode === 'lost') throw new Error('lost successful upload reply');
+        return result;
+      }
+      return f.origin.run(program, args, options);
+    } });
     if (mode === 'permission') { await assert.rejects(work, /AccessDenied/); assert.equal(uploads, 3); }
     else { assert.equal((await work)[0].result, 'uploaded'); assert.equal(uploads, 1); }
-    assert.deepEqual(waits, mode === 'lost' ? [1000] : [1000, 2000]);
+    assert.deepEqual(f.waits, mode === 'lost' ? [1000] : [1000, 2000]);
   }
 });

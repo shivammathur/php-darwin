@@ -6,6 +6,7 @@ const path = require('node:path');
 const http = require('node:http');
 const { command, retryPolicy, httpError, readDiagnostic, transfers, githubJSON } = require('../../release/extension-transfers.cjs');
 const { digest } = require('../../installer/install-extensions.cjs');
+const { fixture: r2Fixture, info } = require('../helpers/r2-fixture.cjs');
 
 function fixture(t, failure) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-transfers-'));
@@ -14,7 +15,9 @@ function fixture(t, failure) {
   fs.writeFileSync(file, 'verified archive');
   const github = new Map(), cloudflare = new Map(), cachedMissing = new Set(), calls = [], waits = [];
   const cacheMissing = ['cached-miss', 'cloudflare-response'].includes(failure);
-  const run = async (program, args) => {
+  if (cacheMissing) cachedMissing.add('pack.tar.zst');
+  const origin = r2Fixture(cloudflare);
+  const run = async (program, args, options) => {
     calls.push({ program, args });
     if (program === 'gh' && args[0] === 'api') {
       return JSON.stringify(args.includes('--paginate') ? [[...github.values()]] : { id: 123 });
@@ -23,18 +26,18 @@ function fixture(t, failure) {
       const body = fs.readFileSync(args[3]), name = path.basename(args[3]);
       github.set(name, { name, size: body.length, digest: `sha256:${digest(body)}` });
       if (failure === 'github-response') { failure = ''; throw httpError(503, 'Lost upload response'); }
-    } else if (program === 'aws' && args.includes('put-object')) {
-      if (failure === 'credentials') throw new Error('AccessDenied');
-      const body = fs.readFileSync(args[args.indexOf('--body') + 1]);
-      cloudflare.set(path.basename(args[args.indexOf('--key') + 1]), body);
-      if (failure === 'cloudflare-response') { failure = ''; throw httpError(503, 'Lost upload response'); }
-    } else if (program === 'aws') return JSON.stringify({ ContentLength: 16, ETag: 'test' });
+    } else if (program === 'aws') {
+      if (args.includes('put-object') && failure === 'credentials') throw new Error('AccessDenied');
+      const result = await origin.run(program, args, options);
+      if (args.includes('put-object') && failure === 'cloudflare-response') { failure = ''; throw httpError(503, 'Lost upload response'); }
+      return result;
+    }
     else if (program === 'curl') {
       const url = new URL(args.at(-1)), name = path.basename(url.pathname);
       if (failure === 'edge-503') { failure = ''; return '503'; }
       if (cacheMissing && !url.search && cachedMissing.has(name)) return '404';
-      if (!cloudflare.has(name)) { cachedMissing.add(name); return '404'; }
-      fs.writeFileSync(args[args.indexOf('--output') + 1], cloudflare.get(name));
+      if (!cloudflare.has(`extensions/${name}`)) { cachedMissing.add(name); return '404'; }
+      fs.writeFileSync(args[args.indexOf('--output') + 1], failure === 'checksum' ? 'corrupt' : cloudflare.get(`extensions/${name}`));
       return '200';
     }
     return '';
@@ -80,10 +83,20 @@ test('verification after a new immutable upload bypasses a cached missing respon
   await transfer.mirror(f.file, true);
   assert.equal(transfer.report.cloudflare_uploaded, 1);
   const reads = f.calls.filter(c => c.program === 'curl');
+  assert.equal(reads.length, 1, 'no public missing-object probe before upload');
+  assert.match(new URL(reads[0].args.at(-1)).search, /^\?verify=\d+$/);
+  assert.deepEqual(f.waits, []);
+});
+test('an existing object behind a negative CDN cache retries a fresh URL without another upload', async t => {
+  const f = fixture(t, 'cached-miss');
+  f.cloudflare.set(`extensions/${path.basename(f.file)}`, fs.readFileSync(f.file));
+  await f.create().mirror(f.file, true);
+  const reads = f.calls.filter(c => c.program === 'curl');
   assert.equal(reads.length, 2);
   assert.equal(new URL(reads[0].args.at(-1)).search, '');
   assert.match(new URL(reads[1].args.at(-1)).search, /^\?verify=\d+$/);
-  assert.deepEqual(f.waits, []);
+  assert.ok(!f.calls.some(c => c.args.includes('put-object')));
+  assert.deepEqual(f.waits, [1000]);
 });
 for (const backend of ['github', 'cloudflare']) {
   test(`a lost ${backend} upload response reconciles remote bytes before another write`, async t => {
@@ -95,15 +108,15 @@ for (const backend of ['github', 'cloudflare']) {
 }
 test('a transient edge failure retries once and does not reupload a valid object', async t => {
   const f = fixture(t, 'edge-503');
-  f.cloudflare.set(path.basename(f.file), fs.readFileSync(f.file));
+  f.cloudflare.set(`extensions/${path.basename(f.file)}`, fs.readFileSync(f.file));
   await f.create().mirror(f.file, true);
   assert.deepEqual(f.waits, [1000]);
   assert.ok(!f.calls.some(c => c.args.includes('put-object')));
 });
-test('corrupt objects and credential failures exhaust retries without committing manifests', async t => {
+test('corrupt public responses and credential failures exhaust retries without committing manifests', async t => {
   for (const failure of ['checksum', 'credentials']) {
     const f = fixture(t, failure);
-    if (failure === 'checksum') f.cloudflare.set(path.basename(f.file), Buffer.from('corrupt'));
+    if (failure === 'checksum') f.cloudflare.set(`extensions/${path.basename(f.file)}`, fs.readFileSync(f.file));
     await assert.rejects(f.create().mirror(f.file, true), /Checksum|AccessDenied/);
     assert.deepEqual(f.waits, [1000, 2000]);
     assert.equal(f.calls.filter(c => c.args.includes('put-object')).length, failure === 'checksum' ? 0 : 3);
@@ -111,7 +124,7 @@ test('corrupt objects and credential failures exhaust retries without committing
 });
 test('mutable manifests are replaced only when their bytes differ', async t => {
   const f = fixture(t), transfer = f.create();
-  f.cloudflare.set(path.basename(f.file), Buffer.from('previous'));
+  f.cloudflare.set(`extensions/${path.basename(f.file)}`, Buffer.from('previous'));
   await transfer.mirror(f.file, false);
   await transfer.mirror(f.file, false);
   assert.equal(f.calls.filter(c => c.args.includes('put-object')).length, 1);
@@ -175,7 +188,7 @@ test('Cloudflare body recovery is bounded, resumes authenticated bytes, and fail
     const waits = [], cloudflareRetry = retryPolicy({ attempts: 3, budget: 12, delay: 1000,
       wait: async pause => waits.push(pause) });
     const run = (program, args) => {
-      if (program === 'aws') { assert.ok(args.includes('head-object'), 'a failed read must never cause an upload'); return '{}'; }
+      if (program === 'aws') { assert.ok(args.includes('head-object'), 'a failed read must never cause an upload'); return JSON.stringify(info(bytes)); }
       assert.equal(program, 'curl');
       const local = [...args];
       local[local.indexOf('--proto') + 1] = '=http';

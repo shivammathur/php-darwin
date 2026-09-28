@@ -1,3 +1,4 @@
+const { fixture: r2Fixture } = require('../helpers/r2-fixture.cjs');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -121,7 +122,7 @@ test('publication verifies bytes and current PHP before committing manifests wit
     php_preserved: true, services_preserved: true }));
   for (failure of ['', 'stale', 'php-changed', 'upload', 'timeout', 'checksum', '404']) {
     baseReads = 0;
-    const calls = [], uploaded = new Map();
+    const calls = [], uploaded = new Map(), origin = r2Fixture();
     const run = async (program, args, options) => {
       await new Promise(resolve => setImmediate(resolve));
       calls.push({ program, args });
@@ -132,7 +133,8 @@ test('publication verifies bytes and current PHP before committing manifests wit
         assert.equal(args[args.indexOf('--key') + 1], `extensions/${path.basename(file)}`);
         if (failure === 'upload') throw new Error('upload rejected');
         uploaded.set(path.basename(file), fs.readFileSync(file));
-      } else if (program === 'aws') return JSON.stringify({ ContentLength: 7, ETag: 'fixture' });
+        return origin.run(program, args, options);
+      } else if (program === 'aws') return args.includes('list-objects-v2') ? '{"Contents":[]}' : origin.run(program, args, options);
       else if (program === 'curl') {
         assert.equal(args[args.indexOf('--max-time') + 1], '45');
         assert.ok(!args.includes('--retry'));
@@ -147,14 +149,14 @@ test('publication verifies bytes and current PHP before committing manifests wit
     if (failure) {
       await assert.rejects(publish(directory, { run }), /upload rejected|curl exited 28|Checksum\/size mismatch|HTTP 404|refusing stale extension publication/);
       if (failure === 'stale') assert.equal(calls.length, 0, 'reject stale packs before any external writes');
-      assert.equal(calls.filter(call => call.program === 'aws' && call.args.includes('put-object')).length, failure === 'stale' ? 0 : ['upload', '404'].includes(failure) ? 3 : 1);
+      assert.equal(calls.filter(call => call.program === 'aws' && call.args.includes('put-object')).length, failure === 'stale' ? 0 : failure === 'upload' ? 3 : 1);
       assert.ok(!calls.some(call => call.args.some(arg => arg.endsWith('-manifest.json'))));
     } else {
       await publish(directory, { run });
       assert.equal(baseReads, 2, 'recheck PHP after archive transfers');
       assert.deepEqual(calls.filter(call => call.program === 'gh' && call.args[0] === 'release').map(call => path.basename(call.args[3])),
         [metadata.file, 'extensions-8.4-manifest.json', 'install-extensions.cjs']);
-      const manifestUpload = calls.findIndex(call => call.program === 'aws' && call.args.some(arg => arg.endsWith('-manifest.json')));
+      const manifestUpload = calls.findIndex(call => call.program === 'aws' && call.args.includes('put-object') && call.args.some(arg => arg.endsWith('-manifest.json')));
       const archiveCheck = calls.findIndex(call => call.program === 'curl');
       assert.ok(manifestUpload > archiveCheck);
     }
@@ -185,14 +187,15 @@ test('all publication failures preserve completed versions and do not publish an
     return new Response('', { status: url.includes('api.github.com') ? 200 : 404 });
   });
   for (const transient of [true, false]) {
-    const calls = [], uploaded = new Map();
-    const run = async (program, args) => {
+    const calls = [], uploaded = new Map(), origin = r2Fixture();
+    const run = async (program, args, options) => {
       calls.push({ program, args });
       if (program === 'gh' && args[0] === 'api') return JSON.stringify(args.includes('--paginate') ? [[]] : { id: 1 });
       if (program === 'aws' && args.includes('put-object')) {
         const file = args[args.indexOf('--body') + 1];
         uploaded.set(path.basename(file), fs.readFileSync(file));
-      } else if (program === 'aws') return '{}';
+        return origin.run(program, args, options);
+      } else if (program === 'aws') return args.includes('list-objects-v2') ? '{"Contents":[]}' : origin.run(program, args, options);
       else if (program === 'curl') {
         const name = path.basename(new URL(args.at(-1)).pathname);
         if (!uploaded.has(name)) return '404';
@@ -244,13 +247,16 @@ test('installer-only publication uploads only the installer and inventories rete
     return new Response('', { status: 200 });
   });
   let uploaded;
-  const writes = [];
-  await publish(directory, { run: async (program, args) => {
+  const writes = [], origin = r2Fixture();
+  await publish(directory, { run: async (program, args, options) => {
     if (program === 'gh' && args[0] === 'api') return JSON.stringify(args.includes('--paginate') ? [[]] : { id: 1 });
     if (program === 'aws' && args.includes('list-objects-v2')) return JSON.stringify({Contents: []});
     if (program === 'aws') {
-      writes.push(args[args.indexOf('--key') + 1]);
-      uploaded = fs.readFileSync(args[args.indexOf('--body') + 1]);
+      if (args.includes('put-object')) {
+        writes.push(args[args.indexOf('--key') + 1]);
+        uploaded = fs.readFileSync(args[args.indexOf('--body') + 1]);
+      }
+      return origin.run(program, args, options);
     } else if (program === 'curl') {
       assert.match(args.at(-1), /\/install-extensions\.cjs\?verify=/);
       if (!uploaded) return '404';

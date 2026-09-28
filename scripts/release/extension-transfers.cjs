@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { digest, origins } = require('../installer/install-extensions.cjs');
+const { r2 } = require('../lib/r2.cjs');
 
 // Release and recovery only: no added work in the installation fast path.
 function command(program, args, options = {}) {
@@ -75,16 +76,7 @@ async function workflowJobs(route, attempts, options = {}) {
   }
   return [...jobs.values()];
 }
-function transfers({ directory, env, endpoint, run = command, retry = retryPolicy(),
-  cloudflareRetry = retryPolicy({ attempts: 3, budget: 12, delay: 1000 }) }) {
-  const repo = 'shivammathur/php-darwin', release = 'extensions';
-  let assets;
-  const report = { github_reused: 0, github_uploaded: 0, cloudflare_reused: 0, cloudflare_uploaded: 0, reads: [] };
-  async function refreshAssets() {
-    const record = JSON.parse(await run('gh', ['api', `repos/${repo}/releases/tags/${release}`]));
-    assets = new Map(JSON.parse(await run('gh', ['api', '--paginate', '--slurp',
-      `repos/${repo}/releases/${record.id}/assets?per_page=100`])).flat().map(asset => [asset.name, asset]));
-  }
+function publicReader({ directory, run = command, report = { reads: [] } }) {
   async function read(file, base, { missing = false, different = false, fresh = true, resume = false } = {}) {
     const name = path.basename(file), downloaded = path.join(directory, `verify-${name}`);
     const headers = `${downloaded}.headers`;
@@ -155,6 +147,19 @@ function transfers({ directory, env, endpoint, run = command, retry = retryPolic
       fs.rmSync(headers, { force: true });
     }
   }
+  return read;
+}
+function transfers({ directory, env, endpoint, run = command, retry = retryPolicy(),
+  cloudflareRetry = retryPolicy({ attempts: 3, budget: 12, delay: 1000 }) }) {
+  const repo = 'shivammathur/php-darwin', release = 'extensions';
+  let assets;
+  const report = { github_reused: 0, github_uploaded: 0, cloudflare_reused: 0, cloudflare_uploaded: 0, reads: [] };
+  async function refreshAssets() {
+    const record = JSON.parse(await run('gh', ['api', `repos/${repo}/releases/tags/${release}`]));
+    assets = new Map(JSON.parse(await run('gh', ['api', '--paginate', '--slurp',
+      `repos/${repo}/releases/${record.id}/assets?per_page=100`])).flat().map(asset => [asset.name, asset]));
+  }
+  const read = publicReader({ directory, run, report });
   async function github(file, immutable) {
     const name = path.basename(file), bytes = fs.readFileSync(file), sha = digest(bytes);
     let uncertain = false;
@@ -181,40 +186,21 @@ function transfers({ directory, env, endpoint, run = command, retry = retryPolic
     }).catch(error => { throw Object.assign(new Error(`GitHub publication failed: ${name}; ${error.message}`, { cause: error }),
       { transient: Boolean(error.transient) }); });
   }
+  const store = r2({ endpoint, env, run, retry: cloudflareRetry });
   async function mirror(file, immutable) {
     const name = path.basename(file);
-    let uncertain = false;
-    await cloudflareRetry(`Cloudflare ${name}`, async () => {
-      // Reuse only after reading the complete object and verifying its SHA256.
-      // This also resolves uploads that succeeded but lost their response.
-      // SHA-addressed archives cannot change. Reuse their ordinary cache key
-      // while still hashing every byte; unique queries force cold origin reads.
-      // Mutable files and verification after an upload require a fresh read
-      // (the ordinary URL may still have a cached pre-upload 404).
-      if (await read(file, origins[1], { missing: true, different: !immutable, fresh: !immutable || uncertain, resume: immutable })) {
-        report.cloudflare_reused++;
-        console.log(`Reused verified Cloudflare object: ${name}`);
-        return;
-      }
-      console.log(`Uploading Cloudflare object: ${name}`);
-      uncertain = true;
-      await run('aws', ['--endpoint-url', endpoint, 's3api', 'put-object', '--bucket', 'php-darwin',
-        '--key', `extensions/${name}`, '--body', file,
-        '--cache-control', immutable ? 'public, max-age=31536000, immutable' : 'no-cache, max-age=0, must-revalidate',
-        '--cli-connect-timeout', '5', '--cli-read-timeout', '60'], { env });
-      await read(file, origins[1], { resume: immutable });
-      report.cloudflare_uploaded++;
-      console.log(`Verified Cloudflare object: ${name}; SHA256 ${digest(fs.readFileSync(file))}`);
-    }).catch(async error => {
-      try {
-        const object = JSON.parse(await run('aws', ['--endpoint-url', endpoint, 's3api', 'head-object',
-          '--bucket', 'php-darwin', '--key', `extensions/${name}`, '--cli-connect-timeout', '5', '--cli-read-timeout', '30'], { env }));
-        console.error(`R2 object exists: ${name}; ${object.ContentLength} bytes, ETag ${object.ETag}`);
-      } catch { console.error(`R2 HeadObject could not confirm object: ${name}`); }
-      throw Object.assign(new Error(`Cloudflare publication failed: ${name}; ${error.message}`, { cause: error }),
-        { transient: Boolean(error.transient) });
-    }).finally(() => fs.rmSync(path.join(directory, `verify-${name}.partial`), { force: true }));
+    try {
+      const result = await store.ensure(file, `extensions/${name}`, { immutable });
+      // Public delivery is checked only after the origin is verified. An edge
+      // outage retries the read without reuploading an already correct object.
+      let attempt = 0;
+      await cloudflareRetry(`Public Cloudflare ${name}`, () =>
+        read(file, origins[1], { fresh: ++attempt > 1 || !immutable || result.uploaded, resume: immutable }));
+      report[result.uploaded ? 'cloudflare_uploaded' : 'cloudflare_reused']++;
+    } catch (error) {
+      throw new Error(`Cloudflare publication failed: ${name}; ${error.message}`, { cause: error });
+    } finally { fs.rmSync(path.join(directory, `verify-${name}.partial`), { force: true }); }
   }
   return { github, mirror, report };
 }
-module.exports = { command, retryPolicy, httpError, readDiagnostic, githubJSON, workflowJobs, transfers };
+module.exports = { command, retryPolicy, httpError, readDiagnostic, publicReader, githubJSON, workflowJobs, transfers };

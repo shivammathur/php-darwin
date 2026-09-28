@@ -7,7 +7,8 @@ const os = require('node:os');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 const { recordMetric } = require('../lib/build-metrics.cjs');
-const { retryPolicy, httpError } = require('../release/extension-transfers.cjs');
+const { retryPolicy, httpError, command } = require('../release/extension-transfers.cjs');
+const { r2 } = require('../lib/r2.cjs');
 const DOMAIN = 'https://artifacts.php-darwin.setup-php.com';
 
 function validate(record) {
@@ -142,79 +143,40 @@ function readRecords(directory) {
   }
   return records;
 }
-async function publish(records, { download = transfer, run = exec, env = process.env,
+async function publish(records, { download = transfer, run = command, env = process.env,
   identity = portable, objectKey = key, contentType = 'application/gzip', upstream = true,
   retry = retryPolicy({ attempts: 3, budget: 12, delay: 1000 }) } = {}) {
   const endpoint = env.CF_R2_AWS_S3_ENDPOINT;
   if (!/^https:\/\/[a-f0-9]+\.r2\.cloudflarestorage\.com\/?$/.test(endpoint || '') ||
       !env.CF_R2_AWS_ACCESS_KEY_ID || !env.CF_R2_AWS_SECRET_ACCESS_KEY) throw new Error('Missing R2 configuration');
   const directory = await fsp.mkdtemp(path.join(os.tmpdir(), 'php-darwin-bottles-'));
-  const results = [];
-  const readPublic = (url, file) => retry('Cloudflare bottle read', async () => {
-    const status = await download(url, file);
-    if (status !== 200 && status !== 404) throw httpError(status, 'Cloudflare read failed');
-    return status;
-  });
+  const store = r2({ endpoint, env, run, retry }), results = [];
   try {
     for (const raw of records) {
-      const record = identity(raw);
-      const publicUrl = `${DOMAIN}/${objectKey(record)}`;
-      console.log(`Checking Cloudflare: ${record.formula} ${record.version} ${record.sha256}`);
+      const record = identity(raw), key = objectKey(record), publicUrl = `${DOMAIN}/${key}`;
       const file = path.join(directory, record.sha256);
       let result = 'existing';
-      // Check full bytes on both existing and newly published immutable objects.
-      let status = await readPublic(publicUrl, file);
-      if (status !== 200 || !await validFile(file, record.sha256)) {
-        if (status !== 200 && status !== 404) throw new Error(`Cloudflare read failed: HTTP ${status}`);
-        status = await retry('Upstream bottle read', async () => {
+      // Existence and upload reconciliation use the strongly consistent S3 API.
+      // A publication lookup must never seed a public negative cache.
+      if (!await store.restore(key, file, record.sha256)) {
+        await retry('Upstream bottle read', async () => {
           const response = await download(record.url, file, { upstream });
           if (response !== 200) throw httpError(response, 'Upstream bottle read failed');
           if (!await validFile(file, record.sha256)) throw new Error(`Invalid upstream bottle: ${record.formula}`);
-          return response;
         });
-        if (status !== 200 || !await validFile(file, record.sha256)) throw new Error(`Invalid upstream bottle: ${record.formula}`);
-        const awsOptions = { env: {
-          ...env, AWS_ACCESS_KEY_ID: env.CF_R2_AWS_ACCESS_KEY_ID,
-          AWS_SECRET_ACCESS_KEY: env.CF_R2_AWS_SECRET_ACCESS_KEY, AWS_DEFAULT_REGION: 'auto',
-          AWS_EC2_METADATA_DISABLED: 'true', AWS_MAX_ATTEMPTS: '1', AWS_RETRY_MODE: 'standard',
-          AWS_REQUEST_CHECKSUM_CALCULATION: 'when_required', AWS_RESPONSE_CHECKSUM_VALIDATION: 'when_required',
-        } };
-        let uploadAttempted = false;
-        await retry('R2 bottle upload', async () => {
-          if (uploadAttempted) {
-            // A lost upload reply may still have committed the object. Reconcile
-            // public bytes before sending the same content-addressed file again.
-            const existing = `${file}.existing`;
-            const response = await download(`${publicUrl}?verify=${crypto.randomUUID()}`, existing);
-            if (response === 200 && await validFile(existing, record.sha256)) return;
-            if (response !== 200 && response !== 404) throw httpError(response, 'R2 upload reconciliation');
-          }
-          uploadAttempted = true;
-          await run('aws', ['--endpoint-url', endpoint, 's3', 'cp', file, `s3://php-darwin/${objectKey(record)}`,
-          '--cache-control', 'public,max-age=31536000,immutable', '--content-type', contentType,
-          '--cli-connect-timeout', '5', '--cli-read-timeout', '60', '--only-show-errors'], awsOptions);
-        });
-        // Bypass negative edge caches and retry verification without repeating
-        // an upload. Every successful read must also match the expected digest.
-        try {
-          await retry('Verify published bottle', async () => {
-            status = await download(`${publicUrl}?verify=${crypto.randomUUID()}`, file);
-            if (status !== 200 || !await validFile(file, record.sha256)) {
-              throw new Error(`Published bottle verification failed: ${record.formula} HTTP ${status}, expected ${record.sha256}`);
-            }
-          });
-        } catch (error) {
-          if (status === 404) {
-            const remote = await retry('Inspect R2 bottle', async () => JSON.parse(await run('aws', ['--endpoint-url', endpoint, 's3api', 'head-object',
-              '--bucket', 'php-darwin', '--key', objectKey(record),
-              '--cli-connect-timeout', '5', '--cli-read-timeout', '30'], awsOptions)));
-            console.error(`R2 object exists behind public 404: ${objectKey(record)}; ` +
-              `${remote.ContentLength} bytes, ETag ${remote.ETag}`);
-          }
-          throw error;
-        }
+        await store.ensure(file, key, { contentType });
         result = 'uploaded';
       }
+      // An edge failure never repeats a successfully verified origin upload.
+      // Keep the public checksum gate before reporting the bottle as available.
+      let attempt = 0;
+      await retry('Verify published bottle', async () => {
+        const url = ++attempt > 1 || result === 'uploaded' ? `${publicUrl}?verify=${crypto.randomUUID()}` : publicUrl;
+        const status = await download(url, file);
+        if (status !== 200 || !await validFile(file, record.sha256)) {
+          throw new Error(`Published bottle verification failed: ${record.formula} HTTP ${status}, expected ${record.sha256}; R2 origin verified`);
+        }
+      });
       console.log(`Verified ${record.formula} ${record.version} ${record.tag}: ${result} ${record.sha256}`);
       results.push({ ...record, result });
       await fsp.rm(file, { force: true });

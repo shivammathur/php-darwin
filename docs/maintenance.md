@@ -330,15 +330,25 @@ software versions requires an explicit cache repair.
 This recovery path works for both architectures. Regular Homebrew ARM bottles
 cannot replace debug/ZTS or development-PHP extension binaries; missing matching
 binaries and Mach-O relocation/signing still require macOS.
-Publication resumes by reusing GitHub assets with matching SHA256 digests and
-Cloudflare objects whose downloaded bytes pass SHA256 verification. Existing
-SHA-addressed archives use their ordinary cache URLs; mutable files and reads
-after uploads use fresh queries to avoid stale manifests or cached missing responses.
-Small archives use single-object uploads. Cloudflare publication reads have up to
-three attempts with exponential backoff. Extension and source-bottle publishers
-share a budget of twelve extra attempts per job; GitHub operations retain their
-separate bounded policy. Extension rate-limit delays are capped at thirty seconds.
-Immutable extension read retries resume only locally authenticated prefixes,
+Publication resumes by reusing GitHub assets with matching SHA256 digests.
+PHP archives, optional packs and dependency bottles share an R2 client using the
+AWS CLI's signed S3 API. Existence checks and upload reconciliation use
+`HeadObject`, never a public CDN probe. `PutObject` sends `Content-MD5` for R2 to
+validate, records SHA256 metadata, and checks the returned ETag plus the stored
+object's size, ETag and metadata before reporting success. A missing object after
+an apparently successful upload retries the transaction; a lost response reuses
+the committed object. Existing multipart objects are verified with a conditional
+`GetObject` and SHA256 rather than treating their composite ETag as a file hash.
+Single-object uploads support the current archives up to 5 GiB.
+
+Public SHA256 verification happens after origin verification. CDN errors retry
+only the public read, never an already verified upload. Existing SHA-addressed
+archives first use their ordinary cache URLs; mutable files, new uploads and
+failed-read retries use fresh queries to avoid stale responses. Cloudflare
+operations have up to three attempts with exponential backoff and a shared budget
+of twelve extra attempts per job; GitHub operations retain their separate bounded
+policy. Rate-limit delays are capped at thirty seconds.
+Immutable PHP and extension read retries resume only locally authenticated prefixes,
 validate Content-Range, and check the complete SHA256 before publishing a manifest.
 Actions artifact uploads and downloads also get at most three attempts, keeping
 their original compression, retention and overwrite settings. Successful steps

@@ -1,0 +1,39 @@
+name: Validate R2 publication recovery
+on:
+  push:
+    branches: [fix/r2-publication-validation-20260928]
+permissions:
+  contents: read
+jobs:
+  local:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - run: bash scripts/tests/run.sh
+  r2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
+      CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
+      CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
+      GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Verify the AWS CLI runtime
+        run: aws --version
+      - name: Verify real R2 uploads and recovery using an existing PHP archive
+        run: node r2-live-validation.cjs
+      - name: Save verification and cleanup evidence
+        if: always()
+        uses: ./.github/actions/upload-artifacts
+        with:
+          name: r2-validation
+          path: r2-validation.json
+          if-no-files-found: error
+          retention-days: 7
