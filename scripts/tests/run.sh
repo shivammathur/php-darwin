@@ -22,9 +22,7 @@ check() {
 
 suite() {
   local name=$1 file version
-  if compgen -G "$script_dir/$name/*.test.cjs" >/dev/null; then
-    node --test "$script_dir/$name/"*.test.cjs
-  fi
+  node --test "$script_dir/$name/"*.test.cjs
   for file in "$script_dir/$name/"*.test.sh; do
     [ -f "$file" ] || continue
     case "${file##*/}" in

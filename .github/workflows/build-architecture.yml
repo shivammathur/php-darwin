@@ -85,10 +85,16 @@ jobs:
       - name: Recover abandoned Homebrew installers
         uses: ./.github/actions/runner-preflight
 
-      - name: Record dependency cache misses
+      - name: Initialize build timing data
         run: |
-          echo "PHP_DARWIN_BOTTLE_MISSES=$RUNNER_TEMP/bottle-misses.jsonl" >> "$GITHUB_ENV"
-          echo "PHP_DARWIN_SOURCE_BOTTLE_MISSES=$RUNNER_TEMP/source-bottle-misses.jsonl" >> "$GITHUB_ENV"
+          {
+            echo "PHP_DARWIN_METRICS=$RUNNER_TEMP/php-darwin-metrics.jsonl"
+            echo "PHP_DARWIN_BOTTLE_MISSES=$RUNNER_TEMP/bottle-misses.jsonl"
+            echo "PHP_DARWIN_SOURCE_BOTTLE_MISSES=$RUNNER_TEMP/source-bottle-misses.jsonl"
+          } >> "$GITHUB_ENV"
+          : > "$RUNNER_TEMP/php-darwin-metrics.jsonl"
+          : > "$RUNNER_TEMP/bottle-misses.jsonl"
+          : > "$RUNNER_TEMP/source-bottle-misses.jsonl"
 
       - name: Preserve Node before Homebrew cleanup
         uses: ./.github/actions/node-runtime
@@ -189,6 +195,11 @@ jobs:
         if: ${{ always() && steps.early-checkpoint.outputs.hit != 'true' }}
         run: bash scripts/build/build.sh reset
 
+      - name: Summarize source builds and checkpoints
+        continue-on-error: true
+        if: ${{ always() }}
+        run: '"$PHP_DARWIN_NODE" scripts/build/workflow-report.cjs local'
+
       - name: Queue missing Cloudflare bottles
         if: ${{ always() }}
         uses: ./.github/actions/upload-artifacts
@@ -206,6 +217,18 @@ jobs:
         with:
           name: source-bottle-misses-${{ inputs.php-version }}-${{ inputs.arch }}-${{ matrix.build }}-${{ matrix.ts }}
           path: ${{ runner.temp }}/source-bottle-misses.jsonl
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 7
+          overwrite: true
+
+      - name: Upload build timing data
+        continue-on-error: true
+        if: ${{ always() }}
+        uses: ./.github/actions/upload-artifacts
+        with:
+          name: timing-${{ inputs.php-version }}-${{ inputs.arch }}-${{ matrix.build }}-${{ matrix.ts }}
+          path: ${{ runner.temp }}/php-darwin-metrics.jsonl
           if-no-files-found: ignore
           compression-level: 0
           retention-days: 7

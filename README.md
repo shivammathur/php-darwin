@@ -1,45 +1,84 @@
 # PHP Darwin
 
-Prebuilt Homebrew PHP packages for macOS and setup-php.
+[![Package cache](https://github.com/shivammathur/php-darwin/actions/workflows/cache-stable.yml/badge.svg)](https://github.com/shivammathur/php-darwin/actions/workflows/cache-stable.yml)
+[![Validation](https://github.com/shivammathur/php-darwin/actions/workflows/validate.yml/badge.svg)](https://github.com/shivammathur/php-darwin/actions/workflows/validate.yml)
+[![MIT license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Configuration lives in `conf/`; supported PHP versions and variants are shared by every component.
+Prebuilt Homebrew PHP packages for fast installation on macOS, used by
+[setup-php](https://github.com/shivammathur/setup-php).
 
-Runner preparation pins Homebrew sources, preserves the Actions Node runtime, and recovers only proven orphaned builds.
+Each cache includes PHP, its required dependencies, coverage extensions and
+Homebrew links. Installation preserves existing PHP versions, configuration and
+services, and makes the cached PHP the default through Homebrew's `bin/php` link.
 
-Build PHP archives with `scripts/build/build.sh`. Packages include runtime dependencies, coverage modules, development files, licenses and the pinned PHP tap.
+## Supported configurations
 
-Generate the standalone installer with `bash scripts/installer/generate-install.sh`. Edit its source inputs, never the generated `scripts/install.sh`. Installation preserves existing PHP, configuration and services and rolls back failed transactions.
+The cache covers ARM64 and Intel, with release/debug and NTS/ZTS variants.
+[conf/versions](conf/versions) lists stable and nightly PHP versions;
+[conf/platforms.json](conf/platforms.json) defines minimum macOS versions and
+build/test runners. [conf/cached-extensions](conf/cached-extensions) contains one
+file per PHP minor, with one cached extension name per line.
 
-Release transfers verify checksums and use bounded retries. R2 upload completion is verified against the signed object API before checking public downloads.
+Imagick, MongoDB and Memcached have separate optional archives for PHP 5.6–8.7.
+They are built against published PHP caches and refreshed independently, so
+extension updates do not require rebuilding PHP or adding libraries to its cache.
 
-Publish complete PHP matrices with `scripts/release/publish.sh`. Immutable archives are verified before the matching installer and manifest are published. `mirror.yml` refreshes mirrors and installers.
+## Installation
 
-`test.yml` checks native archives. `e2e.yml` checks direct installation and setup-php on ARM and Intel; inspect runtime, linkage and preservation evidence.
+Use setup-php normally:
 
-`cache-stable.yml` and `cache-nightly.yml` build the configured architecture and variant matrices, test them, and publish only after required checks pass.
+```yaml
+- uses: shivammathur/setup-php@v2
+  with:
+    php-version: '8.4'
+```
 
-`update.yml` and `update-nightly.yml` compare PHP, extension, dependency and nightly source inputs before dispatching builds. Installer-only changes do not require rebuilding PHP.
+To install a published cache directly on a macOS runner:
 
-`cache-bottles.yml` mirrors exact upstream bottle digests into Cloudflare. Homebrew remains responsible for installation and relocation.
+```sh
+curl --fail --location --output install.sh \
+  https://github.com/shivammathur/php-darwin/releases/download/php-8.4/install.sh
+bash install.sh 8.4 release nts
+# Optional packs are selected and prepared in parallel by the installer.
+bash install.sh 8.4 release nts "" "imagick, mongodb, memcached"
+```
 
-Source-cache keys include software/dependency versions, target platform and PHP ABI. Existing configuration is preserved while producing clean reusable bottles.
+PHP package downloads use GitHub Releases first, with a checksum-verified
+Cloudflare fallback. Cache builds use Cloudflare first for dependency bottles.
+Homebrew handles bottle installation, relocation and linking.
 
-Source bottles use named GitHub Releases and Cloudflare mirrors. Build claims coordinate concurrent workers. `test-source-cache.yml` verifies native cold and warm reuse; `test-source-lock.yml` checks live coordination.
+## Workflows
 
-Normal builds require `conf/dependencies.json`. `update-dependencies.yml` prepares and verifies a replacement on both architectures before promotion. Missing approved bottles fail instead of compiling dependencies.
+| Workflow | Purpose |
+| --- | --- |
+| `cache-stable.yml` / `cache-nightly.yml` | Build, test and publish a PHP cache |
+| `update-extensions.yml` / `cache-extensions.yml` | Refresh separate extension packs every six hours and validate before publishing |
+| `update.yml` / `update-nightly.yml` | Detect changes and dispatch builds |
+| `cache-bottles.yml` | Populate Cloudflare with exact upstream dependency bottles |
+| `cache-source-bottles.yml` | Mirror reusable bottles built from source |
+| `mirror.yml` | Mirror published PHP packages or refresh their installers |
+| `publish.yml` / `publish-extensions.yml` | Retry publication from validated artifacts without rebuilding |
+| `validate.yml` | Run local regression tests and artifact-transfer checks |
+| `test-source-cache.yml` | Test native source builds and cold/warm restoration |
+| `update-dependencies.yml` | Prepare, verify and approve dependency bottles independently of PHP cache builds |
+| `test.yml` / `e2e.yml` | Validate build artifacts and published installations |
 
-Verified archive checkpoints support partial reruns and expire after seven days. Payloads and relevant build inputs must match before reuse.
+## Development
 
-`publish.yml` retries publication from a validated PHP run. It verifies source workflow provenance, build/test plans, successful jobs and exact artifact IDs and digests.
+```sh
+bash scripts/installer/generate-install.sh
+bash scripts/tests/run.sh
+# Validate workflow syntax and embedded shell commands:
+actionlint
+```
 
-Optional Imagick, MongoDB and Memcached packs carry private runtime libraries, licenses and serializer headers. Their standalone installer requires matching PHP release, source, architecture and ABI.
+The local suite requires Bash, Node.js 24+, Ruby 3.1+, Python 3, jq, Zstd, Git, curl, tar, zip and
+unzip. On macOS it uses Homebrew's installed portable Ruby when available.
+Native Homebrew and authenticated GitHub tests run separately in Actions.
 
-The PHP installer accepts optional extensions in its fifth argument and prepares packs while PHP installs. Activation follows successful runtime verification; pack failures retain setup-php fallback behavior.
+See [maintenance](docs/maintenance.md) for the directory layout, workflow
+commands, publishing requirements and troubleshooting.
 
-`cache-extensions.yml` batches extension builds and compatibility tests. `update-extensions.yml` dispatches scheduled refreshes. Publication verifies archives on both origins before committing each manifest.
+## License
 
-`recover-extensions.yml` reuses verified successful artifacts and compatibility reports. `publish-extensions.yml` retries validated publication or updates only the standalone extension installer.
-
-Run local checks with `bash scripts/tests/run.sh` and workflow checks with `actionlint`.
-
-[MIT license](LICENSE).
+[MIT](LICENSE).
