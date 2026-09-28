@@ -241,6 +241,7 @@ test('source publication verifies Cloudflare bytes and uses the source prefix wi
   const asset = f.state.assets[0];
   const value = mirror.record(asset);
   let uploaded = false, githubDownloads = 0, publicReads = 0;
+  const origin = require('../helpers/r2-fixture.cjs').fixture();
   const options = {
     identity: mirror.portable, objectKey: mirror.key, contentType: 'application/x-tar', upstream: false,
     env: { CF_R2_AWS_S3_ENDPOINT: `https://${'a'.repeat(32)}.r2.cloudflarestorage.com`,
@@ -255,19 +256,22 @@ test('source publication verifies Cloudflare bytes and uses the source prefix wi
       fs.writeFileSync(file, asset.data);
       return 200;
     },
-    run: async (program, args) => {
+    run: async (program, args, options) => {
       assert.equal(program, 'aws');
-      assert.ok(args.includes(`s3://php-darwin/${mirror.key(value)}`));
-      assert.equal(args[args.indexOf('--content-type') + 1], 'application/x-tar');
-      assert.equal(uploaded, false);
-      uploaded = true;
+      assert.equal(args[args.indexOf('--key') + 1], mirror.key(value));
+      if (args.includes('put-object')) {
+        assert.equal(args[args.indexOf('--content-type') + 1], 'application/x-tar');
+        assert.equal(uploaded, false);
+        uploaded = true;
+      }
+      return origin.run(program, args, options);
     },
   };
   const { publish } = require('../../cache/upstream-bottle-cache.cjs');
   assert.equal((await publish([value], options))[0].result, 'uploaded');
   assert.equal((await publish([value], options))[0].result, 'existing');
   assert.equal(githubDownloads, 1);
-  assert.equal(publicReads, 3);
+  assert.equal(publicReads, 2);
 });
 
 test('source build ownership permits one builder at a time and releases failed work', async t => {
