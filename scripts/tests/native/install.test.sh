@@ -128,9 +128,6 @@ install_cache() {
 
 validate_runtime() {
   local cached_php_link
-  local extension
-  local extension_path
-  local extension_type
   local expected_pear_dir
   local pear_dir
   local php_info
@@ -157,6 +154,7 @@ validate_runtime() {
   command -v php-config >/dev/null 2>&1 || php_darwin_die 'php-config is not linked into the Homebrew prefix'
   [[ "$(php-config --version)" = "$version".* ]] || \
     php_darwin_die 'linked PHP does not match the requested version'
+  "$php_bin" --ini || php_darwin_die 'php --ini failed'
   "$php_bin" -d date.timezone=UTC -v || php_darwin_die 'php -v failed'
   "$php_bin" -d date.timezone=UTC -m || php_darwin_die 'php -m failed'
   "$php_config" --version || php_darwin_die 'php-config failed'
@@ -175,15 +173,9 @@ validate_runtime() {
   else
     grep -Eq '^Debug Build => (no|disabled)$' <<< "$php_info" || php_darwin_die 'PHP is not a release build'
   fi
-  while IFS=$'\t' read -r extension extension_type extension_path; do
-    [ -f "$brew_prefix/$extension_path" ] && [ ! -L "$brew_prefix/$extension_path" ] || \
-      php_darwin_die "the archive did not install cached $extension"
-    "$php_bin" -n -d "$extension_type=$brew_prefix/$extension_path" -r \
-      "if (!extension_loaded('$extension')) { exit(1); }" || \
-      php_darwin_die "cached $extension failed its explicit load test"
-    "$php_bin" -r "if (extension_loaded('$extension')) { exit(1); }" || \
-      php_darwin_die "$extension is enabled by default in the cache"
-  done < <(jq -r '(.extensions // [])[] | [.name,.type,.path] | @tsv' "$cache_metadata")
+  bash "$script_dir/../helpers/check-cached-extensions.sh" \
+    "$archive" "$cache_metadata" "$php_bin" "$brew_prefix" "$config_id" || \
+    php_darwin_die 'cached extension validation failed'
 }
 
 cleanup_homebrew_validation() {
