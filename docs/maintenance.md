@@ -390,13 +390,17 @@ failures leave the caller's existing extension fallback available. PHP-only
 installation does not require Node or contact extension origins.
 
 Each module in `conf/extension-packs.json` has a `name` and an optional `priority`
-from 0 to 99, defaulting to 20. Memcached sets 30 so its serializers load first.
+from 0 to 99, defaulting to 20. The `cached` list configures Xdebug and PCOV,
+which are already included in PHP archives. Memcached sets 30 so its serializers load first.
 The generated and published standalone installers embed this configuration;
 changing priority does not require rebuilding PHP or extension archives.
 
 The installer uses the same per-extension `conf.d` files as homebrew-extensions:
 `20-imagick.ini`, `20-mongodb.ini`, `20-igbinary.ini`, `20-msgpack.ini` and
-`30-memcached.ini`. As in the tap, it replaces matching extension INIs; it also
+`30-memcached.ini`. Explicit unversioned Xdebug/PCOV requests use `20-xdebug.ini`
+and `20-pcov.ini` before setup-php handles extensions. PHP-only installs keep
+these modules disabled, and disabled/versioned/source requests retain the
+caller behavior. As in the tap, it replaces matching extension INIs; it also
 migrates the old combined `zz-php-darwin-*.ini` files. Unrelated configuration
 and modules enabled elsewhere are preserved. Failed activation restores the
 previous INIs. Private library/resource variables

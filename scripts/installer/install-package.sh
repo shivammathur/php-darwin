@@ -1216,5 +1216,10 @@ if [ -n "$extension_prefetch_pid" ]; then
     "$metadata_copy" "$brew_prefix/etc/php/$config_id/conf.d" ||
     printf 'php-darwin: optional packs unavailable; using the caller extension installer\n' >&2
 fi
+if [ -n "$extension_node" ] && [ -s "$extension_dir/install-extensions.cjs" ]; then
+  "$extension_node" "$extension_dir/install-extensions.cjs" activate-cached "$metadata_copy" \
+    "$extensions_input" "$brew_prefix/etc/php/$config_id/conf.d" "$brew_prefix/opt/$formula/bin/php" ||
+    printf 'php-darwin: cached extension activation unavailable; using the caller extension installer\n' >&2
+fi
 printf 'Installed PHP %s (%s, %s, %s) from %s\n' \
   "$expected_runtime_version" "$build" "$ts" "$arch" "$asset"

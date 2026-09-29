@@ -9,7 +9,7 @@ const { pipeline } = require('node:stream/promises');
 const { Readable } = require('node:stream');
 
 const configuration = require('../../conf/extension-packs.json');
-const extensions = Object.fromEntries(Object.values(configuration.packs).flat().map(extension => [extension.name, extension]));
+const extensions = Object.fromEntries([...Object.values(configuration.packs).flat(), ...configuration.cached].map(extension => [extension.name, extension]));
 const packs = Object.fromEntries(Object.entries(configuration.packs).map(([name, modules]) => [name, modules.map(module => module.name)]));
 const origins = ['https://github.com/shivammathur/php-darwin/releases/download/extensions',
   'https://artifacts.php-darwin.setup-php.com/extensions'];
@@ -161,9 +161,9 @@ async function prefetch(directory, context, requested, options = {}) {
 // Keep the action's raw input opaque until it reaches the installer. Only
 // unversioned pack requests are eligible; explicit disable/version/source
 // requests for a pack or one of its serializers retain the caller's behavior.
-function selectRequested(input) {
+function selectRequested(input, candidates = packs) {
   const tokens = String(input).split(',').map(value => value.trim().toLowerCase().replace(/^(:)?php[-_]/, '$1'));
-  return Object.entries(packs).filter(([name, modules]) => tokens.includes(name) &&
+  return Object.entries(candidates).filter(([name, modules]) => tokens.includes(name) &&
     !modules.some(module => tokens.some(token => token === `:${module}` ||
       token.startsWith(`${module}-`) || token.startsWith(`${module}@`))))
     .map(([name]) => name);
@@ -201,16 +201,35 @@ function enableInstalled(directory, name, scanDirectory, { php = 'php', environm
   }
   const environment = packEnvironment(installedMetadata, destination);
   const env = { ...process.env, ...environment };
+  configureModules(packs[name].map(module => ({ ...extensions[module], type: 'extension' })), scanDirectory, {
+    php, env, legacy: `zz-php-darwin-${name}.ini`, after: () => {
+      // Actions imports this for following steps. Standalone users can source the
+      // persistent environment file; no shell startup file or service is changed.
+      if (Object.keys(environment).length) {
+        const exports = Object.entries(environment).map(([variable, value]) => `export ${variable}='${value.replaceAll("'", "'\\''")}'\n`).join('');
+        fs.writeFileSync(path.join(destination, 'environment.sh'), exports);
+        if (environmentFile) fs.appendFileSync(environmentFile,
+          Object.entries(environment).map(([variable, value]) => `${variable}=${value}\n`).join(''));
+        else console.log(`Extension environment: ${path.join(destination, 'environment.sh')}`);
+      }
+    }
+  });
+}
+function configureModules(modules, scanDirectory, { php = 'php', env = process.env, legacy, after = () => {} } = {}) {
+  if (!modules.length) return;
+  for (const module of modules) {
+    extensionIni(module);
+    if (!['extension', 'zend_extension'].includes(module.type)) throw new Error('Invalid extension type');
+  }
   fs.mkdirSync(scanDirectory, { recursive: true });
   if (fs.realpathSync(scanDirectory) !== scanDirectory) throw new Error('PHP configuration directory traverses a symlink');
-  const legacy = `zz-php-darwin-${name}.ini`;
   const marker = '; Managed by php-darwin optional extension installer\n';
   const previous = new Map();
   // Match homebrew-extensions' write_config_file: replace *<extension>*.ini
   // with one numbered file per module. Migrate the old combined pack file too,
   // otherwise replacing a serializer through Homebrew can load it twice.
   for (const file of fs.readdirSync(scanDirectory)) {
-    if (!file.endsWith('.ini') || !packs[name].some(module => file.includes(module))) continue;
+    if (!file.endsWith('.ini') || !modules.some(module => file.includes(module.name))) continue;
     const ini = path.join(scanDirectory, file);
     const stat = fs.lstatSync(ini);
     if (!stat.isFile()) throw new Error('Unsafe optional extension configuration');
@@ -224,23 +243,15 @@ function enableInstalled(directory, name, scanDirectory, { php = 'php', environm
   try {
     for (const ini of previous.keys()) { fs.unlinkSync(ini); removed.push(ini); }
     const loaded = JSON.parse(command(php, ['-r', 'echo json_encode(get_loaded_extensions());'], { env })).map(value => value.toLowerCase());
-    for (const module of packs[name].filter(module => !loaded.includes(module))) {
-      const ini = path.join(scanDirectory, extensionIni(extensions[module]));
+    for (const module of modules.filter(module => !loaded.includes(module.name))) {
+      const ini = path.join(scanDirectory, extensionIni(module));
       const staged = path.join(temporary, path.basename(ini));
-      fs.writeFileSync(staged, `${marker}[${module}]\nextension="${module}.so"\n`, { flag: 'wx' });
+      fs.writeFileSync(staged, `${marker}[${module.name}]\n${module.type}="${module.name}.so"\n`, { flag: 'wx' });
       fs.renameSync(staged, ini);
       written.push(ini);
     }
-    command(php, ['-r', `exit(${packs[name].map(module => `extension_loaded('${module}')`).join(' && ')} ? 0 : 1);`], { env });
-    // Actions imports this for following steps. Standalone users can source the
-    // persistent environment file; no shell startup file or service is changed.
-    if (Object.keys(environment).length) {
-      const exports = Object.entries(environment).map(([variable, value]) => `export ${variable}='${value.replaceAll("'", "'\\''")}'\n`).join('');
-      fs.writeFileSync(path.join(destination, 'environment.sh'), exports);
-      if (environmentFile) fs.appendFileSync(environmentFile,
-        Object.entries(environment).map(([variable, value]) => `${variable}=${value}\n`).join(''));
-      else console.log(`Extension environment: ${path.join(destination, 'environment.sh')}`);
-    }
+    command(php, ['-r', `exit(${modules.map(module => `extension_loaded('${module.name}')`).join(' && ')} ? 0 : 1);`], { env });
+    after();
   } catch (error) {
     for (const ini of written) fs.rmSync(ini, { force: true });
     for (const ini of removed) {
@@ -276,6 +287,19 @@ async function activate(directory, base, scanDirectory, { installPack = installD
   }
   return enabled;
 }
+function activateCached(base, input, scanDirectory, { php = 'php', enable = configureModules } = {}) {
+  validateContext(base);
+  const prefix = base.architecture === 'arm64' ? '/opt/homebrew' : '/usr/local';
+  const config = base.php_version + (base.build === 'debug' ? '-debug' : '') + (base.thread_safety === 'zts' ? '-zts' : '');
+  if (scanDirectory !== `${prefix}/etc/php/${config}/conf.d`) throw new Error('Invalid cached extension configuration directory');
+  const requested = selectRequested(input, Object.fromEntries(configuration.cached.map(({ name }) => [name, [name]])));
+  const modules = (base.extensions || []).filter(module => requested.includes(module.name))
+    .map(module => ({ ...extensions[module.name], type: module.type }));
+  // Base archives keep these modules disabled by default. Explicit requests
+  // use tap-compatible INIs before setup-php probes them, avoiding php.ini entries.
+  enable(modules, scanDirectory, { php });
+}
+
 function phpApi(phpConfig = 'php-config', include = command(phpConfig, ['--include-dir'])) {
   const header = fs.readFileSync(path.join(include, 'Zend/zend_modules.h'), 'utf8');
   const match = header.match(/^#define\s+ZEND_MODULE_API_NO\s+(\d{8})\b/m);
@@ -470,7 +494,7 @@ function install(directory, name, { phpConfig = 'php-config', php = 'php' } = {}
   }
 }
 module.exports = { packs, extensions, extensionIni, standaloneSource, origins, command, digest, safePath, key, validateContext, validateEntry, phpApi,
-  selectRequested, requestedPacks, validateBase, activate, enableInstalled, download, prefetch, runtimeContext, inspectTree, packEnvironment, relocateResources, prepareArchive, movePrepared, install };
+  selectRequested, requestedPacks, validateBase, activate, activateCached, configureModules, enableInstalled, download, prefetch, runtimeContext, inspectTree, packEnvironment, relocateResources, prepareArchive, movePrepared, install };
 if (require.main === module) (async () => {
   const [mode, directory, ...args] = process.argv.slice(2);
   if (mode === 'standalone' && !directory) return process.stdout.write(standaloneSource());
@@ -483,6 +507,8 @@ if (require.main === module) (async () => {
     if (names.length) await prefetch(directory, { php_version, build, thread_safety, architecture }, names);
   } else if (mode === 'activate' && args.length === 2) {
     await activate(directory, JSON.parse(fs.readFileSync(args[0], 'utf8')), args[1]);
+  } else if (mode === 'activate-cached' && args.length === 3) {
+    activateCached(JSON.parse(fs.readFileSync(directory, 'utf8')), args[0], args[1], { php: args[2] });
   } else if (mode === 'prefetch') {
     const [php_version, build, thread_safety, architecture, ...names] = args;
     await prefetch(directory, { php_version, build, thread_safety, architecture }, names);

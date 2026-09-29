@@ -123,7 +123,8 @@ for (const file of fs.readdirSync(${JSON.stringify(scan)}).filter(file => file.e
 }
 if (process.argv[3].includes('get_loaded_extensions')) process.stdout.write(JSON.stringify(loaded));
 else {
-  if (!${JSON.stringify(packs[name])}.every(module => loaded.includes(module))) process.exit(2);
+  const required = [...process.argv[3].matchAll(/extension_loaded\\('([^']+)'\\)/g)].map(match => match[1]);
+  if (!(required.length ? required : ${JSON.stringify(packs[name])}).every(module => loaded.includes(module))) process.exit(2);
   if (fs.existsSync(${JSON.stringify(path.join(root, 'fail'))})) process.exit(3);
 }
 `, { mode: 0o755 });
@@ -216,4 +217,36 @@ test('activation refuses unsafe files and unowned legacy configurations before c
   fs.symlinkSync(path.join(f.scan, 'user.ini'), path.join(f.scan, '20-igbinary.ini'));
   assert.throws(f.activate, /Unsafe optional/);
   assert.equal(f.snapshot()['user.ini'], '; retain user settings\n');
+});
+
+test('explicit cached extension requests use tap INIs without changing PHP-only or versioned requests', t => {
+  const { activateCached, configureModules } = require('../../installer/install-extensions.cjs');
+  const f = activationFixture(t, 'imagick');
+  const base = { ...context, extensions: [
+    { name: 'xdebug', type: 'zend_extension' }, { name: 'pcov', type: 'extension' }
+  ] };
+  const scan = '/opt/homebrew/etc/php/8.6/conf.d';
+  const options = { enable: modules => configureModules(modules, f.scan, { php: f.php }) };
+  for (const input of ['', 'none', 'redis', ':xdebug,:pcov', 'xdebug,xdebug-3.5.0,pcov,:pcov', 'xdebug,xdebug@source']) {
+    activateCached(base, input, scan, options);
+    assert.deepEqual(f.snapshot(), { 'user.ini': '; retain user settings\n' }, input);
+  }
+  activateCached({ ...base, extensions: [] }, 'xdebug,pcov', scan, options);
+  assert.deepEqual(f.snapshot(), { 'user.ini': '; retain user settings\n' });
+  assert.throws(() => activateCached(base, 'xdebug', '/opt/homebrew/etc/php/8.5/conf.d', options), /configuration directory/);
+  activateCached(base, 'PHP-xdebug,pcov', scan, options);
+  const expected = f.snapshot();
+  assert.deepEqual(Object.keys(expected), ['20-pcov.ini', '20-xdebug.ini', 'user.ini']);
+  assert.match(expected['20-xdebug.ini'], /\[xdebug\]\nzend_extension="xdebug.so"/);
+  assert.match(expected['20-pcov.ini'], /\[pcov\]\nextension="pcov.so"/);
+  activateCached(base, 'xdebug,pcov', scan, options);
+  assert.deepEqual(f.snapshot(), expected);
+  for (const { name, type } of base.extensions) {
+    fs.writeFileSync(path.join(f.scan, `20-${name}.ini`), `[${name}]\n${type}="/opt/homebrew/opt/${name}@8.6/${name}.so"\n`);
+    require('../../installer/install-extensions.cjs').command(f.php, ['-r', "exit(extension_loaded('xdebug') && extension_loaded('pcov') ? 0 : 1);"]);
+  }
+  const replaced = f.snapshot();
+  fs.writeFileSync(path.join(f.root, 'fail'), '');
+  assert.throws(() => activateCached(base, 'xdebug,pcov', scan, options), /failed/);
+  assert.deepEqual(f.snapshot(), replaced, 'failed activation must restore the tap INIs');
 });

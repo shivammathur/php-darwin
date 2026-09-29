@@ -148,6 +148,10 @@ jobs:
       - name: Verify the hot installation
         run: bash scripts/tests/e2e/setup-php.test.sh
 
+      - name: Replace cached modules with Homebrew formulae without duplicate INIs
+        if: inputs.optional-packs && inputs.php-version == '7.2'
+        run: '"$PHP_DARWIN_NODE" scripts/tests/e2e/tap-ini-replacement.test.cjs'
+
       - name: Install and exercise ordinary Brew and PECL extensions
         if: inputs.optional-packs && contains(fromJSON('["8.3", "8.4", "8.5"]'), inputs.php-version)
         env:
