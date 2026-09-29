@@ -22,9 +22,16 @@ case "${1:?}" in
       HOMEBREW_DEVELOPER=1 brew untap "$tap"
     fi
     PHP_DARWIN_PREFER_MIRROR=true bash "$script_dir/../../install.sh" "$PHP_VERSION" "$BUILD" "$TS"
+    mkdir -p "$pin_dir"
+    # Installation preserves runner php.ini settings, including previously
+    # enabled coverage modules. Use an empty main INI for the cache test, but
+    # scan the real conf.d so leftover formula-generated INIs still fail it.
+    : > "$pin_dir/php.ini"
+    config_id=$(php_darwin_config_id "$PHP_VERSION" "$BUILD" "$TS")
+    printf 'PHPRC=%s\nPHP_INI_SCAN_DIR=%s\n' "$pin_dir/php.ini" \
+      "$brew_prefix/etc/php/$config_id/conf.d" >> "$GITHUB_ENV"
     # Match build.sh: keep the installed dependency versions used by this PHP
     # archive instead of letting extension installation upgrade the whole graph.
-    mkdir -p "$pin_dir"
     brew list --pinned | LC_ALL=C sort -u > "$pin_dir/before"
     {
       brew deps --include-build --installed --formula "$formula"
