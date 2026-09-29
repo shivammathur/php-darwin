@@ -19,7 +19,7 @@ function roots() {
       result.add(`${packages.tap}/php@${php}${suffix}`);
     }
     const extensions = records(`cached-extensions/${php}`).map(([name]) => name);
-    if (packs.versions.includes(php)) extensions.push(...Object.values(packs.packs).flat());
+    if (packs.versions.includes(php)) extensions.push(...Object.values(packs.packs).flat().map(extension => extension.name));
     for (const name of extensions) result.add(`${packages.extension_tap}/${name}@${php}`);
   }
   return [...result].sort();

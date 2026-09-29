@@ -362,7 +362,8 @@ Nightly packs also track the PHP source commit, so a new nightly with the same
 version string rebuilds its extension modules while reusing dependency bottles.
 
 Each archive carries private runtime libraries, relocated Mach-O load paths,
-licenses and module metadata. The standalone `scripts/installer/install-extensions.cjs`
+licenses and module metadata. The published standalone extension installer
+(generated with `node scripts/installer/install-extensions.cjs standalone`)
 prefetches requested packs concurrently, then installs only packs matching the
 installed PHP API, architecture and build variant. Downloads prefer GitHub Releases
 and fall back to Cloudflare. Downloaded packs are verified and extracted in private
@@ -388,8 +389,17 @@ requires matching release/source, ABI, architecture and build variant. Optional
 failures leave the caller's existing extension fallback available. PHP-only
 installation does not require Node or contact extension origins.
 
-The installer enables pack modules and their serializers in an owned `conf.d`
-file, without replacing user configuration. Private library/resource variables
+Each module in `conf/extension-packs.json` has a `name` and an optional `priority`
+from 0 to 99, defaulting to 20. Memcached sets 30 so its serializers load first.
+The generated and published standalone installers embed this configuration;
+changing priority does not require rebuilding PHP or extension archives.
+
+The installer uses the same per-extension `conf.d` files as homebrew-extensions:
+`20-imagick.ini`, `20-mongodb.ini`, `20-igbinary.ini`, `20-msgpack.ini` and
+`30-memcached.ini`. As in the tap, it replaces matching extension INIs; it also
+migrates the old combined `zz-php-darwin-*.ini` files. Unrelated configuration
+and modules enabled elsewhere are preserved. Failed activation restores the
+previous INIs. Private library/resource variables
 are written to `GITHUB_ENV` for subsequent action steps. Standalone users can
 source the printed private pack `environment.sh` path. No shell profiles or
 services are modified. Optional downloads retry all errors on either origin with at most three attempts,

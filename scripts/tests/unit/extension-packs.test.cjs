@@ -267,6 +267,11 @@ test('installer-only publication uploads only the installer and inventories rete
     return '';
   } });
   assert.deepEqual(writes, ['extensions/install-extensions.cjs', 'install-extensions.cjs']);
+  const installer = path.join(directory, 'published-installer.cjs');
+  fs.writeFileSync(installer, uploaded);
+  assert.equal(execFileSync(process.execPath, ['-e',
+    'const {extensions,extensionIni}=require(process.argv[1]); console.log(extensionIni(extensions.memcached));', installer],
+    { encoding: 'utf8' }).trim(), '30-memcached.ini');
 });
 test('follow-up batches start only after a successful prerequisite', async () => {
   const calls = [];

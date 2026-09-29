@@ -8,10 +8,24 @@ const { spawn, spawnSync } = require('node:child_process');
 const { pipeline } = require('node:stream/promises');
 const { Readable } = require('node:stream');
 
-const packs = { imagick: ['imagick'], mongodb: ['mongodb'], memcached: ['igbinary', 'msgpack', 'memcached'] };
+const configuration = require('../../conf/extension-packs.json');
+const extensions = Object.fromEntries(Object.values(configuration.packs).flat().map(extension => [extension.name, extension]));
+const packs = Object.fromEntries(Object.entries(configuration.packs).map(([name, modules]) => [name, modules.map(module => module.name)]));
 const origins = ['https://github.com/shivammathur/php-darwin/releases/download/extensions',
   'https://artifacts.php-darwin.setup-php.com/extensions'];
 const hex = /^[a-f0-9]{64}$/;
+function extensionIni({ name, priority = 20 }) {
+  if (!/^[a-z][a-z0-9_]*$/.test(name) || !Number.isInteger(priority) || priority < 0 || priority > 99) {
+    throw new Error('Invalid extension INI configuration');
+  }
+  return `${String(priority).padStart(2, '0')}-${name}.ini`;
+}
+function standaloneSource() {
+  // Published installers must carry the config without requiring a checkout.
+  return fs.readFileSync(__filename, 'utf8').replace(
+    /^const configuration = require\('\.\.\/\.\.\/conf\/extension-packs\.json'\);$/m,
+    () => `const configuration = ${JSON.stringify(configuration)};`);
+}
 function command(program, args, options = {}) {
   const result = spawnSync(program, args, { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, ...options });
   if (result.error || result.status !== 0) throw result.error || new Error(`${program} ${args.join(' ')} failed (${result.status}): ${result.stderr || result.stdout}`);
@@ -187,27 +201,35 @@ function enableInstalled(directory, name, scanDirectory, { php = 'php', environm
   }
   const environment = packEnvironment(installedMetadata, destination);
   const env = { ...process.env, ...environment };
-  const loaded = JSON.parse(command(php, ['-r', 'echo json_encode(get_loaded_extensions());'], { env })).map(value => value.toLowerCase());
-  const missing = packs[name].filter(module => !loaded.includes(module));
   fs.mkdirSync(scanDirectory, { recursive: true });
   if (fs.realpathSync(scanDirectory) !== scanDirectory) throw new Error('PHP configuration directory traverses a symlink');
-  const ini = path.join(scanDirectory, `zz-php-darwin-${name}.ini`);
+  const legacy = `zz-php-darwin-${name}.ini`;
   const marker = '; Managed by php-darwin optional extension installer\n';
-  let previous;
-  let iniStat;
-  try { iniStat = fs.lstatSync(ini); } catch (error) { if (error.code !== 'ENOENT') throw error; }
-  if (iniStat) {
-    if (!iniStat.isFile()) throw new Error('Unsafe optional extension configuration');
-    previous = fs.readFileSync(ini, 'utf8');
-    if (!previous.startsWith(marker)) throw new Error('Refusing to replace an existing extension configuration');
+  const previous = new Map();
+  // Match homebrew-extensions' write_config_file: replace *<extension>*.ini
+  // with one numbered file per module. Migrate the old combined pack file too,
+  // otherwise replacing a serializer through Homebrew can load it twice.
+  for (const file of fs.readdirSync(scanDirectory)) {
+    if (!file.endsWith('.ini') || !packs[name].some(module => file.includes(module))) continue;
+    const ini = path.join(scanDirectory, file);
+    const stat = fs.lstatSync(ini);
+    if (!stat.isFile()) throw new Error('Unsafe optional extension configuration');
+    const content = fs.readFileSync(ini, 'utf8');
+    if (file === legacy && !content.startsWith(marker)) throw new Error('Refusing to replace an existing extension configuration');
+    previous.set(ini, { content, mode: stat.mode & 0o777 });
   }
-  const temporary = path.join(scanDirectory, `.php-darwin-${name}.tmp`);
-  let changed = false;
+  const written = [];
+  const removed = [];
+  const temporary = fs.mkdtempSync(path.join(scanDirectory, '.php-darwin-'));
   try {
-    if (missing.length) {
-      fs.writeFileSync(temporary, (previous || marker) + missing.map(module => `extension=${module}.so\n`).join(''), { flag: 'wx' });
-      fs.renameSync(temporary, ini);
-      changed = true;
+    for (const ini of previous.keys()) { fs.unlinkSync(ini); removed.push(ini); }
+    const loaded = JSON.parse(command(php, ['-r', 'echo json_encode(get_loaded_extensions());'], { env })).map(value => value.toLowerCase());
+    for (const module of packs[name].filter(module => !loaded.includes(module))) {
+      const ini = path.join(scanDirectory, extensionIni(extensions[module]));
+      const staged = path.join(temporary, path.basename(ini));
+      fs.writeFileSync(staged, `${marker}[${module}]\nextension="${module}.so"\n`, { flag: 'wx' });
+      fs.renameSync(staged, ini);
+      written.push(ini);
     }
     command(php, ['-r', `exit(${packs[name].map(module => `extension_loaded('${module}')`).join(' && ')} ? 0 : 1);`], { env });
     // Actions imports this for following steps. Standalone users can source the
@@ -220,12 +242,13 @@ function enableInstalled(directory, name, scanDirectory, { php = 'php', environm
       else console.log(`Extension environment: ${path.join(destination, 'environment.sh')}`);
     }
   } catch (error) {
-    if (changed) {
-      if (previous === undefined) fs.rmSync(ini, { force: true });
-      else fs.writeFileSync(ini, previous);
+    for (const ini of written) fs.rmSync(ini, { force: true });
+    for (const ini of removed) {
+      const { content, mode } = previous.get(ini);
+      fs.writeFileSync(ini, content, { mode });
     }
     throw error;
-  } finally { fs.rmSync(temporary, { force: true }); }
+  } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
 }
 async function activate(directory, base, scanDirectory, { installPack = installDownloaded, enablePack = enableInstalled } = {}) {
   validateContext(base);
@@ -446,10 +469,11 @@ function install(directory, name, { phpConfig = 'php-config', php = 'php' } = {}
     fs.rmSync(stage, { recursive: true, force: true });
   }
 }
-module.exports = { packs, origins, command, digest, safePath, key, validateContext, validateEntry, phpApi,
+module.exports = { packs, extensions, extensionIni, standaloneSource, origins, command, digest, safePath, key, validateContext, validateEntry, phpApi,
   selectRequested, requestedPacks, validateBase, activate, enableInstalled, download, prefetch, runtimeContext, inspectTree, packEnvironment, relocateResources, prepareArchive, movePrepared, install };
 if (require.main === module) (async () => {
   const [mode, directory, ...args] = process.argv.slice(2);
+  if (mode === 'standalone' && !directory) return process.stdout.write(standaloneSource());
   if (!directory) throw new Error('Extension staging directory required');
   if (mode === 'select' && args.length === 1) {
     fs.writeFileSync(path.join(directory, 'requested.txt'), selectRequested(args[0]).join('\n'));
@@ -464,5 +488,5 @@ if (require.main === module) (async () => {
     await prefetch(directory, { php_version, build, thread_safety, architecture }, names);
   } else if (mode === 'prepare' && args.length === 1) prepareArchive(directory, args[0]);
   else if (mode === 'install' && args.length === 1) install(directory, args[0]);
-  else throw new Error('Usage: install-extensions.cjs select|prefetch-requested|activate|prefetch|prepare|install DIRECTORY ...');
+  else throw new Error('Usage: install-extensions.cjs standalone | select|prefetch-requested|activate|prefetch|prepare|install DIRECTORY ...');
 })().catch(error => { console.error(`php-darwin extensions: ${error.message}`); process.exitCode = 1; });

@@ -102,7 +102,7 @@ while IFS= read -r relative; do
         printf '\n# Source: %s\n' "$relative"
         printf 'php_darwin_extension_installer() {\n'
         printf "  cat <<'PHP_DARWIN_EXTENSION_INSTALLER'\n"
-        cat "$root/$relative"
+        "${PHP_DARWIN_NODE:-node}" "$root/$relative" standalone || exit 1
         printf 'PHP_DARWIN_EXTENSION_INSTALLER\n}\n'
       } >> "$helpers" || php_darwin_die "could not embed $relative"
       continue ;;
@@ -136,7 +136,7 @@ done < "$seen_inputs"
     /^# shellcheck source=scripts\/lib\/lib\.sh$/ { next }
     /^\. "\$script_dir\/(\.\.\/lib\/)?lib\.sh"$/ { next }
     {
-      gsub(/cat "\$script_dir\/install-extensions\.cjs"/, "php_darwin_extension_installer")
+      gsub(/"\$extension_node" "\$script_dir\/install-extensions\.cjs" standalone/, "php_darwin_extension_installer")
       gsub(/bash "\$script_dir\/read-metadata\.sh"/, "php_darwin_read_metadata")
       gsub(/bash "\$script_dir\/existing-paths\.sh"/, "php_darwin_existing_paths")
       gsub(/bash "\$script_dir\/extract\.sh"/, "php_darwin_extract")

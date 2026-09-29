@@ -1,13 +1,12 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { command, digest, key, validateEntry, origins } = require('../installer/install-extensions.cjs');
+const { command, digest, key, validateEntry, origins, standaloneSource } = require('../installer/install-extensions.cjs');
 const configuration = require('../../conf/extension-packs.json');
 const platforms = require('../../conf/platforms.json');
 const { buildMatrix, testMatrix } = require('./extension-batches.cjs');
 const { retention } = require('./extension-retention.cjs');
 const { recipeCurrent } = require('../lib/recipe-inputs.cjs');
 const { command: transferCommand, retryPolicy, httpError, githubJSON, workflowJobs, transfers } = require('./extension-transfers.cjs');
-const root = path.resolve(__dirname, '../..');
 
 function versionBatches(value = configuration.versions.join(' ')) {
   const versions = [...new Set(value.trim().split(/\s+/))];
@@ -272,7 +271,8 @@ async function publish(directory, { run = transferCommand, retry = retryPolicy()
       }
     }
     if (failedVersions.length) throw new Error(`Publication incomplete: ${failedVersions.map(item => `PHP ${item.php_version}: ${item.error}`).join('; ')}`);
-    const installer = path.join(root, 'scripts/installer/install-extensions.cjs');
+    const installer = path.join(staging, 'install-extensions.cjs');
+    fs.writeFileSync(installer, standaloneSource());
     await transfer.mirror(installer, false);
     await transfer.github(installer, false);
     if (!entries.length) {

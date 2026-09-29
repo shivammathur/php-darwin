@@ -95,38 +95,125 @@ test('downloads retry all transfer and verification errors on both origins, caps
     fs.writeFileSync(file, 'reset');
   }
 });
-test('activation enables serializers in order, preserves existing configuration and rolls back failed enabling', t => {
-  const { enableInstalled } = require('../../installer/install-extensions.cjs');
+function activationFixture(t, name = 'memcached') {
+  const { enableInstalled, packs } = require('../../installer/install-extensions.cjs');
   const root = directory(t), scan = path.join(root, 'conf.d');
-  const metadata = { ...entry('memcached'), environment: {} };
+  const metadata = { ...entry(name), environment: {} };
   const destination = `/opt/homebrew/var/php-darwin/extensions/${metadata.sha256}`;
   fs.mkdirSync(scan);
   fs.writeFileSync(path.join(scan, 'user.ini'), '; retain user settings\n');
-  fs.writeFileSync(path.join(root, 'memcached.json'), JSON.stringify(metadata));
+  fs.writeFileSync(path.join(root, `${name}.json`), JSON.stringify(metadata));
   const realpath = fs.realpathSync, read = fs.readFileSync;
   t.mock.method(fs, 'realpathSync', file => file === destination ? file : realpath(file));
   t.mock.method(fs, 'readFileSync', (file, ...args) => file === path.join(destination, 'metadata.json') ? JSON.stringify(metadata) : read(file, ...args));
   const php = path.join(root, 'php');
-  fs.writeFileSync(php, `#!${process.execPath}\nconst fs=require('node:fs');
-if (process.argv[3].includes('get_loaded_extensions')) process.stdout.write('[]');
+  // Model PHP's sorted scan and reject duplicate modules and serializer order
+  // errors, including when the tap replaces only one module of a pack.
+  fs.writeFileSync(php, `#!${process.execPath}
+const fs = require('node:fs'), path = require('node:path');
+const loaded = [];
+for (const file of fs.readdirSync(${JSON.stringify(scan)}).filter(file => file.endsWith('.ini')).sort()) {
+  const ini = fs.readFileSync(path.join(${JSON.stringify(scan)}, file), 'utf8');
+  for (const match of ini.matchAll(/^(?:zend_)?extension\\s*=\\s*"?([^"\\n]+)"?$/gm)) {
+    const name = path.basename(match[1], '.so');
+    if (loaded.includes(name)) throw new Error(name + ' already loaded');
+    if (name === 'memcached' && !['igbinary', 'msgpack'].every(module => loaded.includes(module))) throw new Error('Missing serializers');
+    loaded.push(name);
+  }
+}
+if (process.argv[3].includes('get_loaded_extensions')) process.stdout.write(JSON.stringify(loaded));
 else {
-  const ini = fs.readFileSync(${JSON.stringify(path.join(scan, 'zz-php-darwin-memcached.ini'))}, 'utf8');
-  if (!ini.endsWith('extension=igbinary.so\\nextension=msgpack.so\\nextension=memcached.so\\n')) process.exit(2);
+  if (!${JSON.stringify(packs[name])}.every(module => loaded.includes(module))) process.exit(2);
   if (fs.existsSync(${JSON.stringify(path.join(root, 'fail'))})) process.exit(3);
-}\n`, { mode: 0o755 });
-  enableInstalled(root, 'memcached', scan, { php, environmentFile: '' });
-  assert.equal(read(path.join(scan, 'user.ini'), 'utf8'), '; retain user settings\n');
-  const ini = path.join(scan, 'zz-php-darwin-memcached.ini');
-  assert.match(read(ini, 'utf8'), /^; Managed by php-darwin/);
-  fs.rmSync(ini);
-  fs.writeFileSync(path.join(root, 'fail'), '');
-  assert.throws(() => enableInstalled(root, 'memcached', scan, { php }), /failed/);
-  assert.ok(!fs.existsSync(ini));
-  assert.ok(!fs.existsSync(path.join(scan, '.php-darwin-memcached.tmp')));
-  fs.writeFileSync(ini, '; my existing configuration\n');
-  assert.throws(() => enableInstalled(root, 'memcached', scan, { php }), /Refusing to replace/);
-  assert.equal(read(ini, 'utf8'), '; my existing configuration\n');
-  fs.rmSync(ini); fs.symlinkSync(path.join(scan, 'user.ini'), ini);
-  assert.throws(() => enableInstalled(root, 'memcached', scan, { php }), /Unsafe optional/);
-  assert.equal(read(path.join(scan, 'user.ini'), 'utf8'), '; retain user settings\n');
+}
+`, { mode: 0o755 });
+  return { root, scan, php, modules: packs[name],
+    legacy: path.join(scan, `zz-php-darwin-${name}.ini`),
+    activate: () => enableInstalled(root, name, scan, { php, environmentFile: '' }),
+    snapshot: () => Object.fromEntries(fs.readdirSync(scan).sort().map(file => [file, read(path.join(scan, file), 'utf8')])) };
+}
+const marker = '; Managed by php-darwin optional extension installer\n';
+test('configured priorities drive activation and remain available outside the checkout', t => {
+  const { extensions, extensionIni, standaloneSource, command } = require('../../installer/install-extensions.cjs');
+  const f = activationFixture(t, 'imagick');
+  t.after(() => { delete extensions.imagick.priority; });
+  extensions.imagick.priority = 25;
+  f.activate();
+  assert.ok(fs.existsSync(path.join(f.scan, '25-imagick.ini')));
+  assert.ok(!fs.existsSync(path.join(f.scan, '20-imagick.ini')));
+  const standalone = path.join(f.root, 'install-extensions.cjs');
+  fs.writeFileSync(standalone, standaloneSource());
+  const actual = command(process.execPath, ['-e',
+    'const {extensions,extensionIni}=require(process.argv[1]); console.log(extensionIni(extensions.imagick));', standalone]);
+  assert.equal(actual, '25-imagick.ini');
+  command(process.execPath, [standalone, 'select', f.root, 'imagick,memcached']);
+  assert.equal(fs.readFileSync(path.join(f.root, 'requested.txt'), 'utf8'), 'imagick\nmemcached');
+  for (const priority of [-1, 100, 1.5, '30', null]) {
+    assert.throws(() => extensionIni({ name: 'imagick', priority }), /Invalid extension INI/);
+  }
+});
+for (const name of ['imagick', 'mongodb', 'memcached']) {
+  test(`${name} uses tap INI filenames and survives repeated activation and individual tap replacements`, t => {
+    const f = activationFixture(t, name);
+    f.activate();
+    const initial = f.snapshot();
+    assert.deepEqual(Object.keys(initial), [...f.modules.map(module => `${module === 'memcached' ? 30 : 20}-${module}.ini`), 'user.ini']);
+    for (const module of f.modules) {
+      assert.equal(initial[`${module === 'memcached' ? 30 : 20}-${module}.ini`], `${marker}[${module}]\nextension="${module}.so"\n`);
+    }
+    f.activate();
+    assert.deepEqual(f.snapshot(), initial);
+    const { command } = require('../../installer/install-extensions.cjs');
+    for (const module of f.modules) {
+      // AbstractPhpExtension#write_config_file removes *<extension>*.ini and
+      // writes the numbered file with a quoted path under its opt prefix.
+      for (const file of fs.readdirSync(f.scan).filter(file => file.includes(module) && file.endsWith('.ini'))) {
+        fs.rmSync(path.join(f.scan, file));
+      }
+      fs.writeFileSync(path.join(f.scan, `${module === 'memcached' ? 30 : 20}-${module}.ini`),
+        `[${module}]\nextension="/opt/homebrew/opt/${module}@8.6/${module}.so"\n`);
+      command(f.php, ['-r', 'verify']);
+    }
+    f.activate();
+    assert.deepEqual(f.snapshot(), initial);
+  });
+}
+test('activation migrates combined pack INIs and removes stale module INIs before probing PHP', t => {
+  const f = activationFixture(t);
+  fs.writeFileSync(f.legacy, marker + f.modules.map(module => `extension=${module}.so\n`).join(''));
+  fs.writeFileSync(path.join(f.scan, '20-igbinary.ini'), 'extension="/opt/homebrew/opt/igbinary@8.6/igbinary.so"\n');
+  fs.writeFileSync(path.join(f.scan, '99-memcached.ini'), 'extension=memcached.so\n');
+  f.activate();
+  assert.deepEqual(Object.keys(f.snapshot()), ['20-igbinary.ini', '20-msgpack.ini', '30-memcached.ini', 'user.ini']);
+  assert.equal(f.snapshot()['user.ini'], '; retain user settings\n');
+});
+test('activation respects modules enabled outside extension-specific INIs', t => {
+  const f = activationFixture(t);
+  fs.writeFileSync(path.join(f.scan, '00-user.ini'), 'extension=igbinary.so\n');
+  f.activate();
+  assert.ok(!fs.existsSync(path.join(f.scan, '20-igbinary.ini')));
+  assert.equal(f.snapshot()['00-user.ini'], 'extension=igbinary.so\n');
+});
+test('failed activation restores all prior INIs and removes new files', t => {
+  const f = activationFixture(t);
+  fs.writeFileSync(path.join(f.root, 'fail'), '');
+  assert.throws(f.activate, /failed/);
+  assert.deepEqual(f.snapshot(), { 'user.ini': '; retain user settings\n' });
+  fs.writeFileSync(f.legacy, marker + f.modules.map(module => `extension=${module}.so\n`).join(''), { mode: 0o640 });
+  fs.writeFileSync(path.join(f.scan, '20-igbinary.ini'), 'extension=igbinary.so\n');
+  const before = f.snapshot();
+  assert.throws(f.activate, /failed/);
+  assert.deepEqual(f.snapshot(), before);
+  assert.equal(fs.statSync(f.legacy).mode & 0o777, 0o640);
+});
+test('activation refuses unsafe files and unowned legacy configurations before changing INIs', t => {
+  const f = activationFixture(t);
+  fs.writeFileSync(f.legacy, '; my existing configuration\n');
+  const before = f.snapshot();
+  assert.throws(f.activate, /Refusing to replace/);
+  assert.deepEqual(f.snapshot(), before);
+  fs.rmSync(f.legacy);
+  fs.symlinkSync(path.join(f.scan, 'user.ini'), path.join(f.scan, '20-igbinary.ini'));
+  assert.throws(f.activate, /Unsafe optional/);
+  assert.equal(f.snapshot()['user.ini'], '; retain user settings\n');
 });

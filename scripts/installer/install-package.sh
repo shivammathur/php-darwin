@@ -573,7 +573,7 @@ trap 'exit 143' TERM
 # Node is optional: PHP-only installs and unavailable pack support keep working.
 if [ -n "$extensions_input" ] && extension_node=$(command -v "${PHP_DARWIN_NODE:-node}"); then
   mkdir -p "$extension_dir" &&
-    cat "$script_dir/install-extensions.cjs" > "$extension_dir/install-extensions.cjs" &&
+    "$extension_node" "$script_dir/install-extensions.cjs" standalone > "$extension_dir/install-extensions.cjs" &&
     "$extension_node" "$extension_dir/install-extensions.cjs" select "$extension_dir" "$extensions_input" &&
     if [ -s "$extension_dir/requested.txt" ]; then
       "$extension_node" "$extension_dir/install-extensions.cjs" prefetch-requested "$extension_dir" \

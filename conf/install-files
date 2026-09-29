@@ -17,6 +17,7 @@ scripts/installer/verify-runtime.sh
 conf/archive-paths
 conf/download.conf
 conf/package.json
+conf/extension-packs.json
 conf/platforms.json
 conf/legacy-platforms.json
 conf/postinstall-paths
