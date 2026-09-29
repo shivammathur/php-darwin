@@ -28,13 +28,13 @@ async function main() {
     return command(program, args, options);
   };
   const options = {formula: app, cache, approvedDependencies: approved, run,
-    // The source-cache key must be irrelevant to consuming an already approved
-    // dependency, even when the next image has a different compiler/SDK.
+    // SDK changes are provenance only: both approved dependencies and the
+    // already-cached consumer must remain reusable on the next runner image.
     buildEnvironment: () => ({...platform, sdk: `${platform.sdk}-native-regression`})};
   command('brew', ['uninstall', '--force', '--ignore-dependencies', app, library, tool], {inherit: true});
   fs.rmSync('.source-bottle-cache', {recursive: true});
-  assert.deepEqual(await install(options), {built: 1, restored: 2});
-  assert.deepEqual(events, [app]);
+  assert.deepEqual(await install(options), {built: 0, restored: 3});
+  assert.deepEqual(events, []);
   assert.equal(command(path.join(platform.prefix, 'bin/php-darwin-cache-app'), []).trim(), '42');
   assert.deepEqual(await install(options), {built: 0, restored: 0});
 
@@ -48,6 +48,6 @@ async function main() {
     assert.deepEqual(events, []);
   } finally { fs.writeFileSync(formula, original); }
   assert.deepEqual(await install(options), {built: 0, restored: 1});
-  console.log('Native approved dependencies survive toolchain-key changes; unapproved tool patches never compile or install');
+  console.log('Native approved dependencies and consumer survive toolchain changes; unapproved tool patches never compile or install');
 }
 main().catch(error => {console.error(error); process.exitCode = 1;});
