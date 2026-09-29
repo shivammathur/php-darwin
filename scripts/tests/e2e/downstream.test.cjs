@@ -19,7 +19,7 @@ for (const [module, header] of [['igbinary', 'igbinary.h'], ['msgpack', 'php_msg
 const { spawnSync } = require('node:child_process');
 spawnSync('brew', ['uninstall', '--force', '--ignore-dependencies', `yaml@${version}`], { stdio: 'inherit' });
 spawnSync('pecl', ['uninstall', 'redis'], { stdio: 'inherit' });
-fs.rmSync('/tmp/redis-6.3.0', { recursive: true, force: true });
+fs.rmSync('/tmp/redis-6.3.0', { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
 const extensionDirectory = command('php-config', ['--extension-dir']);
 for (const module of ['redis', 'yaml']) fs.rmSync(path.join(extensionDirectory, `${module}.so`), { force: true });
 Object.assign(process.env, { INPUT_EXTENSIONS: 'memcached, yaml, redis-6.3.0', 'INPUT_COVERAGE': 'none',
