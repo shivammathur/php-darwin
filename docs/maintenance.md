@@ -79,6 +79,14 @@ inputs; new bottles for unrelated platforms do not invalidate existing caches.
 An older manifest without dependency provenance requires a controlled refresh.
 Compression settings and installer-only changes do not invalidate PHP packages.
 
+The nightly freshness gate defers an unpinned run when the four PHP formulae
+reference different php-src commits during separate tap updates. Its job summary
+records the deferral, and the next scheduled nightly run checks again. `force`
+does not bypass source consistency. Missing or malformed source URLs and an
+explicitly pinned inconsistent tap remain errors. Once the formulae agree,
+builds retain the exact PHP and extension tap commits checked by the gate;
+completing an existing ARM-only release still uses its published source pins.
+
 ```sh
 gh workflow run cache-bottles.yml -R shivammathur/php-darwin -f seed=true
 gh workflow run cache-source-bottles.yml -R shivammathur/php-darwin -f seed=true

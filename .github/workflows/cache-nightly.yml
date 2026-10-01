@@ -68,8 +68,10 @@ jobs:
     outputs:
       architectures: ${{ steps.freshness.outputs.architectures }}
       build: ${{ steps.freshness.outputs.build }}
-      homebrew-extensions-commit: ${{ steps.freshness.outputs.homebrew-extensions-commit }}
-      homebrew-php-commit: ${{ steps.freshness.outputs.homebrew-php-commit }}
+      # Keep the checked snapshots unless completing the published architecture set.
+      # Use checked inputs when overriding the gate's architecture selection.
+      homebrew-extensions-commit: ${{ inputs.homebrew-extensions-commit || (inputs.architectures == '' || inputs.architectures == steps.freshness.outputs.architectures) && steps.freshness.outputs.homebrew-extensions-commit || steps.extensions-tap.outputs.commit }}
+      homebrew-php-commit: ${{ inputs.homebrew-php-commit || (inputs.architectures == '' || inputs.architectures == steps.freshness.outputs.architectures) && steps.freshness.outputs.homebrew-php-commit || steps.php-tap.outputs.commit }}
       php-version: ${{ steps.freshness.outputs.php-version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -77,6 +79,7 @@ jobs:
           persist-credentials: false
 
       - name: Check out homebrew-php once
+        id: php-tap
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: shivammathur/homebrew-php
@@ -85,6 +88,7 @@ jobs:
           persist-credentials: false
 
       - name: Check out homebrew-extensions once
+        id: extensions-tap
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: shivammathur/homebrew-extensions
@@ -111,6 +115,7 @@ jobs:
           HOMEBREW_EXTENSIONS_PATH: ${{ github.workspace }}/homebrew-extensions
           HOMEBREW_CORE_PATH: ${{ github.workspace }}/homebrew-core
           HOMEBREW_PHP_PATH: ${{ github.workspace }}/homebrew-php
+          HOMEBREW_PHP_COMMIT: ${{ inputs.homebrew-php-commit }}
           PHP_VERSION: ${{ inputs.php-version }}
         run: bash scripts/release/update-nightly.sh
 
@@ -133,8 +138,8 @@ jobs:
       builds: ${{ inputs.builds || 'debug release' }}
       ts: ${{ inputs.ts || 'nts zts' }}
       architectures: ${{ inputs.architectures || needs.freshness.outputs.architectures }}
-      homebrew-php-commit: ${{ inputs.homebrew-php-commit || (inputs.architectures == '' || inputs.architectures == needs.freshness.outputs.architectures) && needs.freshness.outputs.homebrew-php-commit || '' }}
-      homebrew-extensions-commit: ${{ inputs.homebrew-extensions-commit || (inputs.architectures == '' || inputs.architectures == needs.freshness.outputs.architectures) && needs.freshness.outputs.homebrew-extensions-commit || '' }}
+      homebrew-php-commit: ${{ needs.freshness.outputs.homebrew-php-commit }}
+      homebrew-extensions-commit: ${{ needs.freshness.outputs.homebrew-extensions-commit }}
       publish: ${{ inputs.publish }}
       source-cache-release: ${{ inputs.source-cache-release || 'cache' }}
       reuse-archives: ${{ inputs.reuse-archives }}
