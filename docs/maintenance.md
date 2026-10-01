@@ -278,7 +278,10 @@ the PHP archives. `conf/extension-packs.json` defines the supported versions and
 the modules belonging to each pack.
 
 `update-extensions.yml` checks every configured PHP version every six hours,
-dispatching all versions together within Actions matrix limits.
+using the same recipe and published-PHP freshness checks as the cache planner.
+It dispatches only versions with missing or changed packs, so cache run titles
+list the versions selected for work. When all packs are current, it dispatches
+an installer-only refresh instead of an empty cache build.
 Its optional `after-run` input waits for a successful prerequisite before dispatching;
 failed or cancelled prerequisites stop the follow-up. Unchanged packs are skipped;
 changed packs reuse the source-bottle cache. Manual runs can select PHP versions,

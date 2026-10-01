@@ -7,7 +7,7 @@ const os = require('node:os');
 const http = require('node:http');
 const { execFileSync } = require('node:child_process');
 const { prefetch, download, digest, key, validateEntry, validateContext, safePath, inspectTree, packEnvironment, relocateResources, phpApi, prepareArchive, movePrepared, runtimeContext } = require('../../installer/install-extensions.cjs');
-const { unchanged, freshnessReason, compatibilityMatrix, versionBatches, dispatch, publish, validatePublishRun, validatePublishedPHP } = require('../../release/extension-packs.cjs');
+const { unchanged, freshnessReason, selectEntries, compatibilityMatrix, versionBatches, dispatch, publish, validatePublishRun, validatePublishedPHP } = require('../../release/extension-packs.cjs');
 const { copyRuntime, copyHeaders } = require('../../build/extension-pack.cjs');
 const { buildMatrix } = require('../../release/extension-batches.cjs');
 
@@ -281,7 +281,12 @@ test('follow-up batches start only after a successful prerequisite', async () =>
     if (args[0] === 'api') return JSON.stringify({ status: ready ? 'completed' : 'in_progress', conclusion: ready ? 'success' : null });
     assert.ok(ready);
   };
-  await dispatch({ repository: 'shivammathur/php-darwin', afterRun: '123', run, wait: async delay => { assert.equal(delay, 60000); ready = true; } });
+  const select = async () => {
+    assert.ok(ready, 'freshness must be checked after the prerequisite succeeds');
+    return { selected: [{ php_version: '8.6' }] };
+  };
+  await dispatch({ repository: 'shivammathur/php-darwin', afterRun: '123', run, select,
+    wait: async delay => { assert.equal(delay, 60000); ready = true; } });
   assert.equal(calls.filter(args => args[0] === 'workflow').length, 1);
   for (const conclusion of ['failure', 'cancelled', 'timed_out']) {
     await assert.rejects(dispatch({ repository: 'shivammathur/php-darwin', afterRun: '123', run: (_program, args) => {
@@ -289,6 +294,71 @@ test('follow-up batches start only after a successful prerequisite', async () =>
       return JSON.stringify({ status: 'completed', conclusion });
     } }), /Prerequisite run/);
   }
+});
+test('dispatch passes only changed versions, retaining order and every build variant', async () => {
+  const calls = [];
+  await dispatch({ versions: '8.4 8.5 8.6 8.5', ref: 'fix/extension-cache-dispatch',
+    run: (_program, args) => calls.push(args), select: async options => {
+      assert.deepEqual(options.versions, ['8.4', '8.5', '8.6']);
+      assert.deepEqual(options.builds, ['debug', 'release']);
+      assert.deepEqual(options.modes, ['nts', 'zts']);
+      assert.deepEqual(options.selectedPacks, ['imagick', 'mongodb', 'memcached']);
+      assert.equal(options.force, false);
+      assert.deepEqual(options.resumeRuns, []);
+      return { selected: [{ php_version: '8.6' }, { php_version: '8.5' }, { php_version: '8.6' }] };
+    } });
+  assert.deepEqual(calls, [['workflow', 'run', 'cache-extensions.yml', '--repo', 'shivammathur/php-darwin',
+    '--ref', 'fix/extension-cache-dispatch', '-f', 'php-versions=8.5 8.6',
+    '-f', 'builds=debug release', '-f', 'ts=nts zts', '-f', 'publish=true']]);
+});
+test('unchanged versions refresh only the installer, and failed planning never dispatches', async () => {
+  const calls = [];
+  const options = { versions: '8.4', ref: 'main', run: (_program, args) => calls.push(args) };
+  await dispatch({ ...options, select: async () => ({ selected: [] }) });
+  assert.deepEqual(calls, [['workflow', 'run', 'publish-extensions.yml', '--repo', 'shivammathur/php-darwin',
+    '--ref', 'main', '-f', 'installer-only=true']]);
+  calls.length = 0;
+  await assert.rejects(dispatch({ ...options, select: async () => { throw new Error('manifest unavailable'); } }), /manifest unavailable/);
+  assert.deepEqual(calls, []);
+});
+test('shared selection finds missing packs, changed nightly PHP and changed recipes across all variants', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-selection-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(directory, 'formula.rb'), 'original');
+  const versions = ['8.4', '8.6'], builds = ['debug', 'release'], modes = ['nts', 'zts'];
+  const manifests = new Map(versions.map(php_version => [php_version, builds.flatMap(build => modes.flatMap(thread_safety =>
+    ['arm64', 'x86_64'].map(architecture => {
+      const metadata = { ...entry('imagick'), php_version, build, thread_safety, architecture,
+        php_semver: `${php_version}.0${php_version === '8.6' ? '-dev' : ''}`,
+        ...(php_version === '8.6' ? { php_src_commit: 'a'.repeat(40) } : {}),
+        source_records: [{ repository: 'core', path: 'formula.rb', sha256: digest('original') }] };
+      metadata.file = `${key(metadata)}-${metadata.sha256}.tar.zst`;
+      return metadata;
+    })))]));
+  const runtimeVariants = new Map([...manifests].map(([version, assets]) => [version, [...assets]]));
+  let nightlyCommit = 'a'.repeat(40);
+  t.mock.method(globalThis, 'fetch', async url => {
+    const match = url.match(/(extensions|php)-(8\.[46])-manifest\.json$/);
+    assert.ok(match, url);
+    const [, kind, version] = match;
+    return Response.json({ schema: 1, php_version: version, php_semver: `${version}.0`,
+      ...(version === '8.6' ? { php_src_commit: nightlyCommit } : {}),
+      assets: (kind === 'php' ? runtimeVariants : manifests).get(version) });
+  });
+  const options = { versions, builds, modes, selectedPacks: ['imagick'], repositories: { core: directory },
+    force: false, resumeRuns: [] };
+  assert.deepEqual((await selectEntries(options)).selected, []);
+  nightlyCommit = 'b'.repeat(40);
+  let result = await selectEntries(options);
+  assert.equal(result.selected.length, 8);
+  assert.ok(result.selected.every(entry => entry.php_version === '8.6'));
+  nightlyCommit = 'a'.repeat(40);
+  const removed = manifests.get('8.4').pop();
+  // PHP retains all runtime variants even when an extension pack is missing.
+  result = await selectEntries(options);
+  assert.deepEqual(result.selected.map(key), [key(removed)]);
+  fs.writeFileSync(path.join(directory, 'formula.rb'), 'changed');
+  assert.equal((await selectEntries(options)).selected.length, 16);
 });
 test('read the module API from the installed PHP headers using supported php-config options', t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-php-api-'));
