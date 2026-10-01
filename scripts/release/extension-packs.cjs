@@ -16,7 +16,7 @@ function versionBatches(value = configuration.versions.join(' ')) {
 }
 async function dispatch({ versions = process.env.PHP_VERSIONS || undefined, afterRun = process.env.AFTER_RUN,
   repository = process.env.GITHUB_REPOSITORY || 'shivammathur/php-darwin', ref = process.env.GITHUB_REF_NAME || 'main',
-  run = command, wait = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now } = {}) {
+  run = command, select = selectEntries, wait = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now } = {}) {
   if (repository !== 'shivammathur/php-darwin') throw new Error('Unexpected extension cache repository');
   const batches = versionBatches(versions);
   if (afterRun) {
@@ -33,7 +33,20 @@ async function dispatch({ versions = process.env.PHP_VERSIONS || undefined, afte
       await wait(60000);
     }
   }
-  for (const batch of batches) {
+  // Resolve freshness before dispatch: run-name cannot read job outputs, so the
+  // child workflow must receive only versions which actually need archives.
+  const { selected } = await select({ versions: batches.flat(), builds: ['debug', 'release'], modes: ['nts', 'zts'],
+    selectedPacks: Object.keys(configuration.packs), force: false, resumeRuns: [] });
+  const changed = new Set(selected.map(entry => entry.php_version));
+  if (!changed.size) {
+    run('gh', ['workflow', 'run', 'publish-extensions.yml', '--repo', repository, '--ref', ref,
+      '-f', 'installer-only=true'], { inherit: true });
+    console.log('All optional extension packs are current; dispatched an installer-only refresh');
+    return;
+  }
+  for (const requested of batches) {
+    const batch = requested.filter(version => changed.has(version));
+    if (!batch.length) continue;
     run('gh', ['workflow', 'run', 'cache-extensions.yml', '--repo', repository, '--ref', ref,
       '-f', `php-versions=${batch.join(' ')}`, '-f', 'builds=debug release', '-f', 'ts=nts zts', '-f', 'publish=true'], { inherit: true });
     console.log(`Dispatched optional extension caches for PHP ${batch.join(', ')}`);
@@ -104,16 +117,17 @@ async function validatePublishedPHP(entries, retry = retryPolicy()) {
     }
   }
 }
-async function plan() {
-  const versions = (process.env.PHP_VERSIONS || '8.4').split(/\s+/);
-  const selectedPacks = (process.env.EXTENSION_PACKS || Object.keys(configuration.packs).join(' ')).split(/\s+/);
-  const builds = (process.env.BUILDS || 'release').split(/\s+/);
-  const modes = (process.env.THREAD_SAFETY || 'nts').split(/\s+/);
-  const repositories = { 'shivammathur/homebrew-extensions': path.resolve('homebrew-extensions'), 'Homebrew/homebrew-core': path.resolve('homebrew-core') };
+async function selectEntries({
+  versions = (process.env.PHP_VERSIONS || '8.4').trim().split(/\s+/),
+  selectedPacks = (process.env.EXTENSION_PACKS || Object.keys(configuration.packs).join(' ')).split(/\s+/),
+  builds = (process.env.BUILDS || 'release').split(/\s+/),
+  modes = (process.env.THREAD_SAFETY || 'nts').split(/\s+/),
+  repositories = { 'shivammathur/homebrew-extensions': path.resolve('homebrew-extensions'), 'Homebrew/homebrew-core': path.resolve('homebrew-core') },
+  force = process.env.FORCE === 'true', resumeRuns = (process.env.RESUME_RUNS || '').trim().split(/\s+/).filter(Boolean),
+} = {}) {
   const include = [], reused = [], selected = [];
   const retry = retryPolicy();
   const recovery = new Map();
-  const resumeRuns = (process.env.RESUME_RUNS || '').trim().split(/\s+/).filter(Boolean);
   // Explicit recovery keeps completed artifacts even if orchestration changed.
   // Sources are ordered oldest to newest; the latest successful pack wins.
   for (const id of resumeRuns) {
@@ -139,7 +153,7 @@ async function plan() {
       // published packs. Normal scheduled runs still apply full freshness checks.
       if (resumeRuns.length && previous && previous.php_semver?.split('-')[0] === phpManifest.php_semver?.split('-')[0] &&
           (previous.php_src_commit || '') === (phpManifest.php_src_commit || '')) continue;
-      const reason = process.env.FORCE === 'true' ? 'forced rebuild' :
+      const reason = force ? 'forced rebuild' :
         previous ? freshnessReason(previous, repositories, phpManifest) : 'not published';
       if (!reason) continue;
       console.log(`Selected ${identity}: ${reason}`);
@@ -147,6 +161,10 @@ async function plan() {
       selected.push(context);
     }
   }
+  return { include, reused, selected };
+}
+async function plan() {
+  const { include, reused, selected } = await selectEntries();
   const buildsMatrix = buildMatrix(include), reuseMatrix = buildMatrix(reused), tests = testMatrix(selected);
   if ([buildsMatrix, reuseMatrix, tests].some(matrix => matrix.include.length > 256)) throw new Error('Extension matrix exceeds Actions limit');
   const result = JSON.stringify(buildsMatrix);
@@ -300,7 +318,7 @@ async function publish(directory, { run = transferCommand, retry = retryPolicy()
     fs.rmSync(staging, { recursive: true, force: true });
   }
 }
-module.exports = { unchanged, freshnessReason, readManifest, plan, publish, compatibilityMatrix, versionBatches, dispatch, validatePublishRun, validatePublishedPHP };
+module.exports = { unchanged, freshnessReason, readManifest, selectEntries, plan, publish, compatibilityMatrix, versionBatches, dispatch, validatePublishRun, validatePublishedPHP };
 if (require.main === module) (async () => {
   if (process.argv[2] === 'dispatch') await dispatch();
   else if (process.argv[2] === 'plan') await plan();

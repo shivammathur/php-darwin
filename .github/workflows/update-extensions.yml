@@ -1,5 +1,5 @@
 name: Update optional extension caches
-run-name: Update optional extension caches ${{ inputs.php-versions || '5.6–8.7' }}
+run-name: ${{ inputs.php-versions && format('Check optional extension caches for PHP {0}', inputs.php-versions) || 'Check optional extension caches' }}
 
 on:
   schedule:
@@ -31,7 +31,21 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Dispatch bounded batches after the prerequisite succeeds
+      - name: Select the approved dependency snapshot
+        id: dependencies
+        run: echo "core=$(node scripts/cache/approved-dependencies.cjs core)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: shivammathur/homebrew-extensions
+          path: homebrew-extensions
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Homebrew/homebrew-core
+          ref: ${{ steps.dependencies.outputs.core }}
+          path: homebrew-core
+          persist-credentials: false
+      - name: Dispatch only changed PHP versions after the prerequisite succeeds
         env:
           GH_TOKEN: ${{ secrets.TOKEN || github.token }}
           PHP_VERSIONS: ${{ inputs.php-versions }}
