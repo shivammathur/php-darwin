@@ -15,7 +15,22 @@ manifest="$work_dir/php-$version-manifest.json"
 
 php_darwin_validate_channel "$version" nightly
 case "$force" in true|false) ;; *) php_darwin_die "force must be true or false: $force" ;; esac
-current=$(bash "$script_dir/../build/php-src-commit.sh" "$version") || \
+source_status=0
+current=$(bash "$script_dir/../build/php-src-commit.sh" "$version") || source_status=$?
+if [ "$source_status" -eq 75 ] && [ -z "${HOMEBREW_PHP_COMMIT:-}" ]; then
+  message="Deferring PHP $version nightly: homebrew-php variants have different php-src commits. The next nightly run will check again after the tap updates."
+  printf '%s\n' "$message"
+  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+    printf '%s\n' "$message" >> "$GITHUB_STEP_SUMMARY" || \
+      php_darwin_die 'could not write the nightly deferral summary'
+  fi
+  if [ -n "${GITHUB_OUTPUT:-}" ]; then
+    printf 'build=false\ndeferred=true\nphp-version=%s\n' "$version" >> "$GITHUB_OUTPUT" || \
+      php_darwin_die 'could not write nightly deferral outputs'
+  fi
+  exit 0
+fi
+[ "$source_status" -eq 0 ] || \
   php_darwin_die "could not resolve the PHP $version source commit"
 current_extensions=$(bash "$script_dir/../build/extensions-source-hash.sh" "$version") || \
   php_darwin_die "could not resolve the PHP $version cached extension source hash"

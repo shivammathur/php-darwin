@@ -146,16 +146,69 @@ mv "$manifest.old" "$manifest" || php_darwin_die 'could not replace the nightly 
 run_gate true
 
 MISMATCH_COMMIT="$previous" write_formulae "$current"
-if HOMEBREW_PHP_PATH="$tap_path" bash "$script_dir/../../build/php-src-commit.sh" "$version" >/dev/null 2>&1; then
-  php_darwin_die 'PHP source commit resolver accepted disagreeing formulae'
-fi
+source_status=0
+HOMEBREW_PHP_PATH="$tap_path" bash "$script_dir/../../build/php-src-commit.sh" "$version" \
+  > "$work_dir/source-output" 2> "$work_dir/source-errors" || source_status=$?
+[ "$source_status" -eq 75 ] || php_darwin_die 'disagreeing formulae did not return the temporary mismatch status'
+[ ! -s "$work_dir/source-output" ] || php_darwin_die 'disagreeing formulae returned a usable source commit'
+grep -Fq "php@$version-debug-zts: $previous" "$work_dir/source-errors" || \
+  php_darwin_die 'source mismatch diagnostics did not identify the stale variant'
+grep -Fq "php@$version: $current" "$work_dir/source-errors" || \
+  php_darwin_die 'source mismatch diagnostics did not identify the current variant'
 
+for force in false true; do
+  : > "$output"
+  : > "$work_dir/summary"
+  # Deferral must happen before consulting extensions or the published manifest.
+  FORCE="$force" GITHUB_OUTPUT="$output" GITHUB_STEP_SUMMARY="$work_dir/summary" \
+    HOMEBREW_PHP_COMMIT='' HOMEBREW_PHP_PATH="$tap_path" \
+    HOMEBREW_EXTENSIONS_PATH="$work_dir/missing-extensions" \
+    PHP_DARWIN_MANIFEST_PATH="$work_dir/missing-manifest" PHP_VERSION="$version" \
+    bash "$script_dir/../../release/update-nightly.sh" > "$work_dir/gate-log" 2>&1 || \
+    php_darwin_die 'nightly gate failed instead of deferring a mixed tap'
+  printf 'build=false\ndeferred=true\nphp-version=%s\n' "$version" > "$work_dir/expected-output"
+  cmp "$output" "$work_dir/expected-output" || php_darwin_die 'deferred nightly gate emitted unsafe build outputs'
+  grep -Fq "Deferring PHP $version nightly" "$work_dir/summary" || \
+    php_darwin_die 'deferred nightly gate did not explain the skip in its summary'
+done
+
+assert_gate_error() {
+  local pinned_commit=${1:-}
+  : > "$output"
+  if FORCE=false GITHUB_OUTPUT="$output" HOMEBREW_PHP_COMMIT="$pinned_commit" \
+    HOMEBREW_PHP_PATH="$tap_path" HOMEBREW_EXTENSIONS_PATH="$extensions_path" \
+    PHP_DARWIN_MANIFEST_PATH="$manifest" PHP_VERSION="$version" \
+    bash "$script_dir/../../release/update-nightly.sh" > "$work_dir/gate-log" 2>&1; then
+    php_darwin_die 'nightly gate accepted an invalid or explicitly pinned inconsistent tap'
+  fi
+  [ ! -s "$output" ] || php_darwin_die 'failed nightly gate emitted build or deferral outputs'
+}
+assert_gate_error "$php_commit"
+
+# A subsequent aligned snapshot resumes normal freshness decisions.
 write_formulae "$current"
+write_manifest "$previous"
+run_gate true
+write_manifest "$current"
+run_gate false
+
+# Malformed URLs must not be mistaken for a transient mismatch, even if other
+# formulae disagree at the same time.
+MISMATCH_COMMIT="$previous" write_formulae "$current"
 printf 'class Fixture < Formula\n  url "https://github.com/php/php-src/archive/%s.tar.gz?commit=%s"\nend\n' \
   "$current" "$previous" > "$formula_dir/php@$version.rb" || \
   php_darwin_die 'could not write the invalid PHP source URL fixture'
 if HOMEBREW_PHP_PATH="$tap_path" bash "$script_dir/../../build/php-src-commit.sh" "$version" >/dev/null 2>&1; then
   php_darwin_die 'PHP source commit resolver accepted different path and query commits'
 fi
+assert_gate_error
+
+write_formulae "$current"
+rm "$formula_dir/php@$version-debug.rb" || exit 1
+assert_gate_error
+
+write_formulae "$current"
+cat "$formula_dir/php@$version-debug.rb" >> "$formula_dir/php@$version.rb" || exit 1
+assert_gate_error
 
 printf 'PHP %s nightly update validation passed\n' "$version"

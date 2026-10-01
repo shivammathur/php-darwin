@@ -12,6 +12,7 @@ work_dir=$(mktemp -d "${RUNNER_TEMP:-/tmp}/php-darwin-php-src.XXXXXX") || \
   php_darwin_die 'could not create the PHP source commit directory'
 trap 'rm -rf "$work_dir"' EXIT
 commits="$work_dir/commits.txt"
+formula_commits="$work_dir/formula-commits.txt"
 
 php_darwin_validate_version "$version"
 : > "$commits" || php_darwin_die 'could not create the PHP source commit list'
@@ -49,12 +50,19 @@ for build in release debug; do
       php_darwin_die "$formula contains an invalid php-src commit URL"
     printf '%s\n' "$path_commit" >> "$commits" || \
       php_darwin_die 'could not record a PHP source commit'
+    printf '  %s: %s\n' "$formula" "$path_commit" >> "$formula_commits" || \
+      php_darwin_die 'could not record the formula source commit'
   done
 done
 
 LC_ALL=C sort -u "$commits" -o "$commits" || php_darwin_die 'could not sort PHP source commits'
-[ "$(awk 'END { print NR+0 }' "$commits")" -eq 1 ] || \
-  php_darwin_die "PHP $version formulae do not use the same php-src commit"
+if [ "$(awk 'END { print NR+0 }' "$commits")" -ne 1 ]; then
+  printf 'php-darwin: PHP %s formulae do not use the same php-src commit\n' "$version" >&2
+  cat "$formula_commits" >&2
+  # EX_TEMPFAIL: all URLs are valid, but the tap is between variant updates.
+  # Build callers still reject this; the unpinned nightly gate can defer it.
+  exit 75
+fi
 IFS= read -r php_src_commit < "$commits" || php_darwin_die 'could not read the PHP source commit'
 [[ "$php_src_commit" =~ ^[0-9a-f]{40}$ ]] || php_darwin_die 'the PHP source commit is invalid'
 printf '%s\n' "$php_src_commit"
