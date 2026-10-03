@@ -11,8 +11,7 @@ const { command: transferCommand, retryPolicy, httpError, githubJSON, workflowJo
 function versionBatches(value = configuration.versions.join(' ')) {
   const versions = [...new Set(value.trim().split(/\s+/))];
   if (versions.some(version => !configuration.versions.includes(version))) throw new Error('Unsupported PHP version');
-  // All fourteen versions now fit in 28 build and 42 compatibility jobs.
-  return [versions];
+  return versions.map(version => [version]);
 }
 async function dispatch({ versions = process.env.PHP_VERSIONS || undefined, afterRun = process.env.AFTER_RUN,
   repository = process.env.GITHUB_REPOSITORY || 'shivammathur/php-darwin', ref = process.env.GITHUB_REF_NAME || 'main',
@@ -164,7 +163,9 @@ async function selectEntries({
   return { include, reused, selected };
 }
 async function plan() {
-  const { include, reused, selected } = await selectEntries();
+  const versions = versionBatches(process.env.PHP_VERSIONS || '8.4').flat();
+  if (versions.length !== 1) throw new Error('Select one PHP version per cache run; use update-extensions.yml to dispatch multiple versions separately');
+  const { include, reused, selected } = await selectEntries({ versions });
   const buildsMatrix = buildMatrix(include), reuseMatrix = buildMatrix(reused), tests = testMatrix(selected);
   if ([buildsMatrix, reuseMatrix, tests].some(matrix => matrix.include.length > 256)) throw new Error('Extension matrix exceeds Actions limit');
   const result = JSON.stringify(buildsMatrix);

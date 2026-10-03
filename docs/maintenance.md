@@ -279,13 +279,16 @@ the modules belonging to each pack.
 
 `update-extensions.yml` checks every configured PHP version every six hours,
 using the same recipe and published-PHP freshness checks as the cache planner.
-It dispatches only versions with missing or changed packs, so cache run titles
-list the versions selected for work. When all packs are current, it dispatches
+It dispatches one cache run per version with missing or changed packs, including
+separate PHP 8.6 and 8.7 runs. Each run has its own version concurrency lock and
+can validate and publish independently. When all packs are current, it dispatches
 an installer-only refresh instead of an empty cache build.
 Its optional `after-run` input waits for a successful prerequisite before dispatching;
 failed or cancelled prerequisites stop the follow-up. Unchanged packs are skipped;
-changed packs reuse the source-bottle cache. Manual runs can select PHP versions,
-extensions and build variants. Builds share one job per PHP version and architecture;
+changed packs reuse the source-bottle cache. Manual cache runs select one PHP version,
+extensions and build variants. Use `update-extensions.yml` with a space-separated
+`php-versions` list to dispatch several versions separately. Builds share one job
+per PHP version and architecture;
 compatibility checks share one job per PHP version and runner, covering every
 selected build variant and pack. A complete 14-version campaign uses 28 native
 build jobs and 56 compatibility jobs. Each passing pack is checkpointed separately,

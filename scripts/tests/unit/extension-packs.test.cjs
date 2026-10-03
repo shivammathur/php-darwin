@@ -7,7 +7,7 @@ const os = require('node:os');
 const http = require('node:http');
 const { execFileSync } = require('node:child_process');
 const { prefetch, download, digest, key, validateEntry, validateContext, safePath, inspectTree, packEnvironment, relocateResources, phpApi, prepareArchive, movePrepared, runtimeContext } = require('../../installer/install-extensions.cjs');
-const { unchanged, freshnessReason, selectEntries, compatibilityMatrix, versionBatches, dispatch, publish, validatePublishRun, validatePublishedPHP } = require('../../release/extension-packs.cjs');
+const { unchanged, freshnessReason, selectEntries, compatibilityMatrix, versionBatches, dispatch, plan, publish, validatePublishRun, validatePublishedPHP } = require('../../release/extension-packs.cjs');
 const { copyRuntime, copyHeaders } = require('../../build/extension-pack.cjs');
 const { buildMatrix } = require('../../release/extension-batches.cjs');
 
@@ -217,11 +217,11 @@ test('all publication failures preserve completed versions and do not publish an
     assert.ok(!calls.some(call => call.args.some(arg => arg.endsWith('install-extensions.cjs'))));
   }
 });
-test('scheduled batches cover every configured PHP version within both matrix limits', () => {
+test('scheduled batches isolate every configured PHP version within both matrix limits', () => {
   const versions = fs.readFileSync(path.resolve(__dirname, '../../../conf/versions'), 'utf8').split('\n')
     .filter(line => /^(stable|nightly) /.test(line)).map(line => line.split(' ')[1]);
   const batches = versionBatches();
-  assert.deepEqual(batches.flat(), versions);
+  assert.deepEqual(batches, versions.map(version => [version]));
   for (const batch of batches) {
     const entries = batch.flatMap(php_version => ['release', 'debug'].flatMap(build => ['nts', 'zts'].flatMap(thread_safety =>
       ['arm64', 'x86_64'].flatMap(architecture => ['imagick', 'mongodb', 'memcached'].map(name =>
@@ -297,19 +297,26 @@ test('follow-up batches start only after a successful prerequisite', async () =>
 });
 test('dispatch passes only changed versions, retaining order and every build variant', async () => {
   const calls = [];
-  await dispatch({ versions: '8.4 8.5 8.6 8.5', ref: 'fix/extension-cache-dispatch',
+  await dispatch({ versions: '8.4 8.5 8.6 8.7 8.5', ref: 'fix/extension-cache-dispatch',
     run: (_program, args) => calls.push(args), select: async options => {
-      assert.deepEqual(options.versions, ['8.4', '8.5', '8.6']);
+      assert.deepEqual(options.versions, ['8.4', '8.5', '8.6', '8.7']);
       assert.deepEqual(options.builds, ['debug', 'release']);
       assert.deepEqual(options.modes, ['nts', 'zts']);
       assert.deepEqual(options.selectedPacks, ['imagick', 'mongodb', 'memcached']);
       assert.equal(options.force, false);
       assert.deepEqual(options.resumeRuns, []);
-      return { selected: [{ php_version: '8.6' }, { php_version: '8.5' }, { php_version: '8.6' }] };
+      return { selected: [{ php_version: '8.7' }, { php_version: '8.6' }, { php_version: '8.5' }, { php_version: '8.6' }] };
     } });
-  assert.deepEqual(calls, [['workflow', 'run', 'cache-extensions.yml', '--repo', 'shivammathur/php-darwin',
-    '--ref', 'fix/extension-cache-dispatch', '-f', 'php-versions=8.5 8.6',
-    '-f', 'builds=debug release', '-f', 'ts=nts zts', '-f', 'publish=true']]);
+  assert.deepEqual(calls, ['8.5', '8.6', '8.7'].map(version => ['workflow', 'run', 'cache-extensions.yml', '--repo', 'shivammathur/php-darwin',
+    '--ref', 'fix/extension-cache-dispatch', '-f', `php-versions=${version}`,
+    '-f', 'builds=debug release', '-f', 'ts=nts zts', '-f', 'publish=true']));
+});
+test('cache planning rejects combined versions before reading manifests or creating jobs', async t => {
+  const previous = process.env.PHP_VERSIONS;
+  t.after(() => { if (previous === undefined) delete process.env.PHP_VERSIONS; else process.env.PHP_VERSIONS = previous; });
+  t.mock.method(globalThis, 'fetch', () => assert.fail('Combined cache requests must fail before fetching manifests'));
+  process.env.PHP_VERSIONS = '8.6 8.7';
+  await assert.rejects(plan(), /one PHP version per cache run/);
 });
 test('unchanged versions refresh only the installer, and failed planning never dispatches', async () => {
   const calls = [];
