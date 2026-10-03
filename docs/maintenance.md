@@ -28,7 +28,7 @@ bash scripts/tests/run.sh unit         # Isolated cache and reporting behavior
 bash scripts/tests/run.sh integration  # Local CLI, filesystem and HTTP fixtures
 bash scripts/tests/run.sh              # All local checks
 # Requires actionlint and shellcheck on PATH:
-actionlint
+actionlint -ignore 'unexpected key "queue" for "concurrency" section'
 ```
 
 Local tests use temporary directories and simulated commands. Keep credentials
@@ -283,6 +283,8 @@ It dispatches one cache run per version with missing or changed packs, including
 separate PHP 8.6 and 8.7 runs. Each run has its own version concurrency lock and
 can validate and publish independently. When all packs are current, it dispatches
 an installer-only refresh instead of an empty cache build.
+All extension publishers share a queued publication lock, so several versions can
+finish together without replacing another version's pending publication.
 Its optional `after-run` input waits for a successful prerequisite before dispatching;
 failed or cancelled prerequisites stop the follow-up. Unchanged packs are skipped;
 changed packs reuse the source-bottle cache. Manual cache runs select one PHP version,

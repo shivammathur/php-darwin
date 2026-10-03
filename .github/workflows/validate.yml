@@ -35,7 +35,9 @@ jobs:
             --pattern actionlint_1.7.12_linux_amd64.tar.gz --pattern actionlint_1.7.12_checksums.txt
           (cd "$RUNNER_TEMP/actionlint" && sha256sum --check --ignore-missing actionlint_1.7.12_checksums.txt)
           tar -xzf "$RUNNER_TEMP/actionlint/actionlint_1.7.12_linux_amd64.tar.gz" -C "$RUNNER_TEMP/actionlint" actionlint
-          "$RUNNER_TEMP/actionlint/actionlint"
+          # Released actionlint predates GitHub's larger concurrency queues.
+          # configuration.test.sh validates the shared publication queue.
+          "$RUNNER_TEMP/actionlint/actionlint" -ignore 'unexpected key "queue" for "concurrency" section'
       - name: Preserve the Actions Node runtime
         uses: ./.github/actions/node-runtime
       - name: Verify the preserved Node runtime works without Node on PATH

@@ -4,6 +4,21 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=scripts/lib/lib.sh
 . "$script_dir/../../lib/lib.sh"
 
+"${PHP_DARWIN_RUBY:-ruby}" -ryaml -e '
+  workflows = Dir[File.join(ARGV.fetch(0), ".github/workflows/*.yml")]
+  publishers = workflows.map do |file|
+    workflow = YAML.safe_load(File.read(file), aliases: true)
+    publish = workflow.fetch("jobs").fetch("publish", nil)
+    next unless publish&.dig("concurrency", "group") == "extension-cache-publish"
+    concurrency = publish.fetch("concurrency")
+    abort "Extension publisher must retain pending versions: #{file}" unless
+      concurrency["queue"] == "max" && concurrency["cancel-in-progress"] == false
+    File.basename(file)
+  end.compact
+  expected = %w[cache-extensions.yml publish-extensions.yml recover-extensions.yml]
+  abort "Missing shared extension publication lock" unless publishers.sort == expected.sort
+' "$script_dir/../../.." || php_darwin_die 'extension publication concurrency validation failed'
+
 pinned_source_output=$(GITHUB_OUTPUT='' PINNED_COMMIT=0123456789abcdef0123456789abcdef01234567 \
   bash "$script_dir/../../build/source-commit.sh") || php_darwin_die 'pinned source commit validation failed'
 [ "$pinned_source_output" = 0123456789abcdef0123456789abcdef01234567 ] || \
