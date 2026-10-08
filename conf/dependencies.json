@@ -119,7 +119,7 @@
         "libnghttp2": {
           "version": "1.70.0",
           "source": {
-            "key": "php-darwin-source-v1-c98d2bb177e4359ce261992c7f2a704212d66c0702ccdb33c5992cf9533780cb",
+            "key": "php-darwin-source-v1-c0bb0b2631fc995471a3566713d7116f3df1bfc094987128abbe6ec0318f69c8",
             "inputs": {
               "environment": {
                 "arch": "arm64",
@@ -172,7 +172,7 @@
         "libnghttp3": {
           "version": "1.18.0",
           "source": {
-            "key": "php-darwin-source-v1-e9786e5b59101561d2341194e9292aa5fa095acb8f4af614ea934d87a3cce051",
+            "key": "php-darwin-source-v1-118905c4588c997ae1f6530c2bb3a3340a4a226ee2e2845eeaa36f6a8f107690",
             "inputs": {
               "environment": {
                 "arch": "arm64",
@@ -215,7 +215,7 @@
         "libngtcp2": {
           "version": "1.25.0",
           "source": {
-            "key": "php-darwin-source-v1-d9bf93722db6b531bb8bd2b2c038631290b6c187dddb45a6a525d6e8a66a0719",
+            "key": "php-darwin-source-v1-8b563999e9b34b7c796bcc49c3e2856c8d1d3c4f1fb0cb6e4f10621db5b80f6b",
             "inputs": {
               "environment": {
                 "arch": "arm64",
@@ -294,7 +294,7 @@
         "libssh2": {
           "version": "1.11.1_5",
           "source": {
-            "key": "php-darwin-source-v1-07a769c8c084d7b784ed668f8004bb9813a7b814fc18585aeb0a256af6e5a150",
+            "key": "php-darwin-source-v1-8b25fdf04bd4363b41a8c4049242a65050ae621e0b3e59792789b5693bc9a31d",
             "inputs": {
               "environment": {
                 "arch": "arm64",
@@ -355,7 +355,7 @@
         "lz4": {
           "version": "1.10.0",
           "source": {
-            "key": "php-darwin-source-v1-960d60f85ae28658c65dc7c2549f1076a4ce2fdb453e88b47f7665d2630d361b",
+            "key": "php-darwin-source-v1-949e6525d9c262cace014ee3d09e2fc7526663851794924bf42f99bf2a33774b",
             "inputs": {
               "environment": {
                 "arch": "arm64",
@@ -398,7 +398,7 @@
         "xz": {
           "version": "5.8.4",
           "source": {
-            "key": "php-darwin-source-v1-e3d11aebb085e620383f8a10574dd42109885b0e6456c25bbdf45fbd19085489",
+            "key": "php-darwin-source-v1-2d3443aa8a7ecf3e979170418ca7eba8a08afb2912b5b71dfb459c020078be81",
             "inputs": {
               "environment": {
                 "arch": "arm64",
@@ -482,7 +482,7 @@
         "libpng": {
           "version": "1.6.58",
           "source": {
-            "key": "php-darwin-source-v1-840bfb3e342b11d6e126416ca46582a6d2cfac02ca23f8e83f8e6864d5125080",
+            "key": "php-darwin-source-v1-7f73cfa3711a491986f2c87588dea177a4a25fb883734fed56efbbc3609cb70b",
             "inputs": {
               "environment": {
                 "arch": "arm64",
@@ -536,7 +536,7 @@
         "libunistring": {
           "version": "1.4.2",
           "source": {
-            "key": "php-darwin-source-v1-95647616b8c1435098d6fbc41130e902ea0cb77dfc100a1d44849f0f3fda11f4",
+            "key": "php-darwin-source-v1-27aba2e0a0afe9ca7e8983f629504460facc3fd133a7017b661446fbedf94d45",
             "inputs": {
               "environment": {
                 "arch": "arm64",
@@ -570,7 +570,7 @@
         "gettext": {
           "version": "1.0",
           "source": {
-            "key": "php-darwin-source-v1-a6808585cebc226e350f69edf45f4870bf528b68fb58ee089c083ab03af7ac28",
+            "key": "php-darwin-source-v1-5f7ca5b1438c97d11c74d711b36509c8e139e63877713d39804ab14023547f81",
             "inputs": {
               "environment": {
                 "arch": "arm64",
@@ -641,7 +641,7 @@
         "ninja": {
           "version": "1.13.2",
           "source": {
-            "key": "php-darwin-source-v1-d3330fee13838db071e5fe7d60991ab493cfb847e36e011605bb3945ea7ac849",
+            "key": "php-darwin-source-v1-3f94f1545ba8bdf7a56a32a4e1dcf415fefa04d4a23cce22259c03ad9a8705d6",
             "inputs": {
               "environment": {
                 "arch": "arm64",
@@ -685,7 +685,7 @@
         "readline": {
           "version": "8.3.6",
           "source": {
-            "key": "php-darwin-source-v1-6f7587821938958a2836182360375b9e6757dcc9a9f3c4f1a70bf43f31499c20",
+            "key": "php-darwin-source-v1-fe04df3d9d56b8dd7e73ac3dee641b13584e1baf4e1a6a6ff51a6e709232325d",
             "inputs": {
               "environment": {
                 "arch": "arm64",
@@ -729,7 +729,7 @@
         "expat": {
           "version": "2.8.5",
           "source": {
-            "key": "php-darwin-source-v1-2807331ab0a067602792a4333fc9c326c254aa74bb578d56334dc29570570ab3",
+            "key": "php-darwin-source-v1-32ba7e49671693fb232c7c9e94999a371b269c104301156433bc1238345e4354",
             "inputs": {
               "environment": {
                 "arch": "arm64",
@@ -783,7 +783,7 @@
         "libvmaf": {
           "version": "3.2.1",
           "source": {
-            "key": "php-darwin-source-v1-81805018114568d0f9a85cfccd6a0926b7e80229e0f6c9fb30326aa37d5004ed",
+            "key": "php-darwin-source-v1-5488e834a6e7fd2aa658417e265594458b5cc2100687fb360bfdb98f88c2b6bf",
             "inputs": {
               "environment": {
                 "arch": "arm64",
@@ -1120,7 +1120,7 @@
         "aom": {
           "version": "3.15.1",
           "source": {
-            "key": "php-darwin-source-v1-46bc15aa4c410cd7308726887942160b28bcd0562e892eb2d284dfbe374087a6",
+            "key": "php-darwin-source-v1-49a8c8c0a296458add28528750a8510852f2bdb0399d63375c90a451febb7154",
             "inputs": {
               "environment": {
                 "arch": "arm64",
@@ -1199,7 +1199,7 @@
         "giflib": {
           "version": "6.1.3",
           "source": {
-            "key": "php-darwin-source-v1-2ca4381b562512d11b68d5c89b6bd48149dc2f4ffeabe2646b3c255cc3b171ee",
+            "key": "php-darwin-source-v1-4bb3b4f1ea45c61579f30e1e4c887ece5c7965421652748a5106dd9e7341e923",
             "inputs": {
               "environment": {
                 "arch": "arm64",
@@ -1233,7 +1233,7 @@
         "webp": {
           "version": "1.6.0",
           "source": {
-            "key": "php-darwin-source-v1-aa7e795e04bd605fd8114e0dbd5612a640b46acd6219fc61164c6c06ce7b5c7d",
+            "key": "php-darwin-source-v1-276ba1d23a6b255d26d7d4d3ae564b92b4aca3ae8822bf4aeb75b2a68f2a8da1",
             "inputs": {
               "environment": {
                 "arch": "arm64",
@@ -1430,7 +1430,7 @@
         "libx11": {
           "version": "1.8.13",
           "source": {
-            "key": "php-darwin-source-v1-dede1453c1c50ff3b0f58f06a0ac47f442273ffbb8326bd4e4aafcb5fcd7562d",
+            "key": "php-darwin-source-v1-ae9b71b35f168904001cfcef288ff99befbf86603c313dc29697ecdb5bcf3c35",
             "inputs": {
               "environment": {
                 "arch": "arm64",
@@ -1749,7 +1749,7 @@
         "libde265": {
           "version": "1.1.3",
           "source": {
-            "key": "php-darwin-source-v1-0d50154f11f9c1e2a10f1969ca8600c3ddbc3b5a115942ed526ff395bc409bdd",
+            "key": "php-darwin-source-v1-3d34befb85455d979e1a865a352f04a56441ccf38b1d41d168838f8751103a12",
             "inputs": {
               "environment": {
                 "arch": "arm64",
@@ -1792,7 +1792,7 @@
         "x265": {
           "version": "4.3",
           "source": {
-            "key": "php-darwin-source-v1-e63c9039496226c772776d6365f190ef818a2bc479213bbc32dc207b42941429",
+            "key": "php-darwin-source-v1-d1846357e482f75e1d207fb9b98489b9f407b3198d201bdffa9e2f756c3e5ac2",
             "inputs": {
               "environment": {
                 "arch": "arm64",
@@ -1835,7 +1835,7 @@
         "libheif": {
           "version": "1.23.5",
           "source": {
-            "key": "php-darwin-source-v1-45c6e796e6a7018cbfdc87ad4efc00562feb897c254928c7cf4845bb0e0e9414",
+            "key": "php-darwin-source-v1-05f4958bedc67001843ea6a703ab8a4bdfd8da91149674a36fd5913eeeaba11e",
             "inputs": {
               "environment": {
                 "arch": "arm64",
@@ -2111,7 +2111,7 @@
         "libomp": {
           "version": "23.1.2",
           "source": {
-            "key": "php-darwin-source-v1-678d7a5797f4b796d1e7d163824c68065d7991fef56df245395da3f46550f286",
+            "key": "php-darwin-source-v1-6aedc1c6a9d393b09bf5bfbfef63baf301e9b78fe32abac1c5d1d4c358fbd7a7",
             "inputs": {
               "environment": {
                 "arch": "arm64",
@@ -2194,7 +2194,7 @@
         "snappy": {
           "version": "1.3.1",
           "source": {
-            "key": "php-darwin-source-v1-2450febf06969c2146caa0c90b9bae9a06e92bde22dfb3dfc1d6d579f3bc12f7",
+            "key": "php-darwin-source-v1-da8d464031ebdc36258d0a9cc2a32f020ea68db064efd1326c154cc46a5dad66",
             "inputs": {
               "environment": {
                 "arch": "arm64",
@@ -2240,6 +2240,16 @@
               ]
             },
             "sha256": "a04a9ae186df03d3ab4bc6390cbfe9f91db874fafd6f18b42144cfa3ce3de912"
+          }
+        },
+        "c-ares": {
+          "version": "1.34.8",
+          "bottle": {
+            "formula": "c-ares",
+            "version": "1.34.8",
+            "tag": "arm64_sonoma",
+            "sha256": "df0ce513f28c6a9b16077b89e8d5468603c9683b29bed4f1df7f76ad0af14930",
+            "url": "https://ghcr.io/v2/homebrew/core/c-ares/blobs/sha256:df0ce513f28c6a9b16077b89e8d5468603c9683b29bed4f1df7f76ad0af14930"
           }
         },
         "shivammathur/php/bison@2.7": {
@@ -2311,15 +2321,15 @@
         "pkgconf": {
           "version": "3.0.7",
           "source": {
-            "key": "php-darwin-source-v1-5cb9648a80509a23e94581ef1da221bbec8ee0011f2b1cac3ea24472d23b31bf",
+            "key": "php-darwin-source-v1-c6a895b5c285bb416d72a1be8233f40d7b90aa235ef7fb9bf89b10ff02e338f5",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
                 "macos": "15",
                 "prefix": "/usr/local",
-                "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "26.2",
+                "homebrew": "Homebrew 6",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
                 "buildEnv": {
                   "CC": "",
                   "CXX": "",
@@ -2339,7 +2349,7 @@
               "recipe": "77aab95d75c05fb99fba5d1c0bbefb2540f6eadd7dc2b236661e311ece316901",
               "dependencies": []
             },
-            "sha256": "d9dbbaf76f6e3aff95163ae13fb5a7cd643a59bfc6d07c56698acedfe6d01e15"
+            "sha256": "319bc3fd169f7c22e10db0a8b009e501d4c1d807f61263346ad7202cbd29fc6a"
           }
         },
         "bison": {
@@ -2375,15 +2385,15 @@
         "openssl@3": {
           "version": "3.6.4",
           "source": {
-            "key": "php-darwin-source-v1-8f8d8a00c22810690e29f4dabf309aae6e1296099a60be71501ed8268f4dfe2d",
+            "key": "php-darwin-source-v1-e4142882fb7aa67be1fbda0009535d05900f2e3e3d9e588440f0aea8f8c9dc36",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
                 "macos": "15",
                 "prefix": "/usr/local",
-                "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "26.2",
+                "homebrew": "Homebrew 6",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
                 "buildEnv": {
                   "CC": "",
                   "CXX": "",
@@ -2412,7 +2422,7 @@
                 }
               ]
             },
-            "sha256": "f080a35580c9bf0a0107ceb1c8bb59bf034bfa29efb383677a3f6378008b80df"
+            "sha256": "cadb0d8a5a3d5067082d1853fa2e59ee68082b15e09314739371dac5fd110416"
           }
         },
         "apr-util": {
@@ -2438,15 +2448,15 @@
         "libnghttp2": {
           "version": "1.70.0",
           "source": {
-            "key": "php-darwin-source-v1-ced12cb3898457d8df2c3f3671e580aa42ece0b62e56848e3e7cb2e59e3e3551",
+            "key": "php-darwin-source-v1-e03013e24d50a5c7a5e45c48cc5ec8c9f0d8c8f64809f12cde27a37357ef5c29",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
                 "macos": "15",
                 "prefix": "/usr/local",
-                "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "26.2",
+                "homebrew": "Homebrew 6",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
                 "buildEnv": {
                   "CC": "",
                   "CXX": "",
@@ -2475,21 +2485,21 @@
                 }
               ]
             },
-            "sha256": "9ec11e0b6bc8b40d0fef3ed9ac583376573d51291c6509b1588fd74ee0755eb6"
+            "sha256": "8876b18ea795b7500ad55df865c89afa40f065464fc435785c688f4eaaa0f307"
           }
         },
         "pcre2": {
           "version": "10.48",
           "source": {
-            "key": "php-darwin-source-v1-156bbb558dc7d3aae1100f8eb54194091c000eb617b5ccbfd6408d014148944a",
+            "key": "php-darwin-source-v1-0018291f04172e33d2db3708f57206e262b219aada554562a30c25ba4c332b99",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
                 "macos": "15",
                 "prefix": "/usr/local",
-                "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "26.2",
+                "homebrew": "Homebrew 6",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
                 "buildEnv": {
                   "CC": "",
                   "CXX": "",
@@ -2509,7 +2519,7 @@
               "recipe": "e73bd01ce8886a7f8e0466373f596f4c13a351f1d3a77d576703a3b4100a4ae9",
               "dependencies": []
             },
-            "sha256": "13fb4c77ca292cedcbb117f7735fcea85fc0fa1fe94d57638731c425051bd75c"
+            "sha256": "4d089139185aaab4d1d055952166101d9ce5b6405f9e97ae63c7c260108fdeb3"
           }
         },
         "httpd": {
@@ -2525,15 +2535,15 @@
         "re2c": {
           "version": "4.6",
           "source": {
-            "key": "php-darwin-source-v1-dbb4beaa65c9f4f716581f7d99a64a6e02584fb1544ee588ae08718ae6ca97ba",
+            "key": "php-darwin-source-v1-323db05cdda02764a936aaf8bec704bc9c25c8c6ba44ca1781f8f350080a2529",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
                 "macos": "15",
                 "prefix": "/usr/local",
-                "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "26.2",
+                "homebrew": "Homebrew 6",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
                 "buildEnv": {
                   "CC": "",
                   "CXX": "",
@@ -2553,7 +2563,7 @@
               "recipe": "d444af2c609e8abd875767cfdeaf646f64836f3d9c5c71fffb1701737b4c66db",
               "dependencies": []
             },
-            "sha256": "0b3cc5cc8630185e2954166bbdedd73c7f8c946664a3d05dd26e379cf3618e66"
+            "sha256": "82e09426d3a160353a0773ab701f52b96aa7659a8b055ff93509462d3f59af9e"
           }
         },
         "aspell": {
@@ -2579,15 +2589,15 @@
         "libnghttp3": {
           "version": "1.18.0",
           "source": {
-            "key": "php-darwin-source-v1-4171478c388303cb77b1ea7d9ce8c4ab38ce1d2b5ea722a63fd2a857ae575ff7",
+            "key": "php-darwin-source-v1-aed8c2a4f6b2036a0d3ca41b04e0a5f7542734650205e52a1400ef13ba20dd78",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
                 "macos": "15",
                 "prefix": "/usr/local",
-                "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "26.2",
+                "homebrew": "Homebrew 6",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
                 "buildEnv": {
                   "CC": "",
                   "CXX": "",
@@ -2616,13 +2626,13 @@
                 }
               ]
             },
-            "sha256": "bd800669cfe1765d4398dca1010b86645e5321d2649fbebcadfd7c28f2f0351c"
+            "sha256": "9e0ee613d480f8d9787dc49e6a909dd801a4c0fcaf812d351d9802a743cfd2a2"
           }
         },
         "libngtcp2": {
           "version": "1.25.0",
           "source": {
-            "key": "php-darwin-source-v1-4f6315c9c74e0b999005c4a8f3df90687a9b77ec6d20989dc9d95b570b90e3db",
+            "key": "php-darwin-source-v1-bd93db90219c7ce64d8b514cfb68b163e394713ba39ddcc2e6ec628bb4ddc13c",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
@@ -2701,7 +2711,7 @@
         "libssh2": {
           "version": "1.11.1_5",
           "source": {
-            "key": "php-darwin-source-v1-45c130d5a1867b18489b80aa6097b25409baab895622eca6477f5cb30d1672d8",
+            "key": "php-darwin-source-v1-efbf09ccf59f909b8228e910e63c4fa195168191f8ef70844f482f6604c3d821",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
@@ -2762,15 +2772,15 @@
         "lz4": {
           "version": "1.10.0",
           "source": {
-            "key": "php-darwin-source-v1-86143da9ebecc186035a00302ad93c66f68248afe904c7bb35c2c24a6b955a63",
+            "key": "php-darwin-source-v1-22d38eec30ca47fa45740290b6a4b9f8f90978a75c8d35e6068ddc7911f730ad",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
                 "macos": "15",
                 "prefix": "/usr/local",
-                "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "26.2",
+                "homebrew": "Homebrew 6",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
                 "buildEnv": {
                   "CC": "",
                   "CXX": "",
@@ -2799,13 +2809,13 @@
                 }
               ]
             },
-            "sha256": "23b655e132b7bb23b640be600bbb29385a1064d48db45965b8bb0627c121ab0e"
+            "sha256": "f787c73a3cae5c21cdbd6e9aaafbb53c38cac837deb80adc59b075e47e250a6f"
           }
         },
         "xz": {
           "version": "5.8.4",
           "source": {
-            "key": "php-darwin-source-v1-e8202fd43f9b6e6d3263d9ed0610cf1fafa6ba5214c846f50c2237157c9c40ad",
+            "key": "php-darwin-source-v1-388bced39115eae01492bf127671c93f3d359091f2648421be06dcb9c7db84f3",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
@@ -2849,7 +2859,7 @@
         "curl": {
           "version": "8.22.0",
           "source": {
-            "key": "php-darwin-source-v1-60d23c223de554934c02a6b0c27aa42dc9db196011dcb40c95ec4a8a97b683a5",
+            "key": "php-darwin-source-v1-efac63b2aa28f4ce075eefca030617877f7c6914b3a8c225d1250dcb833cd58b",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
@@ -3072,15 +3082,15 @@
         "libpng": {
           "version": "1.6.58",
           "source": {
-            "key": "php-darwin-source-v1-a87f0102006b95f26c09b51172892cc68a7a87e74bb9e05b4e4d8b90c5812b59",
+            "key": "php-darwin-source-v1-a23035649f466c470369697d9efe598199c6d693f01d900831ed298140413db6",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
                 "macos": "15",
                 "prefix": "/usr/local",
-                "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "26.2",
+                "homebrew": "Homebrew 6",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
                 "buildEnv": {
                   "CC": "",
                   "CXX": "",
@@ -3100,7 +3110,7 @@
               "recipe": "115e10fcc12c2f38d6f8a42fa32aa709fecb799719b1c78ddfc828f81aa9d43a",
               "dependencies": []
             },
-            "sha256": "64b085bbb630a5feb2c04732a9936f328a5d6c942df4849ab9225698bb135ff0"
+            "sha256": "b6bca3ec402a003905c0ba879e729c033da4370eb648a35206748ad10db3dcf1"
           }
         },
         "freetype": {
@@ -3116,15 +3126,15 @@
         "json-c": {
           "version": "0.19",
           "source": {
-            "key": "php-darwin-source-v1-637c60460d0cba71966ac269bac4357c318858afd5af69429b8ac4de55ea0e09",
+            "key": "php-darwin-source-v1-217ed3ed7fb22cc3bdfcbda71e37a4135415f352efeae76b50c5fe494a3c0c38",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
                 "macos": "15",
                 "prefix": "/usr/local",
-                "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "26.2",
+                "homebrew": "Homebrew 6",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
                 "buildEnv": {
                   "CC": "",
                   "CXX": "",
@@ -3153,21 +3163,21 @@
                 }
               ]
             },
-            "sha256": "49114b02efee5d4ae42f0244795c874ac3a9d03281ab227e51ee628d4b2644a0"
+            "sha256": "07fa55c2a0eb54197e0fb0b26954ac309bd45015c92e6899229fde443d920c16"
           }
         },
         "libunistring": {
           "version": "1.4.2",
           "source": {
-            "key": "php-darwin-source-v1-c2b027f033d9c6f877b62ea01df4a9b213f6617b2e91a0a3a10c018cf6f32d7f",
+            "key": "php-darwin-source-v1-31bd1d7a3198f69f70af10d6a1d6dda6ad032b56a233354ffe6abe8019a52c35",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
                 "macos": "15",
                 "prefix": "/usr/local",
-                "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "26.2",
+                "homebrew": "Homebrew 6",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
                 "buildEnv": {
                   "CC": "",
                   "CXX": "",
@@ -3187,21 +3197,21 @@
               "recipe": "1b735c95dbb9da047cd3fa3c73821dcb73a7fa1f20397350e9069df01ea0f245",
               "dependencies": []
             },
-            "sha256": "475a2e5bd7fcecf180146095fbca70fb192f16c06fdf8ad76b70fbab842b98d6"
+            "sha256": "f768ea4b9a8a3e0aa58c3d10548517cb799d53d5292e3fbb5737710873f6aecc"
           }
         },
         "gettext": {
           "version": "1.0",
           "source": {
-            "key": "php-darwin-source-v1-41dce0ecbc2fed8dec9f5be7979a9069585ee62390dad368ab0104a7b3cff3f3",
+            "key": "php-darwin-source-v1-293523b16602998bebaa9cd69fa036daac7251d865dc50642a861833f60e6351",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
                 "macos": "15",
                 "prefix": "/usr/local",
-                "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "26.2",
+                "homebrew": "Homebrew 6",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
                 "buildEnv": {
                   "CC": "",
                   "CXX": "",
@@ -3238,7 +3248,7 @@
                 }
               ]
             },
-            "sha256": "da635aa7ec50b04694ba20729160d120a8278e6d3f1ae783c7bb46e1cada0d72"
+            "sha256": "5394c5c81cf4338836d47b8f4bd370c2a408e6c7e73df992cb07e5b2aedbc6e2"
           }
         },
         "fontconfig": {
@@ -3264,15 +3274,15 @@
         "jpeg-turbo": {
           "version": "3.2.0",
           "source": {
-            "key": "php-darwin-source-v1-37196caa07e3c604bb36adae2b9191e716e22913aec888bb2ba92220be571e9a",
+            "key": "php-darwin-source-v1-fbcbf602dd3023d9b5a48b903fa7a1774fe3fb0f72fc8775beb93195fa7e8853",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
                 "macos": "15",
                 "prefix": "/usr/local",
-                "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "26.2",
+                "homebrew": "Homebrew 6",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
                 "buildEnv": {
                   "CC": "",
                   "CXX": "",
@@ -3309,21 +3319,21 @@
                 }
               ]
             },
-            "sha256": "56845bdfb28eceb28f28b6acf0a94cc231ebcc675f4c9869a0960183088fdbf5"
+            "sha256": "c35b6563078e37b15d25c925243ea3b02870c69cfa848a1176aa39fd9e454f80"
           }
         },
         "ninja": {
           "version": "1.13.2",
           "source": {
-            "key": "php-darwin-source-v1-15d347a989a3c2d1fc54cef8f5c56f119999d0c4ecb218f2e7165d6483b81cd9",
+            "key": "php-darwin-source-v1-dc66ced9921553fb52cfd472f86a02a7fa212c29b0fc11a3ffaa995f6fb34cdc",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
                 "macos": "15",
                 "prefix": "/usr/local",
-                "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "26.2",
+                "homebrew": "Homebrew 6",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
                 "buildEnv": {
                   "CC": "",
                   "CXX": "",
@@ -3343,21 +3353,21 @@
               "recipe": "72dcae129220dd8e327ed51ab5546f4be3ae179715ca1e7880d8af3c1acbcc42",
               "dependencies": []
             },
-            "sha256": "0ca8b0e372a7b771f06897c418fe02f9dfabd56d35c27cae90cf7ae45146d5b8"
+            "sha256": "c6773263c8b886ae9d8535098bf6bfbf244d37fea00eb3329e238b1281a91cc8"
           }
         },
         "mpdecimal": {
           "version": "4.0.1",
           "source": {
-            "key": "php-darwin-source-v1-cf8e7e68e680f77b8d3e35e181c29dcdd04e4a34fc408424f40285e3e2cb5e54",
+            "key": "php-darwin-source-v1-d70073a531c20ff17b3fc6a7bc24c34fd16525b7468e0b293513b01f7aa0a9f0",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
                 "macos": "15",
                 "prefix": "/usr/local",
-                "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "26.2",
+                "homebrew": "Homebrew 6",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
                 "buildEnv": {
                   "CC": "",
                   "CXX": "",
@@ -3377,21 +3387,21 @@
               "recipe": "283cd6ec52f50947e75406ab59481818bef4c46f8d48244578b55edea3b9cd9e",
               "dependencies": []
             },
-            "sha256": "27c0f50eb4ff01c7819778963b641965c01a7ee976d3aaa4fb5704c9a377f17f"
+            "sha256": "3e658c61bd0733b649314d8233a4a15b6dc61c3710365502b2bb1a90abdc53f2"
           }
         },
         "readline": {
           "version": "8.3.6",
           "source": {
-            "key": "php-darwin-source-v1-d59b9e1de3fddeea9094bd348af7eec66a421ca7f2716dab6194064cc298013e",
+            "key": "php-darwin-source-v1-4c1ae0df35d65b12a773cfca2556141a1b08d52d9a2a76331bc57e5d11a14cc6",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
                 "macos": "15",
                 "prefix": "/usr/local",
-                "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "26.2",
+                "homebrew": "Homebrew 6",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
                 "buildEnv": {
                   "CC": "",
                   "CXX": "",
@@ -3411,7 +3421,7 @@
               "recipe": "1b591f5efee815317e9d37d213148d971e4768e5e7784b0c0c64f9acbe0bdbce",
               "dependencies": []
             },
-            "sha256": "d4bf8c9135dcace240d38c6d2a4e0f935f8034f227fe53e1088d1105e00a9d1b"
+            "sha256": "d657d12f1eb0fb21d14435c80512cefe28e0c42f9d875718b459ee8999c990d0"
           }
         },
         "sqlite": {
@@ -3447,7 +3457,7 @@
         "libvmaf": {
           "version": "3.2.1",
           "source": {
-            "key": "php-darwin-source-v1-11e3dfd1f889dd1caa72ee49b9d35710f857eb56b35155e01ccbe0e4f44720c0",
+            "key": "php-darwin-source-v1-4635061b2bd0186b6679a9dd68f68c5344bffa98e8f92ba5d5c1e8bd2e0445c8",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
@@ -3764,15 +3774,15 @@
         "aom": {
           "version": "3.15.1",
           "source": {
-            "key": "php-darwin-source-v1-53a9f554142f062b50292166897bb17136f92e8593f5e479f79dfd35097c915b",
+            "key": "php-darwin-source-v1-26fe5e6a2bd0fdde31a2a21e451b8d1394e581b0a135c12f2df6ab65493092da",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
                 "macos": "15",
                 "prefix": "/usr/local",
-                "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "26.2",
+                "homebrew": "Homebrew 6",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
                 "buildEnv": {
                   "CC": "",
                   "CXX": "",
@@ -3825,7 +3835,7 @@
                 }
               ]
             },
-            "sha256": "7267cb1b128e2d0dd23dd2dd3a512aa18fe61e4b82a0ca0da453e82dc7f67f6a"
+            "sha256": "350657e9531b5e5dd09a3ffb14bd4f95daa2990ba55554e095cf4766fcde831e"
           }
         },
         "dav1d": {
@@ -3851,15 +3861,15 @@
         "giflib": {
           "version": "6.1.3",
           "source": {
-            "key": "php-darwin-source-v1-2ace9a93490a31c604ff587b4b51eb044d0a956402a5e013336abb3bf70e3378",
+            "key": "php-darwin-source-v1-100dec6b0777a059b9102e47a0503a91c0615d670eff576948af9a1c42001fe1",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
                 "macos": "15",
                 "prefix": "/usr/local",
-                "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "26.2",
+                "homebrew": "Homebrew 6",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
                 "buildEnv": {
                   "CC": "",
                   "CXX": "",
@@ -3879,21 +3889,21 @@
               "recipe": "0b35007d1ef5c142a64b57c17494bdc2ffedafa849140c558df485403b23d844",
               "dependencies": []
             },
-            "sha256": "8b8715999f2288c5d6091d2fd5b9ef6e526cb6906ddcb3e7b5d5e2e72583edf0"
+            "sha256": "e2a8a2e91e2075e5d9feb4aad4f9d59f01ec5f98b3a1749533504394e55905e8"
           }
         },
         "webp": {
           "version": "1.6.0",
           "source": {
-            "key": "php-darwin-source-v1-588cbf73005e27528c8f24408464362f7c812b615fe3900447c3d80ac817162d",
+            "key": "php-darwin-source-v1-4d41ebc45c4b4a5214f6e230259caf7b1009771b6a3f1fe5e1dfc133a84e5d47",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
                 "macos": "15",
                 "prefix": "/usr/local",
-                "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "26.2",
+                "homebrew": "Homebrew 6",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
                 "buildEnv": {
                   "CC": "",
                   "CXX": "",
@@ -3946,21 +3956,21 @@
                 }
               ]
             },
-            "sha256": "27d94c8ee26a3159fd163a9b0235d1b6c719c77a3441f86252985408ff883fac"
+            "sha256": "f8e28c3b4161987cef4f669e6ea0402f8280cb3e1e76802bbea34b5645127f3e"
           }
         },
         "libtiff": {
           "version": "4.7.2",
           "source": {
-            "key": "php-darwin-source-v1-3c153552df08a7f592bcef8dadee19667da2434ff292a749a8c91492c3300d64",
+            "key": "php-darwin-source-v1-2b473d87e7f4881426d2e87991b4c6e98f4129562c0916a56464ff05b0965368",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
                 "macos": "15",
                 "prefix": "/usr/local",
-                "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "26.2",
+                "homebrew": "Homebrew 6",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
                 "buildEnv": {
                   "CC": "",
                   "CXX": "",
@@ -4078,7 +4088,7 @@
                 }
               ]
             },
-            "sha256": "e41079f6ce4b0d00e4448d30ac77bbf8e639a508f82db61d74c27f5a2ca5e6f2"
+            "sha256": "af19df5c781aca7e64775d4bd84d57f324ecec95275727eeee576f0339f303f0"
           }
         },
         "gd": {
@@ -4094,15 +4104,15 @@
         "automake": {
           "version": "1.19",
           "source": {
-            "key": "php-darwin-source-v1-c22522ffd759a3e894df397f2e613953b0294bb640f82d6cafe8c1aea3ab2690",
+            "key": "php-darwin-source-v1-0dce11c17b06b1512fc2618e1e7d7b2d33c4f09063e9fdd367b9351f85a72134",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
                 "macos": "15",
                 "prefix": "/usr/local",
-                "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "26.2",
+                "homebrew": "Homebrew 6",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
                 "buildEnv": {
                   "CC": "",
                   "CXX": "",
@@ -4149,21 +4159,21 @@
                 }
               ]
             },
-            "sha256": "f3f5e4cbf6044c1cab4d08ccc083a648817135ed6430ebe6b87342c242eb64c7"
+            "sha256": "9bd40f51b20293b325a730f88d6e59f348122ccc9d28a86ce323279a5ad52ce8"
           }
         },
         "gmp": {
           "version": "6.3.0",
           "source": {
-            "key": "php-darwin-source-v1-4fe6baf6dfa9d21d17f87a6d28ef19ca503c87e631f55cb870c2a5182a06cf7d",
+            "key": "php-darwin-source-v1-c5b71b168683f970fd6ab23c3d20c6b9e1d6c4361e08a413c5859aa4fa7a6b10",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
                 "macos": "15",
                 "prefix": "/usr/local",
-                "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "26.2",
+                "homebrew": "Homebrew 6",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
                 "buildEnv": {
                   "CC": "",
                   "CXX": "",
@@ -4255,7 +4265,7 @@
                 }
               ]
             },
-            "sha256": "b46106cd2dea8f8778a170f22f32913a8db9151faef23a8aa53a69aaeb4a28c9"
+            "sha256": "9826780c88d173d91b80cb1640e6b229dd68c20e722754b204addb27e6aec7b3"
           }
         },
         "icu4c@78": {
@@ -4361,15 +4371,15 @@
         "libx11": {
           "version": "1.8.13",
           "source": {
-            "key": "php-darwin-source-v1-76db92f8cd228b050576072c060ab0044c453b5e8dc537b1a6890611373e3182",
+            "key": "php-darwin-source-v1-2828e37e707250c707999d428e1bd2c153e740f9e69c7a371081c409db674d21",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
                 "macos": "15",
                 "prefix": "/usr/local",
-                "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "26.2",
+                "homebrew": "Homebrew 6",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
                 "buildEnv": {
                   "CC": "",
                   "CXX": "",
@@ -4494,7 +4504,7 @@
                 }
               ]
             },
-            "sha256": "e9024f2439e30b2903cf5f7d1ab6781fba6f6b95b5a31cfb0ba2040bfc0522b8"
+            "sha256": "508ad0e5fa1b440ef90b20c6b928cb163be7b8ee00d94286398a1bf4f7a531f3"
           }
         },
         "libxpm": {
@@ -4520,15 +4530,15 @@
         "openldap": {
           "version": "2.7.1",
           "source": {
-            "key": "php-darwin-source-v1-c844c3b5d2000ab7a7e3e368ccaeacda0b7d9b548a59885913d56c480e7e8ae0",
+            "key": "php-darwin-source-v1-968c709c44c13dc7ed397f559deea690c635b76192988b66bdd8d0ef20ad51a0",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
                 "macos": "15",
                 "prefix": "/usr/local",
-                "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "26.2",
+                "homebrew": "Homebrew 6",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
                 "buildEnv": {
                   "CC": "",
                   "CXX": "",
@@ -4575,7 +4585,7 @@
                 }
               ]
             },
-            "sha256": "04a6ab2cc4f9ae5634b60efc210bfd1d9625c8257927cf26aa9f637ee858ee8b"
+            "sha256": "ad7d584696c80104e1e9abdd75e68638476c442ba3930bc4ffcdd806b6f2d8ec"
           }
         },
         "pcre": {
@@ -4671,15 +4681,15 @@
         "gcc": {
           "version": "16.2.0",
           "source": {
-            "key": "php-darwin-source-v1-3562e9a019d55e1ad52dba6a1852ec8935958cc6e59e3835adef4b9f90aeaf35",
+            "key": "php-darwin-source-v1-4deaaeba49cb00dff88d7e2189966b52786ddef6268c410dfa842ce3e2b82ee2",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
                 "macos": "15",
                 "prefix": "/usr/local",
-                "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "26.2",
+                "homebrew": "Homebrew 6",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
                 "buildEnv": {
                   "CC": "",
                   "CXX": "",
@@ -4816,7 +4826,7 @@
                 }
               ]
             },
-            "sha256": "b09299d1756ef6aee8bf99f30f465cf5630bad13720a367ecc9dd2942895c616"
+            "sha256": "450caaedc1b2764a28d09f805704aec75cd2ca98578d165d1ccfcb3a32a65de0"
           }
         },
         "capstone": {
@@ -4852,15 +4862,15 @@
         "libde265": {
           "version": "1.1.3",
           "source": {
-            "key": "php-darwin-source-v1-cf66a61087aaf5c93e16d87ac8a64c8960b5c4fdbfb7cdb35076a78c6168366b",
+            "key": "php-darwin-source-v1-8753894248346c84ecfb95ef20fd2b8ceadb3edcf41708d67a7cfe263cd758a3",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
                 "macos": "15",
                 "prefix": "/usr/local",
-                "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "26.2",
+                "homebrew": "Homebrew 6",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
                 "buildEnv": {
                   "CC": "",
                   "CXX": "",
@@ -4889,21 +4899,21 @@
                 }
               ]
             },
-            "sha256": "b1760d9ae8d7a1a2a41024b7a3df0f20dfca53def43039a9837212908650a0b4"
+            "sha256": "160a254c799bc2787c30dc843c3684ea4ec8c4fec45a09a5d046aa006dae640c"
           }
         },
         "x265": {
           "version": "4.3",
           "source": {
-            "key": "php-darwin-source-v1-b089685dcb5e5fc426a5751dd3040a746bb3eba5f2ecb3ab5848bd88fef809c3",
+            "key": "php-darwin-source-v1-79648d46331aa617b767d79d8560ae0a6a588f6b2401c3d74fcef892cc6567b9",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
                 "macos": "15",
                 "prefix": "/usr/local",
-                "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "26.2",
+                "homebrew": "Homebrew 6",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
                 "buildEnv": {
                   "CC": "",
                   "CXX": "",
@@ -4940,13 +4950,13 @@
                 }
               ]
             },
-            "sha256": "e235415efc517795a9a7f60e4659a9c1db32ee9ec04dfca7886a3d854e7eed9c"
+            "sha256": "5d9584d4703619084ea019fd17b3d3c0ac24b0c820e3dec3160670b4bcebc71f"
           }
         },
         "libheif": {
           "version": "1.23.5",
           "source": {
-            "key": "php-darwin-source-v1-792477ee3b9bdd1ab7568ec9ea737576ae2546fe0bd08ef5ee21baf3960f8fed",
+            "key": "php-darwin-source-v1-3072099d9ec53d16ae2cbd76deb79e7706f4508d32868c6c120f585e5b1b48d3",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
@@ -5200,7 +5210,7 @@
         "little-cms2": {
           "version": "2.19.1",
           "source": {
-            "key": "php-darwin-source-v1-4e16f8e412232b56957f8ad34f6fc40f0d08e9dffa229ea19a6d61794e97f229",
+            "key": "php-darwin-source-v1-8c18b81064e8b3d6c93ccc2a67da4e78e038450f6bf26afa60173639d4439f20",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
@@ -5397,7 +5407,7 @@
         "imagemagick": {
           "version": "7.1.2-31",
           "source": {
-            "key": "php-darwin-source-v1-252d9bb356fedd02f8e3227a894a56d336b0d0751d9b887a6bd541a57d2d10a5",
+            "key": "php-darwin-source-v1-f1739757440bc32258f3726efa34cd645f5c543e43f3b3a3d4f4f4e6f6215ade",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
@@ -5871,15 +5881,15 @@
         "libomp": {
           "version": "23.1.2",
           "source": {
-            "key": "php-darwin-source-v1-dd52cc2a2d5257dc013c2a2380cd2ba8bf808a2ea1b50791e337de90e2298404",
+            "key": "php-darwin-source-v1-2e37cff33b4c98e01f3c2d319fb2371f8e7033199a78acac56c436fb0a2ba8c2",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
                 "macos": "15",
                 "prefix": "/usr/local",
-                "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "26.2",
+                "homebrew": "Homebrew 6",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
                 "buildEnv": {
                   "CC": "",
                   "CXX": "",
@@ -5908,7 +5918,7 @@
                 }
               ]
             },
-            "sha256": "e7b4d3e6bc75de013d959466d6b4413ed4962186c085065b988138b9fab3b303"
+            "sha256": "ee5018383a096aa1f12a2049c2a88e7dffcd3c200ce889fd5c56cc99a0b858e9"
           }
         },
         "libevent": {
@@ -5954,15 +5964,15 @@
         "snappy": {
           "version": "1.3.1",
           "source": {
-            "key": "php-darwin-source-v1-9f9cd2c62c659a2e3b010c21d713893a7580bec936decbf20705f4859f269b6b",
+            "key": "php-darwin-source-v1-f666a30ce28879195cbf27d40831412bc7af4a7aca620a385e1ba1951ddfe643",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
                 "macos": "15",
                 "prefix": "/usr/local",
-                "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "26.2",
+                "homebrew": "Homebrew 6",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
                 "buildEnv": {
                   "CC": "",
                   "CXX": "",
@@ -5999,7 +6009,17 @@
                 }
               ]
             },
-            "sha256": "1180d92d14febac31318ff1120226513838a6661f4ece1e8921bcd9bdffd86dc"
+            "sha256": "c118c24d47172b84cab97505b36461f0ea96d3ea5230bf503df4889e2414e752"
+          }
+        },
+        "c-ares": {
+          "version": "1.34.8",
+          "bottle": {
+            "formula": "c-ares",
+            "version": "1.34.8",
+            "tag": "sonoma",
+            "sha256": "38a79d86a4eeab5d3f1fdc017a6d4a1fc19c01d09c34f795f3bde6811eb5c1a5",
+            "url": "https://ghcr.io/v2/homebrew/core/c-ares/blobs/sha256:38a79d86a4eeab5d3f1fdc017a6d4a1fc19c01d09c34f795f3bde6811eb5c1a5"
           }
         },
         "shivammathur/php/bison@2.7": {
