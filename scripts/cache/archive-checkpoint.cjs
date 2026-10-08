@@ -8,6 +8,8 @@ const { command, brewSource, environment, recipeHash } = require('./source-bottl
 const { ReleaseCache } = require('./source-bottle-releases.cjs');
 const { recordMetric } = require('../lib/build-metrics.cjs');
 
+// Earlier archives omitted PHP opt aliases even when their receipts declared them.
+const INPUT_SCHEMA = 2;
 const sha = value => crypto.createHash('sha256').update(value).digest('hex');
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
@@ -61,7 +63,7 @@ function fingerprint() {
       if (!relative || path.isAbsolute(relative) || relative.split('/').includes('..')) throw new Error('Unsafe extension checkpoint path');
       return { name, type, path: relative, sha256: sha(fs.readFileSync(path.join(platform.prefix, relative))) };
     });
-  return { schema: 1, php, arch, build, ts, revision, phpCommit, extensionsCommit,
+  return { schema: INPUT_SCHEMA, php, arch, build, ts, revision, phpCommit, extensionsCommit,
     coreCommit: process.env.HOMEBREW_CORE_COMMIT || '',
     platform, extensions, packages: record.packages.map(({ prefix, ...item }) => ({ ...item,
       recipe: recipeHash(item.recipe), payload: kegDigest(prefix) })) };
@@ -124,7 +126,7 @@ function earlyCompatible(inputs, expected) {
   // remain fixed across partial reruns. Never infer payload equality from just
   // a PHP version, or reuse an older run before inspecting installed kegs.
   return /^[a-f0-9]{40}$/.test(expected.coreCommit || '') &&
-    ['php', 'arch', 'build', 'ts', 'phpCommit', 'extensionsCommit', 'coreCommit']
+    ['schema', 'php', 'arch', 'build', 'ts', 'phpCommit', 'extensionsCommit', 'coreCommit']
       .every(field => inputs?.[field] === expected[field]) &&
     JSON.stringify(canonical(inputs.platform)) === JSON.stringify(canonical(expected.platform));
 }
@@ -228,7 +230,7 @@ async function main(stage) {
   };
   if (stage === 'early') {
     const env = process.env;
-    const expected = {php: env.PHP_VERSION, arch: env.ARCH, build: env.BUILD, ts: env.TS, revision: env.GITHUB_SHA,
+    const expected = {schema: INPUT_SCHEMA, php: env.PHP_VERSION, arch: env.ARCH, build: env.BUILD, ts: env.TS, revision: env.GITHUB_SHA,
       phpCommit: env.HOMEBREW_PHP_COMMIT, extensionsCommit: env.HOMEBREW_EXTENSIONS_COMMIT,
       coreCommit: env.HOMEBREW_CORE_COMMIT, platform: environment()};
     const result = await restoreEarly(cache, expected, builds);

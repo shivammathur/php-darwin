@@ -58,6 +58,20 @@ test('archive fingerprints ignore php-darwin revisions but cover software and pl
   assert.equal(checkpointKey({ a: 1, b: { c: 2, d: 3 } }), checkpointKey({ b: { d: 3, c: 2 }, a: 1 }));
 });
 
+test('archives from before PHP alias retention cannot be reused through either checkpoint path', async t => {
+  const f = fixture(t);
+  const expected = {...f.inputs, schema: 2};
+  assert.notEqual(checkpointKey(f.inputs), checkpointKey(expected));
+  const restored = path.join(f.root, 'restore');
+  assert.equal((await restoreCheckpoint(f.cache, expected, restored, {temporary: f.root})).hit, false);
+  const original = f.cache.api;
+  f.cache.api = async (route, options) => route.startsWith('actions/runs/10/artifacts?') ?
+    {artifacts: [f.artifact]} : original(route, options);
+  delete expected.packages;
+  assert.equal((await restoreEarly(f.cache, expected, restored, {runId: '10', temporary: f.root})).hit, false);
+  assert.equal(fs.existsSync(restored), false);
+});
+
 test('installed keg bytes and links invalidate checkpoints, receipt and SBOM timestamps do not', t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'keg-fingerprint-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));

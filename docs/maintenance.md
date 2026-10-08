@@ -114,8 +114,14 @@ Partial reruns can restore a checkpoint before installing PHP when the run,
 pinned taps/core, architecture, variant and toolchain match. Other runs retain
 the installed-payload comparison. Missing or invalid checkpoints fall through
 to the normal cache/build path.
+The checkpoint input schema also identifies the archive layout; schema 2 rejects
+older checkpoints that omitted PHP opt aliases, without discarding source bottles.
 Archives use Zstd level 19 with `--long=27`; Actions uploads use compression level
 zero. Preserve runtime/development files and licenses under the archive policy.
+PHP aliases come from the installed `INSTALL_RECEIPT.json`. Packaging verifies
+that each alias points to the canonical PHP keg and includes that relative opt
+link in both the archive and its managed-link metadata. This applies to all PHP
+variants and follows the receipt when the unversioned formula moves to a new minor.
 
 ## Publish and installer updates
 

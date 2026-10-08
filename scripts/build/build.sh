@@ -270,6 +270,7 @@ package_cache() {
   local pear_path
   local pecl_extension
   local pecl_extension_dir
+  local php_aliases_file
   local php_src_commit
   local postinstall_path
   local postinstall_candidates_file
@@ -462,6 +463,13 @@ package_cache() {
     printf '%s\t%s\n' "$link_relative" "$link_target" >> "$links_file"
     printf '%s\n' "$link_relative" >> "$archive_paths"
   done
+  # Keg#optlink creates PHP's aliases alongside its canonical opt record.
+  # Keep those exact relative links in the cache and its managed-link inventory.
+  php_aliases_file="$work_dir/php-aliases.tsv"
+  php_darwin_ruby "$script_dir/php-aliases.rb" "$brew_prefix" "$formula" > "$php_aliases_file" || \
+    php_darwin_die 'could not inspect Homebrew PHP aliases'
+  cat "$php_aliases_file" >> "$links_file" || exit 1
+  cut -f1 "$php_aliases_file" >> "$archive_paths" || exit 1
   LC_ALL=C sort -u "$links_file" -o "$links_file" || php_darwin_die 'could not sort Homebrew links'
   awk -F '\t' 'seen[$1]++ { exit 1 }' "$links_file" || php_darwin_die 'Homebrew link plan contains duplicate paths'
   [ -s "$links_file" ] || php_darwin_die 'Homebrew link plan is empty'
@@ -665,6 +673,7 @@ verify_cache() {
   local missing_managed_path
   local output
   local output_bytes
+  local php_aliases_file
   local tap_snapshot
   local tap_path
 
@@ -699,6 +708,12 @@ verify_cache() {
     <(jq -r '.extensions[] | [.name,.type] | @tsv' "$metadata" | LC_ALL=C sort -u); then
     php_darwin_die 'archive metadata omitted a configured cached extension'
   fi
+  php_aliases_file="$work_dir/verify-php-aliases.tsv"
+  php_darwin_ruby "$script_dir/php-aliases.rb" "$brew_prefix" "$formula" > "$php_aliases_file" || \
+    php_darwin_die 'could not verify Homebrew PHP aliases'
+  cmp -s "$php_aliases_file" <(jq -r '.links[] | select(.path | startswith("opt/")) |
+    [.path, .target] | @tsv' "$metadata" | LC_ALL=C sort) || \
+    php_darwin_die 'archive metadata does not match the installed PHP aliases'
   zstd -t "$output" || php_darwin_die 'archive integrity check failed'
   bash "$script_dir/list-archive.sh" "$output" "$contents" || \
     php_darwin_die 'archive contents could not be listed'
