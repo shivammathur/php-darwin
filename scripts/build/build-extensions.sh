@@ -129,6 +129,10 @@ git -C "$extension_tap_path" checkout --detach "$source_commit" || \
 # enough because Homebrew's formula_opt_bin uses the requested name literally.
 abstract_file="$extension_tap_path/Abstract/abstract-php-extension.rb"
 [ -f "$abstract_file" ] || php_darwin_die 'homebrew-extensions abstract formula is missing'
+# An interrupted producer can leave its variant patch in a persistent tap.
+# Checking out the same commit preserves that edit, so restore the pinned base.
+git -C "$extension_tap_path" restore --source="$source_commit" --worktree -- Abstract/abstract-php-extension.rb || \
+  php_darwin_die 'could not restore the pinned extension formula base'
 cp "$abstract_file" "$abstract_backup" || php_darwin_die 'could not back up the extension formula base'
 php_darwin_select_ruby
 "$PHP_DARWIN_RUBY" "$script_dir/extension-formula.rb" "$abstract_file" "$formula" "$config_id" "$version" || \
