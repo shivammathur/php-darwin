@@ -5,6 +5,7 @@ const { install, environment, brewSource, command, readBottle } = require('./sou
 const { ReleaseCache } = require('./source-bottle-releases.cjs');
 const { readLock, validatePlatform, ApprovedDependencies } = require('./approved-dependencies.cjs');
 const { portable } = require('./upstream-bottle-cache.cjs');
+const { supportsPack } = require('../installer/install-extensions.cjs');
 const root = path.resolve(__dirname, '../..');
 const config = name => JSON.parse(fs.readFileSync(path.join(root, 'conf', name), 'utf8'));
 const records = file => fs.readFileSync(path.join(root, 'conf', file), 'utf8').split('\n')
@@ -19,7 +20,8 @@ function roots() {
       result.add(`${packages.tap}/php@${php}${suffix}`);
     }
     const extensions = records(`cached-extensions/${php}`).map(([name]) => name);
-    if (packs.versions.includes(php)) extensions.push(...Object.values(packs.packs).flat().map(extension => extension.name));
+    extensions.push(...Object.entries(packs.packs).filter(([name]) => supportsPack(name, php))
+      .flatMap(([, modules]) => modules.map(extension => extension.name)));
     for (const name of extensions) result.add(`${packages.extension_tap}/${name}@${php}`);
   }
   return [...result].sort();

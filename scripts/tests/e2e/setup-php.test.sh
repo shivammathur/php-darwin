@@ -20,11 +20,14 @@ actual_semver=$(php-config --version) || php_darwin_die 'php-config could not re
 [ "${actual_semver%.*}" = "$version" ] || php_darwin_die "PHP $version is not active"
 
 if [ "${PHP_DARWIN_REQUIRE_PACKS:-false}" = true ]; then
-  php -r 'foreach (["imagick", "mongodb", "igbinary", "msgpack", "memcached"] as $name) {
-    if (!extension_loaded($name)) { fwrite(STDERR, "Missing cached module: $name\n"); exit(1); }
-  }' || php_darwin_die 'optional extension packs were not enabled'
+  optional_modules=$("${PHP_DARWIN_NODE:-node}" - "$script_dir/../../installer/install-extensions.cjs" "$version" <<'NODE'
+const { packs, supportsPack } = require(process.argv[2]);
+console.log(Object.entries(packs).filter(([name]) => supportsPack(name, process.argv[3])).flatMap(([, modules]) => modules).join(' '));
+NODE
+  ) || php_darwin_die 'could not select optional extension modules'
   extension_dir=$(php-config --extension-dir) || exit 1
-  for extension in imagick mongodb memcached; do
+  for extension in $optional_modules; do
+    php -r "exit(extension_loaded('$extension') ? 0 : 1);" || php_darwin_die "$extension was not enabled"
     module="$extension_dir/$extension.so"
     [ -L "$module" ] || php_darwin_die "$extension did not use its separate cache"
     case "$(readlink "$module")" in
@@ -32,6 +35,9 @@ if [ "${PHP_DARWIN_REQUIRE_PACKS:-false}" = true ]; then
       *) php_darwin_die "$extension module is outside the private cache" ;;
     esac
   done
+  case " $optional_modules " in
+    *' swoole '*) php "$script_dir/../helpers/swoole-smoke.php" || php_darwin_die 'Swoole runtime validation failed' ;;
+  esac
 fi
 
 if [ "${PHP_DARWIN_REQUIRE_XDEBUG:-false}" = true ]; then

@@ -57,7 +57,7 @@ function copyHeaders(moduleKeg, module, phpVersion, stage) {
   }
 }
 function packageExtension({ name, php_version, build, thread_safety, architecture, output, extensionDirectory, php }) {
-  if (!Object.hasOwn(packs, name)) throw new Error('Unknown extension pack');
+  key({ name, php_version, build, thread_safety, architecture });
   output = path.resolve(output);
   const prefix = command('brew', ['--prefix']);
   const references = packs[name].map(module => `shivammathur/extensions/${module}@${php_version}`);

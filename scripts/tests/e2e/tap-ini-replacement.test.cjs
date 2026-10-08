@@ -7,7 +7,7 @@ const { command, digest, extensions, extensionIni } = require('../../installer/i
 assert.equal(process.env.GITHUB_ACTIONS, 'true', 'This fixture replaces CI extension installations');
 const version = process.env.PHP_VERSION;
 assert.equal(version, '7.2');
-const names = ['igbinary', 'msgpack', 'imagick', 'memcached', 'mongodb', 'xdebug', 'pcov'];
+const names = ['igbinary', 'msgpack', 'imagick', 'memcached', 'mongodb', 'swoole', 'xdebug', 'pcov'];
 const php = command('which', ['php']);
 const original = digest(fs.readFileSync(fs.realpathSync(php)));
 const scan = path.join(command('brew', ['--prefix']), 'etc/php', version, 'conf.d');
@@ -16,11 +16,11 @@ function verify() {
     foreach (${JSON.stringify(names)} as $name) {
       if (!extension_loaded($name)) { throw new Exception($name . ' not loaded'); }
     }
-    echo "All seven cached modules load without startup warnings\\n";
+    echo "All cached modules load without startup warnings\\n";
   `], { encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.equal(result.stderr, '', 'PHP startup must not emit duplicate-load warnings');
-  assert.equal(result.stdout, 'All seven cached modules load without startup warnings\n');
+  assert.equal(result.stdout, 'All cached modules load without startup warnings\n');
   assert.equal(digest(fs.readFileSync(fs.realpathSync(php))), original);
 }
 verify();

@@ -20,6 +20,7 @@ build/test runners. [conf/cached-extensions](conf/cached-extensions) contains on
 file per PHP minor, with one cached extension name per line.
 
 Imagick, MongoDB and Memcached have separate optional archives for PHP 5.6–8.7.
+Swoole has optional archives for PHP 5.6–8.5, matching the extension tap's formulae.
 They are built against published PHP caches and refreshed independently, so
 extension updates do not require rebuilding PHP or adding libraries to its cache.
 
@@ -40,7 +41,7 @@ curl --fail --location --output install.sh \
   https://github.com/shivammathur/php-darwin/releases/download/php-8.4/install.sh
 bash install.sh 8.4 release nts
 # Optional packs are selected and prepared in parallel by the installer.
-bash install.sh 8.4 release nts "" "imagick, mongodb, memcached"
+bash install.sh 8.4 release nts "" "imagick, mongodb, memcached, swoole"
 ```
 
 PHP package downloads use GitHub Releases first, with a checksum-verified

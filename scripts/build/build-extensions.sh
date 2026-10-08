@@ -29,7 +29,7 @@ extension_types=()
 cached_paths=()
 if [ -n "${EXTENSION_PACK:-}" ]; then
   configured_extensions=$(jq -er --arg name "$EXTENSION_PACK" --arg version "$version" '
-    select(.versions | index($version)) | .packs[$name] | select(type == "array" and length > 0) |
+    select((.pack_versions[$name] // .versions) | index($version)) | .packs[$name] | select(type == "array" and length > 0) |
     .[] | [.name,"extension"] | @tsv' "$script_dir/../../conf/extension-packs.json") || \
     php_darwin_die 'invalid optional extension pack'
 else

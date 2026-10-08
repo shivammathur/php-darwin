@@ -272,10 +272,20 @@ miss records, archive metadata and actual links.
 
 ## Optional extension archives
 
-`cache-extensions.yml` restores published PHP caches and builds Imagick, MongoDB
-and Memcached independently. It never compiles PHP or adds these libraries to
+`cache-extensions.yml` restores published PHP caches and builds Imagick, MongoDB,
+Memcached and Swoole independently. It never compiles PHP or adds these libraries to
 the PHP archives. `conf/extension-packs.json` defines the supported versions and
 the modules belonging to each pack.
+
+`pack_versions` can restrict a pack to a subset of the configured PHP versions.
+Swoole covers PHP 5.6–8.5; the tap has no Swoole formulae for PHP 8.6/8.7.
+Planning, dependency preparation and installation skip unsupported combinations.
+Native Swoole checks exercise shared tables, including the legacy Swoole 2.x API
+used by PHP 5.6, and the timer/event loop on Swoole 4.x and later.
+Before the first Swoole cache campaign,
+run `update-dependencies.yml` to approve its `c-ares` dependency on both architectures.
+Keep the existing core revision by passing `homebrew-core-commit` from
+`conf/dependencies.json` when only adding this dependency.
 
 `update-extensions.yml` checks every configured PHP version every six hours,
 using the same recipe and published-PHP freshness checks as the cache planner.

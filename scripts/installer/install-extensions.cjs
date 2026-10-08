@@ -14,6 +14,10 @@ const packs = Object.fromEntries(Object.entries(configuration.packs).map(([name,
 const origins = ['https://github.com/shivammathur/php-darwin/releases/download/extensions',
   'https://artifacts.php-darwin.setup-php.com/extensions'];
 const hex = /^[a-f0-9]{64}$/;
+function supportsPack(name, version) {
+  return Object.hasOwn(packs, name) && configuration.versions.includes(version) &&
+    (configuration.pack_versions?.[name] || configuration.versions).includes(version);
+}
 function extensionIni({ name, priority = 20 }) {
   if (!/^[a-z][a-z0-9_]*$/.test(name) || !Number.isInteger(priority) || priority < 0 || priority > 99) {
     throw new Error('Invalid extension INI configuration');
@@ -47,6 +51,7 @@ function validateContext(context) {
 function key(entry) {
   validateContext(entry);
   if (!Object.hasOwn(packs, entry.name)) throw new Error('Unknown extension pack');
+  if (!supportsPack(entry.name, entry.php_version)) throw new Error('Unsupported PHP version for extension pack');
   return [entry.name, entry.php_version, entry.build, entry.thread_safety, entry.architecture].join('-');
 }
 function validateEntry(entry) {
@@ -109,8 +114,9 @@ async function download(name, destination, { sha256, bytes, bases = origins,
 }
 async function prefetch(directory, context, requested, options = {}) {
   validateContext(context);
-  const names = [...new Set(requested)];
-  if (!names.length || names.some(name => !Object.hasOwn(packs, name))) throw new Error('Invalid requested extensions');
+  if (!requested.length || requested.some(name => !Object.hasOwn(packs, name))) throw new Error('Invalid requested extensions');
+  const names = [...new Set(requested)].filter(name => supportsPack(name, context.php_version));
+  if (!names.length) return [];
   await fsp.mkdir(directory, { recursive: true, mode: 0o700 });
   const manifestPath = path.join(directory, 'manifest.json');
   await download(`extensions-${context.php_version}-manifest.json`, manifestPath, options);
@@ -493,7 +499,7 @@ function install(directory, name, { phpConfig = 'php-config', php = 'php' } = {}
     fs.rmSync(stage, { recursive: true, force: true });
   }
 }
-module.exports = { packs, extensions, extensionIni, standaloneSource, origins, command, digest, safePath, key, validateContext, validateEntry, phpApi,
+module.exports = { packs, supportsPack, extensions, extensionIni, standaloneSource, origins, command, digest, safePath, key, validateContext, validateEntry, phpApi,
   selectRequested, requestedPacks, validateBase, activate, activateCached, configureModules, enableInstalled, download, prefetch, runtimeContext, inspectTree, packEnvironment, relocateResources, prepareArchive, movePrepared, install };
 if (require.main === module) (async () => {
   const [mode, directory, ...args] = process.argv.slice(2);

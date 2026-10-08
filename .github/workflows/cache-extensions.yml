@@ -25,7 +25,7 @@ on:
           - '8.7'
       extensions:
         description: Space-separated optional extension packs
-        default: imagick mongodb memcached
+        default: imagick mongodb memcached swoole
         type: string
       builds:
         description: Space-separated build types

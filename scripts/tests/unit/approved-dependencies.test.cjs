@@ -84,10 +84,12 @@ test('dependency roots cover every PHP variant, coverage extension and optional-
   assert.equal(items.length, new Set(items).size);
   for (const formula of ['jq', 'zstd', 'shivammathur/php/php@5.6-debug-zts', 'shivammathur/php/php@8.7',
     'shivammathur/extensions/xdebug@5.6', 'shivammathur/extensions/pcov@8.5',
-    'shivammathur/extensions/igbinary@5.6', 'shivammathur/extensions/msgpack@8.7', 'shivammathur/extensions/imagick@8.5']) {
+    'shivammathur/extensions/igbinary@5.6', 'shivammathur/extensions/msgpack@8.7', 'shivammathur/extensions/imagick@8.5',
+    'shivammathur/extensions/swoole@5.6', 'shivammathur/extensions/swoole@8.5']) {
     assert.ok(items.includes(formula), formula);
   }
   assert.ok(!items.includes('shivammathur/extensions/pcov@5.6'));
+  for (const version of ['8.6', '8.7']) assert.ok(!items.includes(`shivammathur/extensions/swoole@${version}`));
 });
 
 test('promotion input requires matching native proofs and a common snapshot for both architectures', t => {

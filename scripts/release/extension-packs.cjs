@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { command, digest, key, validateEntry, origins, standaloneSource } = require('../installer/install-extensions.cjs');
+const { command, digest, key, validateEntry, origins, standaloneSource, supportsPack } = require('../installer/install-extensions.cjs');
 const configuration = require('../../conf/extension-packs.json');
 const platforms = require('../../conf/platforms.json');
 const { buildMatrix, testMatrix } = require('./extension-batches.cjs');
@@ -139,6 +139,7 @@ async function selectEntries({
     const phpManifest = await readPHPManifest(php_version, retry);
     for (const name of selectedPacks) for (const build of builds) for (const thread_safety of modes) for (const architecture of Object.keys(platforms)) {
       if (!Object.hasOwn(configuration.packs, name)) throw new Error('Unknown extension pack');
+      if (!supportsPack(name, php_version)) continue;
       const context = { name, php_version, build, thread_safety, architecture };
       const identity = key(context);
       if (!phpManifest.assets.some(asset => asset.build === build && asset.thread_safety === thread_safety && asset.architecture === architecture)) {

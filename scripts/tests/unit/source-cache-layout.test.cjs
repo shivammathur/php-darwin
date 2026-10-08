@@ -9,7 +9,7 @@ test('named releases group PHP and extensions while retaining versioned core dep
   for (const formula of ['php', 'php@8.3', 'php-debug', 'php-debug-zts', 'shivammathur/php-zts/php@5.6-zts']) {
     assert.equal(releaseForFormula(formula), 'cache-php');
   }
-  for (const name of ['imagick', 'mongodb', 'memcached', 'igbinary', 'msgpack', 'pcov', 'xdebug']) {
+  for (const name of ['imagick', 'mongodb', 'memcached', 'igbinary', 'msgpack', 'pcov', 'xdebug', 'swoole']) {
     for (const php of ['5.6', '7.4', '8.7']) assert.equal(releaseForFormula(`shivammathur/extensions/${name}@${php}`), `cache-${name}`);
     assert.equal(productionRelease(`cache-${name}`), true);
   }

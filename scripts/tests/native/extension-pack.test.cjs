@@ -52,6 +52,7 @@ try {
   assert.equal(fs.statSync(result.destination).mode & 0o777, 0o755, 'Runtime must be accessible to other PHP process users');
   const load = result.modules.flatMap(module => ['-d', `extension=${extensionDirectory}/${module}.so`]);
   const checks = {
+    swoole: fs.readFileSync(path.join(__dirname, '../helpers/swoole-smoke.php'), 'utf8').replace(/^<\?php\s*/, ''),
     imagick: '$i=new Imagick(); $i->newImage(16,16,"white"); foreach (["PNG","JPEG","WEBP"] as $f) { $i->setImageFormat($f); if (strlen($i->getImageBlob())<10) { exit(1); } } try { $i->importImagePixels(0,0,1,1,"RGB",Imagick::PIXEL_CHAR,[1]); exit(1); } catch (ImagickException $e) { if (strpos($e->getMessage(),"incorrect number of elements") === false) { throw $e; } } echo "PNG JPEG WEBP and pixel validation passed\\n";',
     mongodb: '$r=class_exists("MongoDB\\\\BSON\\\\Document") ? MongoDB\\BSON\\Document::fromPHP(["cache"=>42])->toPHP() : MongoDB\\BSON\\toPHP(MongoDB\\BSON\\fromPHP(["cache"=>42])); if ($r->cache!==42) { exit(1); } echo "BSON roundtrip passed\\n";',
     memcached: '$m=new Memcached(); foreach ([Memcached::SERIALIZER_PHP,Memcached::SERIALIZER_IGBINARY,Memcached::SERIALIZER_MSGPACK] as $s) { if (!$m->setOption(Memcached::OPT_SERIALIZER,$s)) { exit(1); } } echo "PHP igbinary msgpack serializers passed\\n";',

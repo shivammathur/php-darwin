@@ -6,9 +6,9 @@ const path = require('node:path');
 const { selectRequested, validateBase, activate, digest, key } = require('../../installer/install-extensions.cjs');
 const context = { php_version: '8.6', php_semver: '8.6.0', php_src_commit: 'a'.repeat(40),
   architecture: 'arm64', build: 'release', thread_safety: 'nts' };
-function entry(name) {
+function entry(name, patch = {}) {
   const value = { ...context, name, schema: 1, php_semver: '8.6.0-dev', php_api: '20260924',
-    inputs_sha256: 'b'.repeat(64), sha256: digest(name), bytes: name.length, minimum_macos: 14 };
+    inputs_sha256: 'b'.repeat(64), sha256: digest(name), bytes: name.length, minimum_macos: 14, ...patch };
   return { ...value, file: `${key(value)}-${value.sha256}.tar.zst` };
 }
 function directory(t) {
@@ -17,11 +17,12 @@ function directory(t) {
   return root;
 }
 test('raw extension selection respects disabling, versions, sources and serializer constraints', () => {
-  assert.deepEqual(selectRequested(' PHP-imagick, mongodb, MEMCACHED, imagick, redis'), ['imagick', 'mongodb', 'memcached']);
+  assert.deepEqual(selectRequested(' PHP-imagick, mongodb, MEMCACHED, PHP_swoole, imagick, redis'), ['imagick', 'mongodb', 'memcached', 'swoole']);
   assert.deepEqual(selectRequested('none,imagick,memcached'), ['imagick', 'memcached']);
   for (const input of ['', 'none', 'redis', 'imagick-3.8.1', 'imagick-beta', 'imagick-user/repo@main', ':imagick',
     'imagick,:imagick', 'imagick,:PHP-imagick', 'imagick,imagick-3.8.1', 'memcached,igbinary-3.2.16',
-    'memcached,:msgpack', 'memcached,memcached@other', 'imagick; touch /tmp/unsafe']) {
+    'memcached,:msgpack', 'memcached,memcached@other', 'imagick; touch /tmp/unsafe',
+    ':swoole', 'swoole,:swoole', 'swoole,swoole-6.2.3', 'swoole,swoole@source']) {
     assert.deepEqual(selectRequested(input), [], input);
   }
 });
@@ -98,7 +99,7 @@ test('downloads retry all transfer and verification errors on both origins, caps
 function activationFixture(t, name = 'memcached') {
   const { enableInstalled, packs } = require('../../installer/install-extensions.cjs');
   const root = directory(t), scan = path.join(root, 'conf.d');
-  const metadata = { ...entry(name), environment: {} };
+  const metadata = { ...entry(name, name === 'swoole' ? { php_version: '8.5' } : {}), environment: {} };
   const destination = `/opt/homebrew/var/php-darwin/extensions/${metadata.sha256}`;
   fs.mkdirSync(scan);
   fs.writeFileSync(path.join(scan, 'user.ini'), '; retain user settings\n');
@@ -147,13 +148,16 @@ test('configured priorities drive activation and remain available outside the ch
   const actual = command(process.execPath, ['-e',
     'const {extensions,extensionIni}=require(process.argv[1]); console.log(extensionIni(extensions.imagick));', standalone]);
   assert.equal(actual, '25-imagick.ini');
-  command(process.execPath, [standalone, 'select', f.root, 'imagick,memcached']);
-  assert.equal(fs.readFileSync(path.join(f.root, 'requested.txt'), 'utf8'), 'imagick\nmemcached');
+  command(process.execPath, [standalone, 'select', f.root, 'imagick,memcached,swoole']);
+  assert.equal(fs.readFileSync(path.join(f.root, 'requested.txt'), 'utf8'), 'imagick\nmemcached\nswoole');
+  assert.equal(command(process.execPath, ['-e',
+    'const {supportsPack}=require(process.argv[1]); console.log(["8.5","8.6","8.7"].map(version=>supportsPack("swoole",version)).join(","));', standalone]),
+  'true,false,false');
   for (const priority of [-1, 100, 1.5, '30', null]) {
     assert.throws(() => extensionIni({ name: 'imagick', priority }), /Invalid extension INI/);
   }
 });
-for (const name of ['imagick', 'mongodb', 'memcached']) {
+for (const name of ['imagick', 'mongodb', 'memcached', 'swoole']) {
   test(`${name} uses tap INI filenames and survives repeated activation and individual tap replacements`, t => {
     const f = activationFixture(t, name);
     f.activate();

@@ -86,7 +86,7 @@ jobs:
       matrix:
         runner: [macos-15, macos-15-intel]
     env:
-      EXTENSIONS: ${{ format('{0}{1}', (inputs.php-version == '5.6' || inputs.php-version == '7.0') && 'xdebug' || 'xdebug, pcov', inputs.optional-packs && ', imagick, mongodb, memcached' || '') }}
+      EXTENSIONS: ${{ (inputs.php-version == '5.6' || inputs.php-version == '7.0') && 'xdebug' || 'xdebug, pcov' }}
       PHP_DARWIN_REQUIRE_PACKS: ${{ inputs.optional-packs }}
       PHP_DARWIN_REQUIRE_PCOV: ${{ (inputs.php-version == '5.6' || inputs.php-version == '7.0') && 'false' || 'true' }}
       PHP_DARWIN_REQUIRE_CACHE: 'true'
@@ -121,6 +121,16 @@ jobs:
 
       - name: Preserve the Actions Node runtime
         uses: ./.github/actions/node-runtime
+
+      - name: Select supported optional packs
+        if: inputs.optional-packs
+        run: |
+          "$PHP_DARWIN_NODE" - <<'NODE'
+          const fs = require('node:fs');
+          const { packs, supportsPack } = require('./scripts/installer/install-extensions.cjs');
+          const names = Object.keys(packs).filter(name => supportsPack(name, process.env.PHP_VERSION));
+          fs.appendFileSync(process.env.GITHUB_ENV, `EXTENSIONS=${[process.env.EXTENSIONS, ...names].join(', ')}\n`);
+          NODE
 
       - name: Install PHP and extensions through setup-php from cold
         # Stock setup-php needs a parent directory without "darwin". The helper

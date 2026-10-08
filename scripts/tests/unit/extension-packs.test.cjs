@@ -6,12 +6,57 @@ const path = require('node:path');
 const os = require('node:os');
 const http = require('node:http');
 const { execFileSync } = require('node:child_process');
-const { prefetch, download, digest, key, validateEntry, validateContext, safePath, inspectTree, packEnvironment, relocateResources, phpApi, prepareArchive, movePrepared, runtimeContext } = require('../../installer/install-extensions.cjs');
+const { prefetch, download, digest, key, validateEntry, validateContext, safePath, inspectTree, packEnvironment, relocateResources, phpApi, prepareArchive, movePrepared, runtimeContext, packs, supportsPack } = require('../../installer/install-extensions.cjs');
 const { unchanged, freshnessReason, selectEntries, compatibilityMatrix, versionBatches, dispatch, plan, publish, validatePublishRun, validatePublishedPHP } = require('../../release/extension-packs.cjs');
 const { copyRuntime, copyHeaders } = require('../../build/extension-pack.cjs');
 const { buildMatrix } = require('../../release/extension-batches.cjs');
 
 const context = { php_version: '8.4', build: 'release', thread_safety: 'nts', architecture: 'arm64' };
+test('Swoole planning covers all stable variants and leaves nightly packs available', async t => {
+  const versions = require('../../../conf/extension-packs.json').versions;
+  t.mock.method(console, 'log', () => {});
+  t.mock.method(globalThis, 'fetch', async url => {
+    const version = url.match(/(?:php-|extensions-)(\d\.\d)-manifest\.json$/)?.[1];
+    assert.ok(versions.includes(version), url);
+    return Response.json(url.includes('/download/extensions/') ? { schema: 1, assets: [] } : {
+      schema: 1, php_version: version, php_semver: `${version}.0`,
+      assets: ['arm64', 'x86_64'].flatMap(architecture => ['release', 'debug'].flatMap(build =>
+        ['nts', 'zts'].map(thread_safety => ({ architecture, build, thread_safety })))),
+    });
+  });
+  const { selected } = await selectEntries({ versions, selectedPacks: Object.keys(packs),
+    builds: ['release', 'debug'], modes: ['nts', 'zts'], force: false, resumeRuns: [] });
+  assert.equal(selected.length, 432);
+  for (const version of versions) {
+    const supported = !['8.6', '8.7'].includes(version);
+    assert.equal(supportsPack('swoole', version), supported);
+    assert.equal(selected.filter(item => item.php_version === version && item.name === 'swoole').length, supported ? 8 : 0);
+    assert.equal(selected.filter(item => item.php_version === version && item.name !== 'swoole').length, 24);
+    if (!supported) assert.throws(() => key({ ...context, name: 'swoole', php_version: version }), /Unsupported PHP version/);
+  }
+  assert.equal(supportsPack('swoole', '9.0'), false);
+  assert.equal(supportsPack('unknown', '8.5'), false);
+});
+test('unsupported Swoole requests skip downloading without blocking supported packs', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'swoole-selection-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  let requests = 0;
+  const nightly = { ...entry('imagick'), php_version: '8.6' };
+  nightly.file = `${key(nightly)}-${nightly.sha256}.tar.zst`;
+  t.mock.method(globalThis, 'fetch', async url => {
+    requests++;
+    return url.endsWith('.json') ? Response.json({ schema: 1, assets: [nightly] }) : new Response('imagick');
+  });
+  for (const php_version of ['8.6', '8.7']) {
+    assert.deepEqual(await prefetch(directory, { ...context, php_version }, ['swoole']), []);
+  }
+  assert.equal(requests, 0);
+  assert.deepEqual(await prefetch(directory, { ...context, php_version: '8.6' }, ['swoole', 'imagick'], {
+    prepare: async (_directory, name) => assert.equal(name, 'imagick'),
+  }), ['imagick']);
+  assert.equal(requests, 2);
+  assert.ok(!fs.existsSync(path.join(directory, 'swoole.json')));
+});
 test('serializer development headers retain their companion files at standard include paths', t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pack-headers-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -302,7 +347,7 @@ test('dispatch passes only changed versions, retaining order and every build var
       assert.deepEqual(options.versions, ['8.4', '8.5', '8.6', '8.7']);
       assert.deepEqual(options.builds, ['debug', 'release']);
       assert.deepEqual(options.modes, ['nts', 'zts']);
-      assert.deepEqual(options.selectedPacks, ['imagick', 'mongodb', 'memcached']);
+      assert.deepEqual(options.selectedPacks, ['imagick', 'mongodb', 'memcached', 'swoole']);
       assert.equal(options.force, false);
       assert.deepEqual(options.resumeRuns, []);
       return { selected: [{ php_version: '8.7' }, { php_version: '8.6' }, { php_version: '8.5' }, { php_version: '8.6' }] };
@@ -430,7 +475,7 @@ test('retired archives refresh the manifest once and install the replacement wit
   assert.equal(fs.readFileSync(path.join(directory, next.file), 'utf8'), 'new');
 });
 test('all requested packs download concurrently, with no unrequested downloads', async t => {
-  const names = ['imagick', 'mongodb', 'memcached'];
+  const names = ['imagick', 'mongodb', 'memcached', 'swoole'];
   const assets = names.map(name => entry(name));
   const pending = [];
   const requested = [];
@@ -440,8 +485,8 @@ test('all requested packs download concurrently, with no unrequested downloads',
     const asset = assets.find(item => req.url === '/' + item.file);
     assert.ok(asset);
     pending.push({ res, name: asset.name });
-    // Sequential downloads would deadlock; all three requests must arrive.
-    if (pending.length === 3) pending.forEach(item => item.res.end(item.name));
+    // Sequential downloads would deadlock; every pack request must arrive.
+    if (pending.length === names.length) pending.forEach(item => item.res.end(item.name));
   });
   const prepared = [];
   assert.deepEqual(await prefetch(directory, context, names, { bases: [url], prepare: async (root, name) => {
@@ -450,7 +495,7 @@ test('all requested packs download concurrently, with no unrequested downloads',
     await new Promise(resolve => setImmediate(resolve));
   } }), names);
   assert.deepEqual(prepared.sort(), names.sort());
-  assert.equal(requested.length, 4);
+  assert.equal(requested.length, 5);
   for (const asset of assets) assert.equal(fs.readFileSync(path.join(directory, asset.file), 'utf8'), asset.name);
 });
 test('healthy extension downloads can take longer than three seconds without failing over', async t => {

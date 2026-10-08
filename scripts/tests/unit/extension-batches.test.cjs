@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { key, digest } = require('../../installer/install-extensions.cjs');
+const { key, digest, packs, supportsPack } = require('../../installer/install-extensions.cjs');
 const { buildMatrix, testMatrix, variants, reuse, verifyArchive, downloadArtifact } = require('../../release/extension-batches.cjs');
 const { batch } = require('../../build/extension-batch.cjs');
 const { planRecovery } = require('../../release/extension-recovery.cjs');
@@ -28,11 +28,12 @@ function writeArchive(folder, metadata) {
   fs.writeFileSync(path.join(folder, 'validation.txt'), JSON.stringify({ name: metadata.name, sha256: metadata.sha256,
     php_preserved: true, services_preserved: true }));
 }
-test('all 336 packs use 28 build jobs and 42 compatibility jobs, retaining every variant', () => {
+test('all 432 packs use 28 build jobs and 42 compatibility jobs, retaining every supported variant', () => {
   const entries = versions.flatMap(php_version => ['arm64', 'x86_64'].flatMap(architecture =>
     ['debug', 'release'].flatMap(build => ['nts', 'zts'].flatMap(thread_safety =>
-      ['imagick', 'mongodb', 'memcached'].map(name => ({ php_version, architecture, build, thread_safety, name }))))));
-  assert.equal(entries.length, 336);
+      Object.keys(packs).filter(name => supportsPack(name, php_version))
+        .map(name => ({ php_version, architecture, build, thread_safety, name }))))));
+  assert.equal(entries.length, 432);
   assert.equal(buildMatrix(entries).include.length, 28);
   const tests = testMatrix(entries).include;
   assert.equal(tests.length, 42);
@@ -41,7 +42,7 @@ test('all 336 packs use 28 build jobs and 42 compatibility jobs, retaining every
   assert.equal(tests.filter(item => item.runner === 'macos-26-intel').length, 14);
   for (const job of [...buildMatrix(entries).include, ...tests]) {
     assert.equal(variants(job.entries).length, 4);
-    assert.equal(job.entries.length, 12);
+    assert.equal(job.entries.length, ['8.6', '8.7'].includes(job.php_version) ? 12 : 16);
     assert.ok(job.entries.every(item => item.php_version === job.php_version && item.architecture === job.architecture));
   }
 });
