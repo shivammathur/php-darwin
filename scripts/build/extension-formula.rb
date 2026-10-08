@@ -15,6 +15,15 @@ source = File.read(file)
   abort "Missing extension formula template: #{before}" unless source.scan(before).length == 1
   source = source.sub(before, after)
 end
+if Gem::Version.new(version) >= Gem::Version.new('7.3')
+  # Swoole includes SPL headers that expose PCRE2 types in PHP debug builds.
+  # PHP is a build dependency, so its own dependencies are not automatically
+  # added to Homebrew's compiler include paths for the extension.
+  dependency = "depends_on \"shivammathur/php/#{formula}\" => [:build, :test]"
+  abort 'Missing PHP extension dependency' unless source.scan(dependency).length == 1
+  source = source.sub(dependency,
+    "#{dependency}\n      depends_on \"pcre2\" => :build if @extension == \"swoole\"")
+end
 if version.start_with?('5.', '7.') && !source.include?('ENV["ac_cv_prog_cc_c23"] = "no"')
   abort 'Missing safe_phpize method' unless source.match?(/^\s*def safe_phpize$/)
   source = source.sub(/^(\s*)def safe_phpize$/, "\\1def safe_phpize\n\\1  ENV[\"ac_cv_prog_cc_c23\"] = \"no\"")
