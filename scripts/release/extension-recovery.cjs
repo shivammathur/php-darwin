@@ -68,13 +68,16 @@ async function planRecovery(id, run = command, retry = retryPolicy(), { download
     if (!match || artifact.expired) continue;
     const [, kind, version, arch] = match;
     if (!includesVersion(version)) continue;
-    const payloads = artifacts.filter(item => item.name === `extension-${kind}-${version}-${arch}` && !item.expired);
-    if (payloads.length !== 1) throw new Error('Missing or ambiguous grouped artifact');
     const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-index-'));
     try {
       download({ artifact_id: artifact.id, artifact_digest: artifact.digest }, temporary);
       const index = JSON.parse(fs.readFileSync(path.join(temporary, 'entries.json')));
       if (!Array.isArray(index)) throw new Error('Invalid grouped artifact index');
+      // A producer that failed every pack uploads an empty index and no
+      // archive. It must not block recovery of another successful group.
+      if (!index.length) continue;
+      const payloads = artifacts.filter(item => item.name === `extension-${kind}-${version}-${arch}` && !item.expired);
+      if (payloads.length !== 1) throw new Error('Missing or ambiguous grouped artifact');
       for (const value of index) {
         const entry = validateEntry(value);
         if (entry.php_version !== version || entry.architecture !== arch) throw new Error('Grouped artifact context mismatch');

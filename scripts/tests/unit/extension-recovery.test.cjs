@@ -88,7 +88,7 @@ test('version-scoped recovery excludes obsolete archives before downloads and re
   const downloaded = [];
   const download = (artifact, folder) => {
     downloaded.push(artifact.artifact_id);
-    if (artifact.artifact_id === 11) fs.writeFileSync(path.join(folder, 'entries.json'), JSON.stringify([entry]));
+    if ([11, 13].includes(artifact.artifact_id)) fs.writeFileSync(path.join(folder, 'entries.json'), JSON.stringify([entry]));
     else {
       assert.ok(artifact.artifact_id >= 20 && artifact.artifact_id <= 22);
       const output = path.join(folder, `extension-${key(entry)}`); fs.mkdirSync(output);
@@ -107,6 +107,33 @@ test('version-scoped recovery excludes obsolete archives before downloads and re
   assert.deepEqual(downloaded, [11, 20, 21]);
   await assert.rejects(planRecovery('123', run, undefined, { ...options, phpVersions: '7.4 8.4' }), /no successful/);
   await assert.rejects(planRecovery('123', run, undefined, { ...options, phpVersions: '8.6' }), /Missing or ambiguous/);
+});
+
+test('recovery accepts an empty failed group without a payload and retains successful groups', async () => {
+  const source = { status: 'completed', head_branch: 'main', run_attempt: 1, head_sha: 'a'.repeat(40),
+    head_repository: { full_name: 'shivammathur/php-darwin' }, path: '.github/workflows/cache-extensions.yml' };
+  const entry = { schema: 1, name: 'swoole', php_version: '7.2', build: 'debug', thread_safety: 'nts', architecture: 'arm64',
+    sha256: 'b'.repeat(64), inputs_sha256: 'c'.repeat(64), php_api: '20170718', minimum_macos: 14, bytes: 100 };
+  entry.file = `${key(entry)}-${entry.sha256}.tar.zst`;
+  const artifacts = [
+    { id: 1, name: 'extension-index-built-7.2-arm64' },
+    { id: 2, name: 'extension-built-7.2-arm64' },
+    { id: 3, name: 'extension-index-built-7.2-x86_64' },
+  ];
+  const run = (_program, args) => JSON.stringify(args.at(-1).includes('/jobs?') ? [{ jobs: [] }] :
+    args.at(-1).includes('/artifacts?') ? [{ artifacts }] : source);
+  let failedIndex = [];
+  const download = (artifact, folder) => fs.writeFileSync(path.join(folder, 'entries.json'),
+    JSON.stringify(artifact.artifact_id === 1 ? [entry] : failedIndex));
+  const recovered = await planRecovery('123', run, undefined, { download });
+  assert.deepEqual(recovered.entries.map(value => [key(value), value.artifact_id]), [[key(entry), 2]]);
+  failedIndex = {};
+  await assert.rejects(planRecovery('123', run, undefined, { download }), /Invalid grouped artifact index/);
+  failedIndex = [entry];
+  await assert.rejects(planRecovery('123', run, undefined, { download }), /Missing or ambiguous grouped artifact/);
+  failedIndex = [];
+  artifacts.splice(0, 2);
+  await assert.rejects(planRecovery('123', run, undefined, { download }), /No unique successful extension builds/);
 });
 
 test('invalid recovery version selections fail before reading GitHub', async () => {
