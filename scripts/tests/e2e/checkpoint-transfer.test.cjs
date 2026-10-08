@@ -5,6 +5,19 @@ const assert = require('node:assert/strict');
 const { identity, stageCheckpoint, restoreCheckpoint, restoreEarly } = require('../../cache/archive-checkpoint.cjs');
 const { ReleaseCache } = require('../../cache/source-bottle-releases.cjs');
 
+async function restoreUploaded(restore, ...args) {
+  // The repository-wide and run-specific artifact indexes can become visible
+  // at different times immediately after an upload. Production treats a miss
+  // as optional; this transfer fixture requires its newly uploaded checkpoint.
+  let result;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    result = await restore(...args);
+    if (result.hit || attempt === 3) return result;
+    console.log(`Waiting for the uploaded checkpoint to be indexed (${attempt}/3)`);
+    await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+  }
+}
+
 async function main(stage) {
   const inputs = { schema: 1, php: '0.0', arch: 'x86_64', build: 'release', ts: 'nts',
     revision: process.env.GITHUB_SHA, phpCommit: 'a'.repeat(40), extensionsCommit: 'b'.repeat(40),
@@ -26,10 +39,10 @@ async function main(stage) {
     fs.appendFileSync(process.env.GITHUB_OUTPUT, `name=${item.name}\npath=${upload}\n`);
   } else if (stage === 'restore') {
     const cache = new ReleaseCache();
-    const result = await restoreCheckpoint(cache, inputs, path.join(root, 'restored'));
+    const result = await restoreUploaded(restoreCheckpoint, cache, inputs, path.join(root, 'restored'));
     assert.equal(result.hit, true, 'the uploaded checkpoint was not restored');
     assert.equal(result.current, true);
-    const early = await restoreEarly(cache, inputs, path.join(root, 'restored-early'));
+    const early = await restoreUploaded(restoreEarly, cache, inputs, path.join(root, 'restored-early'));
     assert.equal(early.hit, true, 'this run should restore without installed PHP or dependencies');
     assert.equal(early.current, true);
     cache.request = async () => { throw new TypeError('Simulated Node connection failure'); };
