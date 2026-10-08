@@ -70,10 +70,23 @@ begin
     end
   when 'receipts'
     replacements = []
-    packages.each do |name, target, _|
+    opt_records = packages.map { |name, target, _| [name, name, target] }
+    if links_file
+      File.foreach(links_file, chomp: true) do |line|
+        relative, target = line.split("\t", 2)
+        next unless relative.start_with?('opt/')
+        name = relative.delete_prefix('opt/')
+        next if packages.any? { |package| package[0] == name }
+        owner = packages.find { |package| package[1] == target }
+        raise 'invalid PHP opt alias' unless owner && owner[0].match?(/\Aphp(?:@|\z|-)/) &&
+          name.match?(/\A[A-Za-z0-9@+_.-]+\z/) && !%w[. ..].include?(name)
+        opt_records << [owner[0], name, target]
+      end
+    end
+    opt_records.each do |owner, name, target|
       raise "cache did not install #{target}" unless File.directory?(File.join(prefix, target.delete_prefix('../')))
-      next unless selected.key?(name)
-      next if preserved.key?(name)
+      next unless selected.key?(owner)
+      next if preserved.key?(owner)
       path = File.join(prefix, 'opt', name)
       stat = begin
         File.lstat(path)

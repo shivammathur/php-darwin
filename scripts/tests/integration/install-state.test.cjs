@@ -70,6 +70,7 @@ test('Homebrew revisions sort after upstream versions, not as upstream patch num
     ['2.15_1', '2.15_2', true], ['2.15_2', '2.15_1', false]]) {
     fs.writeFileSync(f.packages, `libxml2\t../Cellar/libxml2/${cached}\ttrue\n`);
     fs.writeFileSync(f.changed, 'libxml2\n');
+    f.file('links', '');
     for (const version of [cached, active]) f.file(`prefix/Cellar/libxml2/${version}/file`);
     f.link('opt/libxml2', `../Cellar/libxml2/${active}`);
     const result = f.run('receipts'); assert.equal(result.status, 0, result.stderr);
@@ -172,4 +173,25 @@ test('diagnostic mode still executes PHP and extensions and rejects runtime fail
   let result = f.verify({PHP_DARWIN_VERIFY_RUNTIME: 'true'}); assert.equal(result.status, 0, result.stderr);
   assert.equal(fs.readFileSync(f.probe, 'utf8'), 'called\ncalled\n');
   result = f.verify({PHP_DARWIN_VERIFY_RUNTIME: 'true', PROBE_STATUS: '1'}); assert.equal(result.status, 1);
+});
+
+
+test('PHP alias upgrades follow the canonical keg and journal old targets', t => {
+  const f = fixture(t);
+  fs.writeFileSync(f.packages, 'php-zts\t../Cellar/php-zts/8.5.11\tfalse\n');
+  fs.writeFileSync(f.changed, 'php-zts\n');
+  f.file('links', 'opt/php@8.5-zts\t../Cellar/php-zts/8.5.11\n');
+  f.file('prefix/Cellar/php-zts/8.5.11/bin/phpize', 'tool');
+  f.link('opt/php-zts', '../Cellar/php-zts/8.5.10');
+  f.link('opt/php@8.5-zts', '../Cellar/php-zts/8.5.10');
+  const result = f.run('receipts'); assert.equal(result.status, 0, result.stderr);
+  for (const name of ['php-zts', 'php@8.5-zts']) {
+    assert.equal(fs.readlinkSync(path.join(f.prefix, 'opt', name)), '../Cellar/php-zts/8.5.11');
+  }
+  assert.equal(fs.readFileSync(f.journal, 'utf8'), 'php-zts\t../Cellar/php-zts/8.5.10\nphp@8.5-zts\t../Cellar/php-zts/8.5.10\n');
+  assert.equal(f.run('receipts').status, 0);
+  fs.unlinkSync(path.join(f.prefix, 'opt/php@8.5-zts'));
+  f.file('prefix/opt/php@8.5-zts', 'user-owned');
+  assert.equal(f.run('receipts').status, 1);
+  assert.equal(fs.readFileSync(path.join(f.prefix, 'opt/php@8.5-zts'), 'utf8'), 'user-owned');
 });

@@ -907,9 +907,14 @@ php_darwin_validate_cache_metadata() {
     ([.links[].path] | unique | length) == (.links | length) and
     all(.links[];
       (.path | type == "string" and
-        test("^(Frameworks|bin|etc|include|lib|sbin|share|var/homebrew/linked)/") and
+        test("^(Frameworks|bin|etc|include|lib|opt|sbin|share|var/homebrew/linked)/") and
         (test("(^|/)\\.\\.(/|$)") | not) and test("^[^\\r\\n\\t]+$")) and
       (.target | type == "string" and test("^[^\\r\\n\\t]+$"))) and
+    all(.links[] | select(.path | startswith("opt/"));
+      . as $link |
+      ($link.path | test("^opt/[A-Za-z0-9@+._-]+$") and . != "opt/." and . != "opt/..") and
+      any($metadata.packages[]; .name == $formula and .opt_target == $link.target) and
+      all($metadata.packages[]; "opt/" + .name != $link.path)) and
     ((.extensions // []) | type == "array") and
     ([((.extensions // [])[].name)] | unique | length) == ((.extensions // []) | length) and
     ([((.extensions // [])[].path)] | unique | length) == ((.extensions // []) | length) and
@@ -2920,10 +2925,23 @@ begin
     end
   when 'receipts'
     replacements = []
-    packages.each do |name, target, _|
+    opt_records = packages.map { |name, target, _| [name, name, target] }
+    if links_file
+      File.foreach(links_file, chomp: true) do |line|
+        relative, target = line.split("\t", 2)
+        next unless relative.start_with?('opt/')
+        name = relative.delete_prefix('opt/')
+        next if packages.any? { |package| package[0] == name }
+        owner = packages.find { |package| package[1] == target }
+        raise 'invalid PHP opt alias' unless owner && owner[0].match?(/\Aphp(?:@|\z|-)/) &&
+          name.match?(/\A[A-Za-z0-9@+_.-]+\z/) && !%w[. ..].include?(name)
+        opt_records << [owner[0], name, target]
+      end
+    end
+    opt_records.each do |owner, name, target|
       raise "cache did not install #{target}" unless File.directory?(File.join(prefix, target.delete_prefix('../')))
-      next unless selected.key?(name)
-      next if preserved.key?(name)
+      next unless selected.key?(owner)
+      next if preserved.key?(owner)
       path = File.join(prefix, 'opt', name)
       stat = begin
         File.lstat(path)
@@ -4105,7 +4123,7 @@ cmp -s "$metadata" "$metadata_copy" || \
   php_darwin_die 'extracted installation metadata changed during archive extraction'
 rm -f "$metadata" || php_darwin_die 'could not remove embedded installation metadata'
 php_darwin_install_state receipts "$brew_prefix" \
-  "$packages_file" "$changed_formulae_file" "$previous_opt_links" || \
+  "$packages_file" "$changed_formulae_file" "$previous_opt_links" '' '' "$links_file" || \
   php_darwin_die 'could not install cached Homebrew package opt links'
 if [ -n "$tap_pid" ] && [ ! -f "$tap_path/Formula/$formula.rb" ]; then
   php_darwin_wait_for_tap

@@ -906,9 +906,14 @@ php_darwin_validate_cache_metadata() {
     ([.links[].path] | unique | length) == (.links | length) and
     all(.links[];
       (.path | type == "string" and
-        test("^(Frameworks|bin|etc|include|lib|sbin|share|var/homebrew/linked)/") and
+        test("^(Frameworks|bin|etc|include|lib|opt|sbin|share|var/homebrew/linked)/") and
         (test("(^|/)\\.\\.(/|$)") | not) and test("^[^\\r\\n\\t]+$")) and
       (.target | type == "string" and test("^[^\\r\\n\\t]+$"))) and
+    all(.links[] | select(.path | startswith("opt/"));
+      . as $link |
+      ($link.path | test("^opt/[A-Za-z0-9@+._-]+$") and . != "opt/." and . != "opt/..") and
+      any($metadata.packages[]; .name == $formula and .opt_target == $link.target) and
+      all($metadata.packages[]; "opt/" + .name != $link.path)) and
     ((.extensions // []) | type == "array") and
     ([((.extensions // [])[].name)] | unique | length) == ((.extensions // []) | length) and
     ([((.extensions // [])[].path)] | unique | length) == ((.extensions // []) | length) and

@@ -1081,7 +1081,7 @@ cmp -s "$metadata" "$metadata_copy" || \
   php_darwin_die 'extracted installation metadata changed during archive extraction'
 rm -f "$metadata" || php_darwin_die 'could not remove embedded installation metadata'
 bash "$script_dir/install-state.sh" receipts "$brew_prefix" \
-  "$packages_file" "$changed_formulae_file" "$previous_opt_links" || \
+  "$packages_file" "$changed_formulae_file" "$previous_opt_links" '' '' "$links_file" || \
   php_darwin_die 'could not install cached Homebrew package opt links'
 if [ -n "$tap_pid" ] && [ ! -f "$tap_path/Formula/$formula.rb" ]; then
   php_darwin_wait_for_tap
