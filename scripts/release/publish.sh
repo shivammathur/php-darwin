@@ -145,6 +145,8 @@ while IFS= read -r metadata; do
   [ "$(basename "$metadata")" = "${expected_archive%.tar.zst}.json" ] || \
     php_darwin_die "metadata filename does not match its archive: $metadata"
 
+  jq -e '.installer.schema == 1 and .installer.path == "var/php-darwin/installer/install.sh"' "$metadata" >/dev/null || \
+    php_darwin_die 'archive must be repackaged before publishing this installer'
   archive_matches="$work_dir/archive-matches.txt"
   find "$builds_dir" -type f -name "$expected_archive" -print > "$archive_matches" || \
     php_darwin_die "could not locate $expected_archive"
@@ -183,6 +185,7 @@ while IFS= read -r metadata; do
     --argjson minimum_macos "$expected_minimum" \
     '{architecture:$architecture,build:$build,bytes:$bytes,download:$download,minimum_macos:$minimum_macos,name:$name,
       sha256:$sha256,thread_safety:$thread_safety} +
+      (if $metadata[0].installer then {installer:$metadata[0].installer} else {} end) +
       (if $metadata[0].build_inputs then {build_inputs:$metadata[0].build_inputs} else {} end)' >> "$assets_jsonl" || \
     php_darwin_die "could not create the release record for $expected_archive"
 done < "$metadata_list"

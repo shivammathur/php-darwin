@@ -21,7 +21,12 @@ case "${1:?}" in
     if [ -d "$tap_path" ]; then
       HOMEBREW_DEVELOPER=1 brew untap "$tap"
     fi
-    PHP_DARWIN_PREFER_MIRROR=true bash "$script_dir/../../install.sh" "$PHP_VERSION" "$BUILD" "$TS"
+    # Use the installer published with these archives. A candidate bootstrap
+    # can require a packaging format that has not reached this release yet.
+    published_installer="$RUNNER_TEMP/source-cache-published-installer.sh"
+    installer_status=$(php_darwin_request_release "https://github.com/$(php_darwin_package_config release_repository)/releases/download/php-$PHP_VERSION/install.sh" "$published_installer")
+    [ "$installer_status" = 200 ] || php_darwin_die 'could not download the published PHP installer'
+    PHP_DARWIN_PREFER_MIRROR=true bash "$published_installer" "$PHP_VERSION" "$BUILD" "$TS"
     mkdir -p "$pin_dir"
     # Installation preserves runner php.ini settings, including previously
     # enabled coverage modules. Use an empty main INI for the cache test, but

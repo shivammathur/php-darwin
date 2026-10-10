@@ -5,6 +5,7 @@ const { retryPolicy, httpError } = require('../release/extension-transfers.cjs')
 const { recordMetric } = require('../lib/build-metrics.cjs');
 const { validate: validateRecipes } = require('./dependency-recipes.cjs');
 
+const platforms = require('../../conf/platforms.json');
 const defaultFile = path.resolve(__dirname, '../../conf/dependencies.json');
 const formulaPattern = /^(?:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/)?[A-Za-z0-9@+_.-]+$/;
 const hex = /^[a-f0-9]{64}$/;
@@ -19,8 +20,8 @@ function readLock(file = defaultFile) {
 }
 
 function validatePlatform(platform, arch) {
-  if (!['arm64', 'x86_64'].includes(arch) || !platform ||
-      platform.prefix !== (arch === 'arm64' ? '/opt/homebrew' : '/usr/local') ||
+  if (!Object.hasOwn(platforms, arch) || !platform ||
+      platform.prefix !== platforms[arch].brew_prefix ||
       !Number.isInteger(platform.macos) || platform.macos < 11 ||
       !platform.packages || !Object.keys(platform.packages).length) {
     throw new Error(`Dependency bottles have not been prepared for ${arch}`);

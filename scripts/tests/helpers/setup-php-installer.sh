@@ -16,5 +16,10 @@ bash() {
   install_log="${RUNNER_TEMP:?}/php-darwin-setup-install.log"
   if command bash "$@" >> "$install_log" 2>&1; then status=0; else status=$?; fi
   cat "$install_log"
+  # A cache-only regression must stop here. Stock setup-php can otherwise
+  # fall back to compiling PHP on ARM64 and hide an installer failure.
+  if [ "$status" -ne 0 ] && [ "${PHP_DARWIN_REQUIRE_CACHE:-false}" = true ]; then
+    exit "$status"
+  fi
   return "$status"
 }

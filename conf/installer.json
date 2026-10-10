@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "empty_directories": [
+    "lib/php/pecl/{pecl_extension}",
+    "{pear_path}/doc",
+    "{pear_path}/data",
+    "{pear_path}/cfg",
+    "{pear_path}/htdocs",
+    "{pear_path}/test"
+  ]
+}

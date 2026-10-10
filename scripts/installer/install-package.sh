@@ -13,47 +13,15 @@ local_archive=${4:-}
 # setup-php exports its action input to child processes. Older action revisions
 # call this installer with three arguments; use that input on the cold path too.
 extensions_input=${5-${PHP_DARWIN_EXTENSIONS:-${INPUT_EXTENSIONS:-}}}
-arch=$(php_darwin_normalize_arch "$(uname -m)") || exit 1
-
-PHP_DARWIN_PHASE=environment
+# This entry point is specialized and embedded in the archive by the packager.
+# A checkout invocation still goes through checksum verification in the bootstrap.
+if ! declare -F php_darwin_package_context >/dev/null; then
+  exec bash "$script_dir/../install.sh" "$@"
+fi
+php_darwin_package_context
 [ "$(uname -s)" = Darwin ] || php_darwin_die 'the cache installer only supports macOS'
-for required_command in brew curl jq tar zstd; do
-  command -v "$required_command" >/dev/null 2>&1 || php_darwin_die "$required_command is required"
-done
-
-install_config=$(jq -ers --arg arch "$arch" '
-  def install_string: type == "string" and length > 0 and test("^[^\\r\\n\\t]+$");
-  .[0] as $package | .[1][$arch] as $platform |
-  select(($package.current_version | install_string) and
-    ($package.release_repository | install_string) and
-    ($package.tap | install_string) and
-    ($package.tap_repository | install_string) and
-    ($package.tap_branch | install_string) and
-    ($package.tap_snapshot | install_string) and
-    ($platform.brew_prefix | install_string) and
-    ($platform.minimum_macos | type == "number" and floor == . and . > 0) and
-    ($platform.platform_key | install_string)) |
-  [$package.current_version, $package.release_repository, $package.tap,
-   $package.tap_repository, $package.tap_branch, $package.tap_snapshot,
-   $platform.brew_prefix, ($platform.minimum_macos | tostring), $platform.platform_key] | @tsv
-' < <(php_darwin_read_config package.json; php_darwin_read_config platforms.json)) || \
-  php_darwin_die 'could not read the package and platform configuration'
-IFS=$'\t' read -r current_version package_release_repository tap tap_repository tap_branch \
-  tap_snapshot expected_prefix minimum_macos platform_key install_config_extra <<< "$install_config" || \
-  php_darwin_die 'could not parse the package and platform configuration'
-[ -z "$install_config_extra" ] && [ -n "$platform_key" ] || \
-  php_darwin_die 'package and platform configuration fields are invalid'
-[ -n "$version" ] || version=$current_version
-php_darwin_validate_version "$version"
-channel=$(php_darwin_version_channel "$version") || exit 1
-php_darwin_validate_build "$build"
-php_darwin_validate_ts "$ts"
-requested_formula=$(php_darwin_requested_formula "$version" "$build" "$ts") || exit 1
-formula=$(php_darwin_formula "$version" "$build" "$ts" "$current_version") || exit 1
-config_id=$(php_darwin_config_id "$version" "$build" "$ts") || exit 1
-asset=$(php_darwin_asset "$version" "$build" "$ts" "$arch") || exit 1
-pear_path=$(php_darwin_pear_path "$version" "$formula") || exit 1
-internal_metadata_path=$(php_darwin_metadata_path "$asset") || exit 1
+[ "$(php_darwin_normalize_arch "$(uname -m)")" = "$arch" ] || php_darwin_die 'archive architecture does not match this host'
+[ "$(sw_vers -productVersion | cut -d. -f1)" -ge "$minimum_macos" ] || php_darwin_die 'archive requires newer macOS'
 
 brew_command=$(command -v brew)
 if [ "$brew_command" = "$expected_prefix/bin/brew" ]; then
@@ -63,8 +31,6 @@ else
 fi
 [ "$brew_prefix" = "$expected_prefix" ] || php_darwin_die "architecture $arch requires Homebrew at $expected_prefix, found $brew_prefix"
 internal_metadata_dir="$brew_prefix/${internal_metadata_path%/*}"
-macos_version=$(sw_vers -productVersion) || php_darwin_die 'could not determine the macOS version'
-macos_major=${macos_version%%.*}
 case "$tap_snapshot" in var/php-darwin/*) ;; *)
   php_darwin_die "unsafe Homebrew tap snapshot path: $tap_snapshot"
   ;;
@@ -122,9 +88,6 @@ missing_log="$tmp_dir/homebrew-missing.log"
 missing_pid=
 missing_status=
 missing_output=
-archive_hash_file="$tmp_dir/archive.sha256"
-archive_hash_log="$tmp_dir/archive-hash.log"
-archive_hash_pid=
 linked_php_references=()
 linked_dependency_references=()
 postinstall_paths_file="$tmp_dir/postinstall-paths.txt"
@@ -159,7 +122,7 @@ archive_mutation_started=false
 runtime_verified=false
 extension_prefetch_pid=
 extension_node=
-extension_dir="$tmp_dir/extensions"
+extension_dir=${PHP_DARWIN_PREFETCH_DIR:-$tmp_dir/extensions}
 preserve_tmp_dir=false
 php_darwin_unlink_formulae() {
   local mode_file=$1
@@ -179,7 +142,7 @@ php_darwin_unlink_formulae() {
 php_darwin_check_installed_dependencies() {
   local dependency_status=0
 
-  bash "$script_dir/check-dependencies.sh" "$brew_prefix" "$packages_file" || dependency_status=$?
+  bash "$script_dir/check-dependencies.sh" "$brew_prefix" "$packages_file" "$tmp_dir/runtime-dependencies.txt" || dependency_status=$?
   if [ "$dependency_status" -eq 78 ]; then
     brew missing "$tap/$formula"
   else
@@ -322,32 +285,6 @@ php_darwin_wait_for_homebrew_prepare() {
   case "$tap_was_trusted" in true|false) ;; *) php_darwin_die "invalid $tap trust state" ;; esac
 }
 
-php_darwin_start_archive_hash() {
-  local archive_to_hash=$1
-
-  (
-    php_darwin_sha256 "$archive_to_hash" > "$archive_hash_file"
-  ) > "$archive_hash_log" 2>&1 &
-  archive_hash_pid=$!
-}
-
-php_darwin_wait_for_archive_hash() {
-  local hash_status
-
-  [ -n "$archive_hash_pid" ] || return 0
-  if wait "$archive_hash_pid"; then
-    hash_status=0
-  else
-    hash_status=$?
-  fi
-  archive_hash_pid=
-  if [ "$hash_status" -ne 0 ]; then
-    cat "$archive_hash_log" >&2
-    php_darwin_die "could not hash $asset"
-  fi
-  actual_hash=$(cat "$archive_hash_file") || php_darwin_die "could not read the $asset hash"
-}
-
 php_darwin_restore_formula_trust() {
   local added_formula
   local added_formulae=()
@@ -397,7 +334,6 @@ php_darwin_install_cleanup() {
   php_darwin_reap_job "$homebrew_trust_pid" 0
   php_darwin_reap_job "$tap_pid" 0
   php_darwin_reap_job "$missing_pid" 0
-  php_darwin_reap_job "$archive_hash_pid" 0
   # The Node supervisor drains its read-only extraction children on termination.
   php_darwin_reap_job "$extension_prefetch_pid" 5
   if [ "$cleanup_status" -ne 0 ] && [ "$runtime_verified" = false ]; then
@@ -575,7 +511,7 @@ if [ -n "$extensions_input" ] && extension_node=$(command -v "${PHP_DARWIN_NODE:
   mkdir -p "$extension_dir" &&
     "$extension_node" "$script_dir/install-extensions.cjs" standalone > "$extension_dir/install-extensions.cjs" &&
     "$extension_node" "$extension_dir/install-extensions.cjs" select "$extension_dir" "$extensions_input" &&
-    if [ -s "$extension_dir/requested.txt" ]; then
+    if [ -s "$extension_dir/requested.txt" ] && [ -z "${PHP_DARWIN_PREFETCH_DIR:-}" ]; then
       "$extension_node" "$extension_dir/install-extensions.cjs" prefetch-requested "$extension_dir" \
         "$version" "$build" "$ts" "$arch" > "$extension_dir/prefetch.log" 2>&1 &
       extension_prefetch_pid=$!
@@ -643,190 +579,10 @@ homebrew_trust_pid=$!
 ) > "$homebrew_prepare_log" 2>&1 &
 homebrew_prepare_pid=$!
 
-archive="$tmp_dir/$asset"
-external_metadata=
-cached_source_hash=
-manifest_homebrew_commit=
-manifest_php_src_commit=
-manifest_php_semver=
-manifest_source_hash=
-manifest_download_asset=
-manifest_archive_bytes=
-manifest_extensions_commit=
-manifest_from_embedded=false
-release_archive_error=
-
-php_darwin_use_release_manifest() {
-  local manifest_file=$1
-  local manifest_values
-
-  manifest_values=$(php_darwin_validate_release_manifest \
-    "$manifest_file" "$version" "$channel" "$asset") || return 1
-  IFS=$'\t' read -r expected_hash manifest_homebrew_commit manifest_php_src_commit \
-    manifest_php_semver manifest_source_hash manifest_download_asset manifest_extensions_commit \
-    <<< "$manifest_values" || return 1
-  [ -n "$expected_hash" ] && [ -n "$manifest_homebrew_commit" ] && \
-    [ -n "$manifest_php_src_commit" ] && [ -n "$manifest_php_semver" ] && \
-    [ -n "$manifest_source_hash" ] && [ -n "$manifest_download_asset" ] && \
-    [ -n "$manifest_extensions_commit" ] || return 1
-  [ "$manifest_php_src_commit" != - ] || manifest_php_src_commit=
-  [ "$manifest_extensions_commit" != - ] || manifest_extensions_commit=
-  manifest_archive_bytes=$(jq -er --arg asset "$asset" \
-    '.assets[] | select(.name == $asset) | .bytes' "$manifest_file") || return 1
-}
-
-php_darwin_refresh_release_manifest() {
-  manifest_url=${PHP_DARWIN_MANIFEST_URL:-}
-  [ -n "$manifest_url" ] || manifest_url=$(php_darwin_release_manifest_url "$release_repository" "$version") || \
-    php_darwin_die 'could not construct the release manifest URL'
-  manifest_status=$(php_darwin_fetch_release_manifest "$release_repository" "$version" \
-    "$release_manifest" "${PHP_DARWIN_MANIFEST_URL:-}") || php_darwin_die "could not request $manifest_url"
-  [ "$manifest_status" = 200 ] || \
-    php_darwin_die "could not fetch the PHP $version release manifest (HTTP $manifest_status)"
-  php_darwin_use_release_manifest "$release_manifest" || \
-    php_darwin_die 'release manifest did not match the requested PHP version'
-  manifest_from_embedded=false
-}
-
-php_darwin_download_release_archive() {
-  local archive_http_status
-  local mirror_url
-  local urls=()
-  local destination
-  local resume_bytes='' request_result received_bytes
-
-  release_archive_error=
-  release_url=${PHP_DARWIN_RELEASE_URL:-https://github.com/$release_repository/releases/download/php-$version/$manifest_download_asset}
-  urls+=("$release_url")
-  if [ -z "${PHP_DARWIN_RELEASE_URL:-}" ] || [ -n "${PHP_DARWIN_MIRROR_URL:-}" ]; then
-    mirror_url=$(php_darwin_release_mirror "$release_repository" "$version") || return 1
-    [ -z "$mirror_url" ] || urls+=("$mirror_url/$manifest_download_asset")
-    if [ -n "$mirror_url" ] && [ "${PHP_DARWIN_PREFER_MIRROR:-false}" = true ]; then
-      urls=("$mirror_url/$manifest_download_asset" "$release_url")
-    fi
-  fi
-  release_archive_error=not-found
-  for release_url in "${urls[@]}"; do
-    destination=$archive
-    [ -z "$resume_bytes" ] || destination="$archive.remaining"
-    request_result=0
-    archive_http_status=$(php_darwin_request_release "$release_url" "$destination" \
-      1024 10 300 "$resume_bytes") || request_result=$?
-    if [ "$request_result" -ne 0 ]; then
-      [ "$release_archive_error" = checksum ] || release_archive_error=download
-      if [ "$archive_http_status" = 200 ] && [ -s "$archive" ] && [ -z "$resume_bytes" ]; then
-        received_bytes=$(wc -c < "$archive" | tr -d '[:space:]')
-        if [ "$received_bytes" -lt "$manifest_archive_bytes" ]; then
-          # A known incomplete prefix cannot match the digest. Start the mirror
-          # immediately and authenticate the complete combined archive below.
-          resume_bytes=$received_bytes
-        elif [ "$received_bytes" -eq "$manifest_archive_bytes" ]; then
-          # A timeout can arrive after the last byte. Still require its digest;
-          # a corrupt complete response must restart at the next origin.
-          php_darwin_start_archive_hash "$archive"
-          php_darwin_wait_for_archive_hash
-          if [ "$actual_hash" = "$expected_hash" ]; then release_archive_error=; return 0; fi
-          release_archive_error=checksum
-        fi
-      fi
-      continue
-    fi
-    if [ -n "$resume_bytes" ]; then
-      case "$archive_http_status" in
-        206) cat "$destination" >> "$archive" || return 1 ;;
-        # Range is optional at the origin. A full response replaces the prefix.
-        200) mv "$destination" "$archive" || return 1 ;;
-      esac
-    fi
-    if [ "$archive_http_status" != 200 ] && \
-      { [ "$archive_http_status" != 206 ] || [ -z "$resume_bytes" ]; }; then
-      if [ "$archive_http_status" != 404 ] && [ "$release_archive_error" != checksum ]; then
-        release_archive_error=download
-      fi
-      continue
-    fi
-    php_darwin_start_archive_hash "$archive"
-    php_darwin_wait_for_archive_hash
-    if [ "$actual_hash" = "$expected_hash" ]; then
-      release_archive_error=
-      return 0
-    fi
-    printf 'php-darwin: checksum mismatch from %s; trying the next origin\n' "$release_url" >&2
-    release_archive_error=checksum
-    resume_bytes=
-  done
-  return 1
-}
-
-PHP_DARWIN_PHASE=fetch
+archive=$local_archive
+[ -f "$archive" ] || php_darwin_die 'verified archive is missing'
 metadata_copy="$tmp_dir/cache-metadata.json"
-if [ -n "$local_archive" ]; then
-  archive=$local_archive
-  checksum="$local_archive.sha256"
-  external_metadata="$(dirname "$local_archive")/${asset%.tar.zst}.json"
-  [ -f "$archive" ] || php_darwin_die "archive not found: $archive"
-  [ -f "$checksum" ] || php_darwin_die "checksum not found: $checksum"
-  [ -f "$external_metadata" ] || php_darwin_die "metadata not found: $external_metadata"
-  expected_hash=$(php_darwin_checksum_from_file "$checksum" "$asset") || \
-    php_darwin_die "checksum file does not contain $asset"
-  php_darwin_start_archive_hash "$archive"
-  cp "$external_metadata" "$metadata_copy" || php_darwin_die 'could not copy external cache metadata'
-  php_darwin_wait_for_archive_hash
-  [ "$actual_hash" = "$expected_hash" ] || php_darwin_die "checksum mismatch for $asset"
-else
-  release_repository=${PHP_DARWIN_RELEASE_REPOSITORY:-$package_release_repository}
-  [[ "$release_repository" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || \
-    php_darwin_die "invalid release repository: $release_repository"
-  release_manifest="$tmp_dir/php-$version-manifest.json"
-  if php_darwin_read_config release-manifest.json > "$release_manifest" 2>/dev/null; then
-    if php_darwin_use_release_manifest "$release_manifest"; then
-      manifest_from_embedded=true
-    else
-      php_darwin_refresh_release_manifest
-    fi
-  else
-    php_darwin_refresh_release_manifest
-  fi
-  if ! php_darwin_download_release_archive; then
-    if [ "$manifest_from_embedded" = true ] && [ "$release_archive_error" = not-found ] && \
-      [ -z "${PHP_DARWIN_RELEASE_URL:-}" ]; then
-      printf 'Embedded release archive was retired; retrying with the current release manifest\n' >&2
-      php_darwin_refresh_release_manifest
-      if ! php_darwin_download_release_archive; then
-        case "$release_archive_error" in
-          checksum) php_darwin_die "checksum mismatch for the current release archive $asset" ;;
-          *) php_darwin_die "could not download the current release archive from $release_url" ;;
-        esac
-      fi
-    else
-      case "$release_archive_error" in
-        checksum) php_darwin_die "checksum mismatch for $asset" ;;
-        *) php_darwin_die "could not download $release_url" ;;
-      esac
-    fi
-  fi
-  [ "$actual_hash" = "$expected_hash" ] || php_darwin_die "checksum mismatch for $asset"
-  bash "$script_dir/read-metadata.sh" "$archive" "$internal_metadata_path" "$metadata_copy" || \
-    php_darwin_die 'could not read metadata from the verified release archive'
-fi
-
-PHP_DARWIN_PHASE=cache.metadata
-expected_metadata_commit=${HOMEBREW_PHP_COMMIT:-$manifest_homebrew_commit}
-metadata_values=$(php_darwin_validate_cache_metadata "$metadata_copy" "$version" "$build" "$ts" "$arch" \
-  "$brew_prefix" "$macos_major" "$expected_metadata_commit" "$manifest_php_src_commit" \
-  "$current_version" "$tap_snapshot" "$minimum_macos" "$platform_key" \
-  "$manifest_extensions_commit") || \
-  php_darwin_die 'cache metadata did not match the runner or request'
-IFS=$'\t' read -r metadata_homebrew_commit cached_source_hash target_keg_relative pecl_extension \
-  metadata_php_semver <<< "$metadata_values" || \
-  php_darwin_die 'could not parse the validated cache metadata'
-if [ -n "$manifest_source_hash" ]; then
-  [ "$cached_source_hash" = "$manifest_source_hash" ] || \
-    php_darwin_die 'cache metadata source hash does not match the release manifest'
-  [ "$metadata_php_semver" = "$manifest_php_semver" ] || \
-    php_darwin_die 'cache PHP version does not match the release manifest'
-fi
-
+php_darwin_package_metadata > "$metadata_copy" || php_darwin_die 'could not read packaged metadata'
 existing_kegs="$tmp_dir/existing-kegs.txt"
 changed_formulae_file="$tmp_dir/changed-formulae.txt"
 packages_file="$tmp_dir/packages.tsv"
@@ -835,44 +591,11 @@ links_file="$tmp_dir/links.tsv"
 installed_links_file="$tmp_dir/installed-links.tsv"
 managed_paths_file="$tmp_dir/managed-paths.txt"
 exclude_file="$tmp_dir/existing-paths.txt"
-metadata_records_file="$tmp_dir/metadata-records.tsv"
 state_paths_inventory="$tmp_dir/state-paths-inventory.txt"
 extension_paths_inventory="$tmp_dir/extension-paths-inventory.tsv"
 tap_formulae_file="$tmp_dir/tap-formulae.txt"
-: > "$packages_file" || php_darwin_die 'could not create the Homebrew package receipt list'
-: > "$package_kegs_file" || php_darwin_die 'could not create the Homebrew keg path list'
-: > "$managed_paths_file" || php_darwin_die 'could not create the managed archive path list'
-: > "$links_file" || php_darwin_die 'could not create the Homebrew link list'
-: > "$installed_links_file" || php_darwin_die 'could not create the installed Homebrew link list'
-: > "$state_paths_inventory" || php_darwin_die 'could not create the Homebrew state path list'
-: > "$extension_paths_inventory" || php_darwin_die 'could not create the cached extension path list'
-jq -er '
-  if ((.tap_formulae // []) | length) > 0 then .tap_formulae[] else .formula end
-' "$metadata_copy" > "$tap_formulae_file" || \
-  php_darwin_die 'could not read embedded custom-tap formulae'
-jq -r '[
-    (.packages[] | ["package", .name, .opt_target, (.keg_only | tostring)]),
-    (.packages[] | ["keg", (.opt_target | ltrimstr("../"))]),
-    (.links[] | ["managed", .path]),
-    ((.extensions // [])[] | ["extension", .name, .type, .path]),
-    ((.extensions // [])[] | ["managed", .path]),
-    (.packages[] | ["managed", ("opt/" + .name)]),
-    (.links[] | ["link", .path, .target])
-  ][] | @tsv' "$metadata_copy" > "$metadata_records_file" || \
-  php_darwin_die 'could not read embedded Homebrew installation records'
-awk -F '\t' -v packages="$packages_file" -v kegs="$package_kegs_file" \
-  -v extensions="$extension_paths_inventory" -v managed="$managed_paths_file" -v links="$links_file" '
-  $1 == "package" && NF == 4 { print $2 "\t" $3 "\t" $4 > packages; next }
-  $1 == "keg" && NF == 2 { print $2 > kegs; next }
-  $1 == "extension" && NF == 4 { print $2 "\t" $3 "\t" $4 > extensions; next }
-  $1 == "managed" && NF == 2 { print $2 > managed; next }
-  $1 == "link" && NF == 3 { print $2 "\t" $3 > links; next }
-  { exit 1 }
-' "$metadata_records_file" || php_darwin_die 'could not split embedded Homebrew installation records'
-jq -er '.state_paths[]' "$metadata_copy" > "$state_paths_inventory" || \
-  php_darwin_die 'could not read embedded Homebrew state paths'
-cat "$state_paths_inventory" >> "$managed_paths_file" || \
-  php_darwin_die 'could not add embedded Homebrew state paths'
+: > "$installed_links_file" || exit 1
+php_darwin_package_inventory "$tmp_dir" || php_darwin_die 'could not stage the packaged installation plan'
 while IFS= read -r state_path; do
   if [ ! -e "$brew_prefix/$state_path" ] && [ ! -L "$brew_prefix/$state_path" ]; then
     printf '%s\n' "$state_path" >> "$new_state_paths_file" || \
@@ -945,7 +668,7 @@ if [ -d "$brew_prefix/$target_keg_relative" ]; then
     php_darwin_die "could not back up the existing cached $formula keg"
   target_keg_backed_up=true
 fi
-php_darwin_postinstall_paths "$version" "$formula" "$build" "$ts" > "$postinstall_candidates_file" || \
+php_darwin_package_postinstall > "$postinstall_candidates_file" || \
   php_darwin_die 'could not resolve formula-managed post-install paths'
 : > "$postinstall_paths_file" || php_darwin_die 'could not create the post-install path list'
 while IFS= read -r postinstall_path; do
@@ -1048,6 +771,7 @@ awk -F '\t' '
 PHP_DARWIN_PHASE=archive.extract
 archive_mutation_started=true
 tap_snapshot_extracted=true
+printf '%s\n' var/php-darwin/installer/install.sh >> "$exclude_file" || exit 1
 bash "$script_dir/extract.sh" "$archive" "$brew_prefix" "$exclude_file" \
   "$managed_paths_file" "$package_kegs_file" || \
   php_darwin_die "could not extract $asset into Homebrew"
@@ -1055,9 +779,6 @@ bash "$script_dir/extract.sh" "$archive" "$brew_prefix" "$exclude_file" \
 PHP_DARWIN_PHASE=homebrew.tap
 [ -d "$tap_snapshot_path/.git" ] && [ ! -L "$tap_snapshot_path" ] || \
   php_darwin_die 'cache did not contain a valid Homebrew tap snapshot'
-bash "$script_dir/validate-tap.sh" "$tap_snapshot_path" "$version" '' \
-  "$tap_repository" "$metadata_homebrew_commit" "$tap_branch" >/dev/null || \
-  php_darwin_die 'cached Homebrew tap snapshot validation failed'
 if [ -e "$tap_path" ]; then
   php_darwin_is_git_worktree "$tap_path" || \
     php_darwin_die "installed Homebrew tap is not a Git repository: $tap_path"
@@ -1136,10 +857,9 @@ if [ "$pear_backed_up" = true ]; then
   pear_backed_up=false
   pear_restored=true
 fi
-mkdir -p "$brew_prefix/lib/php/pecl/$pecl_extension" \
-  "$brew_prefix/$pear_path/doc" "$brew_prefix/$pear_path/data" "$brew_prefix/$pear_path/cfg" \
-  "$brew_prefix/$pear_path/htdocs" "$brew_prefix/$pear_path/test" || \
-  php_darwin_die 'could not create formula-managed PEAR and PECL directories'
+while IFS= read -r directory; do
+  mkdir -p "$brew_prefix/$directory" || php_darwin_die "could not create $directory"
+done < <(php_darwin_package_empty_dirs)
 # Existing PEAR settings may intentionally use a custom shared directory.
 # Validate the archive defaults only when this transaction supplied them.
 if ! grep -Fxq "etc/php/$config_id/pear.conf" "$postinstall_restored_file"; then
@@ -1208,8 +928,14 @@ fi
 # Install only after the complete base transaction has passed its runtime and
 # preservation checks. A missing or incompatible optional pack leaves normal
 # extension installation available to callers such as setup-php.
-if [ -n "$extension_prefetch_pid" ]; then
-  wait "$extension_prefetch_pid" || true
+if [ -n "${PHP_DARWIN_PREFETCH_DIR:-}" ]; then
+  while [ ! -f "$extension_dir/complete" ]; do
+    kill -0 "${PHP_DARWIN_PREFETCH_PID:?}" 2>/dev/null || break
+    sleep 0.1
+  done
+fi
+if [ -n "$extension_prefetch_pid" ] || [ -n "${PHP_DARWIN_PREFETCH_DIR:-}" ]; then
+  [ -z "$extension_prefetch_pid" ] || wait "$extension_prefetch_pid" || true
   extension_prefetch_pid=
   cat "$extension_dir/prefetch.log"
   "$extension_node" "$extension_dir/install-extensions.cjs" activate "$extension_dir" \

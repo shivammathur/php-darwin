@@ -143,14 +143,14 @@ snapshot_roots=$(awk '!/^#/ && NF { printf "%s%s", separator, $1; separator=" " 
 [ "$snapshot_roots" = 'etc var' ] || php_darwin_die 'snapshot roots must be etc and var'
 
 jq -e --argjson versions "$configured_versions" '
-  keys == ["compression_level", "compression_long", "max_archive_bytes"] and
+  keys == ["compression_level", "compression_long", "extension_max_archive_bytes", "max_archive_bytes", "repack_concurrency"] and
   (.compression_level | type == "number" and . >= 1 and . <= 22 and . == floor) and
   .compression_level == 19 and .compression_long == 27 and
   (.max_archive_bytes | keys | sort) == $versions and
   all(.max_archive_bytes[]; . == 180000000)
 ' "$script_dir/../../../conf/build.json" >/dev/null || php_darwin_die 'invalid build configuration'
 jq -e '
-  keys == ["current_version", "extension_tap", "extension_tap_branch", "extension_tap_repository",
+  keys == ["artifact_bucket", "artifact_mirror", "current_version", "extension_release", "extension_tap", "extension_tap_branch", "extension_tap_repository",
            "release_repository", "tap", "tap_branch", "tap_repository", "tap_snapshot"] and
   .release_repository == "shivammathur/php-darwin" and
   .extension_tap == "shivammathur/extensions" and .extension_tap_branch == "main" and

@@ -77,3 +77,24 @@ See [maintenance](docs/maintenance.md) for detailed operations and troubleshooti
 - Removing an obsolete dependency from the snapshot requires graph and source
   provenance checks. Historical remote artifact deletion remains a separate
   maintenance operation; never delete current or protected cache identities.
+
+## Packaged installers
+
+- `scripts/install.sh` is the generated bootstrap: select, download, authenticate,
+  and invoke the archive's readable controller. Optional pack downloads overlap PHP.
+- Preserve the public installer URL and positional arguments consumed by setup-php.
+  Installer changes must work with setup-php unchanged; `e2e.yml` tests its pinned
+  release against published downloads on both architectures, cold and warm.
+- `scripts/installer/generate-install.cjs` generates the controller from the shared
+  transaction implementation and a resolved installation plan. Dependency receipts,
+  paths, aliases and platform/variant settings are resolved when packaging.
+- Keep destination preservation, safe extraction, native runtime checks and rollback
+  in the controller. Never execute archive code before verifying the entire archive.
+- `conf/transfers.json` owns client transfer limits; curl does not add another retry
+  layer. `conf/platforms.json`, `extension-packs.json`, `build.json`, `installer.json`
+  and `archive-policy.json` own platform, extension and packaging policy.
+- To refresh existing archives, use `mirror.yml` with `repackage=true`. Linux verifies
+  input checksums and proves all runtime members byte-for-byte and attribute identical.
+  The regression suite gates repacking; both architectures test all variants and
+  supported optional packs before a version can publish. No PHP compilation
+  is permitted in this path. Publication fails if the input release has changed.

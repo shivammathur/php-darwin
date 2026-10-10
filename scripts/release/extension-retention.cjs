@@ -1,8 +1,12 @@
 const {origins, validateEntry} = require('../installer/install-extensions.cjs');
 const {command, githubJSON, retryPolicy, httpError} = require('./extension-transfers.cjs');
 
-const archivePattern = /^(imagick|mongodb|memcached)-(5\.6|7\.[0-4]|8\.[0-7])-(debug|release)-(nts|zts)-(arm64|x86_64)-[a-f0-9]{64}\.tar\.zst$/;
-const manifestPattern = /^extensions-(5\.6|7\.[0-4]|8\.[0-7])-manifest\.json$/;
+const configuration = require('../../conf/extension-packs.json');
+const platforms = require('../../conf/platforms.json');
+const packageConfig = require('../../conf/package.json');
+const alternatives = values => values.map(value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+const archivePattern = new RegExp(`^(${alternatives(Object.keys(configuration.packs))})-(${alternatives(configuration.versions)})-(debug|release)-(nts|zts)-(${alternatives(Object.keys(platforms))})-[a-f0-9]{64}\\.tar\\.zst$`);
+const manifestPattern = new RegExp(`^extensions-(${alternatives(configuration.versions)})-manifest\\.json$`);
 
 function validateManifest(name, manifest) {
   const match = manifestPattern.exec(name);
@@ -26,9 +30,9 @@ function staleArchives(assets, objects, manifests, retained = []) {
 }
 
 function retention({env, endpoint, run = command, retry = retryPolicy(), fetcher = fetch}) {
-  const route = 'repos/shivammathur/php-darwin/releases';
+  const route = `repos/${packageConfig.release_repository}/releases`;
   const aws = args => run('aws', ['--endpoint-url', endpoint, 's3api', ...args,
-    '--bucket', 'php-darwin', '--cli-connect-timeout', '5', '--cli-read-timeout', '30'], {env});
+    '--bucket', packageConfig.artifact_bucket, '--cli-connect-timeout', '5', '--cli-read-timeout', '30'], {env});
   const report = {github_deleted: 0, cloudflare_deleted: 0, warnings: []};
   async function inventory() {
     const release = await githubJSON(`${route}/tags/extensions`, {run, retry});

@@ -28,6 +28,9 @@ bash "$script_dir/check-preserved-homebrew.sh" check "$brew_prefix" "$preserved_
   "$HOME/Library/LaunchAgents" /Library/LaunchAgents /Library/LaunchDaemons || \
   php_darwin_die 'E2E preparation changed existing PHP or its services'
 pecl_before="${RUNNER_TEMP:?}/php-darwin-e2e-pecl-before.txt"
+"${PHP_DARWIN_NODE:-node}" "$script_dir/preserved-pack-modules.cjs" snapshot "$brew_prefix" \
+  "$RUNNER_TEMP/php-darwin-e2e-pack-dependencies.json" || \
+  php_darwin_die 'could not record existing optional-pack dependencies'
 : > "$pecl_before"
 if command -v pecl >/dev/null 2>&1; then
   pecl list > "$pecl_before" 2>/dev/null || : > "$pecl_before"

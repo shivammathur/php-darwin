@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-exec "${PHP_DARWIN_NODE:-node}" "$script_dir/generate-install.cjs" "$@"
+python3 "$script_dir/../helpers/repackage-fixture.py"

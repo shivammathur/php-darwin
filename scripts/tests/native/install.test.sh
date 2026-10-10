@@ -122,6 +122,25 @@ prepare_homebrew() {
 install_cache() {
   bash "$script_dir/../../installer/install-package.sh" "$version" "$build" "$ts" "$archive" || \
     php_darwin_die 'cache installation failed'
+  if [ "${PHP_DARWIN_TEST_PREVIOUS_INSTALLER:-false}" = true ] && [ "$build/$ts" = release/nts ]; then
+    # Existing clients may retain the previous installer while the release
+    # manifest advances. It must still accept the new archive format.
+    local previous_installer previous_status
+    previous_installer="$RUNNER_TEMP/php-darwin-previous-installer-$version.sh"
+    previous_status=$(php_darwin_request_release "https://github.com/$(php_darwin_package_config release_repository)/releases/download/php-$version/install.sh" "$previous_installer")
+    [ "$previous_status" = 200 ] || php_darwin_die 'could not read the previous release installer'
+    printf 'Previous installer SHA256: %s\n' "$(php_darwin_sha256 "$previous_installer")"
+    bash "$previous_installer" "$version" "$build" "$ts" "$archive" || \
+      php_darwin_die 'previous installer cannot install the repackaged archive'
+    "$php_bin" -n "$script_dir/../helpers/openssl-smoke.php" "$brew_prefix/opt/$formula/.brew/$formula.rb" || \
+      php_darwin_die 'previous installer left an invalid PHP runtime'
+    preserved_homebrew_state check
+    rm -f "$previous_installer"
+  fi
+  if [ "${PHP_DARWIN_TEST_WARM:-false}" = true ] && [ "$build/$ts" = release/nts ]; then
+    bash "$script_dir/../../install.sh" "$version" "$build" "$ts" "$archive" || \
+      php_darwin_die 'warm cache installation failed'
+  fi
   printf 'Cache installation completed for %s\n' "$asset"
   preserved_homebrew_state check
 }
@@ -174,6 +193,17 @@ validate_runtime() {
     grep -Eq '^Debug Build => (yes|enabled)$' <<< "$php_info" || php_darwin_die 'PHP is not a debug build'
   else
     grep -Eq '^Debug Build => (no|disabled)$' <<< "$php_info" || php_darwin_die 'PHP is not a release build'
+  fi
+  if [ "${PHP_DARWIN_REQUIRE_PACKS:-false}" = true ]; then
+    optional_names=$("${PHP_DARWIN_NODE:-node}" - "$script_dir/../../installer/install-extensions.cjs" "$version" <<'NODE'
+const {packs,supportsPack} = require(process.argv[2]);
+console.log(Object.keys(packs).filter(name => supportsPack(name,process.argv[3])).join(' '));
+NODE
+    ) || php_darwin_die 'could not read optional pack configuration'
+    for optional_name in $optional_names; do
+      "$php_bin" -r "exit(extension_loaded('$optional_name') ? 0 : 1);" || \
+        php_darwin_die "optional $optional_name was not activated by the packaged installer"
+    done
   fi
   bash "$script_dir/../helpers/check-cached-extensions.sh" \
     "$archive" "$cache_metadata" "$php_bin" "$brew_prefix" "$config_id" || \

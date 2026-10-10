@@ -122,9 +122,16 @@ for (const file of fs.readdirSync(${JSON.stringify(scan)}).filter(file => file.e
     loaded.push(name);
   }
 }
-if (process.argv[3].includes('get_loaded_extensions')) process.stdout.write(JSON.stringify(loaded));
+const code = process.argv[process.argv.indexOf('-r') + 1];
+if (code.includes('get_loaded_extensions')) {
+  if (fs.existsSync(${JSON.stringify(path.join(root, 'startup-warning'))})) {
+    const output = process.argv.includes('display_errors=stderr') ? process.stderr : process.stdout;
+    output.write('Warning: PHP Startup: existing module warning\\n');
+  }
+  process.stdout.write(JSON.stringify(loaded));
+}
 else {
-  const required = [...process.argv[3].matchAll(/extension_loaded\\('([^']+)'\\)/g)].map(match => match[1]);
+  const required = [...code.matchAll(/extension_loaded\\('([^']+)'\\)/g)].map(match => match[1]);
   if (!(required.length ? required : ${JSON.stringify(packs[name])}).every(module => loaded.includes(module))) process.exit(2);
   if (fs.existsSync(${JSON.stringify(path.join(root, 'fail'))})) process.exit(3);
 }
@@ -135,6 +142,16 @@ else {
     snapshot: () => Object.fromEntries(fs.readdirSync(scan).sort().map(file => [file, read(path.join(scan, file), 'utf8')])) };
 }
 const marker = '; Managed by php-darwin optional extension installer\n';
+test('startup warnings do not corrupt the activation probe or bypass module-load failures', t => {
+  const f = activationFixture(t, 'imagick');
+  fs.writeFileSync(path.join(f.root, 'startup-warning'), '');
+  f.activate();
+  assert.ok(fs.existsSync(path.join(f.scan, '20-imagick.ini')));
+  const before = f.snapshot();
+  fs.writeFileSync(path.join(f.root, 'fail'), '');
+  assert.throws(f.activate, /failed/);
+  assert.deepEqual(f.snapshot(), before);
+});
 test('configured priorities drive activation and remain available outside the checkout', t => {
   const { extensions, extensionIni, standaloneSource, command } = require('../../installer/install-extensions.cjs');
   const f = activationFixture(t, 'imagick');

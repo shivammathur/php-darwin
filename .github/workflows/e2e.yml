@@ -42,7 +42,7 @@ permissions:
 
 env:
   HOMEBREW_DEVELOPER: '1'
-  use_package_cache: 'true'
+  use_builds_cache: 'true'
   PHP_DARWIN_TEST_INSTALLER: ${{ inputs.checkout-installer && format('{0}/scripts/install.sh', github.workspace) || '' }}
 
 jobs:
@@ -65,6 +65,9 @@ jobs:
 
       - name: Remove unused Homebrew taps
         run: bash scripts/build/cleanup-taps.sh
+
+      - name: Preserve the Actions Node runtime
+        uses: ./.github/actions/node-runtime
 
       - name: Record preinstalled PHP and services
         run: bash scripts/tests/helpers/prepare-e2e.sh
@@ -105,6 +108,9 @@ jobs:
       - name: Remove PHP for the cold setup-php path
         run: bash scripts/tests/helpers/remove-preinstalled-php.sh
 
+      - name: Preserve the Actions Node runtime
+        uses: ./.github/actions/node-runtime
+
       - name: Record preinstalled PHP and services
         run: bash scripts/tests/helpers/prepare-e2e.sh
 
@@ -115,12 +121,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: shivammathur/setup-php
-          ref: 2c253bfdb2619dd9b1764905d5b5e7488adfc104
+          ref: eb7c497e18156a6bbabfef1d3a82760b9eda3962 # v2
           path: .setup-php
           persist-credentials: false
-
-      - name: Preserve the Actions Node runtime
-        uses: ./.github/actions/node-runtime
 
       - name: Select supported optional packs
         if: inputs.optional-packs

@@ -646,6 +646,11 @@ package_cache() {
 
   "${PHP_DARWIN_NODE:-node}" "$script_dir/package-inputs.cjs" capture "$metadata_path" || \
     php_darwin_die 'could not record package dependency inputs'
+  jq '.installer={schema:1,path:"var/php-darwin/installer/install.sh"}' "$metadata_path" > "$work_dir/installer-metadata.json" || exit 1
+  mv "$work_dir/installer-metadata.json" "$metadata_path" || exit 1
+  installer_path="$brew_prefix/var/php-darwin/installer/install.sh"
+  bash "$script_dir/../installer/generate-install.sh" "$installer_path" "$metadata_path" "$brew_prefix" || \
+    php_darwin_die 'could not generate the packaged installer'
   internal_metadata_path=$(php_darwin_metadata_path "$asset") || exit 1
   internal_metadata_dir="$brew_prefix/${internal_metadata_path%/*}"
   [ ! -L "$internal_metadata_dir" ] || php_darwin_die 'embedded metadata directory is a symlink'
@@ -656,7 +661,7 @@ package_cache() {
   cp "$metadata_path" "$brew_prefix/$internal_metadata_path" || \
     php_darwin_die 'could not stage embedded archive metadata'
   tar_paths="$work_dir/tar-paths.txt"
-  printf '%s\n' "$internal_metadata_path" > "$tar_paths" || php_darwin_die 'could not create archive inputs'
+  printf '%s\n' "$internal_metadata_path" var/php-darwin/installer/install.sh > "$tar_paths" || php_darwin_die 'could not create archive inputs'
   awk 'FILENAME == ARGV[1] { staged[$0]=1; next } !($0 in staged)' \
     "$openssl_defaults_paths" "$archive_paths" >> "$tar_paths" || php_darwin_die 'could not add archive inputs'
   # BSD tar accepts only one -T input. Switch roots inside that list so adding
@@ -674,7 +679,7 @@ package_cache() {
   pipeline_status=("${PIPESTATUS[@]}")
   [ "${pipeline_status[0]}" -eq 0 ] && [ "${pipeline_status[1]}" -eq 0 ] || \
     php_darwin_die 'could not compress the archive'
-  rm -f "$brew_prefix/$internal_metadata_path" || php_darwin_die 'could not remove staged archive metadata'
+  rm -f "$installer_path" "$brew_prefix/$internal_metadata_path" || php_darwin_die 'could not remove staged archive metadata'
   find "$tap_snapshot_path" -mindepth 1 -delete || php_darwin_die 'could not clean the staged Homebrew tap snapshot'
   rmdir "$tap_snapshot_path" || php_darwin_die 'could not remove the staged Homebrew tap snapshot'
   cp "$metadata_path" "${GITHUB_WORKSPACE:?}/builds/${asset%.tar.zst}.json" || \

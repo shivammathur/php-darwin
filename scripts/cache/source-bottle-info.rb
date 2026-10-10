@@ -4,6 +4,8 @@ require "formulary"
 require "formula_installer"
 require "json"
 
+PHP_DARWIN_FORMULA_POLICY = JSON.parse(File.read(File.expand_path("../../conf/formula-policy.json", __dir__))).freeze
+
 Formulary.enable_factory_cache!
 mode = ARGV.fetch(0)
 formulae = JSON.parse(ARGV.fetch(1))
@@ -18,13 +20,13 @@ def current_installation?(formula)
 end
 
 def missing_build_files(formula)
-  return [] unless formula.latest_version_installed? && formula.name.match?(/\Aicu4c(?:@[0-9]+)?\z/)
+  return [] unless formula.latest_version_installed?
 
-  # Hosted images can retain the current ICU receipt while omitting its
-  # development files. Homebrew then omits ICU from PKG_CONFIG_PATH. Restore
-  # that exact bottle only when the files needed by PHP configure are absent.
-  %w[lib/pkgconfig/icu-uc.pc lib/pkgconfig/icu-i18n.pc include/unicode/utypes.h]
-    .reject { |relative| (formula.latest_installed_prefix/relative).file? }
+  PHP_DARWIN_FORMULA_POLICY.fetch("installed_files").flat_map do |rule|
+    next [] unless Regexp.new(rule.fetch("formula")).match?(formula.name)
+
+    rule.fetch("paths").reject { |relative| (formula.latest_installed_prefix/relative).file? }
+  end
 end
 
 def source_dependencies(formula, planning:, force_source: false, runtime_only: false, ignore_installed: false,

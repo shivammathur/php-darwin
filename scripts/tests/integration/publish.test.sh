@@ -87,6 +87,7 @@ while read -r build ts; do
       --arg requested_formula "$requested" --arg source_hash "$source_hash" \
       --arg config_id "$(php_darwin_config_id "$version" "$build" "$ts")" \
       --arg tap_snapshot "$(php_darwin_package_config tap_snapshot)" --arg thread_safety "$ts" '
+      .installer={schema:1,path:"var/php-darwin/installer/install.sh"} |
       .archive=$archive | .architecture=$architecture | .brew_prefix=$brew_prefix | .build=$build |
       .created_at="2026-01-01T00:00:00Z" | .extensions_source_hash=$extensions_source_hash |
       .formula=$formula | .formula_sha256=$formula_sha256 |

@@ -7,8 +7,12 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 php_darwin_ruby - "$@" <<'PHP_DARWIN_DEPENDENCIES_RUBY'
 require 'json'
 begin
-  prefix, packages = ARGV
+  prefix, packages, inventory = ARGV
   dependencies = []
+  if inventory
+    dependencies = File.readlines(inventory, chomp: true)
+    raise 'invalid runtime dependency inventory' unless dependencies.all? { |name| name.match?(/\A[a-zA-Z0-9@+_.-]+\z/) && !%w[. ..].include?(name) }
+  else
   File.foreach(packages) do |line|
     name, target, keg_only, extra = line.strip.split("\t")
     raise 'invalid package receipt path' unless extra.nil? && %w[true false].include?(keg_only) &&
@@ -24,6 +28,7 @@ begin
       raise 'invalid runtime dependency name' unless dependency && !%w[. ..].include?(dependency) && dependency.match?(/\A[a-zA-Z0-9@+_.-]+\z/)
       dependencies << dependency
     end
+  end
   end
   # Homebrew's missing_dependencies uses installed receipt data, not current
   # formula definitions. Check every cached package, including transitive deps.

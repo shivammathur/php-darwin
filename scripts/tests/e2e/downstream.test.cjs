@@ -17,11 +17,16 @@ for (const [module, header] of [['igbinary', 'igbinary.h'], ['msgpack', 'php_msg
 
 // Prevent a preinstalled extension from turning this into an enable-only test.
 const { spawnSync } = require('node:child_process');
-spawnSync('brew', ['uninstall', '--force', '--ignore-dependencies', `yaml@${version}`], { stdio: 'inherit' });
+for (const module of ['yaml', 'redis']) {
+  spawnSync('brew', ['uninstall', '--force', '--ignore-dependencies', `shivammathur/extensions/${module}@${version}`],
+    { stdio: 'inherit', env: { ...process.env, HOMEBREW_NO_AUTOREMOVE: '1' } });
+}
 spawnSync('pecl', ['uninstall', 'redis'], { stdio: 'inherit' });
 fs.rmSync('/tmp/redis-6.3.0', { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
 const extensionDirectory = command('php-config', ['--extension-dir']);
 for (const module of ['redis', 'yaml']) fs.rmSync(path.join(extensionDirectory, `${module}.so`), { force: true });
+assert.equal(command('php', ['-d', 'display_errors=stderr', '-r', "echo extension_loaded('redis') ? 'loaded' : 'absent';"]),
+  'absent', 'The downstream fixture must remove preinstalled Redis before testing a fresh source build');
 Object.assign(process.env, { INPUT_EXTENSIONS: 'memcached, yaml, redis-6.3.0', 'INPUT_COVERAGE': 'none',
   'INPUT_TOOLS': 'none', 'INPUT_INI-FILE': 'production', fail_fast: 'true',
   REDIS_CONFIGURE_OPTS: '--enable-redis-igbinary=yes --enable-redis-msgpack=yes' });

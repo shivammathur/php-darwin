@@ -17,6 +17,7 @@ trap 'exit 143' TERM
 manifest="$work_dir/$tag-manifest.json"
 php_darwin_retry gh release download "$tag" --repo "$repo" --pattern "$tag-manifest.json" --clobber --dir "$work_dir"
 php_darwin_validate_release_manifest "$manifest" "$version" >/dev/null
+jq -e 'all(.assets[]; .installer.schema == 1 and .installer.path == "var/php-darwin/installer/install.sh")' "$manifest" >/dev/null || php_darwin_die 'repackage this release before refreshing its bootstrap'
 PHP_DARWIN_RELEASE_MANIFEST="$manifest" bash "$script_dir/../installer/generate-install.sh" "$work_dir/install.sh"
 mirror=$(php_darwin_release_mirror "$repo" "$version")
 mode=all

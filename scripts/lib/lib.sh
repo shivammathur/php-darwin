@@ -674,8 +674,8 @@ php_darwin_fetch_release_manifest() {
 # Forks and explicit test URLs never silently fall back to production assets.
 php_darwin_release_mirror() {
   local mirror=${PHP_DARWIN_MIRROR_URL-}
-  if [ "${PHP_DARWIN_MIRROR_URL+x}" != x ] && [ "$1" = shivammathur/php-darwin ]; then
-    mirror=https://artifacts.php-darwin.setup-php.com
+  if [ "${PHP_DARWIN_MIRROR_URL+x}" != x ] && [ "$1" = "$(php_darwin_package_config release_repository)" ]; then
+    mirror=$(php_darwin_package_config artifact_mirror) || return 1
   fi
   [ -n "$mirror" ] || return 0
   printf '%s/php-%s\n' "${mirror%/}" "$2"
@@ -685,7 +685,10 @@ php_darwin_request_release() {
   local status
   local result=0
   local range=()
-  local attempt=1 attempts=3 connect_timeout=10 delay retry_after
+  local attempt=1 attempts connect_timeout delay retry_after retry_delay retry_after_max policy
+  policy=$(php_darwin_read_config transfers.json | jq -er '[.attempts,.connect_timeout,.retry_delay,.retry_after_max,.metadata.timeout,.archive.speed_time,.archive.speed_limit] | @tsv') || return 1
+  local metadata_timeout speed_time speed_limit
+  IFS=$'\t' read -r attempts connect_timeout retry_delay retry_after_max metadata_timeout speed_time speed_limit <<< "$policy"
   local headers=(--dump-header "$2.headers")
   [ -z "${6:-}" ] || range=(--range "$6-")
 
@@ -695,9 +698,8 @@ php_darwin_request_release() {
   while :; do
     result=0
     if [ "$attempts" -gt 1 ]; then : > "$2.headers" || return 1; fi
-    status=$(curl --config <(php_darwin_read_config download.conf) \
-      --retry 0 --connect-timeout "$connect_timeout" --speed-time "${4:-10}" --speed-limit "${3:-1024}" \
-      --max-time "${5:-30}" ${range[@]+"${range[@]}"} ${headers[@]+"${headers[@]}"} \
+    status=$(curl --retry 0 --connect-timeout "$connect_timeout" --speed-time "${4:-$speed_time}" --speed-limit "${3:-$speed_limit}" \
+      --max-time "${5:-$metadata_timeout}" ${range[@]+"${range[@]}"} ${headers[@]+"${headers[@]}"} \
       -fsSL -w '%{http_code}' "$1" -o "$2") || result=$?
     if [ "$result" -ne 0 ] || { [ "$status" != 200 ] && [ "$status" != 206 ]; }; then
       printf 'php-darwin: download failed (curl %s, HTTP %s): %s\n' \
@@ -705,11 +707,11 @@ php_darwin_request_release() {
     fi
     [ "$attempt" -lt "$attempts" ] || break
     if [ "$result" -eq 0 ] && { [ "$status" = 200 ] || [ "$status" = 206 ]; }; then break; fi
-    delay=$((1 << (attempt - 1)))
+    delay=$((retry_delay << (attempt - 1)))
     retry_after=$(awk 'tolower($1) == "retry-after:" {gsub(/\r/, "", $2); value=$2} END {print value}' "$2.headers" 2>/dev/null) || retry_after=
     if [[ "$retry_after" =~ ^[0-9]{1,6}$ ]]; then
       retry_after=$((10#$retry_after))
-      [ "$retry_after" -le 30 ] || retry_after=30
+      [ "$retry_after" -le "$retry_after_max" ] || retry_after=$retry_after_max
       [ "$retry_after" -le "$delay" ] || delay=$retry_after
     fi
     printf 'php-darwin: retrying transfer %s/%s in %ss\n' "$((attempt + 1))" "$attempts" "$delay" >&2

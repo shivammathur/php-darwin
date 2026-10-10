@@ -1,4 +1,9 @@
 {
-  "documentation_directories": ["doc", "info", "man"],
+  "documentation_directories": [
+    "doc",
+    "info",
+    "man",
+    "gnuman"
+  ],
   "preserve_pattern": "(^|/|[-_.])(licen[cs]es?|copying|copyrights?|notices?|legal|patents?|ofl|unlicense|authors|contributors)([/. _-]|$)"
 }

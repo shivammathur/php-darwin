@@ -50,4 +50,8 @@ test('the setup-php hook selects candidate installer bytes and preserves failure
   const unrelated = run('bash -c "printf unrelated"');
   assert.equal(unrelated.status, 0, unrelated.stderr);
   assert.equal(unrelated.stdout, 'unrelated');
+  const cacheOnly = run('setup_cached_versions() { bash /tmp/install.sh 8.5 release nts; }; setup_cached_versions || printf "unexpected PHP rebuild"',
+    {FIXTURE_EXIT:'7',PHP_DARWIN_REQUIRE_CACHE:'true'});
+  assert.equal(cacheOnly.status,7);
+  assert.ok(!cacheOnly.stdout.includes('unexpected PHP rebuild'));
 });

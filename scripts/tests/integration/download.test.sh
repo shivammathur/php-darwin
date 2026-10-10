@@ -19,6 +19,10 @@ trap 'exit 143' TERM
 printf 'verified fixture\n' > "$work_dir/fixture"
 expected_hash=$(php_darwin_sha256 "$work_dir/fixture")
 version=8.3
+arch=arm64
+build=release
+ts=nts
+sw_vers() { printf '14.0\n'; }
 channel=stable
 release_repository=fixture/repo
 asset=$(php_darwin_asset "$version" release nts arm64)
@@ -34,8 +38,8 @@ jq -n --arg hash "$expected_hash" --arg asset "$manifest_download_asset" '
 ' > "$work_dir/manifest"
 php_darwin_validate_release_manifest "$work_dir/manifest" "$version" >/dev/null
 # Exercise manifest selection and archive downloading without touching Homebrew.
-sed -n '/^php_darwin_use_release_manifest() {/,/^}/p; /^php_darwin_download_release_archive() {/,/^}/p' \
-  "$script_dir/../../installer/install-package.sh" > "$work_dir/download.sh"
+sed -n '/^php_darwin_validate_release_manifest() {/,/^}/p; /^php_darwin_use_release_manifest() {/,/^}/p; /^php_darwin_download_release_archive() {/,/^}/p' \
+  "$script_dir/../../installer/download.sh" > "$work_dir/download.sh"
 # shellcheck source=/dev/null
 . "$work_dir/download.sh"
 php_darwin_use_release_manifest "$work_dir/manifest"
@@ -84,7 +88,9 @@ loop do
       sleep 4 if mode == 'moderate'
       status = {'missing'=>404,'unavailable'=>503}.fetch(mode, 200)
       if mode == 'burst'
-        body = 'x' * 16384
+        # One second of data at the configured low-speed threshold. A larger
+        # burst can extend curl's averaging window differently across versions.
+        body = 'x' * 1024
         connection.write("HTTP/1.1 200 Fixture\r\nContent-Length: #{body.bytesize + 1}\r\nConnection: close\r\n\r\n#{body}")
         sleep 20
         next
@@ -260,7 +266,7 @@ curl() {
     [ "$previous" != --connect-timeout ] || connect=$argument
     previous=$argument
   done
-  [ "$connect" = 10 ] || return 97
+  [ "$connect" = 5 ] || return 97
   if [ "$count" -lt 3 ]; then printf '000'; return 6; fi
   command curl "$@"
 }

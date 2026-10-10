@@ -8,6 +8,10 @@ on:
         default: all
         required: true
         type: string
+      repackage:
+        description: Add packaged installers on Linux and test both architectures without rebuilding PHP
+        default: false
+        type: boolean
       publish-installers:
         description: Also update the GitHub release installers after verifying R2
         default: false
@@ -15,6 +19,12 @@ on:
 permissions:
   contents: read
 jobs:
+  validate:
+    if: inputs.repackage
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/validate.yml
   matrix:
     runs-on: ubuntu-latest
     outputs:
@@ -35,7 +45,23 @@ jobs:
             versions=$(jq -cn --arg version "$PHP_VERSION" '[$version]')
           fi
           echo "versions=$versions" >> "$GITHUB_OUTPUT"
+  repackage:
+    if: inputs.repackage
+    needs: [matrix, validate]
+    strategy:
+      fail-fast: false
+      matrix:
+        php-version: ${{ fromJSON(needs.matrix.outputs.versions) }}
+    permissions:
+      contents: write
+      actions: read
+    uses: ./.github/workflows/repackage-version.yml
+    with:
+      php-version: ${{ matrix.php-version }}
+      publish: ${{ inputs.publish-installers }}
+    secrets: inherit
   mirror:
+    if: ${{ !inputs.repackage }}
     needs: matrix
     strategy:
       fail-fast: false

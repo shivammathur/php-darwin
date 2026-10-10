@@ -18,6 +18,7 @@ function fixture(t) {
 function entry(name = 'mongodb', patch = {}) {
   const result = { schema: 1, name, php_version: '8.4', architecture: 'arm64', build: 'release', thread_safety: 'nts',
     php_api: '20240924', minimum_macos: 14, inputs_sha256: 'a'.repeat(64), bytes: name.length, sha256: digest(name), ...patch };
+  result.minimum_macos = require('../../../conf/platforms.json')[result.architecture].minimum_macos;
   result.file = `${key(result)}-${result.sha256}.tar.zst`;
   return result;
 }
@@ -133,7 +134,7 @@ test('grouped recovery accepts passing checkpoints in a failed job but rejects t
   const recovered = await planRecovery('123', run, undefined, { download });
   assert.equal(recovered.entries.length, 1);
   assert.equal(recovered.entries[0].artifact_id, 11);
-  metadata.architecture = 'x86_64'; metadata.file = `${key(metadata)}-${metadata.sha256}.tar.zst`;
+  metadata.architecture = 'x86_64'; metadata.minimum_macos = 15; metadata.file = `${key(metadata)}-${metadata.sha256}.tar.zst`;
   await assert.rejects(planRecovery('123', run, undefined, { download }), /context mismatch/);
 });
 

@@ -1,0 +1,107 @@
+name: Repackage and test an existing PHP release
+on:
+  workflow_call:
+    inputs:
+      php-version:
+        type: string
+        required: true
+      publish:
+        type: boolean
+        default: false
+permissions:
+  contents: write
+  actions: read
+jobs:
+  repackage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      platforms: ${{ steps.platforms.outputs.platforms }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: platforms
+        run: |
+          echo "platforms=$(jq -c '[to_entries[] | {arch:.key, runner:.value.build_runner}]' conf/platforms.json)" >> "$GITHUB_OUTPUT"
+      - name: Repackage verified published archives without compiling PHP
+        env:
+          PHP_VERSION: ${{ inputs.php-version }}
+        run: python3 scripts/release/repackage-installer.py "$PHP_VERSION" builds
+      - uses: ./.github/actions/upload-artifacts
+        with:
+          name: php-${{ inputs.php-version }}-arm64-packaged
+          path: builds/arm64
+          compression-level: 0
+      - uses: ./.github/actions/upload-artifacts
+        with:
+          name: php-${{ inputs.php-version }}-x86_64-packaged
+          path: builds/x86_64
+          compression-level: 0
+      - uses: ./.github/actions/upload-artifacts
+        with:
+          name: repackage-evidence-${{ inputs.php-version }}
+          path: evidence
+  test:
+    needs: repackage
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ${{ fromJSON(needs.repackage.outputs.platforms) }}
+    runs-on: ${{ matrix.platform.runner }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/node-runtime
+      - name: Request every supported optional pack and warm installation checks
+        run: |
+          {
+            echo "PHP_DARWIN_EXTENSIONS=$(jq -r '.packs | keys | join(",")' conf/extension-packs.json)"
+            echo 'PHP_DARWIN_REQUIRE_PACKS=true'
+            echo 'PHP_DARWIN_TEST_WARM=true'
+            echo 'PHP_DARWIN_TEST_PREVIOUS_INSTALLER=true'
+          } >> "$GITHUB_ENV"
+      - uses: ./.github/actions/test-cache
+        with:
+          php-version: ${{ inputs.php-version }}
+          arch: ${{ matrix.platform.arch }}
+          runner: ${{ matrix.platform.runner }}
+          github-token: ${{ secrets.TOKEN || github.token }}
+  publish:
+    if: inputs.publish
+    needs: [repackage, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: php-darwin-release-publish-${{ inputs.php-version }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/download-artifacts
+        with:
+          pattern: php-${{ inputs.php-version }}-*-packaged
+          path: builds
+          github-token: ${{ secrets.TOKEN || github.token }}
+      - uses: ./.github/actions/download-artifacts
+        with:
+          name: repackage-evidence-${{ inputs.php-version }}
+          path: evidence
+          github-token: ${{ secrets.TOKEN || github.token }}
+      - name: Verify the source release is still current and publish to both origins
+        env:
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+          PHP_VERSION: ${{ inputs.php-version }}
+          PHP_DARWIN_MIRROR_REQUIRED: 'true'
+          CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
+          CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
+          CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
+        run: |
+          mkdir current
+          repository=$(jq -r .release_repository conf/package.json)
+          gh release download "php-$PHP_VERSION" --repo "$repository" --pattern "php-$PHP_VERSION-manifest.json" --dir current
+          cmp "current/php-$PHP_VERSION-manifest.json" "evidence/php-$PHP_VERSION-manifest.json"
+          bash scripts/release/publish.sh builds

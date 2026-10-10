@@ -87,6 +87,7 @@ test('PEAR restoration preserves custom settings while rejecting malformed archi
   const run = () => spawnSync('bash', ['-c', `
     brew_prefix=$1; postinstall_backup_dir=$2; postinstall_paths_file=$3; postinstall_restored_file=$4
     pear_path=share/pear@8.5; pear_backed_up=false; config_id=8.5; pecl_extension=20250925; formula=php@8.5
+    php_darwin_package_empty_dirs() { printf '%s\\n' "lib/php/pecl/$pecl_extension" "$pear_path/doc" "$pear_path/data" "$pear_path/cfg" "$pear_path/htdocs" "$pear_path/test"; }
     : > "$postinstall_restored_file"
     php_darwin_die() { echo "$*" >&2; exit 1; }
     ${configure}

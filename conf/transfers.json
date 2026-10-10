@@ -1,0 +1,15 @@
+{
+  "attempts": 3,
+  "connect_timeout": 5,
+  "retry_delay": 1,
+  "retry_after_max": 30,
+  "metadata": {
+    "timeout": 30,
+    "max_bytes": 2000000
+  },
+  "archive": {
+    "timeout": 300,
+    "speed_time": 10,
+    "speed_limit": 1024
+  }
+}

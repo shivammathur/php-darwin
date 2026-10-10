@@ -61,15 +61,12 @@ function recipeHash(recipe) {
 }
 
 function configureCache(info) {
-  if (info.full_name === 'net-snmp' && !info.dependencies.some(dep => dep.name === 'pcre')) {
-    return {ac_cv_header_pcre_h: 'no'};
+  const values = {};
+  for (const rule of require('../../conf/formula-policy.json').configure_cache) {
+    if (new RegExp(rule.formula).test(info.full_name) &&
+        !info.dependencies.some(dependency => dependency.name === rule.unless_dependency)) Object.assign(values, rule.values);
   }
-  // CPython can discover globally linked gettext while building unrelated PHP
-  // dependencies. Keep its runtime graph identical to the formula's contract.
-  if (/^python@[0-9]+\.[0-9]+$/.test(info.full_name) && !info.dependencies.some(dep => dep.name === 'gettext')) {
-    return {ac_cv_header_libintl_h: 'no', ac_cv_lib_intl_textdomain: 'no'};
-  }
-  return undefined;
+  return Object.keys(values).length ? values : undefined;
 }
 
 function buildInputs(formula, environment) {

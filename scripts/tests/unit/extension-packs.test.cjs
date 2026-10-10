@@ -380,6 +380,7 @@ test('shared selection finds missing packs, changed nightly PHP and changed reci
   const manifests = new Map(versions.map(php_version => [php_version, builds.flatMap(build => modes.flatMap(thread_safety =>
     ['arm64', 'x86_64'].map(architecture => {
       const metadata = { ...entry('imagick'), php_version, build, thread_safety, architecture,
+        minimum_macos: require('../../../conf/platforms.json')[architecture].minimum_macos,
         php_semver: `${php_version}.0${php_version === '8.6' ? '-dev' : ''}`,
         ...(php_version === '8.6' ? { php_src_commit: 'a'.repeat(40) } : {}),
         source_records: [{ repository: 'core', path: 'formula.rb', sha256: digest('original') }] };

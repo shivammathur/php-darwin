@@ -3,6 +3,12 @@ const path = require('node:path');
 const { command, digest, key, packs, inspectTree, packEnvironment, phpApi } = require('../installer/install-extensions.cjs');
 const { recipeInputs } = require('../lib/recipe-inputs.cjs');
 
+const configuration = require('../../conf/extension-packs.json');
+const platforms = require('../../conf/platforms.json');
+const packageConfig = require('../../conf/package.json');
+const buildConfig = require('../../conf/build.json');
+const archivePolicy = require('../../conf/archive-policy.json');
+const legal = new RegExp(archivePolicy.preserve_pattern, 'i');
 const macho = new Set(['cffaedfe', 'cefaedfe', 'feedfacf', 'feedface', 'cafebabe', 'bebafeca']);
 function isMachO(file) {
   const fd = fs.openSync(file, 'r');
@@ -27,12 +33,17 @@ function copyRuntime(keg, output) {
     if (/\.(?:a|o|h|hpp|pc)$/.test(relative)) return false;
     // ImageMagick's libltdl module loader needs its .la module descriptors.
     if (relative.endsWith('.la') && !/\/modules-[^/]+\//.test(relative)) return false;
-    if (/(?:^|\/)(?:man|gnuman|info)(?:\/|$)/.test(relative)) return false;
-    if (/^share\/doc(?:\/|$)/.test(relative) && !fs.lstatSync(source).isDirectory() &&
-        (!fs.lstatSync(source).isFile() ||
-         !/^(?:licen[cs]e|copying|copyright|notice|legal|authors)(?:$|[.-])/i.test(path.basename(source)))) return false;
+    if (relative.split(path.sep).some(part => archivePolicy.documentation_directories.includes(part)) &&
+        !fs.lstatSync(source).isDirectory() && (!fs.lstatSync(source).isFile() || !legal.test(relative))) return false;
     return true;
   } });
+  function pruneDocumentation(directory, documentation = false) {
+    for (const entry of fs.readdirSync(directory, {withFileTypes: true})) if (entry.isDirectory()) {
+      pruneDocumentation(path.join(directory, entry.name), documentation || archivePolicy.documentation_directories.includes(entry.name));
+    }
+    if (documentation && !fs.readdirSync(directory).length) fs.rmdirSync(directory);
+  }
+  pruneDocumentation(output);
 }
 function sourceRecords(formulae) {
   return formulae.map(formula => {
@@ -52,7 +63,7 @@ function copyHeaders(moduleKeg, module, phpVersion, stage) {
   const source = path.join(moduleKeg, 'include/php/ext', `${module}@${phpVersion}`);
   const destination = path.join(stage, 'headers', module);
   fs.cpSync(source, destination, { recursive: true, verbatimSymlinks: true });
-  if (!fs.statSync(path.join(destination, module === 'msgpack' ? 'php_msgpack.h' : 'igbinary.h')).isFile()) {
+  if (!fs.statSync(path.join(destination, Object.values(configuration.headers).find(headers => Object.hasOwn(headers, module))[module])).isFile()) {
     throw new Error(`Missing ${module} development headers`);
   }
 }
@@ -60,7 +71,7 @@ function packageExtension({ name, php_version, build, thread_safety, architectur
   key({ name, php_version, build, thread_safety, architecture });
   output = path.resolve(output);
   const prefix = command('brew', ['--prefix']);
-  const references = packs[name].map(module => `shivammathur/extensions/${module}@${php_version}`);
+  const references = packs[name].map(module => `${packageConfig.extension_tap}/${module}@${php_version}`);
   const runtime = new Set();
   for (const reference of references) {
     for (const dependency of command('brew', ['deps', '--installed', '--formula', reference]).split('\n').filter(Boolean)) {
@@ -73,13 +84,13 @@ function packageExtension({ name, php_version, build, thread_safety, architectur
     php_api: phpApi(path.join(path.dirname(php), 'php-config')),
     php_semver: command(path.join(path.dirname(php), 'php-config'), ['--version']),
     ...(process.env.PHP_DARWIN_PHP_SRC_COMMIT ? { php_src_commit: process.env.PHP_DARWIN_PHP_SRC_COMMIT } : {}),
-    minimum_macos: architecture === 'arm64' ? 14 : 15, modules: packs[name], environment: {},
-    ...(name === 'memcached' ? { headers: ['igbinary', 'msgpack'] } : {}),
+    minimum_macos: platforms[architecture].minimum_macos, modules: packs[name], environment: {},
+    ...(configuration.headers[name] ? { headers: Object.keys(configuration.headers[name]) } : {}),
     source_records: sourceRecords([...new Set([...references, ...runtime])]),
     dependencies: info.map(formula => ({ name: formula.name,
       versions: [path.basename(fs.realpathSync(path.join(prefix, 'opt', formula.name)))] })) };
-  const tap = command('brew', ['--repository', 'shivammathur/extensions']);
-  metadata.source_records.push({ repository: 'shivammathur/homebrew-extensions', path: 'Abstract/abstract-php-extension.rb',
+  const tap = command('brew', ['--repository', packageConfig.extension_tap]);
+  metadata.source_records.push({ repository: packageConfig.extension_tap_repository.replace('https://github.com/', ''), path: 'Abstract/abstract-php-extension.rb',
     sha256: digest(command('git', ['-C', tap, 'show', 'HEAD:Abstract/abstract-php-extension.rb']) + '\n') });
   metadata.inputs_sha256 = digest(JSON.stringify(metadata));
   fs.mkdirSync(output, { recursive: true });
@@ -95,7 +106,7 @@ function packageExtension({ name, php_version, build, thread_safety, architectur
       const licenseDir = path.join(stage, 'licenses', module);
       fs.mkdirSync(licenseDir, { recursive: true });
       for (const file of files(moduleKeg)) if (fs.lstatSync(file).isFile() &&
-          /(?:licen[cs]e|copying|copyright|notice|authors)/i.test(path.basename(file))) {
+          legal.test(path.relative(moduleKeg, file))) {
         fs.copyFileSync(file, path.join(licenseDir, path.relative(moduleKeg, file).replaceAll('/', '_')));
       }
     }
@@ -166,18 +177,12 @@ function packageExtension({ name, php_version, build, thread_safety, architectur
         metadata.relocations.push(path.relative(stage, file));
       }
     }
-    const sasl = mappings.find(item => item.name === 'cyrus-sasl');
-    if (sasl && fs.existsSync(path.join(sasl.destination, 'lib/sasl2'))) {
-      metadata.environment.SASL_PATH = [path.join(sasl.relative, 'lib/sasl2')];
-    }
-    const magick = mappings.find(item => item.name === 'imagemagick');
-    if (magick) {
-      const directories = [...new Set(files(magick.destination).map(file => path.dirname(file)))];
-      for (const [variable, pattern] of [
-        ['MAGICK_CODER_MODULE_PATH', /\/modules-[^/]+\/coders$/],
-        ['MAGICK_FILTER_MODULE_PATH', /\/modules-[^/]+\/filters$/],
-        ['MAGICK_CONFIGURE_PATH', /\/(?:etc|share)\/ImageMagick-[^/]+$/],
-      ]) {
+    for (const [formula, resources] of Object.entries(configuration.runtime_resources)) {
+      const mapping = mappings.find(item => item.name === formula);
+      if (!mapping) continue;
+      const directories = [...new Set(files(mapping.destination).map(file => path.dirname(file)))];
+      for (const [variable, expression] of Object.entries(resources)) {
+        const pattern = new RegExp(expression);
         const values = directories.filter(directory => pattern.test(directory)).map(directory => path.relative(stage, directory));
         if (values.length) metadata.environment[variable] = values;
       }
@@ -189,7 +194,7 @@ function packageExtension({ name, php_version, build, thread_safety, architectur
       '-r', `exit(extension_loaded('${name}') ? 0 : 1);`], { env: { ...process.env, ...environment } });
     const temporaryArchive = path.join(output, `${key(metadata)}.tar.zst`);
     command('tar', ['--zstd', '-cf', temporaryArchive, '-C', stage, ...fs.readdirSync(stage).sort()],
-      { env: { ...process.env, COPYFILE_DISABLE: '1', ZSTD_CLEVEL: '19', ZSTD_NBTHREADS: '0' } });
+      { env: { ...process.env, COPYFILE_DISABLE: '1', ZSTD_CLEVEL: String(buildConfig.compression_level), ZSTD_NBTHREADS: '0' } });
     const bytes = fs.readFileSync(temporaryArchive);
     const sha256 = digest(bytes);
     const file = `${key(metadata)}-${sha256}.tar.zst`;

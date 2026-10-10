@@ -29,10 +29,16 @@ NODE
   for extension in $optional_modules; do
     php -r "exit(extension_loaded('$extension') ? 0 : 1);" || php_darwin_die "$extension was not enabled"
     module="$extension_dir/$extension.so"
-    [ -L "$module" ] || php_darwin_die "$extension did not use its separate cache"
-    case "$(readlink "$module")" in
+    case "$(readlink "$module" 2>/dev/null || true)" in
       "$brew_prefix/var/php-darwin/extensions/"*/modules/"$extension.so") ;;
-      *) php_darwin_die "$extension module is outside the private cache" ;;
+      *)
+        # Shared serializers supplied by the user are deliberately preserved.
+        # Accept only the exact pre-install bytes/link; primary pack modules
+        # and newly created dependencies must still use the private cache.
+        "${PHP_DARWIN_NODE:-node}" "$script_dir/../helpers/preserved-pack-modules.cjs" check "$brew_prefix" \
+          "$RUNNER_TEMP/php-darwin-e2e-pack-dependencies.json" "$module" || \
+          php_darwin_die "$extension neither uses its separate cache nor preserves a preinstalled dependency"
+        ;;
     esac
   done
   case " $optional_modules " in
