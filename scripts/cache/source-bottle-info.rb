@@ -8,7 +8,8 @@ Formulary.enable_factory_cache!
 mode = ARGV.fetch(0)
 formulae = JSON.parse(ARGV.fetch(1))
 force_source = ARGV[2] == "true"
-raise "Invalid source bottle mode" unless %w[plan seed inputs archive].include?(mode)
+approved_bottles = JSON.parse(ARGV[3] || "{}")
+raise "Invalid source bottle mode" unless %w[plan seed graph inputs archive].include?(mode)
 
 def current_installation?(formula)
   # Homebrew requires the current formula version, even if an older keg is
@@ -26,7 +27,8 @@ def missing_build_files(formula)
     .reject { |relative| (formula.latest_installed_prefix/relative).file? }
 end
 
-def source_dependencies(formula, planning:, force_source: false, runtime_only: false, ignore_installed: false)
+def source_dependencies(formula, planning:, force_source: false, runtime_only: false, ignore_installed: false,
+                        approved_bottles: {})
   Dependency.expand(formula) do |dependent, dep|
     next Dependable::PRUNE if dep.optional? || (dep.test? && !dep.build?) ||
                              (dep.uses_from_macos? && dep.use_macos_install?)
@@ -35,6 +37,7 @@ def source_dependencies(formula, planning:, force_source: false, runtime_only: f
       next Dependable::PRUNE if runtime_only
       building = if planning
         (ignore_installed || !current_installation?(dependent)) &&
+          approved_bottles[dependent.full_name] != dependent.pkg_version.to_s &&
           ((dependent == formula && force_source) || !FormulaInstaller.new(dependent).pour_bottle?)
       else
         # Inputs describe a source build of this formula. Its dependencies are
@@ -46,9 +49,10 @@ def source_dependencies(formula, planning:, force_source: false, runtime_only: f
       # An installed build tool (notably the PHP archive used by extensions)
       # already runs with its installed libraries. Updating that tool's entire
       # runtime graph here can rebuild curl/OpenSSL for an unrelated extension.
-      # Keep the tool itself, while direct extension runtime dependencies still
-      # follow the normal version checks below.
-      if planning && !ignore_installed && current_installation?(dep.to_formula)
+      # Apply this to input collection too: the installed tool's receipt records
+      # its actual runtime, which can differ from its current formula's graph.
+      # Direct extension runtime dependencies still follow normal resolution.
+      if !ignore_installed && current_installation?(dep.to_formula)
         next Dependable::KEEP_BUT_PRUNE_RECURSIVE_DEPS
       end
     end
@@ -70,15 +74,16 @@ end
 
 resolved = formulae.map { |name| Formulary.factory(name) }
 requested_names = resolved.map(&:full_name)
-if %w[plan seed].include?(mode)
+if %w[plan seed graph].include?(mode)
   resolved = resolved.flat_map do |formula|
-    source_dependencies(formula, planning: true, force_source:, ignore_installed: mode == "seed")
+    source_dependencies(formula, planning: true, force_source:, ignore_installed: %w[seed graph].include?(mode), approved_bottles:)
       .map(&:to_formula) + [formula]
   end.uniq(&:full_name)
 end
 
 records = resolved.map do |formula|
   installer = FormulaInstaller.new(formula)
+  openssl = formula.deps.find { |dep| dep.name.match?(/\Aopenssl@[0-9]+\z/) && !dep.optional? && !dep.test? }
   record = {
     name: formula.name,
     full_name: formula.full_name,
@@ -94,6 +99,28 @@ records = resolved.map do |formula|
     bottled: installer.pour_bottle?,
     post_install: formula.post_install_defined? || formula.post_install_steps_defined?,
   }
+  record[:openssl_major] = openssl.name.split("@").last if openssl
+  if record[:installed]
+    identity = formula.latest_installed_prefix/".php-darwin-source-sha256"
+    record[:installed_source_sha256] = identity.read.strip if identity.file?
+  end
+  if mode == "graph"
+    active = formula.deps.reject do |dep|
+      dep.optional? || (dep.test? && !dep.build?) || (dep.uses_from_macos? && dep.use_macos_install?)
+    end
+    record[:runtime_dependencies] = active.reject(&:build?).map do |dep|
+      value = dep.to_formula
+      {name: value.full_name, version: value.pkg_version.to_s}
+    end.sort_by { |dep| dep[:name] }
+    record[:required_formulae] = source_dependencies(formula, planning: true, ignore_installed: true, approved_bottles:)
+      .map { |dep| dep.to_formula.full_name }.uniq.sort
+    record[:runtime_formulae] = source_dependencies(formula, planning: false, runtime_only: true)
+      .map { |dep| dep.to_formula.full_name }.uniq.sort
+  end
+  if openssl && %w[plan seed].include?(mode)
+    record[:runtime_formulae] = source_dependencies(formula, planning: false, runtime_only: true)
+      .map { |dep| dep.to_formula.name }.uniq.sort
+  end
   if mode == "plan"
     # Only configuration files recorded in this formula's installed bottles
     # belong to its source-build transaction. Never stage service data in var.
@@ -104,7 +131,7 @@ records = resolved.map do |formula|
         .map { |file| file.relative_path_from(root).to_s }
     end.uniq.sort
   end
-  if %w[plan seed].include?(mode) && record[:bottled]
+  if %w[plan seed graph].include?(mode) && record[:bottled]
     # Older hosted Homebrew versions select directly from the formula. Newer
     # versions can also select an internal-API bottle through the installer.
     bottle = installer.respond_to?(:selected_bottle) ? installer.selected_bottle : formula.bottle
@@ -124,6 +151,9 @@ records = resolved.map do |formula|
     record[:dependencies] = source_dependencies(formula, planning: false).map do |dep|
       installed_inputs(dep.to_formula)
     end.sort_by { |dep| dep[:name] }
+    # Homebrew orders recursive dependencies before direct dependencies. During
+    # an OpenSSL migration that can put the other major's .pc files first.
+    record[:pkg_config_path] = (openssl.to_formula.opt_lib/"pkgconfig").to_s if openssl
   end
   record
 end

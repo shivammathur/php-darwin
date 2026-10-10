@@ -1,6 +1,17 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { recover } = require('../../build/recover-runner.cjs');
+const { recover, installerCommand } = require('../../build/recover-runner.cjs');
+
+test('recognizes the source-build wrapper without matching read-only or unrelated commands', () => {
+  const repo = '/usr/local/Homebrew', argv = ['ruby', `${repo}/Library/Homebrew/brew.rb`];
+  for (const command of [['install'], ['reinstall'], ['upgrade'], ['php-darwin-source', 'install']]) {
+    assert.equal(installerCommand([...argv, ...command], repo), true);
+  }
+  for (const command of [['info'], ['php-darwin-source', 'info'], ['other-command', 'install']]) {
+    assert.equal(installerCommand([...argv, ...command], repo), false);
+  }
+  assert.equal(installerCommand([...argv, 'install'], '/opt/homebrew'), false);
+});
 
 const worker = { pid: 100, ppid: 90, uid: 501, started: 2000, state: 'S', executable: '/runner/bin/Runner.Worker' };
 const action = { pid: 101, ppid: 100, uid: 501, started: 3000, state: 'S', executable: '/runner/node' };

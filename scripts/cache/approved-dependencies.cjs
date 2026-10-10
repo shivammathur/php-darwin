@@ -2,6 +2,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const upstream = require('./upstream-bottle-cache.cjs');
 const { retryPolicy, httpError } = require('../release/extension-transfers.cjs');
+const { recordMetric } = require('../lib/build-metrics.cjs');
+const { validate: validateRecipes } = require('./dependency-recipes.cjs');
 
 const defaultFile = path.resolve(__dirname, '../../conf/dependencies.json');
 const formulaPattern = /^(?:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/)?[A-Za-z0-9@+_.-]+$/;
@@ -12,6 +14,7 @@ function readLock(file = defaultFile) {
   if (lock.schema !== 1 || !/^[a-f0-9]{40}$/.test(lock.core_commit || '')) {
     throw new Error('Invalid approved dependency snapshot');
   }
+  validateRecipes(lock.recipe_commits);
   return lock;
 }
 
@@ -59,28 +62,51 @@ function protectedSourceKeys(file = defaultFile) {
 }
 
 class ApprovedDependencies {
-  constructor(lock, { download = upstream.transfer, retry = retryPolicy({ attempts: 3, budget: 8, delay: 1000 }) } = {}) {
+  constructor(lock, { download = upstream.transfer, retry = retryPolicy({ attempts: 3, budget: 8, delay: 1000 }),
+    updates = [], bottleUpdates = [], allowNewBottles = false,
+    recordInstalled = (item, sha256) => fs.writeFileSync(path.join(item.prefix, '.php-darwin-source-sha256'), sha256 + '\n') } = {}) {
     this.lock = lock;
     this.download = download;
     this.retry = retry;
+    this.updates = new Set(updates);
+    this.bottleUpdates = new Set(bottleUpdates);
+    this.allowNewBottles = allowNewBottles;
+    this.recordInstalled = recordInstalled;
   }
 
-  validatePlan(plan, environment, { targets = [] } = {}) {
+  versions(environment) {
     this.platform = validatePlatform(this.lock.platforms?.[environment.arch], environment.arch);
-    this.targets = new Set(targets.filter(name => name.includes('/')));
     if (environment.prefix !== this.platform.prefix || Number(environment.macos) < this.platform.macos) {
       throw new Error('Runner cannot use the approved dependency platform');
     }
+    // Explicit rebuilds still need their build dependencies when the formula
+    // version is unchanged; only actual restores may prune those tools.
+    return Object.fromEntries(Object.entries(this.platform.packages)
+      .filter(([name]) => !this.updates.has(name)).map(([name, entry]) => [name, entry.version]));
+  }
+
+  validatePlan(plan, environment, { targets = [] } = {}) {
+    this.versions(environment);
+    this.targets = new Set(targets.filter(name => name.includes('/')));
     for (const item of plan) {
+      if (!this.targets.has(item.full_name) && /^shivammathur\/php\/php(?:@\d+\.\d+)?(?:-debug)?(?:-zts)?$/.test(item.full_name) && !item.installed) {
+        throw new Error(`Published PHP build tool is not installed: ${item.full_name}; restore its verified PHP archive before building extensions`);
+      }
       if (!this.has(item)) continue;
       const entry = this.platform.packages[item.full_name];
       if (!entry || entry.version !== item.version) {
         throw new Error(`Dependency ${item.full_name} ${item.version} is not in the approved snapshot; run update-dependencies.yml before changing dependencies`);
       }
+      // A corrected source bottle can retain the formula's version/revision.
+      // Version equality alone must not retain the old binary on shared runners.
+      if (entry.source && item.installed && item.installed_source_sha256 !== entry.source.sha256) item.installed = false;
     }
   }
 
   has(item) {
+    if (this.updates.has(item.full_name)) return false;
+    if (item.bottled && (this.bottleUpdates.has(item.full_name) ||
+        (this.allowNewBottles && !this.platform?.packages[item.full_name]))) return false;
     // Requested PHP/extensions remain independently buildable. An installed
     // PHP runtime used to build extensions comes from its published archive.
     // All other dependencies, including tap-owned build tools, are approved.
@@ -88,11 +114,16 @@ class ApprovedDependencies {
       (!this.targets?.has(item.full_name) && !/^shivammathur\/php\/php(?:@\d+\.\d+)?(?:-debug)?(?:-zts)?$/.test(item.full_name));
   }
 
-  async prefetch(plan, { cacheRoot }) {
-    const records = plan.filter(item => !item.installed && this.has(item))
-      .map(item => this.platform.packages[item.full_name]?.bottle).filter(Boolean)
-      .map(record => ({...record, cached_download: path.resolve(this.upstreamFile(record, cacheRoot))}));
-    await upstream.prefetch(records, { download: this.download });
+  async prefetch(plan, { cache, cacheRoot }) {
+    const bottles = new Map();
+    const items = plan.filter(item => !item.installed && this.has(item));
+    const started = Date.now();
+    await upstream.pool(items, 8, async item => {
+      bottles.set(item.full_name, await this.fetchBottle(item, { cache, cacheRoot }));
+    });
+    if (items.length) recordMetric({ kind: 'prefetch', result: 'approved', count: items.length,
+      elapsedMs: Date.now() - started });
+    return bottles;
   }
 
   upstreamFile(record, cacheRoot) {
@@ -100,7 +131,7 @@ class ApprovedDependencies {
       `${record.formula.split('/').at(-1)}--${record.version}.${record.tag}.bottle.tar.gz`);
   }
 
-  async restore(item, { cache, cacheRoot, run, flags }) {
+  async fetchBottle(item, { cache, cacheRoot }) {
     const entry = this.platform.packages[item.full_name];
     let bottle;
     if (entry.source) {
@@ -139,17 +170,29 @@ class ApprovedDependencies {
         });
       }
     }
-    const repair = item.missing_build_files?.length > 0;
-    if (!repair && item.installed_versions?.length) {
-      // Homebrew refuses to install an older approved bottle while a newer keg
-      // is installed. This action runs only on disposable build runners.
-      run('brew', ['uninstall', '--formula', '--force', '--ignore-dependencies', item.full_name], { inherit: true });
+    return path.resolve(bottle);
+  }
+
+  restore(items, { bottles, run, flags }) {
+    // Verify every replacement before changing the prefix. Keep dependency
+    // order and Homebrew's linking, relocation, receipts and post-install work,
+    // but pay its startup and formula-loading costs only once for the batch.
+    for (const item of items) {
+      if (!bottles.has(item.full_name)) throw new Error(`Missing verified bottle: ${item.full_name}`);
     }
-    run('brew', repair ? ['reinstall', '--formula', '--verbose', '--force-bottle', path.resolve(bottle)] :
-      ['install', '--formula', ...flags, '--force-bottle', path.resolve(bottle)],
-    { inherit: true, env: { HOMEBREW_DEVELOPER: '1' } });
-    console.log(`Restored approved dependency: ${item.full_name} ${entry.version}`);
-    return { source: Boolean(entry.source), key: entry.source?.key || entry.bottle.sha256 };
+    const replaced = items.filter(item => item.installed_versions?.length || item.missing_build_files?.length);
+    if (replaced.length) {
+      run('brew', ['uninstall', '--formula', '--force', '--ignore-dependencies', ...replaced.map(item => item.full_name)],
+        { inherit: true });
+    }
+    run('brew', ['install', '--formula', ...flags, '--force-bottle', ...items.map(item => bottles.get(item.full_name))],
+      { inherit: true, env: { HOMEBREW_DEVELOPER: '1' } });
+    for (const item of items) {
+      const source = this.platform.packages[item.full_name].source;
+      if (source) this.recordInstalled(item, source.sha256);
+    }
+    for (const item of items) console.log(`Restored approved dependency: ${item.full_name} ${item.version}`);
+    return items.filter(item => this.platform.packages[item.full_name].source).length;
   }
 }
 

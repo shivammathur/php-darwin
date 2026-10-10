@@ -185,6 +185,16 @@ clean_homebrew() {
   fi
 }
 
+snapshot_dependency_versions() {
+  [ -f "$preserved_formulae_file" ] || php_darwin_die 'the preserved PHP dependency list is missing'
+  brew list --formula --versions > "$work_dir/pre-php-formulae.txt" || \
+    php_darwin_die 'could not inspect approved dependencies before PHP installation'
+  LC_ALL=C sort -u "$work_dir/pre-php-formulae.txt" -o "$work_dir/pre-php-formulae.txt" || exit 1
+  awk 'FILENAME == ARGV[1] { if (NF) preserved[$1]=1; next } $1 in preserved' \
+    "$preserved_formulae_file" "$work_dir/pre-php-formulae.txt" > "$preserved_versions_file" || \
+    php_darwin_die 'could not record approved dependencies before PHP installation'
+}
+
 install_formula() {
   local current_formulae="$work_dir/current-formulae.txt"
   local current_preserved_versions="$work_dir/current-preserved-versions.txt"
@@ -277,6 +287,9 @@ package_cache() {
   local postinstall_paths_file
   local state_paths_json
   local state_paths_file
+  local openssl_defaults_dir
+  local openssl_defaults_json
+  local openssl_defaults_paths
   local source_hash
   local tap_formulae
   local tar_paths
@@ -527,6 +540,17 @@ package_cache() {
   done < "$postinstall_candidates_file"
   cat "$postinstall_paths_file" >> "$state_paths_file" || \
     php_darwin_die 'could not add formula-managed post-install paths'
+  openssl_defaults_dir=$(mktemp -d "$work_dir/openssl-defaults.XXXXXX") || exit 1
+  openssl_defaults_json="$work_dir/openssl-defaults.json"
+  openssl_defaults_paths="$work_dir/openssl-defaults.txt"
+  "${PHP_DARWIN_NODE:-node}" "$script_dir/openssl-defaults.cjs" "$brew_prefix" "$packages_file" \
+    "$openssl_defaults_dir" "$state_paths_file" > "$openssl_defaults_json" || php_darwin_die 'could not stage default OpenSSL configuration'
+  jq -r '.paths[]' "$openssl_defaults_json" > "$openssl_defaults_paths" || exit 1
+  cat "$openssl_defaults_paths" >> "$state_paths_file" || exit 1
+  awk -F '\t' 'FILENAME == ARGV[1] { staged[$0]=1; next } !($1 in staged)' \
+    "$openssl_defaults_paths" "$links_file" > "$work_dir/default-links.tsv" || exit 1
+  jq -r '.links[] | [.path, .target] | @tsv' "$openssl_defaults_json" >> "$work_dir/default-links.tsv" || exit 1
+  LC_ALL=C sort -u "$work_dir/default-links.tsv" > "$links_file" || exit 1
   LC_ALL=C sort -u "$state_paths_file" -o "$state_paths_file" || \
     php_darwin_die 'could not sort Homebrew state paths'
   cat "$state_paths_file" >> "$archive_paths" || php_darwin_die 'could not add Homebrew state paths'
@@ -633,7 +657,12 @@ package_cache() {
     php_darwin_die 'could not stage embedded archive metadata'
   tar_paths="$work_dir/tar-paths.txt"
   printf '%s\n' "$internal_metadata_path" > "$tar_paths" || php_darwin_die 'could not create archive inputs'
-  cat "$archive_paths" >> "$tar_paths" || php_darwin_die 'could not add archive inputs'
+  awk 'FILENAME == ARGV[1] { staged[$0]=1; next } !($0 in staged)' \
+    "$openssl_defaults_paths" "$archive_paths" >> "$tar_paths" || php_darwin_die 'could not add archive inputs'
+  # BSD tar accepts only one -T input. Switch roots inside that list so adding
+  # clean defaults does not discard the runtime files collected above.
+  printf '%s\n' -C "$openssl_defaults_dir" >> "$tar_paths" || exit 1
+  cat "$openssl_defaults_paths" >> "$tar_paths" || exit 1
 
   output="${GITHUB_WORKSPACE:?}/builds/$asset"
   compression_level=$(jq -er '.compression_level | select(type == "number" and floor == . and . >= 1 and . <= 22)' \
@@ -673,6 +702,8 @@ verify_cache() {
   local missing_managed_path
   local output
   local output_bytes
+  local openssl_formula
+  local openssl_default
   local php_aliases_file
   local tap_snapshot
   local tap_path
@@ -704,6 +735,8 @@ verify_cache() {
     "$brew_prefix" "$macos_major" "$source_commit" "$expected_php_src_commit" '' '' '' '' \
     "$extension_source_commit" "$expected_extensions_source_hash" >/dev/null || \
     php_darwin_die 'archive metadata validation failed'
+  "${PHP_DARWIN_NODE:-node}" "$script_dir/openssl-defaults.cjs" validate-state "$metadata" || \
+    php_darwin_die 'archive contains unrelated OpenSSL configuration'
   if ! cmp -s <(bash "$script_dir/cached-extensions.sh" "$version" records | LC_ALL=C sort -u) \
     <(jq -r '.extensions[] | [.name,.type] | @tsv' "$metadata" | LC_ALL=C sort -u); then
     php_darwin_die 'archive metadata omitted a configured cached extension'
@@ -751,6 +784,11 @@ verify_cache() {
   done < <(bash "$script_dir/cached-extensions.sh" "$version")
   grep -q '^Cellar/' "$contents" || php_darwin_die 'archive does not contain Homebrew kegs'
   grep -Fxq "opt/$formula" "$contents" || php_darwin_die 'archive does not contain the PHP opt link'
+  while IFS= read -r openssl_formula; do
+    for openssl_default in "etc/$openssl_formula/openssl.cnf" "etc/$openssl_formula/cert.pem" "etc/ca-certificates/cert.pem"; do
+      grep -Fxq "$openssl_default" "$contents" || php_darwin_die "archive does not contain $openssl_default"
+    done
+  done < <(jq -r '.packages[].name | select(test("^openssl@[0-9]+(\\.[0-9]+)*$"))' "$metadata")
   grep -Fxq "$(php_darwin_metadata_path "$asset")" "$contents" || \
     php_darwin_die 'archive does not contain embedded installation metadata'
   grep -Fxq "$tap_snapshot/.git/HEAD" "$contents" || \
@@ -841,6 +879,7 @@ reset_homebrew() {
 case "$stage" in
   prepare) prepare_homebrew ;;
   cleanup) clean_homebrew ;;
+  snapshot-dependencies) snapshot_dependency_versions ;;
   install|finalize) install_formula ;;
   package) package_cache ;;
   verify) verify_cache ;;
@@ -853,5 +892,5 @@ case "$stage" in
     package_cache
     verify_cache
     ;;
-  *) php_darwin_die 'usage: build.sh prepare|cleanup|install|finalize|package|verify|reset|all' ;;
+  *) php_darwin_die 'usage: build.sh prepare|cleanup|snapshot-dependencies|install|finalize|package|verify|reset|all' ;;
 esac

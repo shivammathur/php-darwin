@@ -127,6 +127,9 @@ jobs:
           path: homebrew-core
           persist-credentials: false
 
+      - name: Apply approved dependency recipe updates
+        run: node scripts/cache/dependency-recipes.cjs apply homebrew-core
+
       - name: Check out the pinned PHP formulae for freshness
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -142,6 +145,9 @@ jobs:
           ref: ${{ steps.extensions-source.outputs.commit }}
           path: homebrew-extensions
           persist-credentials: false
+
+      - name: Require prepared dependencies without updating build tools
+        run: node scripts/cache/dependency-gate.cjs require
 
       - name: Recheck published inputs after queueing
         id: freshness
@@ -180,12 +186,13 @@ jobs:
       homebrew-extensions-commit: ${{ needs.matrix.outputs.extensions-source-commit }}
       homebrew-core-commit: ${{ needs.matrix.outputs.core-commit }}
       source-cache-release: ${{ inputs.source-cache-release }}
+      save-source-bottles: ${{ inputs.publish }}
       reuse-archives: ${{ inputs.reuse-archives }}
       force-source: ${{ inputs.force-source }}
 
   cache-bottles:
     name: Cache missing dependency bottles in Cloudflare
-    if: ${{ always() && !cancelled() && needs.matrix.outputs.build-required == 'true' }}
+    if: ${{ always() && !cancelled() && inputs.publish && needs.matrix.outputs.build-required == 'true' }}
     needs: [matrix, architecture]
     uses: ./.github/workflows/cache-bottles.yml
     permissions:

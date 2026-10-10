@@ -6,7 +6,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: update-nightly-caches
+  group: dependency-consumer-checks
+  queue: max
   cancel-in-progress: false
 
 permissions:
@@ -24,7 +25,23 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: shivammathur/homebrew-php
+          path: homebrew-php
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: shivammathur/homebrew-extensions
+          path: homebrew-extensions
+          persist-credentials: false
+      - name: Prepare changed dependencies before PHP
+        id: dependencies
+        env:
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+        run: node scripts/cache/dependency-gate.cjs dispatch
       - name: Start one cache workflow per nightly PHP version
+        if: steps.dependencies.outputs.ready == 'true'
         env:
           GH_TOKEN: ${{ secrets.TOKEN || github.token }}
         run: bash scripts/release/dispatch-nightly.sh

@@ -13,7 +13,8 @@ on:
         type: string
 
 concurrency:
-  group: update-stable-caches
+  group: dependency-consumer-checks
+  queue: max
   cancel-in-progress: false
 
 permissions:
@@ -59,7 +60,17 @@ jobs:
           path: homebrew-core
           persist-credentials: false
 
+      - name: Apply approved dependency recipe updates
+        run: node scripts/cache/dependency-recipes.cjs apply homebrew-core
+
+      - name: Prepare changed dependencies before PHP
+        id: dependencies
+        env:
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+        run: node scripts/cache/dependency-gate.cjs dispatch
+
       - name: Compare formula sources with published release manifests
+        if: steps.dependencies.outputs.ready == 'true'
         env:
           GH_TOKEN: ${{ secrets.TOKEN || github.token }}
           HOMEBREW_EXTENSIONS_PATH: ${{ github.workspace }}/homebrew-extensions

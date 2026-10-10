@@ -330,7 +330,7 @@ test('follow-up batches start only after a successful prerequisite', async () =>
     assert.ok(ready, 'freshness must be checked after the prerequisite succeeds');
     return { selected: [{ php_version: '8.6' }] };
   };
-  await dispatch({ repository: 'shivammathur/php-darwin', afterRun: '123', run, select,
+  await dispatch({ listRuns: () => [], repository: 'shivammathur/php-darwin', afterRun: '123', run, select,
     wait: async delay => { assert.equal(delay, 60000); ready = true; } });
   assert.equal(calls.filter(args => args[0] === 'workflow').length, 1);
   for (const conclusion of ['failure', 'cancelled', 'timed_out']) {
@@ -342,7 +342,7 @@ test('follow-up batches start only after a successful prerequisite', async () =>
 });
 test('dispatch passes only changed versions, retaining order and every build variant', async () => {
   const calls = [];
-  await dispatch({ versions: '8.4 8.5 8.6 8.7 8.5', ref: 'fix/extension-cache-dispatch',
+  await dispatch({ listRuns: () => [], versions: '8.4 8.5 8.6 8.7 8.5', ref: 'fix/extension-cache-dispatch',
     run: (_program, args) => calls.push(args), select: async options => {
       assert.deepEqual(options.versions, ['8.4', '8.5', '8.6', '8.7']);
       assert.deepEqual(options.builds, ['debug', 'release']);
@@ -363,12 +363,11 @@ test('cache planning rejects combined versions before reading manifests or creat
   process.env.PHP_VERSIONS = '8.6 8.7';
   await assert.rejects(plan(), /one PHP version per cache run/);
 });
-test('unchanged versions refresh only the installer, and failed planning never dispatches', async () => {
+test('unchanged versions and failed planning never dispatch redundant workflows', async () => {
   const calls = [];
-  const options = { versions: '8.4', ref: 'main', run: (_program, args) => calls.push(args) };
+  const options = { listRuns: () => [], versions: '8.4', ref: 'main', run: (_program, args) => calls.push(args) };
   await dispatch({ ...options, select: async () => ({ selected: [] }) });
-  assert.deepEqual(calls, [['workflow', 'run', 'publish-extensions.yml', '--repo', 'shivammathur/php-darwin',
-    '--ref', 'main', '-f', 'installer-only=true']]);
+  assert.deepEqual(calls, []);
   calls.length = 0;
   await assert.rejects(dispatch({ ...options, select: async () => { throw new Error('manifest unavailable'); } }), /manifest unavailable/);
   assert.deepEqual(calls, []);

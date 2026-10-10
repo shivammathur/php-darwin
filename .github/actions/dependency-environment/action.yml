@@ -1,0 +1,27 @@
+name: Prepare dependency recipe environment
+description: Pin the shared Homebrew recipes without compiling dependencies.
+runs:
+  using: composite
+  steps:
+    - uses: ./.github/actions/runner-preflight
+    - uses: ./.github/actions/node-runtime
+    - name: Initialize dependency diagnostics
+      shell: bash
+      run: |
+        for name in METRICS BOTTLE_MISSES SOURCE_BOTTLE_MISSES; do
+          echo "PHP_DARWIN_$name=$RUNNER_TEMP/$name.jsonl" >> "$GITHUB_ENV"
+          : > "$RUNNER_TEMP/$name.jsonl"
+        done
+    - name: Pin core and tap recipes
+      shell: bash
+      run: |
+        bash scripts/build/cleanup-taps.sh
+        bash scripts/build/pin-core.sh
+        for tap in shivammathur/php shivammathur/extensions; do
+          brew tap "$tap"
+          brew trust "$tap"
+          repository=$(brew --repository "$tap")
+          if [ "$tap" = shivammathur/php ]; then commit=$HOMEBREW_PHP_COMMIT; else commit=$HOMEBREW_EXTENSIONS_COMMIT; fi
+          git -C "$repository" fetch --no-tags origin "$commit"
+          git -C "$repository" checkout --detach --force "$commit"
+        done

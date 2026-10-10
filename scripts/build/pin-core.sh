@@ -7,6 +7,12 @@ export HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_FROM_API=1
 brew tap --force homebrew/core
 core=$(brew --repository homebrew/core)
 bash "$(dirname "${BASH_SOURCE[0]}")/ensure-core-history.sh" "$core"
+# Hosted baseline images can ship a Homebrew older than the approved recipes'
+# DSL (for example resource :test). Update the CI-owned executable and taps
+# before restoring the exact dependency snapshot below.
+if [ "${GITHUB_ACTIONS:-}" = true ]; then
+  HOMEBREW_UPDATE_TO_TAG=1 brew update --force
+fi
 if ! git -C "$core" cat-file -e "$HOMEBREW_CORE_COMMIT^{commit}" 2>/dev/null; then
   # Keep full taps updateable: Homebrew refuses to update shallow core clones.
   git -C "$core" fetch --no-tags origin "$HOMEBREW_CORE_COMMIT"
@@ -16,3 +22,4 @@ fi
 checkout_flags=(--detach)
 if [ "${GITHUB_ACTIONS:-}" = true ]; then checkout_flags+=(--force); fi
 git -C "$core" checkout "${checkout_flags[@]}" "$HOMEBREW_CORE_COMMIT"
+"${PHP_DARWIN_NODE:-node}" "$(dirname "${BASH_SOURCE[0]}")/../cache/dependency-recipes.cjs" apply "$core"

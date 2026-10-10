@@ -193,7 +193,9 @@ async function main() {
     fs.writeFileSync('bottle-verification.json', JSON.stringify(result, null, 2));
   } else if (process.argv[2] === 'tools') {
     const { command } = require('./source-bottle-cache.cjs');
-    const plan = JSON.parse(command('brew', ['php-darwin-source', 'info', 'plan', '["jq","zstd"]', 'false'], {
+    const tools = process.argv.length > 3 ? process.argv.slice(3) : ['jq', 'zstd'];
+    if (tools.some(name => !['jq', 'zstd'].includes(name))) throw new Error('Invalid archive tool');
+    const plan = JSON.parse(command('brew', ['php-darwin-source', 'info', 'plan', JSON.stringify(tools), 'false'], {
       env: { PATH: `${__dirname}${path.delimiter}${process.env.PATH}` },
     }));
     await prefetch(plan.filter(item => !item.installed && item.bottle).map(item => item.bottle));

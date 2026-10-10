@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { recordMetric } = require('../lib/build-metrics.cjs');
 const { prefetch: prefetchBottles } = require('./upstream-bottle-cache.cjs');
-const { withFreshConfiguration } = require('./source-bottle-config.cjs');
+const { configurationFiles, withFreshConfiguration } = require('./source-bottle-config.cjs');
 
 function command(program, args, { inherit = false, cwd, env } = {}) {
   const result = spawnSync(program, args, {
@@ -37,6 +37,9 @@ function softwareInputs(inputs) {
   // Keep installed dependency versions and the target ABI/platform distinct.
   return {
     formula: inputs.formula, version: inputs.version, source_commit: inputs.source_commit,
+    ...(inputs.pkg_config_path ? {pkg_config_path: inputs.pkg_config_path} : {}),
+    ...(inputs.openssl_build_environment ? {openssl_build_environment: inputs.openssl_build_environment} : {}),
+    ...(inputs.configure_cache ? {configure_cache: inputs.configure_cache} : {}),
     environment: {arch: environment.arch, macos: environment.macos, prefix: environment.prefix},
     dependencies: (inputs.dependencies || []).map(dependency => ({
       name: dependency.name, version: dependency.version,
@@ -49,12 +52,24 @@ function softwareInputs(inputs) {
 function keyFor(inputs) { return legacyKeyFor(softwareInputs(inputs)); }
 function validKey(inputs, key) { return keyFor(inputs) === key || legacyKeyFor(inputs) === key; }
 
-function inspect(mode, formulae, forceSource = false) {
-  return JSON.parse(brewSource('info', [mode, JSON.stringify(formulae), String(forceSource)]));
+function inspect(mode, formulae, forceSource = false, approved = {}) {
+  return JSON.parse(brewSource('info', [mode, JSON.stringify(formulae), String(forceSource), JSON.stringify(approved)]));
 }
 
 function recipeHash(recipe) {
   return digest(command('bash', [path.join(__dirname, '../build/formula-build-inputs.sh'), recipe, 'source']));
+}
+
+function configureCache(info) {
+  if (info.full_name === 'net-snmp' && !info.dependencies.some(dep => dep.name === 'pcre')) {
+    return {ac_cv_header_pcre_h: 'no'};
+  }
+  // CPython can discover globally linked gettext while building unrelated PHP
+  // dependencies. Keep its runtime graph identical to the formula's contract.
+  if (/^python@[0-9]+\.[0-9]+$/.test(info.full_name) && !info.dependencies.some(dep => dep.name === 'gettext')) {
+    return {ac_cv_header_libintl_h: 'no', ac_cv_lib_intl_textdomain: 'no'};
+  }
+  return undefined;
 }
 
 function buildInputs(formula, environment) {
@@ -63,6 +78,10 @@ function buildInputs(formula, environment) {
   return {
     ...(sourceCommit ? {source_commit: sourceCommit} : {}),
     environment, formula: info.full_name, version: info.version, recipe: recipeHash(info.recipe),
+    ...(info.pkg_config_path ? {pkg_config_path: info.pkg_config_path, openssl_build_environment: 1} : {}),
+    // Net-SNMP otherwise autodetects PCRE from the legacy PHP build dependencies.
+    // Its formula does not declare PCRE, so consumers would omit that library.
+    ...(configureCache(info) ? {configure_cache: configureCache(info)} : {}),
     dependencies: info.dependencies.map(dep => ({ ...dep, recipe: recipeHash(dep.recipe) })),
   };
 }
@@ -101,7 +120,7 @@ function readBottle(directory, key) {
 }
 
 async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
-  forceSource = false, skipLink = false, context, dependencyRoots, approvedDependencies, preparedTargets = [],
+  forceSource = false, skipLink = false, context, dependencyRoots, approvedDependencies, preparedTargets = [], beforeTarget,
   run = command, query = inspect, inputs = buildInputs, buildEnvironment = environment,
   log = console.log, warn = console.warn, prefetch = prefetchBottles }) {
   if (!/^(?:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/)?[A-Za-z0-9@+_.-]+$/.test(formula)) {
@@ -119,7 +138,10 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
     !/^(?:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/)?[A-Za-z0-9@+_.-]+$/.test(name))) {
     throw new Error('Invalid dependency preparation roots');
   }
-  const resolved = query(dependencyRoots ? 'seed' : 'plan', requested, dependencyRoots ? true : forceSource);
+  const platform = buildEnvironment();
+  const approved = approvedDependencies?.versions(platform) || {};
+  const resolved = query(dependencyRoots ? 'seed' : 'plan', requested,
+    dependencyRoots ? requested.some(name => name.includes('/')) : forceSource, approved);
   if (!Array.isArray(preparedTargets) || preparedTargets.some(name =>
     !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/[A-Za-z0-9@+_.-]+$/.test(name))) {
     throw new Error('Invalid prepared package targets');
@@ -137,10 +159,9 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
   // are dependencies too; exclude only the actual PHP/extension roots.
   // Homebrew can canonicalize php@CURRENT to php, so use resolved root names.
   const packageRoots = new Set([...requested, ...preparedTargets, ...resolved.filter(item => item.requested).map(item => item.full_name)]
-    .filter(name => name.includes('/')));
+    .filter(name => name.includes('/') && !approved[name]));
   const plan = dependencyRoots ? resolved.filter(item => !packageRoots.has(item.full_name)) : resolved;
   const requestedTarget = dependencyRoots ? undefined : plan.at(-1);
-  const platform = buildEnvironment();
   if (approvedDependencies) approvedDependencies.validatePlan(plan, platform, { targets: [...packageRoots] });
   log(`Dependency plan for ${dependencyRoots ? 'all configured roots' : formula} (${platform.arch || "unknown arch"}, macOS ${platform.macos || "unknown"}):`);
   for (const item of plan) {
@@ -149,7 +170,7 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
       item.bottled && !(item === plan.at(-1) && forceSource) ? "upstream bottle" : "exact source cache or cold source build"}`);
   }
   const result = { built: 0, restored: 0 };
-  if (approvedDependencies) await approvedDependencies.prefetch(plan, { cacheRoot });
+  const bottles = approvedDependencies && await approvedDependencies.prefetch(plan, { cache, cacheRoot });
   // Homebrew installs the plan one formula at a time. Fetch all missing
   // upstream bottles in one command so its download queue can run concurrently.
   const bottled = plan.filter(item => !item.installed && item.bottled &&
@@ -170,11 +191,26 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
         elapsedMs: Date.now() - started });
     }
   }
+  let batch = [], batchFlags;
+  const flush = () => {
+    if (!batch.length) return;
+    const started = Date.now();
+    const restored = approvedDependencies.restore(batch, { bottles, run, flags: batchFlags });
+    result.restored += restored;
+    recordMetric({ kind: 'dependency-install', result: 'approved', count: batch.length, restored,
+      formulae: batch.map(item => item.full_name), elapsedMs: Date.now() - started });
+    batch = [];
+  };
   for (const item of plan) {
+    if (!approvedDependencies?.has(item)) flush();
     const started = Date.now();
     const metric = values => recordMetric({ kind: 'source', formula: item.full_name,
       elapsedMs: Date.now() - started, ...values });
     const target = item === requestedTarget;
+    // Approved restoration may replace stale same-version bottles and remove
+    // obsolete kegs. Capture the PHP preservation baseline after that work,
+    // while still detecting any dependency changes caused by PHP installation.
+    if (target && beforeTarget) await beforeTarget();
     // The complete dependency plan is installed in topological order here.
     // Do not let each subsequent brew install expand it again: --build-bottle
     // would otherwise demand upgrades to the installed PHP build tool's own
@@ -192,9 +228,9 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
       continue;
     }
     if (approvedDependencies?.has(item)) {
-      const restored = await approvedDependencies.restore(item, { cache, cacheRoot, run, flags });
-      if (restored.source) result.restored++;
-      metric({ result: restored.source ? 'approved-source' : 'approved-upstream', key: restored.key });
+      if (batch.length && JSON.stringify(flags) !== JSON.stringify(batchFlags)) flush();
+      batchFlags = flags;
+      batch.push(item);
       continue;
     }
     if (item.bottled && !(target && forceSource)) {
@@ -242,7 +278,7 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
     const buildMissing = async (waitedMs = 0) => {
       // Another PHP version may have produced this library while this job
       // waited for ownership. Recheck the exact key before compiling anything.
-      if (cache.withBuildLock) {
+      if (cache.withBuildLock && !cache.readOnly) {
         let cached;
         try {
           const restored = await cache.restoreCache([directory], key, [], build);
@@ -268,8 +304,13 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
       const compileStarted = Date.now();
       let compileMs;
       let bottleStarted;
-      withFreshConfiguration(platform.prefix, item.configuration_files, () => {
-        brewSource('install', ['--formula', '--build-bottle', ...flags, item.full_name], { run, inherit: true });
+      withFreshConfiguration(platform.prefix, configurationFiles(item.full_name, item.configuration_files), () => {
+        // PKG_CONFIG_PATH is replaced by Homebrew's superenv. Autoconf's
+        // PKG_CONFIG command survives it, and pkgconf's --with-path takes
+        // precedence over that recursive dependency search path.
+        const env = build.pkg_config_path ? {HOMEBREW_PHP_DARWIN_PKG_CONFIG_PATH: build.pkg_config_path} : {};
+        if (build.configure_cache) env.HOMEBREW_PHP_DARWIN_CONFIGURE_CACHE = JSON.stringify(build.configure_cache);
+        brewSource('install', ['--formula', '--build-bottle', ...flags, item.full_name], { run, inherit: true, env });
         compileMs = Date.now() - compileStarted;
         bottleStarted = Date.now();
         run('brew', ['bottle', '--json', '--no-rebuild', item.full_name], {
@@ -288,10 +329,10 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
       const bottleMs = Date.now() - bottleStarted;
       result.built++;
       const uploadStarted = Date.now();
-      let saved = true;
+      let saved = cache.readOnly ? undefined : true;
       let saveError;
       try {
-        await cache.saveCache([directory], key);
+        if (!cache.readOnly) await cache.saveCache([directory], key);
       } catch (error) {
         saved = false;
         saveError = error.message;
@@ -300,12 +341,13 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
       metric({ result: 'built', key, missReason, waitedMs, compileMs, bottleMs,
         uploadMs: Date.now() - uploadStarted, saved, ...(saveError ? { saveError } : {}) });
     };
-    if (cache.withBuildLock) {
+    if (cache.withBuildLock && !cache.readOnly) {
       log(`Acquiring source build ownership: ${item.full_name} (${key})`);
       await cache.withBuildLock(key, buildMissing);
     }
     else await buildMissing();
   }
+  flush();
   log(`Source bottles: ${result.restored} restored, ${result.built} built`);
   return result;
 }
@@ -330,4 +372,4 @@ function extensionInputs(abstract, phpPrefix, build, ts, run = command) {
   };
 }
 
-module.exports = { command, brewSource, keyFor, legacyKeyFor, validKey, softwareInputs, readBottle, install, extensionInputs, environment, recipeHash };
+module.exports = { configureCache, command, brewSource, keyFor, legacyKeyFor, validKey, softwareInputs, readBottle, install, extensionInputs, environment, recipeHash };

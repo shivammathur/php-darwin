@@ -2,6 +2,10 @@ name: Update optional extension caches
 run-name: ${{ inputs.php-versions && format('Check optional extension caches for PHP {0}', inputs.php-versions) || 'Check optional extension caches' }}
 
 on:
+  workflow_run:
+    workflows: ['Cache stable PHP', 'Cache nightly PHP']
+    types: [completed]
+    branches: [main]
   schedule:
     - cron: '37 */6 * * *'
   workflow_dispatch:
@@ -17,11 +21,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: update-extension-caches-${{ inputs.after-run || 'scheduled' }}
+  group: dependency-consumer-checks
+  queue: max
   cancel-in-progress: false
 
 jobs:
   update:
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 360
     permissions:
@@ -30,6 +36,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: shivammathur/homebrew-php
+          path: homebrew-php
           persist-credentials: false
       - name: Select the approved dependency snapshot
         id: dependencies
@@ -45,9 +56,21 @@ jobs:
           ref: ${{ steps.dependencies.outputs.core }}
           path: homebrew-core
           persist-credentials: false
+      - name: Apply approved dependency recipe updates
+        run: node scripts/cache/dependency-recipes.cjs apply homebrew-core
+      - name: Prepare changed dependencies before extension dispatch
+        id: ready
+        env:
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+        run: node scripts/cache/dependency-gate.cjs dispatch
       - name: Dispatch only changed PHP versions after the prerequisite succeeds
+        if: steps.ready.outputs.ready == 'true'
         env:
           GH_TOKEN: ${{ secrets.TOKEN || github.token }}
           PHP_VERSIONS: ${{ inputs.php-versions }}
           AFTER_RUN: ${{ inputs.after-run }}
+          PHP_DARWIN_REQUIRE_CURRENT_PHP: 'true'
+          HOMEBREW_PHP_PATH: ${{ github.workspace }}/homebrew-php
+          HOMEBREW_EXTENSIONS_PATH: ${{ github.workspace }}/homebrew-extensions
+          HOMEBREW_CORE_PATH: ${{ github.workspace }}/homebrew-core
         run: node scripts/release/extension-packs.cjs dispatch

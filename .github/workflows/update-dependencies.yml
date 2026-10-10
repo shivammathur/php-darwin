@@ -2,11 +2,36 @@ name: Update approved dependency bottles
 run-name: Prepare and validate dependency bottles
 
 on:
+  schedule:
+    - cron: '12 */2 * * *'
+  repository_dispatch:
+    types: [homebrew-php-release, homebrew-extensions-release]
   workflow_dispatch:
     inputs:
+      automatic:
+        description: Detect changed tap dependencies and retain unrelated approved recipes
+        type: boolean
+        default: false
       homebrew-core-commit:
-        description: Homebrew core commit to approve (empty selects current main)
+        description: Recipe snapshot (empty selects current main)
         type: string
+      formulae:
+        description: Explicit core formula updates; empty selects the full core snapshot in manual mode
+        type: string
+      bottle-recipes:
+        description: Optional JSON map of compatible upstream bottle recipes
+        type: string
+      retire-formulae:
+        description: Remove obsolete snapshot entries only after proving no remaining references
+        type: string
+      cache-only:
+        description: Skip workers and require already prepared bottles
+        type: boolean
+        default: false
+      plan-only:
+        description: Inspect native dependency graphs without compiling or publishing
+        type: boolean
+        default: false
       publish:
         description: Promote the verified dependency snapshot on main
         type: boolean
@@ -15,48 +40,203 @@ on:
 concurrency:
   group: approved-dependency-update
   cancel-in-progress: false
-
 permissions:
   contents: read
-
 jobs:
   plan:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
-      core: ${{ steps.core.outputs.commit }}
+      required: ${{ steps.change.outputs.required }}
+      automatic: ${{ steps.change.outputs.automatic }}
+      upstream: ${{ steps.core.outputs.commit }}
       php: ${{ steps.php.outputs.commit }}
       extensions: ${{ steps.extensions.outputs.commit }}
-      matrix: ${{ steps.matrix.outputs.matrix }}
+      matrix: ${{ steps.change.outputs.matrix }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - name: Resolve the dependency update
-        id: core
-        env:
-          PHP_DARWIN_UPDATE_DEPENDENCIES: 'true'
-          PINNED_COMMIT: ${{ inputs.homebrew-core-commit }}
-        run: bash scripts/build/source-commit.sh core
       - name: Pin PHP formula roots
         id: php
         run: bash scripts/build/source-commit.sh
       - name: Pin extension formula roots
         id: extensions
         run: bash scripts/build/source-commit.sh extensions
-      - name: Select baseline build runners
-        id: matrix
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: shivammathur/homebrew-php
+          ref: ${{ steps.php.outputs.commit }}
+          path: homebrew-php
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: shivammathur/homebrew-extensions
+          ref: ${{ steps.extensions.outputs.commit }}
+          path: homebrew-extensions
+          persist-credentials: false
+      - name: Detect dependency declarations independently of PHP releases and bottle churn
+        id: change
+        env:
+          AUTOMATIC: ${{ github.event_name != 'workflow_dispatch' || inputs.automatic }}
         run: |
+          node scripts/cache/dependency-inputs.cjs
           node - <<'JS'
           const fs = require('node:fs');
-          const platforms = require('./conf/platforms.json');
-          const matrix = {include: Object.entries(platforms)
-            .map(([arch, item]) => ({arch, runner: item.build_runner}))};
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, `matrix=${JSON.stringify(matrix)}\n`);
+          const {changed} = require('./scripts/cache/dependency-inputs.cjs');
+          const diff = changed(require('./conf/dependencies.json').tap_inputs, require('./dependency-inputs.json'));
+          const automatic = process.env.AUTOMATIC === 'true';
+          const matrix = {include: Object.entries(require('./conf/platforms.json')).map(([arch, p]) => ({arch, runner: p.build_runner}))};
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `required=${!automatic || diff.changed}\nautomatic=${automatic}\nmatrix=${JSON.stringify(matrix)}\n`);
+          console.log(diff);
           JS
+      - name: Resolve the candidate recipe snapshot
+        id: core
+        if: steps.change.outputs.required == 'true'
+        env:
+          PHP_DARWIN_UPDATE_DEPENDENCIES: 'true'
+          PINNED_COMMIT: ${{ inputs.homebrew-core-commit }}
+        run: bash scripts/build/source-commit.sh core
+      - uses: ./.github/actions/upload-artifacts
+        if: steps.change.outputs.required == 'true'
+        with:
+          name: dependency-inputs
+          path: dependency-inputs.json
+          if-no-files-found: error
+          retention-days: 30
+
+  discover:
+    needs: plan
+    if: needs.plan.outputs.required == 'true' && needs.plan.outputs.automatic == 'true'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    env:
+      HOMEBREW_PHP_COMMIT: ${{ needs.plan.outputs.php }}
+      HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.plan.outputs.extensions }}
+      UPSTREAM_CORE_COMMIT: ${{ needs.plan.outputs.upstream }}
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_INSTALL_FROM_API: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - run: echo "HOMEBREW_CORE_COMMIT=$(node scripts/cache/approved-dependencies.cjs core)" >> "$GITHUB_ENV"
+      - uses: ./.github/actions/dependency-environment
+      - name: Compare native dependency graphs without installing formulae
+        run: '"$PHP_DARWIN_NODE" scripts/cache/dependency-transition.cjs discover'
+      - uses: ./.github/actions/upload-artifacts
+        with:
+          name: dependency-discovery-${{ matrix.arch }}
+          path: dependency-discovery-${{ matrix.arch }}.json
+          if-no-files-found: error
+          retention-days: 30
+
+  recipes:
+    needs: [plan, discover]
+    if: ${{ always() && !cancelled() && needs.plan.outputs.required == 'true' && (needs.discover.result == 'success' || needs.discover.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      core: ${{ steps.select.outputs.core || steps.manual.outputs.core }}
+      recipe-commits: ${{ steps.select.outputs.recipe-commits || steps.manual.outputs.recipe-commits }}
+      updates: ${{ steps.select.outputs.updates || steps.manual.outputs.updates }}
+      bottle-updates: ${{ steps.manual.outputs.bottle-updates || '[]' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/download-artifacts
+        with:
+          name: dependency-inputs
+          path: .
+      - uses: ./.github/actions/download-artifacts
+        if: needs.plan.outputs.automatic == 'true'
+        with:
+          pattern: dependency-discovery-*
+          path: discovery
+          merge-multiple: true
+      - name: Select only the affected dependency tree
+        if: needs.plan.outputs.automatic == 'true'
+        id: select
+        env:
+          UPSTREAM_CORE_COMMIT: ${{ needs.plan.outputs.upstream }}
+        run: node scripts/cache/dependency-transition.cjs select discovery
+      - name: Select explicitly requested recipe updates
+        if: needs.plan.outputs.automatic != 'true'
+        id: manual
+        env:
+          UPDATE_CORE_COMMIT: ${{ needs.plan.outputs.upstream }}
+          UPDATE_FORMULAE: ${{ inputs.formulae }}
+          BOTTLE_RECIPES: ${{ inputs.bottle-recipes }}
+        run: node scripts/cache/dependency-recipes.cjs plan
+
+  resolve:
+    needs: [plan, recipes]
+    if: ${{ !cancelled() && needs.recipes.result == 'success' }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    env:
+      HOMEBREW_CORE_COMMIT: ${{ needs.recipes.outputs.core }}
+      PHP_DARWIN_RECIPE_COMMITS: ${{ needs.recipes.outputs.recipe-commits }}
+      PHP_DARWIN_DEPENDENCY_UPDATES: ${{ needs.recipes.outputs.updates }}
+      PHP_DARWIN_BOTTLE_UPDATES: ${{ needs.recipes.outputs.bottle-updates }}
+      HOMEBREW_PHP_COMMIT: ${{ needs.plan.outputs.php }}
+      HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.plan.outputs.extensions }}
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_INSTALL_FROM_API: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/dependency-environment
+      - name: Resolve every worker and its same-architecture prerequisites
+        run: '"$PHP_DARWIN_NODE" scripts/cache/dependency-transition.cjs resolve'
+      - uses: ./.github/actions/upload-artifacts
+        with:
+          name: dependency-plan-${{ matrix.arch }}
+          path: dependency-plan-${{ matrix.arch }}.json
+          if-no-files-found: error
+          retention-days: 30
+
+  workers:
+    needs: [plan, resolve]
+    if: ${{ !cancelled() && needs.resolve.result == 'success' && !inputs.plan-only }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/download-artifacts
+        with:
+          pattern: dependency-plan-*
+          path: plans
+          merge-multiple: true
+      - name: Start independent runtime and build-tool workers in parallel
+        if: ${{ !inputs.cache-only }}
+        env:
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+        run: node scripts/cache/dependency-workers.cjs run plans
+      - uses: ./.github/actions/upload-artifacts
+        if: always()
+        with:
+          name: dependency-worker-runs
+          path: dependency-workers.json
+          if-no-files-found: ignore
+          retention-days: 30
 
   prepare:
-    needs: plan
+    needs: [plan, recipes, resolve, workers]
+    if: ${{ !cancelled() && needs.workers.result == 'success' && !inputs.plan-only && needs.plan.outputs.required == 'true' }}
     name: Prepare approved dependencies on ${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 240
@@ -68,7 +248,13 @@ jobs:
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     env:
       GH_TOKEN: ${{ secrets.TOKEN || github.token }}
-      HOMEBREW_CORE_COMMIT: ${{ needs.plan.outputs.core }}
+      HOMEBREW_CORE_COMMIT: ${{ needs.recipes.outputs.core }}
+      PHP_DARWIN_RECIPE_COMMITS: ${{ needs.recipes.outputs.recipe-commits }}
+      PHP_DARWIN_DEPENDENCY_UPDATES: '[]'
+      PHP_DARWIN_BOTTLE_UPDATES: '[]'
+      PHP_DARWIN_RETIRE_DEPENDENCIES: ${{ inputs.retire-formulae }}
+      PHP_DARWIN_CACHE_ONLY: 'true'
+      PHP_DARWIN_AUTOMATIC: ${{ needs.plan.outputs.automatic }}
       HOMEBREW_PHP_COMMIT: ${{ needs.plan.outputs.php }}
       HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.plan.outputs.extensions }}
       HOMEBREW_DEVELOPER: '1'
@@ -81,39 +267,29 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Recover abandoned Homebrew installers
-        uses: ./.github/actions/runner-preflight
-      - name: Preserve the Actions Node runtime
-        uses: ./.github/actions/node-runtime
-      - name: Initialize dependency timing artifacts
+      - uses: ./.github/actions/dependency-environment
+      - uses: ./.github/actions/download-artifacts
+        with:
+          name: dependency-plan-${{ matrix.arch }}
+          path: .
+      - uses: ./.github/actions/download-artifacts
+        with:
+          name: dependency-inputs
+          path: .
+      - name: Use this architecture's verified worker selection
         run: |
-          {
-            echo "PHP_DARWIN_METRICS=$RUNNER_TEMP/dependency-metrics.jsonl"
-            echo "PHP_DARWIN_BOTTLE_MISSES=$RUNNER_TEMP/bottle-misses.jsonl"
-            echo "PHP_DARWIN_SOURCE_BOTTLE_MISSES=$RUNNER_TEMP/source-bottle-misses.jsonl"
-          } >> "$GITHUB_ENV"
-          : > "$RUNNER_TEMP/dependency-metrics.jsonl"
-          : > "$RUNNER_TEMP/bottle-misses.jsonl"
-          : > "$RUNNER_TEMP/source-bottle-misses.jsonl"
-      - name: Prepare the approved formula snapshots
-        run: |
-          bash scripts/build/cleanup-taps.sh
-          bash scripts/build/pin-core.sh
-          for tap in shivammathur/php shivammathur/extensions; do
-            brew tap "$tap"
-            brew trust "$tap"
-            repository=$(brew --repository "$tap")
-            if [ "$tap" = shivammathur/php ]; then commit=$HOMEBREW_PHP_COMMIT; else commit=$HOMEBREW_EXTENSIONS_COMMIT; fi
-            git -C "$repository" fetch --no-tags origin "$commit"
-            git -C "$repository" checkout --detach --force "$commit"
-          done
+          "$PHP_DARWIN_NODE" - <<'JS'
+          const fs = require('node:fs');
+          const plan = JSON.parse(fs.readFileSync(`dependency-plan-${process.env.ARCH}.json`));
+          fs.appendFileSync(process.env.GITHUB_ENV, `PHP_DARWIN_DEPENDENCY_UPDATES=${JSON.stringify(plan.updates)}\n`);
+          JS
       - name: Remove installed formulae before dependency preparation
         run: '"$PHP_DARWIN_NODE" scripts/cache/update-dependencies.cjs clean'
       - name: Check the cleaned Homebrew environment
         run: bash scripts/build/check-homebrew.sh
       - name: Bootstrap the formula-input reader from its pinned upstream bottle
         run: brew install --formula --force-bottle jq
-      - name: Build or restore dependencies without building PHP
+      - name: Restore verified dependencies without source compilation
         run: '"$PHP_DARWIN_NODE" scripts/cache/update-dependencies.cjs prepare'
       - name: Prove cold and warm installs require no dependency compilation
         run: '"$PHP_DARWIN_NODE" scripts/cache/update-dependencies.cjs verify'
@@ -135,24 +311,25 @@ jobs:
           path: |
             dependency-roots.json
             dependency-plan.json
-            ${{ runner.temp }}/dependency-metrics.jsonl
+            ${{ runner.temp }}/METRICS.jsonl
           if-no-files-found: ignore
           retention-days: 7
       - uses: ./.github/actions/upload-artifacts
         if: always()
         with:
           name: bottle-misses-dependencies-${{ matrix.arch }}
-          path: ${{ runner.temp }}/bottle-misses.jsonl
+          path: ${{ runner.temp }}/BOTTLE_MISSES.jsonl
           retention-days: 7
       - uses: ./.github/actions/upload-artifacts
         if: always()
         with:
           name: source-bottle-misses-dependencies-${{ matrix.arch }}
-          path: ${{ runner.temp }}/source-bottle-misses.jsonl
+          path: ${{ runner.temp }}/SOURCE_BOTTLE_MISSES.jsonl
           retention-days: 7
 
   mirror:
     needs: prepare
+    if: ${{ !cancelled() && needs.prepare.result == 'success' }}
     name: Verify approved dependency bottles on Cloudflare
     uses: ./.github/workflows/cache-bottles.yml
     permissions:
@@ -168,10 +345,12 @@ jobs:
 
   approve:
     needs: [plan, prepare, mirror]
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.mirror.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: write
+      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -190,7 +369,15 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Promote dependencies for subsequent cache jobs
-        if: github.event_name == 'workflow_dispatch' && inputs.publish
+        if: github.ref_name == 'main' && (github.event_name != 'workflow_dispatch' || inputs.publish)
         env:
           GH_TOKEN: ${{ secrets.TOKEN || github.token }}
         run: node scripts/cache/update-dependencies.cjs promote approved-dependencies.json
+      - name: Wake consumer freshness checks only after publication
+        if: github.ref_name == 'main' && (github.event_name != 'workflow_dispatch' || inputs.publish)
+        env:
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+        run: |
+          for workflow in update.yml update-nightly.yml update-extensions.yml; do
+            gh workflow run "$workflow" --repo shivammathur/php-darwin --ref main
+          done

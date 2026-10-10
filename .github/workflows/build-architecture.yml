@@ -39,6 +39,9 @@ on:
       source-cache-release:
         required: true
         type: string
+      save-source-bottles:
+        default: true
+        type: boolean
       reuse-archives:
         default: true
         type: boolean
@@ -78,6 +81,7 @@ jobs:
       HOMEBREW_PHP_COMMIT: ${{ inputs.homebrew-php-commit }}
       PHP_VERSION: ${{ inputs.php-version }}
       REUSE_ARCHIVES: ${{ inputs.reuse-archives }}
+      PHP_DARWIN_SOURCE_CACHE_READ_ONLY: ${{ !inputs.save-source-bottles }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

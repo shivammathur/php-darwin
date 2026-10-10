@@ -10,6 +10,10 @@ trap 'rm -rf "$work_dir"' EXIT
 mkdir -p "$work_dir/bin" "$work_dir/conf" || exit 1
 cat > "$work_dir/bin/gh" <<'EOF'
 #!/usr/bin/env bash
+if [ "$1" = api ]; then
+  [ -z "${PHP_DARWIN_TEST_ACTIVE:-}" ] || printf '%s\n' "$PHP_DARWIN_TEST_ACTIVE"
+  exit "${PHP_DARWIN_TEST_GH_STATUS:-0}"
+fi
 printf '%s\n' "$*" >> "${PHP_DARWIN_TEST_GH_LOG:?}"
 exit "${PHP_DARWIN_TEST_GH_STATUS:-0}"
 EOF
@@ -24,6 +28,11 @@ workflow run cache-nightly.yml --repo shivammathur/php-darwin --ref feature/nigh
 EOF
 cmp -s "$work_dir/expected.log" "$PHP_DARWIN_TEST_GH_LOG" || \
   php_darwin_die 'nightly dispatch did not start separate runs for both versions on the requested ref'
+
+: > "$PHP_DARWIN_TEST_GH_LOG"
+PHP_DARWIN_TEST_ACTIVE='Cache nightly PHP 8.6' bash "$script_dir/../../release/dispatch-nightly.sh" || exit 1
+[ "$(wc -l < "$PHP_DARWIN_TEST_GH_LOG" | tr -d ' ')" = 1 ] || php_darwin_die 'queued nightly run was dispatched again'
+grep -Fq 'php-version=8.7' "$PHP_DARWIN_TEST_GH_LOG" || exit 1
 
 if PHP_DARWIN_TEST_GH_STATUS=1 bash "$script_dir/../../release/dispatch-nightly.sh" >/dev/null 2>&1; then
   php_darwin_die 'nightly dispatch ignored a workflow dispatch failure'

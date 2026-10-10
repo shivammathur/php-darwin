@@ -8,7 +8,21 @@ require "cmd/install"
 raise "Expected an explicitly planned source build" unless
   ARGV.include?("--ignore-dependencies") && ARGV.include?("--build-bottle")
 
+# Set this inside brew: newer launchers only inherit HOMEBREW_* variables.
+if (pkg_config_path = ENV["HOMEBREW_PHP_DARWIN_PKG_CONFIG_PATH"])
+  ENV["PKG_CONFIG"] = "pkg-config --with-path=#{pkg_config_path}"
+end
+
 module PhpDarwinSourceBuildEnvironment
+  def build_args(formula_path)
+    args = super
+    if ENV["HOMEBREW_PHP_DARWIN_PKG_CONFIG_PATH"] || ENV["HOMEBREW_PHP_DARWIN_CONFIGURE_CACHE"]
+      # Preload the environment hook in Homebrew's separate build process.
+      args.insert(args.index("--"), "-r", File.expand_path("source-bottle-openssl", __dir__))
+    end
+    args
+  end
+
   def sanitized_argv_options
     super.reject { |option| option == "--ignore-dependencies" }
   end

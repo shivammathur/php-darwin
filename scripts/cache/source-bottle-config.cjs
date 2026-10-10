@@ -1,9 +1,17 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
+function configurationFiles(formula, recorded = []) {
+  // Uninstalling a keg leaves etc behind but removes its .bottle inventory.
+  // OpenLDAP audits these two generated defaults even on a clean source build.
+  // Stage them explicitly so old configuration survives dependency cleanup.
+  const defaults = formula === 'openldap' ? ['etc/openldap/slapd.conf', 'etc/openldap/slapd.ldif'] : [];
+  return [...new Set([...recorded, ...defaults])];
+}
+
 // Homebrew bottles only newly generated etc files. Existing configuration can
 // also make formula install-time audits fail (for example OpenLDAP's inreplace).
-// Temporarily stage only defaults owned by an installed bottle of this formula,
+// Temporarily stage only known defaults owned by this formula,
 // then restore the user's files after build/bottle, including on failure.
 function withFreshConfiguration(prefix, files = [], build) {
   if (!files.length) return build();
@@ -51,4 +59,4 @@ function withFreshConfiguration(prefix, files = [], build) {
   }
 }
 
-module.exports = { withFreshConfiguration };
+module.exports = { configurationFiles, withFreshConfiguration };

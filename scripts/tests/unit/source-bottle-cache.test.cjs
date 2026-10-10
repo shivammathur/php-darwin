@@ -4,8 +4,68 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { install, keyFor, readBottle, extensionInputs } = require('../../cache/source-bottle-cache.cjs');
-const { withFreshConfiguration } = require('../../cache/source-bottle-config.cjs');
+const { configurationFiles, withFreshConfiguration } = require('../../cache/source-bottle-config.cjs');
 const { ApprovedDependencies } = require('../../cache/approved-dependencies.cjs');
+
+test('the PHP baseline is captured after approved dependency batches and before target installation', async () => {
+  const target = 'shivammathur/php/php@8.6';
+  const events = [];
+  let installed = 'aom 3.14.1 3.15.1', baseline;
+  const plan = [
+    {full_name: 'aom', version: '3.15.1', installed: false},
+    {full_name: target, version: '8.6.0', bottled: true},
+  ];
+  const approvedDependencies = {
+    versions: () => ({aom: '3.15.1'}),
+    has: item => item.full_name === 'aom',
+    validatePlan() {},
+    async prefetch() {return {};},
+    restore(items) {
+      assert.deepEqual(items.map(item => item.full_name), ['aom']);
+      installed = 'aom 3.15.1'; events.push('approved restore'); return 1;
+    },
+  };
+  const args = {formula: target, approvedDependencies, query: () => plan,
+    buildEnvironment: () => ({}), prefetch: async () => {}, log() {},
+    beforeTarget() {baseline = installed; events.push('snapshot');},
+    run(program, argv) {
+      assert.equal(program, 'brew'); assert.equal(argv.at(-1), target);
+      assert.equal(baseline, 'aom 3.15.1'); events.push('PHP install');
+    },
+  };
+  await install(args);
+  assert.deepEqual(events, ['approved restore', 'snapshot', 'PHP install']);
+  events.length = 0;
+  plan.forEach(item => {item.installed = true;});
+  await install(args);
+  assert.deepEqual(events, ['snapshot']);
+});
+
+test('approved tool roots are planned together without forcing source builds or excluding tap-owned tools', async () => {
+  const formulae = ['jq', 'zstd', 'shivammathur/php/bison@2.7'];
+  const platform = {arch: 'arm64', macos: '14', prefix: '/opt/homebrew'};
+  const packages = Object.fromEntries(formulae.map(formula => [formula, {version: '1.0', bottle: {
+    formula, version: '1.0', tag: 'arm64_sonoma', sha256: 'a'.repeat(64),
+    url: `https://ghcr.io/v2/homebrew/core/tool/blobs/sha256:${'a'.repeat(64)}`,
+  }}]));
+  const approvedDependencies = new ApprovedDependencies({platforms: {arm64: {...platform, macos: 14, packages}}});
+  const versions = Object.fromEntries(formulae.map(formula => [formula, '1.0']));
+  for (const roots of [formulae.slice(0, 2), formulae]) {
+    const result = await install({formula: 'jq', dependencyRoots: roots, approvedDependencies,
+      buildEnvironment: () => platform, log() {},
+      query(mode, requested, force, approved) {
+        assert.equal(mode, 'seed');
+        assert.deepEqual(requested, roots);
+        assert.equal(force, roots.some(name => name.includes('/')));
+        assert.deepEqual(approved, versions);
+        return roots.map(full_name => ({full_name, version: '1.0', installed: true, requested: true}));
+      },
+      run() {assert.fail('Installed approved tools must be retained');},
+    });
+    assert.deepEqual(result, {built: 0, restored: 0});
+    assert.equal(approvedDependencies.has({full_name: formulae[2]}), true);
+  }
+});
 
 test('pack consumers reuse only installed targets prepared in the same invocation while external dependencies stay locked', async () => {
   const igbinary = 'shivammathur/extensions/igbinary@8.6';
@@ -60,6 +120,34 @@ test('source builds bottle clean defaults and restore existing configuration on 
   assert.throws(() => withFreshConfiguration(prefix, ['etc/redirect/config'], () => {}), /Unsafe/);
   assert.throws(() => withFreshConfiguration(prefix, ['etc/../outside'], () => {}), /Invalid/);
   assert.throws(() => withFreshConfiguration(prefix, ['var/service-data'], () => {}), /Invalid/);
+});
+
+test('OpenLDAP rebuilds preserve configuration after its keg inventory has been removed', t => {
+  const prefix = fs.mkdtempSync(path.join(os.tmpdir(), 'php-darwin-ldap-config-'));
+  t.after(() => fs.rmSync(prefix, {recursive: true, force: true}));
+  const files = configurationFiles('openldap');
+  fs.mkdirSync(path.join(prefix, 'etc/openldap'), {recursive: true});
+  for (const relative of [...files, 'etc/openldap/ldap.conf']) {
+    fs.writeFileSync(path.join(prefix, relative), `original ${relative}`, {mode: 0o600});
+  }
+  for (const failure of [false, true]) {
+    const build = () => withFreshConfiguration(prefix, files, () => {
+      for (const relative of files) {
+        const target = path.join(prefix, relative);
+        assert.equal(fs.existsSync(target), false);
+        fs.writeFileSync(target, 'fresh formula default');
+      }
+      assert.equal(fs.readFileSync(path.join(prefix, 'etc/openldap/ldap.conf'), 'utf8'), 'original etc/openldap/ldap.conf');
+      if (failure) throw new Error('install audit failed');
+    });
+    if (failure) assert.throws(build, /install audit failed/); else build();
+    for (const relative of files) {
+      assert.equal(fs.readFileSync(path.join(prefix, relative), 'utf8'), `original ${relative}`);
+      assert.equal(fs.statSync(path.join(prefix, relative)).mode & 0o777, 0o600);
+    }
+  }
+  assert.deepEqual(configurationFiles('openldap', files), files);
+  assert.deepEqual(configurationFiles('other/tap/openldap'), []);
 });
 
 function fixture(t) {
@@ -154,6 +242,16 @@ test('reuse libxml2 across PHP builds and rebuild both when libxml2 changes', as
   assert.deepEqual(await install(f.args), { built: 0, restored: 2 });
 });
 
+test('validation can build cache misses without creating production locks or publishing bottles', async t => {
+  const f = fixture(t);
+  f.args.cache.readOnly = true;
+  f.args.cache.withBuildLock = () => assert.fail('Read-only validation must not create release locks');
+  f.args.cache.saveCache = () => assert.fail('Read-only validation must not publish source bottles');
+  assert.deepEqual(await install(f.args), {built: 2, restored: 0});
+  assert.equal(fs.readdirSync(f.store).length, 0);
+  assert.deepEqual(await install(f.args), {built: 0, restored: 2});
+});
+
 test('approved dependencies survive compiler and recipe fingerprint changes without rebuilding', async t => {
   const f = fixture(t);
   f.args.buildEnvironment = () => ({ arch: 'arm64', macos: '14', prefix: '/opt/homebrew', compiler: f.state.compiler });
@@ -164,7 +262,7 @@ test('approved dependencies survive compiler and recipe fingerprint changes with
     macos: 14, prefix: '/opt/homebrew', packages: {libxml2: {version: '1.0', source: {
       key: metadata.key, inputs: metadata.inputs, sha256: metadata.sha256,
     }}},
-  }}});
+  }}}, {recordInstalled() {}});
   f.freshRunner();
   f.state.compiler = 'clang-2';
   f.state.recipe = 'different installed recipe provenance';
@@ -343,6 +441,34 @@ test('keys use software versions, target platforms and variants; code and toolch
   }
 });
 
+test('direct OpenSSL selection invalidates only its consumer and survives source installation', async t => {
+  const old = {formula: 'openldap', version: '2.7.1_1', pkg_config_path: '/opt/homebrew/opt/openssl@4/lib/pkgconfig'};
+  assert.notEqual(keyFor(old), keyFor({...old, openssl_build_environment: 1}));
+  const f = fixture(t);
+  await install(f.args);
+  f.freshRunner();
+  const inputs = f.args.inputs;
+  let major = 4;
+  f.args.inputs = (item, platform) => ({...inputs(item, platform),
+    ...(item.name.startsWith('php@') ? {pkg_config_path: `/opt/homebrew/opt/openssl@${major}/lib/pkgconfig`} : {}),
+  });
+  const run = f.args.run;
+  const commands = [];
+  f.args.run = (program, argv, options) => {
+    if (argv.includes('--build-bottle')) commands.push(options.env.HOMEBREW_PHP_DARWIN_PKG_CONFIG_PATH);
+    return run(program, argv, options);
+  };
+  for (const expected of [4, 3]) {
+    major = expected;
+    assert.deepEqual(await install(f.args), {built: 1, restored: 1});
+    assert.equal(commands.at(-1), `/opt/homebrew/opt/openssl@${major}/lib/pkgconfig`);
+    f.freshRunner();
+    assert.deepEqual(await install(f.args), {built: 0, restored: 2});
+    f.freshRunner();
+  }
+  assert.equal(commands.length, 2);
+});
+
 test('cache metadata cannot redirect installation outside its directory', t => {
   const f = fixture(t);
   fs.mkdirSync(f.cacheRoot);
@@ -350,6 +476,26 @@ test('cache metadata cannot redirect installation outside its directory', t => {
     schema: 1, key: 'key', file: '../foreign.bottle.tar.gz', sha256: 'a'.repeat(64),
   }));
   assert.throws(() => readBottle(f.cacheRoot, 'key'), /identity/);
+});
+
+test('configure answers invalidate only the affected bottle and reach the source build', async t => {
+  const f = fixture(t);
+  await install(f.args);
+  f.freshRunner();
+  const inputs = f.args.inputs;
+  f.args.inputs = (item, platform) => ({...inputs(item, platform),
+    ...(item.name.startsWith('php@') ? {configure_cache: {ac_cv_header_pcre_h: 'no'}} : {}),
+  });
+  const run = f.args.run;
+  const answers = [];
+  f.args.run = (program, argv, options) => {
+    if (argv.includes('--build-bottle')) answers.push(JSON.parse(options.env.HOMEBREW_PHP_DARWIN_CONFIGURE_CACHE));
+    return run(program, argv, options);
+  };
+  assert.deepEqual(await install(f.args), {built: 1, restored: 1});
+  assert.deepEqual(answers, [{ac_cv_header_pcre_h: 'no'}]);
+  f.freshRunner();
+  assert.deepEqual(await install(f.args), {built: 0, restored: 2});
 });
 
 test('extension variants bypass upstream bottles, preserve skip-link, and isolate shared source', async t => {
@@ -412,4 +558,16 @@ test('Cloudflare prefetch completes before upstream fetch and leaves normal inst
   };
   await install(f.args);
   assert.deepEqual(f.events, [['cloudflare'], ['install', '--formula', '--verbose', '--ignore-dependencies', '--as-dependency', 'libxml2']]);
+});
+
+
+test('Python source bottles exclude undeclared gettext and use a distinct cache identity', () => {
+  const {configureCache, keyFor} = require('../../cache/source-bottle-cache.cjs');
+  const info = {full_name: 'python@3.14', dependencies: []};
+  const cache = configureCache(info);
+  assert.deepEqual(cache, {ac_cv_header_libintl_h: 'no', ac_cv_lib_intl_textdomain: 'no'});
+  const inputs = {formula: info.full_name, version: '3.14.8_1', dependencies: []};
+  assert.notEqual(keyFor(inputs), keyFor({...inputs, configure_cache: cache}));
+  assert.equal(configureCache({...info, dependencies: [{name: 'gettext'}]}), undefined);
+  assert.equal(configureCache({full_name: 'httpd', dependencies: []}), undefined);
 });

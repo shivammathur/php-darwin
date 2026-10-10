@@ -3,7 +3,7 @@ const path = require('node:path');
 const { command, digest, key, validateEntry, origins, standaloneSource, supportsPack } = require('../installer/install-extensions.cjs');
 const configuration = require('../../conf/extension-packs.json');
 const platforms = require('../../conf/platforms.json');
-const { buildMatrix, testMatrix } = require('./extension-batches.cjs');
+const { buildMatrix, reuseMatrix, testMatrix } = require('./extension-batches.cjs');
 const { retention } = require('./extension-retention.cjs');
 const { recipeCurrent } = require('../lib/recipe-inputs.cjs');
 const { command: transferCommand, retryPolicy, httpError, githubJSON, workflowJobs, transfers } = require('./extension-transfers.cjs');
@@ -15,7 +15,7 @@ function versionBatches(value = configuration.versions.join(' ')) {
 }
 async function dispatch({ versions = process.env.PHP_VERSIONS || undefined, afterRun = process.env.AFTER_RUN,
   repository = process.env.GITHUB_REPOSITORY || 'shivammathur/php-darwin', ref = process.env.GITHUB_REF_NAME || 'main',
-  run = command, select = selectEntries, wait = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now } = {}) {
+  run = command, select = selectEntries, listRuns = () => require('../cache/dependency-gate.cjs').activeRuns('cache-extensions.yml'), wait = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now } = {}) {
   if (repository !== 'shivammathur/php-darwin') throw new Error('Unexpected extension cache repository');
   const batches = versionBatches(versions);
   if (afterRun) {
@@ -36,16 +36,15 @@ async function dispatch({ versions = process.env.PHP_VERSIONS || undefined, afte
   // child workflow must receive only versions which actually need archives.
   const { selected } = await select({ versions: batches.flat(), builds: ['debug', 'release'], modes: ['nts', 'zts'],
     selectedPacks: Object.keys(configuration.packs), force: false, resumeRuns: [] });
+  const active = listRuns();
   const changed = new Set(selected.map(entry => entry.php_version));
-  if (!changed.size) {
-    run('gh', ['workflow', 'run', 'publish-extensions.yml', '--repo', repository, '--ref', ref,
-      '-f', 'installer-only=true'], { inherit: true });
-    console.log('All optional extension packs are current; dispatched an installer-only refresh');
-    return;
-  }
+  if (!changed.size) { console.log('No optional extension packs are ready for rebuilding'); return; }
   for (const requested of batches) {
     const batch = requested.filter(version => changed.has(version));
     if (!batch.length) continue;
+    if (active.some(item => item.status !== 'completed' && item.display_title === `Cache optional PHP extensions ${batch.join(' ')}`)) {
+      console.log(`PHP ${batch.join(' ')} extensions already have an active run`); continue;
+    }
     run('gh', ['workflow', 'run', 'cache-extensions.yml', '--repo', repository, '--ref', ref,
       '-f', `php-versions=${batch.join(' ')}`, '-f', 'builds=debug release', '-f', 'ts=nts zts', '-f', 'publish=true'], { inherit: true });
     console.log(`Dispatched optional extension caches for PHP ${batch.join(', ')}`);
@@ -127,6 +126,7 @@ async function selectEntries({
   const include = [], reused = [], selected = [];
   const retry = retryPolicy();
   const recovery = new Map();
+  const phpReady = process.env.PHP_DARWIN_REQUIRE_CURRENT_PHP === 'true' ? require('./php-ready.cjs').checker() : () => true;
   // Explicit recovery keeps completed artifacts even if orchestration changed.
   // Sources are ordered oldest to newest; the latest successful pack wins.
   for (const id of resumeRuns) {
@@ -137,6 +137,7 @@ async function selectEntries({
     if (!configuration.versions.includes(php_version)) throw new Error('Unsupported PHP version');
     const existing = await readManifest(php_version, retry);
     const phpManifest = await readPHPManifest(php_version, retry);
+    if (!phpReady(php_version, phpManifest)) { console.log(`Deferring optional extensions until PHP ${php_version} is successfully published and current`); continue; }
     for (const name of selectedPacks) for (const build of builds) for (const thread_safety of modes) for (const architecture of Object.keys(platforms)) {
       if (!Object.hasOwn(configuration.packs, name)) throw new Error('Unknown extension pack');
       if (!supportsPack(name, php_version)) continue;
@@ -167,12 +168,12 @@ async function plan() {
   const versions = versionBatches(process.env.PHP_VERSIONS || '8.4').flat();
   if (versions.length !== 1) throw new Error('Select one PHP version per cache run; use update-extensions.yml to dispatch multiple versions separately');
   const { include, reused, selected } = await selectEntries({ versions });
-  const buildsMatrix = buildMatrix(include), reuseMatrix = buildMatrix(reused), tests = testMatrix(selected);
-  if ([buildsMatrix, reuseMatrix, tests].some(matrix => matrix.include.length > 256)) throw new Error('Extension matrix exceeds Actions limit');
+  const buildsMatrix = buildMatrix(include), reuseGroups = reuseMatrix(reused), tests = testMatrix(selected);
+  if ([buildsMatrix, reuseGroups, tests].some(matrix => matrix.include.length > 256)) throw new Error('Extension matrix exceeds Actions limit');
   const result = JSON.stringify(buildsMatrix);
   console.log(result);
   if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT,
-    `matrix=${result}\ncount=${include.length}\nreuse=${JSON.stringify(reuseMatrix)}\nreuse-count=${reused.length}\n` +
+    `matrix=${result}\ncount=${include.length}\nreuse=${JSON.stringify(reuseGroups)}\nreuse-count=${reused.length}\n` +
     `selected-count=${selected.length}\nkeys=${JSON.stringify(selected.map(key))}\ntests=${JSON.stringify(tests)}\n`);
   if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
     `${reused.length} completed packs reused on Ubuntu; ${include.length} missing/changed packs in ${buildsMatrix.include.length} native build jobs; ` +

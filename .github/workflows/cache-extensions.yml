@@ -88,11 +88,21 @@ jobs:
           ref: ${{ steps.dependencies.outputs.core }}
           path: homebrew-core
           persist-credentials: false
+
+      - name: Apply approved dependency recipe updates
+        run: node scripts/cache/dependency-recipes.cjs apply homebrew-core
       - name: Record formula snapshots
         id: sources
         run: |
           echo "extensions=$(git -C homebrew-extensions rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "core=$(git -C homebrew-core rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: shivammathur/homebrew-php
+          path: homebrew-php
+          persist-credentials: false
+      - name: Require prepared dependencies without updating build tools
+        run: node scripts/cache/dependency-gate.cjs require
       - name: Select new or changed extension archives
         id: plan
         env:
@@ -101,6 +111,10 @@ jobs:
           BUILDS: ${{ inputs.builds }}
           THREAD_SAFETY: ${{ inputs.ts }}
           FORCE: ${{ inputs.force }}
+          PHP_DARWIN_REQUIRE_CURRENT_PHP: 'true'
+          HOMEBREW_PHP_PATH: ${{ github.workspace }}/homebrew-php
+          HOMEBREW_EXTENSIONS_PATH: ${{ github.workspace }}/homebrew-extensions
+          HOMEBREW_CORE_PATH: ${{ github.workspace }}/homebrew-core
           RESUME_RUNS: ${{ inputs.resume-runs }}
           GH_TOKEN: ${{ secrets.TOKEN || github.token }}
         run: node scripts/release/extension-packs.cjs plan
@@ -141,7 +155,7 @@ jobs:
   build:
     needs: plan
     if: needs.plan.outputs.count != '0'
-    name: Cache PHP ${{ matrix.php_version }} / ${{ matrix.architecture }}
+    name: Cache PHP ${{ matrix.php_version }} / ${{ matrix.build }}-${{ matrix.thread_safety }} / ${{ matrix.architecture }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     permissions:
@@ -193,7 +207,7 @@ jobs:
         uses: ./.github/actions/upload-artifacts
         with:
           overwrite: true
-          name: extension-built-${{ matrix.php_version }}-${{ matrix.architecture }}
+          name: extension-built-${{ matrix.php_version }}-${{ matrix.architecture }}-${{ matrix.build }}-${{ matrix.thread_safety }}
           path: builds/extensions/
           if-no-files-found: ignore
           compression-level: 0
@@ -203,7 +217,7 @@ jobs:
         uses: ./.github/actions/upload-artifacts
         with:
           overwrite: true
-          name: extension-index-built-${{ matrix.php_version }}-${{ matrix.architecture }}
+          name: extension-index-built-${{ matrix.php_version }}-${{ matrix.architecture }}-${{ matrix.build }}-${{ matrix.thread_safety }}
           path: builds/index/entries.json
           if-no-files-found: ignore
       - name: Queue missing upstream bottles
@@ -211,7 +225,7 @@ jobs:
         uses: ./.github/actions/upload-artifacts
         with:
           overwrite: true
-          name: bottle-misses-${{ matrix.php_version }}-${{ matrix.architecture }}
+          name: bottle-misses-${{ matrix.php_version }}-${{ matrix.architecture }}-${{ matrix.build }}-${{ matrix.thread_safety }}
           path: ${{ runner.temp }}/bottle-misses.jsonl
           if-no-files-found: ignore
           compression-level: 0
@@ -220,7 +234,7 @@ jobs:
         uses: ./.github/actions/upload-artifacts
         with:
           overwrite: true
-          name: source-bottle-misses-${{ matrix.php_version }}-${{ matrix.architecture }}
+          name: source-bottle-misses-${{ matrix.php_version }}-${{ matrix.architecture }}-${{ matrix.build }}-${{ matrix.thread_safety }}
           path: ${{ runner.temp }}/source-bottle-misses.jsonl
           if-no-files-found: ignore
           compression-level: 0
@@ -251,12 +265,10 @@ jobs:
         uses: ./.github/actions/runner-preflight
       - uses: ./.github/actions/node-runtime
       - name: Restore archive tools
-        run: |
-          "$PHP_DARWIN_NODE" scripts/cache/upstream-bottle-cache.cjs tools
-          brew install --verbose jq zstd
+        run: bash scripts/build/archive-tools.sh
       - uses: ./.github/actions/download-artifacts
         with:
-          pattern: extension-@(built|reused)-${{ matrix.php_version }}-${{ matrix.architecture }}
+          pattern: extension-@(built|reused)-${{ matrix.php_version }}-${{ matrix.architecture }}?(-*)
           path: builds/extensions
           merge-multiple: 'true'
       - name: Test every selected variant and pack in this PHP version

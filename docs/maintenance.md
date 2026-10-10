@@ -107,6 +107,11 @@ changes do not invalidate source bottles. Legacy keys remain readable, with
 checksum and software identity verification before reuse. Existing configuration
 is restored after source bottling, including failed builds; service data is not staged. Keep configure/make output visible.
 
+Source builds select a formula's declared OpenSSL major in both pkg-config and
+compiler search paths. This selection policy is part of the consumer's cache key;
+OpenSSL's own cached bottle is unaffected. Dependency approval checks direct
+OpenSSL linkage in installed executables, libraries and plugins against the recipe.
+
 Archive checkpoints last seven days and require matching software inputs and
 verified payloads. The php-darwin repository revision is provenance only.
 Checkpoints are separate from reusable source bottles.
@@ -225,16 +230,46 @@ again. PHP and extension targets can still compile when their own inputs change.
 An unapproved dependency version or unavailable approved bottle stops with a
 dependency-update instruction instead of silently upgrading or compiling it.
 
-Run `update-dependencies.yml` on `main` to upgrade dependencies. Its optional
-`homebrew-core-commit` input selects a specific revision; an empty input selects
-current Homebrew core. The job prepares dependencies for all PHP variants,
-coverage extensions, optional packs and archive tools on both baseline platforms.
-It then clears the installed formulae on those CI runners, restores the proposed
-set with zero source builds, checks native linkage, and verifies warm reuse.
-Only matching successful proofs from both architectures can promote the new
-snapshot. `publish=false` keeps the proposed snapshot as a workflow artifact.
-Timing data and validation reports remain workflow artifacts. The previous
-approved source bottles are protected while a replacement is prepared.
+Tap dependency changes automatically start `update-dependencies.yml`, checked every
+two hours and by the PHP/extension dispatchers. A Linux fingerprint of dependency
+declarations ignores source releases and bottle-only churn. Native Homebrew
+resolution selects changed dependency recipes and their affected consumers while
+retaining unrelated approved tools and core recipes. `automatic=true` runs the
+same path manually. No native planning is needed when declarations are unchanged.
+
+Each changed formula/architecture gets its own run: linked libraries use
+`prepare-dependency.yml`, build tools use `prepare-build-tool.yml`. The shared
+implementation validates the immutable parent plan, source pins and successful
+prerequisites. All independent workers start together. Workers restore exact
+existing bottles and compile only their own target on a cache miss; a missing
+prerequisite cannot start an implicit tool build. The Linux coordinator records
+run IDs and recovers them by plan digest on a rerun. Retry a failed worker before
+rerunning its parent; never create a duplicate for an uncertain dispatch.
+
+After workers pass, both baseline architectures restore the complete candidate
+snapshot, check native linkage/runtime, prove cold installs require zero source
+builds and verify warm reuse. Mirrored bottles and matching architecture proofs
+are required before promotion. PHP and extension jobs only consume this approved
+snapshot; they never update build tools. Previous approved source bottles remain
+protected during preparation. Source-cache identities remain based on software,
+dependency versions and ABI, not on planner or workflow revisions.
+
+`plan-only=true` saves native graphs and worker plans without builds or promotion.
+`cache-only=true` skips worker dispatch and fails if a required bottle is missing.
+`publish=false` keeps the verified candidate as an artifact. Manual updates accept
+`homebrew-core-commit` and space-separated `formulae` for selective updates; an
+empty `formulae` in manual mode explicitly advances the full core snapshot.
+`bottle-recipes` can pin compatible upstream recipes. `retire-formulae` removes
+obsolete snapshot entries only after graph/provenance checks; it never deletes
+remote history. Diagnostics and exact worker/candidate identities are artifacts.
+
+Successful dependency approval wakes PHP freshness checks. Each successful PHP
+workflow wakes the optional-extension checker after publication and installer
+validation. Scheduled checks also recover missed events, defer stale PHP inputs
+and avoid duplicate active runs, including queued runs with running jobs. Current
+packs do not cause gratuitous installer-only publication; dispatch
+`publish-extensions.yml` with `installer-only=true` when deliberately refreshing
+the installer.
 
 Dependency updates do not force a PHP rebuild. Subsequent normal cache jobs
 compare their actual PHP, extension and runtime dependency inputs as usual.
@@ -288,11 +323,6 @@ Swoole covers PHP 5.6–8.5; the tap has no Swoole formulae for PHP 8.6/8.7.
 Planning, dependency preparation and installation skip unsupported combinations.
 Native Swoole checks exercise shared tables, including the legacy Swoole 2.x API
 used by PHP 5.6, and the timer/event loop on Swoole 4.x and later.
-Before the first Swoole cache campaign,
-run `update-dependencies.yml` to approve its `c-ares` dependency on both architectures.
-Keep the existing core revision by passing `homebrew-core-commit` from
-`conf/dependencies.json` when only adding this dependency.
-
 `update-extensions.yml` checks every configured PHP version every six hours,
 using the same recipe and published-PHP freshness checks as the cache planner.
 It dispatches one cache run per version with missing or changed packs, including
@@ -305,11 +335,14 @@ Its optional `after-run` input waits for a successful prerequisite before dispat
 failed or cancelled prerequisites stop the follow-up. Unchanged packs are skipped;
 changed packs reuse the source-bottle cache. Manual cache runs select one PHP version,
 extensions and build variants. Use `update-extensions.yml` with a space-separated
-`php-versions` list to dispatch several versions separately. Builds share one job
-per PHP version and architecture;
+`php-versions` list to dispatch several versions separately. Builds run independently
+per PHP version, architecture and release/debug × NTS/ZTS variant. Packs within a
+variant share PHP and dependency preparation;
 compatibility checks share one job per PHP version and runner, covering every
-selected build variant and pack. A complete 14-version campaign uses 28 native
-build jobs and 56 compatibility jobs. Each passing pack is checkpointed separately,
+selected build variant and pack. A complete 14-version campaign uses 112 native
+build jobs and 42 compatibility jobs. Variant artifacts have distinct names, and
+recovery also accepts the older archives grouped only by PHP version and architecture.
+Each passing pack is checkpointed separately,
 even if another pack in its job fails. Native cache
 campaigns run on dispatch or schedule; source changes run the local validation CI.
 Publication requires native installation and
@@ -349,7 +382,7 @@ Already published variants are retained when their PHP release/source commit sti
 matches. Normal runs without `resume-runs` apply full recipe freshness checks.
 The planner logs why each pack needs rebuilding. PHP Darwin implementation changes
 and repository revisions do not invalidate PHP, extension or dependency caches.
-Dependency upgrades remain explicit through `update-dependencies.yml`; a missing approved dependency
+Dependency preparation is handled by `update-dependencies.yml`; a missing approved dependency
 fails instead of compiling in an ordinary PHP cache job. Replacing unchanged
 software versions requires an explicit cache repair.
 This recovery path works for both architectures. Regular Homebrew ARM bottles

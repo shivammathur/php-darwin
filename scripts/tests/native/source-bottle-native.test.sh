@@ -143,6 +143,9 @@ const recipe = path.join(command('brew', ['--repository', 'php-darwin/source-cac
 const previous = fs.readFileSync(recipe, 'utf8');
 const consumerRecipe = path.join(path.dirname(recipe), 'php-darwin-cache-bottled.rb');
 const previousConsumer = fs.readFileSync(consumerRecipe, 'utf8');
+const toolRecipe = path.join(path.dirname(recipe), 'php-darwin-cache-app.rb');
+const previousTool = fs.readFileSync(toolRecipe, 'utf8');
+const missingRecipe = path.join(path.dirname(recipe), 'php-darwin-cache-runtime.rb');
 const plan = () => JSON.parse(brewSource('info', ['plan', JSON.stringify([formula]), 'true'])).at(-1);
 assert.equal(plan().installed, true);
 try {
@@ -156,9 +159,21 @@ try {
     JSON.stringify(['php-darwin/source-cache-test/php-darwin-cache-bottled']), 'true']));
   assert.deepEqual(toolPlan.map(item => item.name), ['php-darwin-cache-app', 'php-darwin-cache-bottled'],
     'an installed build tool must not upgrade its unrelated runtime libraries');
+  // Model a published PHP archive whose moving formula now requires a new
+  // OpenSSL major. That runtime was never installed and is not needed to use
+  // the existing tool. Input collection must agree with the installation plan.
+  fs.writeFileSync(missingRecipe, previous.replaceAll('PhpDarwinCacheLib', 'PhpDarwinCacheRuntime'));
+  fs.writeFileSync(toolRecipe, previousTool.replace('depends_on "php-darwin/source-cache-test/php-darwin-cache-lib"',
+    'depends_on "php-darwin/source-cache-test/php-darwin-cache-runtime"'));
+  const toolInputs = JSON.parse(brewSource('info', ['inputs',
+    JSON.stringify(['php-darwin/source-cache-test/php-darwin-cache-bottled']), 'true']));
+  assert.deepEqual(toolInputs[0].dependencies.map(item => item.name), ['php-darwin/source-cache-test/php-darwin-cache-app'],
+    'source inputs must retain the installed build tool without requiring its moving recipe runtime');
 } finally {
   fs.writeFileSync(recipe, previous);
   fs.writeFileSync(consumerRecipe, previousConsumer);
+  fs.writeFileSync(toolRecipe, previousTool);
+  fs.rmSync(missingRecipe, {force: true});
 }
 assert.equal(plan().installed, true);
 console.log('Current dependency reused; older installed version correctly requires an update');

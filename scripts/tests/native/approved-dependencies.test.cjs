@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { install, command, environment } = require('../../cache/source-bottle-cache.cjs');
+const { install, command, environment, brewSource } = require('../../cache/source-bottle-cache.cjs');
 const { ApprovedDependencies } = require('../../cache/approved-dependencies.cjs');
 const { ReleaseCache } = require('../../cache/source-bottle-releases.cjs');
 
@@ -22,9 +22,10 @@ async function main() {
     [platform.arch]: {prefix: platform.prefix, macos: Number(platform.macos), packages},
   }});
   const cache = new ReleaseCache({tag: process.env.CACHE_RELEASE});
-  const events = [];
+  const events = [], installs = [];
   const run = (program, args, options) => {
     if (args.includes('--build-bottle')) events.push(args.at(-1));
+    if (args[0] === 'install') installs.push(args);
     return command(program, args, options);
   };
   const options = {formula: app, cache, approvedDependencies: approved, run,
@@ -33,12 +34,40 @@ async function main() {
     buildEnvironment: () => ({...platform, sdk: `${platform.sdk}-native-regression`})};
   command('brew', ['uninstall', '--force', '--ignore-dependencies', app, library, tool], {inherit: true});
   fs.rmSync('.source-bottle-cache', {recursive: true});
-  assert.deepEqual(await install(options), {built: 0, restored: 3});
+  const tapDirectory = command('brew', ['--repository', tap]).trim();
+  const libraryRecipe = path.join(tapDirectory, 'Formula/php-darwin-cache-lib.rb');
+  const originalLibrary = fs.readFileSync(libraryRecipe, 'utf8');
+  // This deliberately unavailable tool would make source compilation fail.
+  // Restoring the approved library must never resolve its build dependencies.
+  fs.writeFileSync(libraryRecipe, originalLibrary.replace('  def install',
+    `  depends_on "${tap}/unneeded-build-tool" => :build\n  def install`));
+  try {
+    const plan = JSON.parse(brewSource('info', ['plan', JSON.stringify([app]), 'true',
+      JSON.stringify(approved.versions(platform))]));
+    assert.deepEqual(plan.map(item => item.full_name).sort(), [app, library, tool].sort());
+    assert.deepEqual(await install(options), {built: 0, restored: 3});
+  } finally { fs.writeFileSync(libraryRecipe, originalLibrary); }
+  assert.equal(installs.length, 2, 'the two approved dependencies must share one Homebrew invocation');
+  assert.equal(installs[0].filter(arg => arg.endsWith('.tar.gz')).length, 2);
+  assert.ok(installs[0].includes('--as-dependency'));
   assert.deepEqual(events, []);
   assert.equal(command(path.join(platform.prefix, 'bin/php-darwin-cache-app'), []).trim(), '42');
   assert.deepEqual(await install(options), {built: 0, restored: 0});
+  const libraryPrefix = command('brew', ['--prefix', library]).trim();
+  fs.writeFileSync(path.join(libraryPrefix, '.php-darwin-source-sha256'), '0'.repeat(64) + '\n');
+  assert.deepEqual(await install(options), {built: 0, restored: 1});
+  assert.equal(command(path.join(platform.prefix, 'bin/php-darwin-cache-app'), []).trim(), '42');
+  assert.deepEqual(await install(options), {built: 0, restored: 0});
 
-  const formula = path.join(command('brew', ['--repository', tap]).trim(), 'Formula/php-darwin-cache-tool@1.rb');
+  const rebuild = new ApprovedDependencies(approved.lock, {updates: [library]});
+  fs.writeFileSync(libraryRecipe, originalLibrary.replace('  def install', '  depends_on "m4" => :build\n  def install'));
+  try {
+    const plan = JSON.parse(brewSource('info', ['seed', JSON.stringify([app]), 'true',
+      JSON.stringify(rebuild.versions(platform))]));
+    assert.ok(plan.some(item => item.full_name === 'm4'), 'a same-version rebuild must restore its build tools');
+  } finally { fs.writeFileSync(libraryRecipe, originalLibrary); }
+
+  const formula = path.join(tapDirectory, 'Formula/php-darwin-cache-tool@1.rb');
   const original = fs.readFileSync(formula, 'utf8');
   command('brew', ['uninstall', '--force', '--ignore-dependencies', app], {inherit: true});
   try {

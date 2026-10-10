@@ -1,0 +1,103 @@
+name: Build and verify one dependency
+on:
+  workflow_call:
+    inputs:
+      formula:
+        required: true
+        type: string
+      architecture:
+        required: true
+        type: string
+      plan-run-id:
+        required: true
+        type: string
+      plan-key:
+        required: true
+        type: string
+      kind:
+        required: true
+        type: string
+    secrets:
+      TOKEN:
+        required: false
+permissions:
+  contents: read
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      runner: ${{ steps.target.outputs.runner }}
+      core: ${{ steps.target.outputs.core }}
+      recipes: ${{ steps.target.outputs.recipes }}
+      updates: ${{ steps.target.outputs.updates }}
+      php: ${{ steps.target.outputs.php }}
+      extensions: ${{ steps.target.outputs.extensions }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/download-artifacts
+        with:
+          name: dependency-plan-${{ inputs.architecture }}
+          path: .
+          run-id: ${{ inputs.plan-run-id }}
+          github-token: ${{ github.token }}
+      - name: Validate the plan and every prerequisite worker
+        id: target
+        env:
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+          FORMULA: ${{ inputs.formula }}
+          ARCH: ${{ inputs.architecture }}
+          PLAN_RUN: ${{ inputs.plan-run-id }}
+          PLAN_KEY: ${{ inputs.plan-key }}
+          WORKER_KIND: ${{ inputs.kind }}
+        run: node scripts/cache/dependency-workers.cjs worker
+  prepare:
+    needs: plan
+    runs-on: ${{ needs.plan.outputs.runner }}
+    timeout-minutes: 240
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+      FORMULA: ${{ inputs.formula }}
+      ARCH: ${{ inputs.architecture }}
+      HOMEBREW_CORE_COMMIT: ${{ needs.plan.outputs.core }}
+      PHP_DARWIN_RECIPE_COMMITS: ${{ needs.plan.outputs.recipes }}
+      PHP_DARWIN_DEPENDENCY_UPDATES: ${{ needs.plan.outputs.updates }}
+      HOMEBREW_PHP_COMMIT: ${{ needs.plan.outputs.php }}
+      HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.plan.outputs.extensions }}
+      HOMEBREW_DEVELOPER: '1'
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_INSTALL_FROM_API: '1'
+      HOMEBREW_NO_INSTALL_CLEANUP: '1'
+      HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/dependency-environment
+      - name: Remove stale installed dependencies
+        run: '"$PHP_DARWIN_NODE" scripts/cache/update-dependencies.cjs clean'
+      - name: Check the cleaned Homebrew environment
+        run: bash scripts/build/check-homebrew.sh
+      - name: Bootstrap the pinned formula reader
+        run: brew install --formula --force-bottle jq
+      - name: Build only this formula and verify its published cache
+        run: '"$PHP_DARWIN_NODE" scripts/cache/dependency-worker.cjs "$FORMULA"'
+      - uses: ./.github/actions/upload-artifacts
+        if: always()
+        with:
+          name: dependency-worker-${{ inputs.architecture }}
+          path: |
+            dependency-worker.json
+            ${{ runner.temp }}/METRICS.jsonl
+            ${{ runner.temp }}/BOTTLE_MISSES.jsonl
+            ${{ runner.temp }}/SOURCE_BOTTLE_MISSES.jsonl
+          if-no-files-found: error
+          retention-days: 30

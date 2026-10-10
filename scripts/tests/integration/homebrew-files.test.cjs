@@ -198,15 +198,15 @@ test('unlink respects Homebrew formula locks', async t => {
 test('dependency validation checks transitive receipt dependencies and opt aliases', t => {
   const f = fixture(t);
   f.write('Cellar/php/1.0/INSTALL_RECEIPT.json', JSON.stringify({runtime_dependencies: [{full_name: 'example/libraries/libxml2'}]}));
-  f.write('Cellar/libxml2/2.0/INSTALL_RECEIPT.json', JSON.stringify({runtime_dependencies: [{full_name: 'openssl@3'}]}));
+  f.write('Cellar/libxml2/2.0/INSTALL_RECEIPT.json', JSON.stringify({runtime_dependencies: [{full_name: 'openssl@4'}]}));
   const packages = path.join(f.root, 'packages');
   fs.writeFileSync(packages, 'php\t../Cellar/php/1.0\tfalse\nlibxml2\t../Cellar/libxml2/2.0\ttrue\n');
   const run = () => spawnSync('bash', [path.join(__dirname, '../../installer/check-dependencies.sh'), f.prefix, packages], {encoding: 'utf8'});
   let result = run();
   assert.equal(result.status, 1, result.stderr);
-  assert.equal(result.stdout.trim(), 'openssl@3');
-  f.write('Cellar/openssl/3.0/fixture', 'library');
-  f.link('opt/openssl@3', '../Cellar/openssl/3.0');
+  assert.equal(result.stdout.trim(), 'openssl@4');
+  f.write('Cellar/openssl/4.0/fixture', 'library');
+  f.link('opt/openssl@4', '../Cellar/openssl/4.0');
   result = run();
   assert.equal(result.status, 0, result.stderr);
   f.write('Cellar/libxml2/2.0/INSTALL_RECEIPT.json', JSON.stringify({runtime_dependencies: null}));

@@ -27,15 +27,15 @@ if bash "$script_dir/../../build/select-packages.sh" "$runtime_dependencies" "$i
 fi
 
 printf '%s\n' \
-  '{"formulae":[{"name":"zstd","full_name":"zstd"},{"name":"oniguruma","full_name":"oniguruma"},{"name":"openssl@3","full_name":"openssl@3"},{"name":"jq","full_name":"jq"},{"name":"icu4c@78","full_name":"icu4c@78"},{"name":"autoconf@2.69","full_name":"shivammathur/php/autoconf@2.69"}]}' \
+  '{"formulae":[{"name":"zstd","full_name":"zstd"},{"name":"oniguruma","full_name":"oniguruma"},{"name":"openssl@4","full_name":"openssl@4"},{"name":"jq","full_name":"jq"},{"name":"icu4c@78","full_name":"icu4c@78"},{"name":"autoconf@2.69","full_name":"shivammathur/php/autoconf@2.69"}]}' \
   > "$dependency_info"
 bash "$script_dir/../../build/canonicalize-formulae.sh" < "$dependency_info" > "$php_dependencies" || \
   php_darwin_die 'Homebrew dependency canonicalization failed'
 [ "$(tr '\n' ' ' < "$php_dependencies")" = \
-  'autoconf@2.69 icu4c@78 jq oniguruma openssl@3 zstd ' ] || \
+  'autoconf@2.69 icu4c@78 jq oniguruma openssl@4 zstd ' ] || \
   php_darwin_die 'Homebrew dependency canonicalization did not use canonical formula names'
 printf '%s\n' 'autoconf@2.69 2.69' 'cmake 4.1.1' 'icu4c@77 77.1' 'icu4c@78 78.1' \
-  'jq 1.8.1' 'oniguruma 6.9.10' 'openssl@3 3.5.2' 'php@8.4 8.4.13' 'zstd 1.5.7' \
+  'jq 1.8.1' 'oniguruma 6.9.10' 'openssl@4 4.0.3' 'php@8.4 8.4.13' 'zstd 1.5.7' \
   > "$cleanup_formulae"
 bash "$script_dir/../../build/select-cleanup-formulae.sh" "$cleanup_formulae" "$php_dependencies" \
   "$unrelated_formulae" || php_darwin_die 'Homebrew cleanup selection failed'

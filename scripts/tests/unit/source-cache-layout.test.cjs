@@ -13,7 +13,7 @@ test('named releases group PHP and extensions while retaining versioned core dep
     for (const php of ['5.6', '7.4', '8.7']) assert.equal(releaseForFormula(`shivammathur/extensions/${name}@${php}`), `cache-${name}`);
     assert.equal(productionRelease(`cache-${name}`), true);
   }
-  for (const formula of ['imagemagick', 'openssl@3', 'bison@2.7', 'libxml2', 'xz']) {
+  for (const formula of ['imagemagick', 'openssl@4', 'bison@2.7', 'libxml2', 'xz']) {
     assert.equal(releaseForFormula(formula), 'cache');
   }
   for (const tag of ['cache-locks', 'cache-source-a7', 'php-8.5', 'cache-../php']) assert.equal(productionRelease(tag), false);

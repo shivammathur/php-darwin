@@ -26,16 +26,19 @@ test('pinning discards modified runner formulae while retaining the local dirty-
   const pinned = commit('approved formula\n');
   const current = commit('runner formula\n');
   fs.writeFileSync(formula, 'runner modification\n');
-  fs.writeFileSync(path.join(bin, 'brew'), '#!/bin/sh\ncase "$1" in\n tap) exit 0;;\n --repository) printf "%s\\n" "$PIN_CORE_FIXTURE";;\n *) exit 1;;\nesac\n', {mode: 0o755});
+  const updated = path.join(directory, 'updated');
+  fs.writeFileSync(path.join(bin, 'brew'), '#!/bin/sh\ncase "$1" in\n update) test "$HOMEBREW_UPDATE_TO_TAG" = 1 && test "$2" = --force && touch "$PIN_CORE_FIXTURE_UPDATED";;\n tap) exit 0;;\n --repository) printf "%s\\n" "$PIN_CORE_FIXTURE";;\n *) exit 1;;\nesac\n', {mode: 0o755});
   const run = ci => spawnSync('bash', [path.resolve(__dirname, '../../build/pin-core.sh')], {
     encoding: 'utf8', env: {...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}`,
-      PIN_CORE_FIXTURE: core, HOMEBREW_CORE_COMMIT: pinned, GITHUB_ACTIONS: ci},
+      PIN_CORE_FIXTURE: core, PIN_CORE_FIXTURE_UPDATED: updated, HOMEBREW_CORE_COMMIT: pinned, GITHUB_ACTIONS: ci},
   });
   assert.notEqual(run('false').status, 0);
+  assert.equal(fs.existsSync(updated), false, 'local pinning must not update Homebrew');
   assert.equal(git(['rev-parse', 'HEAD']), current);
   assert.equal(fs.readFileSync(formula, 'utf8'), 'runner modification\n');
   const result = run('true');
   assert.equal(result.status, 0, result.stderr);
+  assert.equal(fs.existsSync(updated), true, 'CI updates Homebrew before reading current recipes');
   assert.equal(git(['rev-parse', 'HEAD']), pinned);
   assert.equal(fs.readFileSync(formula, 'utf8'), 'approved formula\n');
   assert.equal(git(['status', '--porcelain']), '');

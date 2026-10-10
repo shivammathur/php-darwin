@@ -74,7 +74,7 @@ class ReleaseCache {
     tag = 'cache', partition = tag === 'cache', request = fetch, fallbackRequest = request === fetch ? curlRequest : undefined,
     mirrorDownload = request === fetch ? mirror.transfer : undefined,
     mirrorMissFile = process.env.PHP_DARWIN_SOURCE_BOTTLE_MISSES,
-    dependencyLockFile,
+    dependencyLockFile, readOnly = process.env.PHP_DARWIN_SOURCE_CACHE_READ_ONLY === 'true',
     versionsToPrune = olderVersions, wait = pause, warn = console.warn } = {}) {
     if (!/^shivammathur\/[A-Za-z0-9_.-]+$/.test(repository || '') || !token) {
       throw new Error('Release source cache requires a shivammathur repository and GH_TOKEN');
@@ -88,6 +88,7 @@ class ReleaseCache {
     this.mirrorDownload = mirrorDownload;
     this.mirrorMissFile = mirrorMissFile;
     this.dependencyLockFile = dependencyLockFile;
+    this.readOnly = readOnly;
     this.versionsToPrune = versionsToPrune;
     this.wait = wait;
     this.mirrorRetry = retryPolicy({ wait });
@@ -252,12 +253,13 @@ class ReleaseCache {
     if (this.partition && (!inputs || !validKey(inputs, key))) throw new Error('Source cache lookup requires matching build inputs');
     const tags = this.partition ? [...new Set([this.bottleTag(inputs), this.tag,
       `cache-source-${family(inputs).slice(0, 2)}`])] : [this.tag];
-    this.lastLookup = { key, assets: [] };
+    const lookup = { key, assets: [] };
+    this.lastLookup = lookup;
     for (const tag of tags) {
       const release = await this.release(false, tag);
       if (!release) continue;
       const assets = await this.assets(release);
-      this.lastLookup.assets.push(...assets);
+      lookup.assets.push(...assets);
       const asset = assets.find(asset => asset.state !== 'starter' && assetIdentity(asset)?.key === key);
       if (asset) {
         await this.download(asset, directory, key, { tag });

@@ -6,6 +6,10 @@ const { key, validateContext, validateEntry, digest, command } = require('../ins
 const platforms = require('../../conf/platforms.json');
 
 function buildMatrix(entries) {
+  return { include: variants(entries).map(({ php_version, architecture, build, thread_safety, entries }) =>
+    ({ php_version, architecture, build, thread_safety, runner: platforms[architecture].build_runner, entries })) };
+}
+function reuseMatrix(entries) {
   const groups = new Map();
   for (const entry of entries) {
     key(entry);
@@ -17,7 +21,7 @@ function buildMatrix(entries) {
   return { include: [...groups.values()] };
 }
 function testMatrix(entries) {
-  return { include: buildMatrix(entries).include.flatMap(group =>
+  return { include: reuseMatrix(entries).include.flatMap(group =>
     platforms[group.architecture].test_runners.filter(runner => runner !== group.runner && runner !== 'macos-latest')
       .map(runner => ({ ...group, runner }))) };
 }
@@ -105,7 +109,7 @@ function reuse(entries, output, { download = downloadArtifact } = {}) {
     return index;
   } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
 }
-module.exports = { buildMatrix, testMatrix, variants, archiveEntries, verifyArchive, downloadArtifact, reuse };
+module.exports = { buildMatrix, reuseMatrix, testMatrix, variants, archiveEntries, verifyArchive, downloadArtifact, reuse };
 if (require.main === module) {
   try {
     if (process.argv[2] !== 'reuse') throw new Error('Usage: extension-batches.cjs reuse');

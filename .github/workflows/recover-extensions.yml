@@ -91,9 +91,7 @@ jobs:
       - uses: ./.github/actions/runner-preflight
       - uses: ./.github/actions/node-runtime
       - name: Restore archive tools
-        run: |
-          "$PHP_DARWIN_NODE" scripts/cache/upstream-bottle-cache.cjs tools
-          brew install --verbose jq zstd
+        run: bash scripts/build/archive-tools.sh
       - uses: ./.github/actions/download-artifacts
         with:
           name: extension-reused-${{ matrix.php_version }}-${{ matrix.architecture }}

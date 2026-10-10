@@ -39,10 +39,14 @@ function orphan(row, worker, uid, repository) {
     row.executable.startsWith(ruby) && /^[\w.+-]+\/bin\/ruby$/.test(row.executable.slice(ruby.length));
 }
 
-function installer(pid, repository) {
-  const args = command('/bin/ps', ['-ww', '-p', String(pid), '-o', 'args=']).trim().split(/\s+/);
+function installerCommand(args, repository) {
   const index = args.indexOf(path.join(repository, 'Library/Homebrew/brew.rb'));
-  return index > 0 && ['install', 'reinstall', 'upgrade'].includes(args[index + 1]);
+  return index > 0 && (['install', 'reinstall', 'upgrade'].includes(args[index + 1]) ||
+    (args[index + 1] === 'php-darwin-source' && args[index + 2] === 'install'));
+}
+
+function installer(pid, repository) {
+  return installerCommand(command('/bin/ps', ['-ww', '-p', String(pid), '-o', 'args=']).trim().split(/\s+/), repository);
 }
 
 function holdsLocks(pid, prefix) {
@@ -134,4 +138,4 @@ async function recover({ env = process.env, platform = process.platform, pid = p
   return recovered;
 }
 
-module.exports = { recover, processes, currentWorker, sameProcess, orphan, installer, holdsLocks };
+module.exports = { recover, processes, currentWorker, sameProcess, orphan, installer, installerCommand, holdsLocks };

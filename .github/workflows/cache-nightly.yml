@@ -108,6 +108,9 @@ jobs:
           path: homebrew-core
           persist-credentials: false
 
+      - name: Apply approved dependency recipe updates
+        run: node scripts/cache/dependency-recipes.cjs apply homebrew-core
+
       - name: Compare nightly sources with the published manifest
         id: freshness
         env:

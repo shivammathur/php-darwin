@@ -99,7 +99,7 @@ while read -r build ts; do
       .php_src_commit=$php_src_commit | .php_version=$php_version | .platform_key=$platform_key |
       .requested_formula=$requested_formula |
       .runner_image="fixture" | .source_hash=$source_hash |
-      .build_inputs={schema:1,builder_sha256:$source_hash,source_records:[{repository:"Homebrew/homebrew-core",path:"Formula/o/openssl@3.rb",sha256:$source_hash}]} |
+      .build_inputs={schema:1,builder_sha256:$source_hash,source_records:[{repository:"Homebrew/homebrew-core",path:"Formula/o/openssl@4.rb",sha256:$source_hash}]} |
       .state_paths=[("etc/php/" + $config_id + "/pear.conf")] | .tap_formulae=[$formula] |
       .tap_snapshot=$tap_snapshot |
       .thread_safety=$thread_safety

@@ -11,18 +11,17 @@ async function main() {
   const cache = new ReleaseCache({ tag: process.env.INPUT_RELEASE || 'cache' });
   const mode = process.env['INPUT_DEPENDENCY-MODE'] || 'approved';
   if (!['approved', 'update'].includes(mode)) throw new Error('Invalid dependency mode');
+  if (mode === 'update' && (!process.env.GITHUB_WORKFLOW_REF?.includes('/test-source-cache.yml@') ||
+      !/^source-bottles-test-\d+$/.test(process.env.INPUT_RELEASE || ''))) {
+    throw new Error('Unapproved dependency builds are restricted to isolated source-cache tests; use the dependency workers for production tools');
+  }
   const lock = mode === 'approved' ? readLock(process.env.PHP_DARWIN_DEPENDENCY_LOCK) : undefined;
   if (lock && process.env.HOMEBREW_CORE_COMMIT && process.env.HOMEBREW_CORE_COMMIT !== lock.core_commit) {
     throw new Error('Homebrew core differs from the approved dependency snapshot');
   }
   const approvedDependencies = lock ? new ApprovedDependencies(lock) : undefined;
   if (process.env.INPUT_STAGE === 'tools') {
-    const result = { built: 0, restored: 0 };
-    for (const formula of ['jq', 'zstd']) {
-      const installed = await install({ formula, cache, approvedDependencies });
-      result.built += installed.built;
-      result.restored += installed.restored;
-    }
+    const result = await install({ formula: 'jq', dependencyRoots: ['jq', 'zstd'], cache, approvedDependencies });
     writeOutputs(result);
     return;
   }
@@ -56,7 +55,8 @@ async function main() {
   const formula = override || command('bash', ['-c',
     '. scripts/lib/lib.sh; requested=$(php_darwin_requested_formula "$PHP_VERSION" "$BUILD" "$TS") || exit 1; printf "%s/%s" "$(php_darwin_package_config tap)" "$requested"'
   ]).trim();
-  const result = await install({ formula, cache, approvedDependencies, forceSource: process.env['INPUT_FORCE-SOURCE'] === 'true' });
+  const result = await install({ formula, cache, approvedDependencies, forceSource: process.env['INPUT_FORCE-SOURCE'] === 'true',
+    beforeTarget: override ? undefined : () => command('bash', ['scripts/build/build.sh', 'snapshot-dependencies'], {inherit: true}) });
   if (!override) command('bash', ['scripts/build/build.sh', 'finalize'], { inherit: true });
   writeOutputs(result);
 }

@@ -17,6 +17,23 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
   end.compact
   expected = %w[cache-extensions.yml publish-extensions.yml recover-extensions.yml]
   abort "Missing shared extension publication lock" unless publishers.sort == expected.sort
+  {"prepare-dependency.yml" => "runtime", "prepare-build-tool.yml" => "tool"}.each do |name, kind|
+    worker = YAML.safe_load(File.read(File.join(ARGV.fetch(0), ".github/workflows", name)), aliases: true).fetch("jobs").fetch("worker")
+    abort "Wrong dependency worker boundary: #{name}" unless worker["uses"] == "./.github/workflows/dependency-worker.yml" && worker.dig("with", "kind") == kind
+  end
+  update = YAML.safe_load(File.read(File.join(ARGV.fetch(0), ".github/workflows/update-dependencies.yml")), aliases: true)
+  steps = update.fetch("jobs").fetch("approve").fetch("steps")
+  promote = steps.find { |step| step["run"]&.include?("update-dependencies.cjs promote") }
+  handoff = steps.find { |step| step["run"]&.include?("gh workflow run") }
+  abort "Nonpublishing validation must not start consumer builds" unless promote && handoff &&
+    handoff["if"] == promote["if"] && handoff["if"].include?("inputs.publish") && steps.index(promote) < steps.index(handoff)
+  %w[cache-extensions.yml update-extensions.yml].each do |name|
+    workflow = YAML.safe_load(File.read(File.join(ARGV.fetch(0), ".github/workflows", name)), aliases: true)
+    steps = workflow.fetch("jobs").values.first.fetch("steps")
+    overlay = steps.index { |step| step["run"] == "node scripts/cache/dependency-recipes.cjs apply homebrew-core" }
+    selection = steps.index { |step| step["run"]&.match?(/extension-packs\.cjs (plan|dispatch)/) }
+    abort "Extension selection must use approved recipes: #{name}" unless overlay && selection && overlay < selection
+  end
 ' "$script_dir/../../.." || php_darwin_die 'extension publication concurrency validation failed'
 
 pinned_source_output=$(GITHUB_OUTPUT='' PINNED_COMMIT=0123456789abcdef0123456789abcdef01234567 \

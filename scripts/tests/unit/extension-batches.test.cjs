@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { key, digest, packs, supportsPack } = require('../../installer/install-extensions.cjs');
-const { buildMatrix, testMatrix, variants, reuse, verifyArchive, downloadArtifact } = require('../../release/extension-batches.cjs');
+const { buildMatrix, reuseMatrix, testMatrix, variants, reuse, verifyArchive, downloadArtifact } = require('../../release/extension-batches.cjs');
 const { batch } = require('../../build/extension-batch.cjs');
 const { planRecovery } = require('../../release/extension-recovery.cjs');
 const versions = require('../../../conf/extension-packs.json').versions;
@@ -28,23 +28,40 @@ function writeArchive(folder, metadata) {
   fs.writeFileSync(path.join(folder, 'validation.txt'), JSON.stringify({ name: metadata.name, sha256: metadata.sha256,
     php_preserved: true, services_preserved: true }));
 }
-test('all 432 packs use 28 build jobs and 42 compatibility jobs, retaining every supported variant', () => {
+test('all 432 packs use 112 independent variant builds and 42 compatibility jobs without splitting pack preparation', () => {
   const entries = versions.flatMap(php_version => ['arm64', 'x86_64'].flatMap(architecture =>
     ['debug', 'release'].flatMap(build => ['nts', 'zts'].flatMap(thread_safety =>
       Object.keys(packs).filter(name => supportsPack(name, php_version))
         .map(name => ({ php_version, architecture, build, thread_safety, name }))))));
   assert.equal(entries.length, 432);
-  assert.equal(buildMatrix(entries).include.length, 28);
+  const builds = buildMatrix(entries).include;
+  assert.equal(builds.length, 112);
+  assert.deepEqual(builds.flatMap(job => job.entries.map(key)).sort(), entries.map(key).sort());
   const tests = testMatrix(entries).include;
   assert.equal(tests.length, 42);
   assert.ok(tests.every(item => item.runner !== 'macos-latest'));
-  assert.equal(buildMatrix(entries).include.filter(item => item.runner === 'macos-15-intel').length, 14);
+  assert.equal(builds.filter(item => item.runner === 'macos-15-intel').length, 56);
   assert.equal(tests.filter(item => item.runner === 'macos-26-intel').length, 14);
-  for (const job of [...buildMatrix(entries).include, ...tests]) {
+  for (const job of builds) {
+    assert.equal(variants(job.entries).length, 1);
+    assert.equal(job.entries.length, ['8.6', '8.7'].includes(job.php_version) ? 3 : 4);
+    assert.ok(job.entries.every(item => item.php_version === job.php_version && item.architecture === job.architecture &&
+      item.build === job.build && item.thread_safety === job.thread_safety));
+  }
+  assert.equal(reuseMatrix(entries).include.length, 28);
+  for (const job of [...reuseMatrix(entries).include, ...tests]) {
     assert.equal(variants(job.entries).length, 4);
     assert.equal(job.entries.length, ['8.6', '8.7'].includes(job.php_version) ? 12 : 16);
     assert.ok(job.entries.every(item => item.php_version === job.php_version && item.architecture === job.architecture));
   }
+});
+test('partial selection creates jobs only for missing variants and keeps their packs together', () => {
+  const entries = [entry('imagick'), entry('mongodb'), entry('memcached', { build: 'debug' }),
+    entry('imagick', { architecture: 'x86_64', thread_safety: 'zts' })];
+  const groups = buildMatrix(entries).include;
+  assert.equal(groups.length, 3);
+  assert.deepEqual(groups.map(group => group.entries.length), [2, 1, 1]);
+  assert.deepEqual(buildMatrix([]), { include: [] });
 });
 test('Ubuntu reuse downloads each immutable bundle once and selects only independently validated packs', t => {
   const directory = fixture(t), calls = [];
@@ -118,6 +135,33 @@ test('grouped recovery accepts passing checkpoints in a failed job but rejects t
   assert.equal(recovered.entries[0].artifact_id, 11);
   metadata.architecture = 'x86_64'; metadata.file = `${key(metadata)}-${metadata.sha256}.tar.zst`;
   await assert.rejects(planRecovery('123', run, undefined, { download }), /context mismatch/);
+});
+
+test('variant recovery selects distinct payloads, retains legacy groups and rejects a mismatched variant index', async t => {
+  fixture(t);
+  const source = { status: 'completed', head_branch: 'main', run_attempt: 1, head_sha: 'a'.repeat(40),
+    head_repository: { full_name: 'shivammathur/php-darwin' }, path: '.github/workflows/cache-extensions.yml' };
+  const entries = [entry('imagick'), entry('mongodb', { build: 'debug', thread_safety: 'zts' }),
+    entry('memcached', { architecture: 'x86_64' })];
+  const names = ['built-8.4-arm64-release-nts', 'built-8.4-arm64-debug-zts', 'reused-8.4-x86_64'];
+  const artifacts = names.flatMap((name, i) => [
+    { id: i * 2 + 1, name: `extension-index-${name}` }, { id: i * 2 + 2, name: `extension-${name}` }
+  ]);
+  const run = (_program, args) => JSON.stringify(args.at(-1).includes('/jobs?') ? [{ jobs: [] }] :
+    args.at(-1).includes('/artifacts?') ? [{ artifacts }] : source);
+  const download = (artifact, folder) => fs.writeFileSync(path.join(folder, 'entries.json'),
+    JSON.stringify([entries[(artifact.artifact_id - 1) / 2]]));
+  const recovered = await planRecovery('123', run, undefined, { download });
+  assert.deepEqual(recovered.entries.map(e => [key(e), e.artifact_id]), entries.map((e, i) => [key(e), i * 2 + 2]));
+  assert.equal(recovered.matrix.include.length, 3, 'compatibility still groups all variants by runner');
+  for (const patch of [{ build: 'release' }, { thread_safety: 'nts' }]) {
+    const original = entries[1];
+    entries[1] = entry('mongodb', { ...original, ...patch });
+    await assert.rejects(planRecovery('123', run, undefined, { download }), /context mismatch/);
+    entries[1] = original;
+  }
+  artifacts.splice(3, 1);
+  await assert.rejects(planRecovery('123', run, undefined, { download }), /Missing or ambiguous grouped artifact/);
 });
 
 

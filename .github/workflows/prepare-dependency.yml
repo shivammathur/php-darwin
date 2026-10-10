@@ -1,0 +1,41 @@
+name: Prepare an individual runtime dependency bottle
+run-name: Prepare ${{ inputs.formula }} cache on ${{ inputs.architecture }} (plan ${{ inputs.plan-run-id }}/${{ inputs.plan-key }})
+on:
+  workflow_dispatch:
+    inputs:
+      formula:
+        description: Formula assigned by the dependency planner
+        required: true
+        type: string
+      architecture:
+        description: Baseline architecture
+        required: true
+        type: choice
+        options: [arm64, x86_64]
+      plan-run-id:
+        description: Parent dependency update containing the verified worker plan
+        required: true
+        type: string
+      plan-key:
+        description: Exact worker plan digest
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: dependency-worker-${{ inputs.formula }}-${{ inputs.architecture }}
+  cancel-in-progress: false
+jobs:
+  worker:
+    uses: ./.github/workflows/dependency-worker.yml
+    permissions:
+      contents: write
+      actions: read
+    with:
+      formula: ${{ inputs.formula }}
+      architecture: ${{ inputs.architecture }}
+      plan-run-id: ${{ inputs.plan-run-id }}
+      plan-key: ${{ inputs.plan-key }}
+      kind: runtime
+    secrets:
+      TOKEN: ${{ secrets.TOKEN }}

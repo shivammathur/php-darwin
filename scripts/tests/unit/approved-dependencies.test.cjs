@@ -25,9 +25,11 @@ test('approved upstream bottles use mirror bytes, retain dependency flags and re
   });
   const item = {full_name: 'jq', name: 'jq', version: '1.8.2'};
   approved.validatePlan([item], {arch: 'arm64', macos: '14', prefix: '/opt/homebrew'});
-  const options = {cacheRoot: f.directory, flags: ['--as-dependency'], run: (...args) => commands.push(args)};
-  assert.equal((await approved.restore(item, options)).source, false);
-  await approved.restore(item, options);
+  const options = {flags: ['--as-dependency'], run: (...args) => commands.push(args)};
+  for (let i = 0; i < 2; i++) {
+    const bottles = await approved.prefetch([item], {cacheRoot: f.directory});
+    assert.equal(approved.restore([item], {...options, bottles}), 0);
+  }
   assert.equal(downloads.length, 1);
   assert.ok(downloads[0].startsWith('https://artifacts.php-darwin.setup-php.com/'));
   assert.equal(commands.length, 2);
@@ -49,7 +51,8 @@ test('missing or corrupt mirror data falls back to the exact approved upstream c
     });
     const item = {full_name: 'jq', version: '1.8.2'};
     approved.validatePlan([item], {arch: 'arm64', macos: '14', prefix: '/opt/homebrew'});
-    await approved.restore(item, {cacheRoot: path.join(f.directory, failure), flags: [], run() {}});
+    const bottles = await approved.prefetch([item], {cacheRoot: path.join(f.directory, failure)});
+    approved.restore([item], {bottles, flags: [], run() {}});
     assert.equal(urls.length, 2);
     assert.equal(urls[1], f.bottle.url);
   }
@@ -65,6 +68,30 @@ test('missing approvals and newer patches fail before any dependency is installe
   assert.throws(() => validatePlatform({...f.platform, packages: {jq: {version: '1.8.3', bottle: f.bottle}}}, 'arm64'), /identity differs/);
 });
 
+test('selective updates permit only requested source builds and new compatible bottles', t => {
+  const f = fixture(t);
+  const approved = new ApprovedDependencies({platforms: {arm64: f.platform}}, {updates: ['curl'], allowNewBottles: true});
+  const env = {arch: 'arm64', macos: '14', prefix: '/opt/homebrew'};
+  const plan = [{full_name: 'jq', version: '1.8.2'}, {full_name: 'curl', version: '8.22.0_1'},
+    {full_name: 'docbook', version: '5.2.1', bottled: true}];
+  approved.validatePlan(plan, env);
+  assert.equal(approved.has(plan[0]), true);
+  assert.equal(approved.has(plan[1]), false);
+  assert.equal(approved.has(plan[2]), false);
+  assert.throws(() => approved.validatePlan([...plan, {full_name: 'cmake', version: '4.4.4'}], env), /not in the approved snapshot/);
+  assert.throws(() => approved.validatePlan([{full_name: 'jq', version: '1.8.3', bottled: true}], env), /not in the approved snapshot/);
+  const bottleOnly = new ApprovedDependencies({platforms: {arm64: f.platform}}, {bottleUpdates: ['jq']});
+  bottleOnly.validatePlan([{full_name: 'jq', version: '1.8.1', bottled: true}], env);
+  assert.throws(() => bottleOnly.validatePlan([{full_name: 'jq', version: '1.8.1', bottled: false}], env), /not in the approved snapshot/);
+});
+
+test('a same-version selective rebuild retains its source build dependency traversal', t => {
+  const f = fixture(t);
+  const approved = new ApprovedDependencies({platforms: {arm64: f.platform}}, {updates: ['jq']});
+  assert.deepEqual(approved.versions({arch: 'arm64', macos: '14', prefix: '/opt/homebrew'}), {});
+  assert.equal(approved.has({full_name: 'jq', version: '1.8.2'}), false);
+});
+
 test('a newer preinstalled dependency is removed only after its approved replacement is verified', async t => {
   const f = fixture(t), commands = [];
   const approved = new ApprovedDependencies({platforms: {arm64: f.platform}}, {
@@ -72,11 +99,76 @@ test('a newer preinstalled dependency is removed only after its approved replace
   });
   const item = {full_name: 'jq', version: '1.8.2', installed_versions: ['1.8.3']};
   approved.validatePlan([item], {arch: 'arm64', macos: '14', prefix: '/opt/homebrew'});
-  await approved.prefetch([item], {cacheRoot: f.directory});
-  await approved.restore(item, {cacheRoot: f.directory, flags: [], run: (program, args) => commands.push(args)});
+  const bottles = await approved.prefetch([item], {cacheRoot: f.directory});
+  approved.restore([item], {bottles, flags: [], run: (program, args) => commands.push(args)});
   assert.deepEqual(commands[0], ['uninstall', '--formula', '--force', '--ignore-dependencies', 'jq']);
   assert.equal(commands[1][0], 'install');
   assert.ok(commands[1].includes('--force-bottle'));
+});
+
+test('upstream and source bottles download together with bounded concurrency and install in dependency order', async t => {
+  const f = fixture(t), packages = {}, plan = [], commands = [];
+  const {keyFor} = require('../../cache/source-bottle-cache.cjs');
+  let active = 0, maximum = 0;
+  const transfer = async callback => {
+    maximum = Math.max(maximum, ++active);
+    await new Promise(resolve => setTimeout(resolve, 5));
+    callback();
+    active--;
+  };
+  for (let i = 0; i < 12; i++) {
+    const formula = `dep-${i}`, version = '1.0';
+    const inputs = {formula, version, environment: {arch: 'arm64', macos: '14', prefix: '/opt/homebrew'}};
+    packages[formula] = i % 2 ? {version, source: {inputs, key: keyFor(inputs), sha256: hash(f.bytes)}} :
+      {version, bottle: {...f.bottle, formula, version}};
+    plan.push({full_name: formula, version});
+  }
+  const approved = new ApprovedDependencies({platforms: {arm64: {...f.platform, packages}}}, {
+    download: async (_url, file) => {await transfer(() => fs.writeFileSync(file, f.bytes)); return 200;},
+    recordInstalled(item, sha256) { assert.equal(sha256, packages[item.full_name].source.sha256); },
+  });
+  approved.validatePlan(plan, {arch: 'arm64', macos: '14', prefix: '/opt/homebrew'});
+  const bottles = await approved.prefetch(plan, {cacheRoot: f.directory, cache: {
+    async restoreCache([directory], key, _restoreKeys, inputs) {
+      await transfer(() => {
+        const file = `${inputs.formula}--1.0.arm64_sonoma.bottle.tar.gz`;
+        fs.writeFileSync(path.join(directory, file), f.bytes);
+        fs.writeFileSync(path.join(directory, 'metadata.json'), JSON.stringify({schema: 1, key, file, sha256: hash(f.bytes)}));
+      });
+      return key;
+    },
+  }});
+  assert.equal(maximum, 8);
+  assert.equal(approved.restore(plan, {bottles, flags: ['--ignore-dependencies', '--as-dependency'],
+    run: (...args) => commands.push(args)}), 6);
+  assert.equal(commands.length, 1);
+  assert.deepEqual(commands[0][1].slice(5).map(file => path.basename(file).split('--')[0]), plan.map(item => item.full_name));
+});
+
+test('missing verified replacements prevent any prefix changes, including incomplete-keg repairs', t => {
+  const f = fixture(t), approved = new ApprovedDependencies({platforms: {arm64: f.platform}});
+  const item = {full_name: 'jq', version: '1.8.2', installed_versions: ['1.8.2'], missing_build_files: ['include/jq.h']};
+  approved.validatePlan([item], {arch: 'arm64', macos: '14', prefix: '/opt/homebrew'});
+  assert.throws(() => approved.restore([item], {bottles: new Map(), flags: [],
+    run() {assert.fail('No package may be removed before all replacements are verified');}}), /Missing verified bottle/);
+});
+
+test('installed source dependencies require the approved bottle checksum even at the same version', t => {
+  const f = fixture(t), {keyFor} = require('../../cache/source-bottle-cache.cjs');
+  const env = {arch: 'arm64', macos: '14', prefix: '/opt/homebrew'};
+  const inputs = {formula: 'net-snmp', version: '5.9.5.2_2', environment: env};
+  const sha256 = hash(f.bytes);
+  const approved = new ApprovedDependencies({platforms: {arm64: {...f.platform, packages: {
+    'net-snmp': {version: inputs.version, source: {inputs, key: keyFor(inputs), sha256}},
+  }}}});
+  for (const installed_source_sha256 of [undefined, '0'.repeat(64), sha256]) {
+    const item = {full_name: inputs.formula, version: inputs.version, installed: true, installed_source_sha256};
+    approved.validatePlan([item], env);
+    assert.equal(item.installed, installed_source_sha256 === sha256);
+  }
+  const item = {full_name: inputs.formula, version: inputs.version, prefix: f.directory};
+  approved.restore([item], {bottles: new Map([[item.full_name, '/verified/bottle.tar.gz']]), flags: [], run() {}});
+  assert.equal(fs.readFileSync(path.join(f.directory, '.php-darwin-source-sha256'), 'utf8'), sha256 + '\n');
 });
 
 test('dependency roots cover every PHP variant, coverage extension and optional-pack member', () => {
@@ -108,6 +200,23 @@ test('promotion input requires matching native proofs and a common snapshot for 
   merge(f.directory, output);
   assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(output)).platforms), ['arm64', 'x86_64']);
   const file = path.join(f.directory, 'dependencies-x86_64.json');
+  const candidate = JSON.parse(fs.readFileSync(file));
+  candidate.recipe_commits = {curl: 'b'.repeat(40)};
+  fs.writeFileSync(file, JSON.stringify(candidate));
+  const proofFile = path.join(f.directory, 'dependency-verification-x86_64.json');
+  const proof = JSON.parse(fs.readFileSync(proofFile));
+  proof.sha256 = hash(fs.readFileSync(file));
+  fs.writeFileSync(proofFile, JSON.stringify(proof));
+  assert.throws(() => merge(f.directory, output), /recipes differ across architectures/);
   fs.appendFileSync(file, '\n');
   assert.throws(() => merge(f.directory, output), /mismatched native/);
+});
+
+test('extension jobs cannot implicitly compile a missing PHP build tool', t => {
+  const f = fixture(t), approved = new ApprovedDependencies({platforms: {arm64: f.platform}});
+  const php = {full_name: 'shivammathur/php/php@8.4', version: '8.4.26', installed: false};
+  const environment = {arch: 'arm64', macos: 14, prefix: '/opt/homebrew'};
+  assert.throws(() => approved.validatePlan([php], environment, {targets: ['shivammathur/extensions/imagick@8.4']}), /Published PHP build tool/);
+  approved.validatePlan([{...php, installed: true}], environment, {targets: ['shivammathur/extensions/imagick@8.4']});
+  approved.validatePlan([php], environment, {targets: [php.full_name]});
 });

@@ -16,8 +16,8 @@ function fixture(t) {
   const link = (relative, target) => {
     const name = path.join(prefix, relative); fs.mkdirSync(path.dirname(name), {recursive: true}); fs.symlinkSync(target, name);
   };
-  const packages = file('packages', 'php@8.6\t../Cellar/php@8.6/8.6.0\tfalse\nlibxml2\t../Cellar/libxml2/2.15\tfalse\nopenssl@3\t../Cellar/openssl@3/3.6\ttrue\n');
-  const existing = file('existing', 'Cellar/libxml2/2.14\nCellar/openssl@3/3.6\n');
+  const packages = file('packages', 'php@8.6\t../Cellar/php@8.6/8.6.0\tfalse\nlibxml2\t../Cellar/libxml2/2.15\tfalse\nopenssl@4\t../Cellar/openssl@4/4.0.3\ttrue\n');
+  const existing = file('existing', 'Cellar/libxml2/2.14\nCellar/openssl@4/4.0.3\n');
   const changed = file('changed'); const linked = file('linked'); const journal = file('journal');
   const excluded = file('excluded');
   const links = file('links', 'opt/libxml2\t../Cellar/libxml2/2.15\nbin/xml2-config\t../Cellar/libxml2/2.15/bin/xml2-config\ninclude/new-header.h\t../Cellar/libxml2/2.15/include/new-header.h\nopt/php@8.6\t../Cellar/php@8.6/8.6.0\n');
@@ -39,7 +39,7 @@ test('newer dependencies keep opt and public links while missing cached kegs rem
   const f = fixture(t);
   for (const version of ['2.16', '2.15_1', '2.100', 'unrecognized-version']) {
     f.file(`prefix/Cellar/libxml2/${version}/file`);
-    f.file('prefix/Cellar/openssl@3/3.6/file');
+    f.file('prefix/Cellar/openssl@4/4.0.3/file');
     f.link('opt/libxml2', `../Cellar/libxml2/${version}`);
     f.link('var/homebrew/linked/libxml2', `../../../Cellar/libxml2/${version}`);
     assert.equal(f.run('plan').status, 0);
@@ -96,7 +96,7 @@ test('preserving a newer opt link keeps an existing native library consumer work
   const source = f.file('consumer.c', 'extern int new_api(void); int main(void) { return new_api(); }');
   const consumer = path.join(f.root, 'consumer');
   compile([source, `${opt}/lib/libfixture.dylib`, '-o', consumer]);
-  f.file('prefix/Cellar/openssl@3/3.6/file');
+  f.file('prefix/Cellar/openssl@4/4.0.3/file');
   assert.equal(spawnSync(consumer).status, 0);
   assert.equal(f.run('plan').status, 0);
   assert.equal(f.run('receipts').status, 0);
@@ -107,13 +107,13 @@ test('preserving a newer opt link keeps an existing native library consumer work
 test('opt updates journal old targets and leave reused packages unchanged', t => {
   const f = fixture(t);
   f.file('prefix/Cellar/libxml2/2.15/INSTALL_RECEIPT.json', '{}');
-  f.file('prefix/Cellar/openssl@3/3.6/INSTALL_RECEIPT.json', '{}');
+  f.file('prefix/Cellar/openssl@4/4.0.3/INSTALL_RECEIPT.json', '{}');
   f.link('opt/libxml2', '../Cellar/libxml2/2.14');
-  f.link('opt/openssl@3', '../Cellar/openssl@3/3.5');
+  f.link('opt/openssl@4', '../Cellar/openssl@4/4.0.2');
   assert.equal(f.run('plan').status, 0);
   const result = f.run('receipts'); assert.equal(result.status, 0, result.stderr);
   assert.equal(fs.readlinkSync(path.join(f.prefix, 'opt/libxml2')), '../Cellar/libxml2/2.15');
-  assert.equal(fs.readlinkSync(path.join(f.prefix, 'opt/openssl@3')), '../Cellar/openssl@3/3.5');
+  assert.equal(fs.readlinkSync(path.join(f.prefix, 'opt/openssl@4')), '../Cellar/openssl@4/4.0.2');
   assert.equal(fs.readFileSync(f.journal, 'utf8'), 'libxml2\t../Cellar/libxml2/2.14\n');
 });
 
@@ -125,7 +125,7 @@ test('invalid or missing later packages fail before any opt mutation', t => {
   assert.equal(f.run('receipts').status, 1);
   assert.equal(fs.readlinkSync(path.join(f.prefix, 'opt/libxml2')), '../Cellar/libxml2/2.14');
   assert.equal(fs.readFileSync(f.journal, 'utf8'), '');
-  f.file('prefix/Cellar/openssl@3/3.6/file');
+  f.file('prefix/Cellar/openssl@4/4.0.3/file');
   fs.unlinkSync(path.join(f.prefix, 'opt/libxml2'));
   f.file('prefix/opt/libxml2', 'user file');
   assert.equal(f.run('receipts').status, 1);

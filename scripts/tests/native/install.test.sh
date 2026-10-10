@@ -162,6 +162,8 @@ validate_runtime() {
   php_info=$("$php_bin" -d date.timezone=UTC -i) || php_darwin_die 'php -i failed'
   grep -F 'Thread Safety' <<< "$php_info" || php_darwin_die 'thread-safety metadata is missing'
   grep -F 'Debug Build' <<< "$php_info" || php_darwin_die 'debug-build metadata is missing'
+  "$php_bin" -n "$script_dir/../helpers/openssl-smoke.php" "$brew_prefix/opt/$formula/.brew/$formula.rb" || \
+    php_darwin_die 'OpenSSL dependency and cryptography validation failed'
 
   if [ "$ts" = zts ]; then
     grep -Eq '^Thread Safety => (enabled|yes)$' <<< "$php_info" || php_darwin_die 'PHP is not ZTS'
