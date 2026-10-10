@@ -5,80 +5,71 @@
 [![MIT license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Prebuilt Homebrew PHP packages for fast installation on macOS, used by
-[setup-php](https://github.com/shivammathur/setup-php).
+[setup-php](https://github.com/shivammathur/setup-php). Packages include PHP and
+its required dependencies. Installation preserves existing PHP versions,
+configuration and services.
 
-Each cache includes PHP, its required dependencies, coverage extensions and
-Homebrew links. Installation preserves existing PHP versions, configuration and
-services, and makes the cached PHP the default through Homebrew's `bin/php` link.
+## PHP versions
 
-## Supported configurations
+| PHP versions | Updates |
+| --- | --- |
+| 5.6 | Stable releases |
+| 7.0 | Stable releases |
+| 7.1 | Stable releases |
+| 7.2 | Stable releases |
+| 7.3 | Stable releases |
+| 7.4 | Stable releases |
+| 8.0 | Stable releases |
+| 8.1 | Stable releases |
+| 8.2 | Stable releases |
+| 8.3 | Stable releases |
+| 8.4 | Stable releases |
+| 8.5 | Stable releases |
+| 8.6 | Nightly |
+| 8.7 | Nightly |
 
-The cache covers ARM64 and Intel, with release/debug and NTS/ZTS variants.
-[conf/versions](conf/versions) lists stable and nightly PHP versions;
-[conf/platforms.json](conf/platforms.json) defines minimum macOS versions and
-build/test runners. [conf/cached-extensions](conf/cached-extensions) contains one
-file per PHP minor, with one cached extension name per line.
+Every version is available in release and debug builds, with NTS and ZTS variants.
+Apple Silicon (ARM64) requires macOS 14 or later; Intel (x86_64) requires macOS 15
+or later.
 
-Imagick, MongoDB and Memcached have separate optional archives for PHP 5.6–8.7.
-Swoole has optional archives for PHP 5.6–8.5, matching the extension tap's formulae.
-They are built against published PHP caches and refreshed independently, so
-extension updates do not require rebuilding PHP or adding libraries to its cache.
+## Extensions
+
+| Extension | PHP versions | Availability |
+| --- | --- | --- |
+| Xdebug | All supported versions | Included |
+| PCOV | 7.1 to 8.7 | Included |
+| Imagick | All supported versions | Optional |
+| MongoDB | All supported versions | Optional |
+| Memcached, igbinary, msgpack | All supported versions | Optional |
+| Swoole | 5.6 to 8.5 | Optional |
 
 ## Installation
 
-Use setup-php normally:
+Use [setup-php](https://github.com/shivammathur/setup-php) in GitHub Actions:
 
 ```yaml
 - uses: shivammathur/setup-php@v2
   with:
     php-version: '8.4'
+    extensions: imagick, mongodb, memcached, swoole
 ```
 
-To install a published cache directly on a macOS runner:
+To install directly on a macOS runner:
 
 ```sh
 curl --fail --location --output install.sh \
   https://github.com/shivammathur/php-darwin/releases/download/php-8.4/install.sh
 bash install.sh 8.4 release nts
-# Optional packs are selected and prepared in parallel by the installer.
+```
+
+To include optional packs:
+
+```sh
 bash install.sh 8.4 release nts "" "imagick, mongodb, memcached, swoole"
 ```
 
-PHP package downloads use GitHub Releases first, with a checksum-verified
-Cloudflare fallback. Cache builds use Cloudflare first for dependency bottles.
-Homebrew handles bottle installation, relocation and linking.
-
-## Workflows
-
-| Workflow | Purpose |
-| --- | --- |
-| `cache-stable.yml` / `cache-nightly.yml` | Build, test and publish a PHP cache |
-| `update-extensions.yml` / `cache-extensions.yml` | Refresh separate extension packs every six hours and validate before publishing |
-| `update.yml` / `update-nightly.yml` | Detect changes and dispatch builds |
-| `cache-bottles.yml` | Populate Cloudflare with exact upstream dependency bottles |
-| `cache-source-bottles.yml` | Mirror reusable bottles built from source |
-| `mirror.yml` | Mirror published PHP packages or refresh their installers |
-| `publish.yml` / `publish-extensions.yml` | Retry publication from validated artifacts without rebuilding |
-| `validate.yml` | Run local regression tests and artifact-transfer checks |
-| `test-source-cache.yml` | Test native source builds and cold/warm restoration |
-| `update-dependencies.yml` | Prepare, verify and approve dependency bottles independently of PHP cache builds |
-| `test.yml` / `e2e.yml` | Validate build artifacts and published installations |
-
-## Development
-
-```sh
-bash scripts/installer/generate-install.sh
-bash scripts/tests/run.sh
-# Validate workflow syntax and embedded shell commands:
-actionlint
-```
-
-The local suite requires Bash, Node.js 24+, Ruby 3.1+, Python 3, jq, Zstd, Git, curl, tar, zip and
-unzip. On macOS it uses Homebrew's installed portable Ruby when available.
-Native Homebrew and authenticated GitHub tests run separately in Actions.
-
-See [maintenance](docs/maintenance.md) for the directory layout, workflow
-commands, publishing requirements and troubleshooting.
+Downloads use GitHub Releases with a checksum-verified Cloudflare fallback.
+Homebrew installs and links the selected PHP as the default.
 
 ## License
 
