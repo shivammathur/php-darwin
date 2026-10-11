@@ -112,6 +112,23 @@ test('optional extensions defer for queued PHP jobs, failed validation and stale
   for (const stale of [true, false]) assert.equal(checker({runs: [success], run: (_args, env) => fs.writeFileSync(env.GITHUB_OUTPUT, `build-required=${stale}\n`)})('8.4', manifest), !stale);
 });
 
+test('one mixed nightly snapshot defers without blocking ready versions or masking real errors', () => {
+  const manifests = {'8.7': {php_src_commit: hash}, '8.5': {}, '8.6': {php_src_commit: hash}};
+  const directories = [];
+  const ready = checker({runs: [], run: (_args, env) => {
+    directories.push(path.dirname(env.GITHUB_OUTPUT));
+    if (env.PHP_VERSION === '8.7') throw Object.assign(new Error('mixed nightly snapshot'), {status: 75});
+    fs.writeFileSync(env.GITHUB_OUTPUT, 'build-required=false\n');
+  }});
+  assert.deepEqual(Object.keys(manifests).filter(version => ready(version, manifests[version])), ['8.5', '8.6']);
+  assert.ok(directories.every(directory => !fs.existsSync(directory)), 'all readiness probes clean up');
+  for (const status of [1, 2, null]) {
+    const error = Object.assign(new Error('real freshness failure'), {status});
+    assert.throws(() => checker({runs: [], run: () => {throw error;}})('8.7', manifests['8.7']), value => value === error);
+  }
+  assert.throws(() => checker({runs: [], run: () => {throw Object.assign(new Error('unexpected stable failure'), {status: 75});}})('8.5', {}), /unexpected stable failure/);
+});
+
 test('automatic retirement removes only graphless entries and retains build-tool runtime provenance', () => {
   const {pruneUnusedDependencies} = require('../../cache/retired-dependencies.cjs');
   const packages = {

@@ -146,6 +146,17 @@ mv "$manifest.old" "$manifest" || php_darwin_die 'could not replace the nightly 
 run_gate true
 
 MISMATCH_COMMIT="$previous" write_formulae "$current"
+# Exercise the same freshness command used by the optional-extension checker.
+# Its EX_TEMPFAIL must survive the shell boundary, even when the manifest is current.
+write_manifest "$current"
+: > "$output"
+freshness_status=0
+FORCE=false PUBLISH=true CHANNEL=nightly GITHUB_OUTPUT="$output" \
+  HOMEBREW_EXTENSIONS_PATH="$extensions_path" HOMEBREW_PHP_PATH="$tap_path" \
+  PHP_DARWIN_MANIFEST_PATH="$manifest" PHP_VERSION="$version" \
+  bash "$script_dir/../../build/check-build-freshness.sh" > "$work_dir/freshness-log" 2>&1 || freshness_status=$?
+[ "$freshness_status" -eq 75 ] || php_darwin_die 'freshness check lost the temporary nightly mismatch status'
+[ ! -s "$output" ] || php_darwin_die 'mixed nightly snapshot emitted a usable freshness result'
 source_status=0
 HOMEBREW_PHP_PATH="$tap_path" bash "$script_dir/../../build/php-src-commit.sh" "$version" \
   > "$work_dir/source-output" 2> "$work_dir/source-errors" || source_status=$?

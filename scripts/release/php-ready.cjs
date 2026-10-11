@@ -31,6 +31,12 @@ function checker({runs = [...activeRuns('cache-stable.yml'), ...activeRuns('cach
         CHANNEL: manifest.php_src_commit ? 'nightly' : 'stable', FORCE: 'false', PUBLISH: 'true',
         PHP_DARWIN_MANIFEST_PATH: file, GITHUB_OUTPUT: output});
       return fs.readFileSync(output, 'utf8').split('\n').includes('build-required=false');
+    } catch (error) {
+      if (manifest.php_src_commit && error.status === 75) {
+        console.log(`Deferring PHP ${version}: nightly tap variants are still being updated`);
+        return false;
+      }
+      throw error;
     } finally { fs.rmSync(temporary, {recursive: true, force: true}); }
   };
 }

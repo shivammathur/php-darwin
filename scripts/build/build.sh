@@ -700,11 +700,8 @@ verify_cache() {
   local expected_extensions_source_hash
   local expected_php_src_commit
   local invalid_path
-  local invalid_managed_path
-  local managed_paths
   local metadata
   local max_archive_bytes
-  local missing_managed_path
   local output
   local output_bytes
   local openssl_formula
@@ -762,26 +759,8 @@ verify_cache() {
     { split($0, path, "/"); if (!(path[1] in allowed)) { print; exit } }
   ' "$archive_roots" "$contents") || php_darwin_die 'could not validate archive path roots'
   [ -z "$invalid_path" ] || php_darwin_die "archive contains a disallowed path: $invalid_path"
-  managed_paths="$work_dir/verify-managed-paths.txt"
-  jq -r '.links[].path, .state_paths[], .extensions[].path, (.packages[].name | "opt/" + .)' "$metadata" \
-    > "$managed_paths" || php_darwin_die 'could not create the managed archive path list'
-  printf '%s\n' "$(php_darwin_metadata_path "$asset")" >> "$managed_paths" || \
-    php_darwin_die 'could not add the managed metadata path'
-  LC_ALL=C sort -u "$managed_paths" -o "$managed_paths" || \
-    php_darwin_die 'could not sort managed archive paths'
-  missing_managed_path=$(awk '
-    NR == FNR { contents[$0]=1; next }
-    !($0 in contents) { print; exit }
-  ' "$contents" "$managed_paths") || php_darwin_die 'could not compare managed paths with archive contents'
-  [ -z "$missing_managed_path" ] || \
-    php_darwin_die "archive does not contain managed path: $missing_managed_path"
-  invalid_managed_path=$(awk -v pear="$(jq -r '.pear_path' "$metadata")/" -v tap="$tap_snapshot/" '
-    NR == FNR { exact[$0]=1; next }
-    index($0, "Cellar/") == 1 || index($0, pear) == 1 || index($0, tap) == 1 || ($0 in exact) { next }
-    { print; exit }
-  ' "$managed_paths" "$contents") || php_darwin_die 'could not validate managed archive paths'
-  [ -z "$invalid_managed_path" ] || \
-    php_darwin_die "archive contains an unmanaged path: $invalid_managed_path"
+  bash "$script_dir/verify-managed-paths.sh" "$metadata" "$contents" || \
+    php_darwin_die 'managed archive path validation failed'
   while IFS= read -r extension; do
     if grep -Eq "^etc/php/[^/]+/conf\\.d/[^/]*${extension}[^/]*\\.ini$" "$contents"; then
       php_darwin_die "archive enables cached $extension by default"

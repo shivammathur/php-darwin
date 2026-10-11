@@ -38,7 +38,9 @@ case "$status" in
       php_current=$(bash "$script_dir/build-inputs-current.sh" "$manifest" "$version" php "$current" "$published") || exit 1
       extensions_current=$(bash "$script_dir/build-inputs-current.sh" "$manifest" "$version" extensions "$current_extensions" "$published_extensions") || exit 1
       if [ "$channel" = nightly ]; then
-        current_commit=$(bash "$script_dir/php-src-commit.sh" "$version") || exit 1
+        # Preserve EX_TEMPFAIL so scheduled consumers can defer a tap snapshot
+        # whose nightly variants are still being updated, without hiding errors.
+        current_commit=$(bash "$script_dir/php-src-commit.sh" "$version") || exit $?
         [ "$(jq -r '.php_src_commit' "$manifest")" = "$current_commit" ] || php_current=false
       fi
       dependencies_current=$("${PHP_DARWIN_NODE:-node}" "$script_dir/package-inputs.cjs" current "$manifest") || exit 1

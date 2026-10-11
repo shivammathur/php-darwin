@@ -167,12 +167,14 @@ test('Cloudflare body recovery is bounded, resumes authenticated bytes, and fail
     response.writeHead(resumed ? 206 : 200, {
       'Content-Length': String(bytes.length - start),
       ...(resumed ? { 'Content-Range': `bytes ${mode === 'bad-range' ? 0 : start}-${bytes.length - 1}/${bytes.length}` } : {}),
-      'CF-Ray': 'fixture-IAD',
+      'CF-Ray': 'fixture-IAD', 'Connection': 'close',
     });
     if (mode === 'corrupt') { response.end(Buffer.alloc(bytes.length, 120)); return; }
     if (['resume', 'range-ignored', 'bad-range', 'exhausted'].includes(mode) &&
         (attempt === 1 || (mode === 'resume' && attempt === 2) || mode === 'exhausted')) {
-      response.write(bytes.subarray(start, start + 4)); return;
+      // End a truncated response after writing the exact prefix. A short wall
+      // timeout can fire before headers under parallel CI load, making ranges random.
+      response.end(bytes.subarray(start, start + 4)); return;
     }
     response.end(bytes.subarray(start));
   });
@@ -191,7 +193,7 @@ test('Cloudflare body recovery is bounded, resumes authenticated bytes, and fail
       const local = [...args];
       local[local.indexOf('--proto') + 1] = '=http';
       local[local.indexOf('--proto-redir') + 1] = '=http';
-      local[local.indexOf('--max-time') + 1] = '0.15';
+      local[local.indexOf('--max-time') + 1] = '10';
       local[local.length - 1] = `http://127.0.0.1:${server.address().port}/pack.tar.zst`;
       return command(program, local);
     };
@@ -200,7 +202,7 @@ test('Cloudflare body recovery is bounded, resumes authenticated bytes, and fail
     if (mode === 'bad-range') await assert.rejects(work, /Invalid Content-Range/);
     else if (mode === 'corrupt') await assert.rejects(work, /Checksum\/size mismatch/);
     else if (mode === 'permanent') await assert.rejects(work, /HTTP 403/);
-    else if (mode === 'exhausted') await assert.rejects(work, /curl exited 28/);
+    else if (mode === 'exhausted') await assert.rejects(work, /curl exited 18/);
     else { await work; assert.equal(transfer.report.cloudflare_reused, 1); }
     if (mode === 'resume') {
       assert.deepEqual(requests, ['', 'bytes=4-', 'bytes=8-']);
@@ -240,7 +242,7 @@ test('a real stalled HTTP body retains timing and partial-byte diagnostics witho
     await new Promise(resolve => server.close(resolve));
     fs.rmSync(directory, { recursive: true, force: true });
   });
-  await assert.rejects(command('curl', ['-q', '-sS', '--max-time', '0.3', '--output', downloaded, '--dump-header', headers,
+  await assert.rejects(command('curl', ['-q', '-sS', '--max-time', '10', '--speed-limit', '1', '--speed-time', '2', '--output', downloaded, '--dump-header', headers,
     '--write-out', '%{http_code}\n%{time_namelookup} %{time_connect} %{time_appconnect} %{time_starttransfer} %{time_total} %{size_download} %{http_version} %{remote_ip}',
     `http://127.0.0.1:${server.address().port}`]), error => {
     assert.ok(!Object.keys(error).includes('output'));
@@ -248,7 +250,8 @@ test('a real stalled HTTP body retains timing and partial-byte diagnostics witho
     assert.equal(diagnostic.http_status, 200);
     assert.equal(diagnostic.saved_bytes, 7);
     assert.equal(diagnostic.received_bytes, 7);
-    assert.ok(diagnostic.total_seconds >= 0.29);
+    assert.match(error.message, /curl exited 28/);
+    assert.ok(diagnostic.total_seconds >= 2);
     assert.ok(diagnostic.first_byte_seconds < diagnostic.total_seconds);
     assert.deepEqual(diagnostic.headers, { 'content-length': '100', 'cf-ray': '123456-IAD', 'cf-cache-status': 'MISS' });
     assert.doesNotMatch(JSON.stringify(diagnostic), /secret|token|cookie|example/);
