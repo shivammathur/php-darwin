@@ -39,7 +39,14 @@ function standaloneSource() {
 }
 function prefetchSource() {
   // Small read-only bootstrap worker, sharing selection/validation/transfer code.
-  const declarations = {configuration, platforms, packageConfig, buildConfig, transfers, variants, packs, origins};
+  const declarations = {
+    configuration: {versions: configuration.versions, pack_versions: configuration.pack_versions},
+    platforms: Object.fromEntries(Object.entries(platforms).map(([arch, value]) => [arch, {minimum_macos: value.minimum_macos}])),
+    buildConfig: {extension_max_archive_bytes: buildConfig.extension_max_archive_bytes},
+    transfers: {attempts: transfers.attempts, retry_delay: transfers.retry_delay, retry_after_max: transfers.retry_after_max,
+      metadata: transfers.metadata, archive: {timeout: transfers.archive.timeout}},
+    variants, packs, origins,
+  };
   return `const fs = require('node:fs'), fsp = fs.promises, path = require('node:path'), crypto = require('node:crypto');
 const {pipeline} = require('node:stream/promises');
 const {Readable} = require('node:stream');

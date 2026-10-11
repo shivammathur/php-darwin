@@ -6,17 +6,8 @@ php_darwin_read_config() {
     package.json) cat <<'PHP_DARWIN_CONFIG'
 {
   "current_version": "8.5",
-  "extension_tap": "shivammathur/extensions",
-  "extension_tap_branch": "main",
-  "extension_tap_repository": "https://github.com/shivammathur/homebrew-extensions",
   "release_repository": "shivammathur/php-darwin",
-  "tap": "shivammathur/php",
-  "tap_branch": "main",
-  "tap_repository": "https://github.com/shivammathur/homebrew-php",
-  "tap_snapshot": "var/php-darwin/homebrew-php",
-  "artifact_mirror": "https://artifacts.php-darwin.setup-php.com",
-  "artifact_bucket": "php-darwin",
-  "extension_release": "extensions"
+  "artifact_mirror": "https://artifacts.php-darwin.setup-php.com"
 }
 PHP_DARWIN_CONFIG
       ;;
@@ -27,8 +18,7 @@ PHP_DARWIN_CONFIG
   "retry_delay": 1,
   "retry_after_max": 30,
   "metadata": {
-    "timeout": 30,
-    "max_bytes": 2000000
+    "timeout": 30
   },
   "archive": {
     "timeout": 300,
@@ -36,33 +26,6 @@ PHP_DARWIN_CONFIG
     "speed_limit": 1024
   }
 }
-PHP_DARWIN_CONFIG
-      ;;
-    platforms.json) cat <<'PHP_DARWIN_CONFIG'
-{
-  "arm64": {
-    "build_runner": "macos-14",
-    "brew_prefix": "/opt/homebrew",
-    "minimum_macos": 14,
-    "platform_key": "arm64_sonoma",
-    "test_runners": ["macos-14", "macos-15", "macos-26", "macos-latest"]
-  },
-  "x86_64": {
-    "build_runner": "macos-15-intel",
-    "brew_prefix": "/usr/local",
-    "minimum_macos": 15,
-    "platform_key": "sequoia",
-    "test_runners": ["macos-15-intel", "macos-26-intel"]
-  }
-}
-PHP_DARWIN_CONFIG
-      ;;
-    variants) cat <<'PHP_DARWIN_CONFIG'
-# build thread-safety
-release nts
-release zts
-debug nts
-debug zts
 PHP_DARWIN_CONFIG
       ;;
     versions) cat <<'PHP_DARWIN_CONFIG'
@@ -176,22 +139,6 @@ php_darwin_asset() {
   php_darwin_validate_ts "$ts"
   arch=$(php_darwin_normalize_arch "${4:-}") || return 1
   printf 'php_%s-%s-%s+darwin_%s.tar.zst\n' "$version" "$ts" "$build" "$arch"
-}
-
-php_darwin_version_channel() {
-  local requested_version=${1:-}
-  local configured_channel
-  local configured_version
-  local extra
-
-  php_darwin_load_versions || php_darwin_die 'invalid PHP version configuration'
-  while read -r configured_channel configured_version extra; do
-    if [ "$configured_version" = "$requested_version" ]; then
-      printf '%s\n' "$configured_channel"
-      return 0
-    fi
-  done <<< "$php_darwin_configured_versions_data"
-  php_darwin_die "unsupported PHP version: ${requested_version:-<empty>}"
 }
 
 php_darwin_release_manifest_url() {
@@ -344,7 +291,6 @@ php_darwin_validate_version "$version"
 php_darwin_validate_build "$build"
 php_darwin_validate_ts "$ts"
 asset=$(php_darwin_asset "$version" "$build" "$ts" "$arch") || exit 1
-channel=$(php_darwin_version_channel "$version") || exit 1
 release_repository=${PHP_DARWIN_RELEASE_REPOSITORY:-$(php_darwin_package_config release_repository)}
 [[ "$release_repository" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || php_darwin_die 'invalid release repository'
 tmp_dir=$(mktemp -d "${RUNNER_TEMP:-/tmp}/php-darwin-bootstrap.XXXXXX") || exit 1
@@ -481,11 +427,10 @@ const fs = require('node:fs'), fsp = fs.promises, path = require('node:path'), c
 const {pipeline} = require('node:stream/promises');
 const {Readable} = require('node:stream');
 const hex = /^[a-f0-9]{64}$/;
-const configuration = {"versions":["5.6","7.0","7.1","7.2","7.3","7.4","8.0","8.1","8.2","8.3","8.4","8.5","8.6","8.7"],"cached":[{"name":"xdebug"},{"name":"pcov"}],"pack_versions":{"swoole":["5.6","7.0","7.1","7.2","7.3","7.4","8.0","8.1","8.2","8.3","8.4","8.5"]},"packs":{"imagick":[{"name":"imagick"}],"mongodb":[{"name":"mongodb"}],"memcached":[{"name":"igbinary"},{"name":"msgpack"},{"name":"memcached","priority":30}],"swoole":[{"name":"swoole"}]},"headers":{"memcached":{"igbinary":"igbinary.h","msgpack":"php_msgpack.h"}},"runtime_resources":{"cyrus-sasl":{"SASL_PATH":"/lib/sasl2$"},"imagemagick":{"MAGICK_CODER_MODULE_PATH":"/modules-[^/]+/coders$","MAGICK_FILTER_MODULE_PATH":"/modules-[^/]+/filters$","MAGICK_CONFIGURE_PATH":"/(?:etc|share)/ImageMagick-[^/]+$"}}};
-const platforms = {"arm64":{"build_runner":"macos-14","brew_prefix":"/opt/homebrew","minimum_macos":14,"platform_key":"arm64_sonoma","test_runners":["macos-14","macos-15","macos-26","macos-latest"]},"x86_64":{"build_runner":"macos-15-intel","brew_prefix":"/usr/local","minimum_macos":15,"platform_key":"sequoia","test_runners":["macos-15-intel","macos-26-intel"]}};
-const packageConfig = {"current_version":"8.5","extension_tap":"shivammathur/extensions","extension_tap_branch":"main","extension_tap_repository":"https://github.com/shivammathur/homebrew-extensions","release_repository":"shivammathur/php-darwin","tap":"shivammathur/php","tap_branch":"main","tap_repository":"https://github.com/shivammathur/homebrew-php","tap_snapshot":"var/php-darwin/homebrew-php","artifact_mirror":"https://artifacts.php-darwin.setup-php.com","artifact_bucket":"php-darwin","extension_release":"extensions"};
-const buildConfig = {"compression_level":19,"compression_long":27,"max_archive_bytes":{"5.6":180000000,"7.0":180000000,"7.1":180000000,"7.2":180000000,"7.3":180000000,"7.4":180000000,"8.0":180000000,"8.1":180000000,"8.2":180000000,"8.3":180000000,"8.4":180000000,"8.5":180000000,"8.6":180000000,"8.7":180000000},"extension_max_archive_bytes":180000000,"repack_concurrency":2};
-const transfers = {"attempts":3,"connect_timeout":5,"retry_delay":1,"retry_after_max":30,"metadata":{"timeout":30,"max_bytes":2000000},"archive":{"timeout":300,"speed_time":10,"speed_limit":1024}};
+const configuration = {"versions":["5.6","7.0","7.1","7.2","7.3","7.4","8.0","8.1","8.2","8.3","8.4","8.5","8.6","8.7"],"pack_versions":{"swoole":["5.6","7.0","7.1","7.2","7.3","7.4","8.0","8.1","8.2","8.3","8.4","8.5"]}};
+const platforms = {"arm64":{"minimum_macos":14},"x86_64":{"minimum_macos":15}};
+const buildConfig = {"extension_max_archive_bytes":180000000};
+const transfers = {"attempts":3,"retry_delay":1,"retry_after_max":30,"metadata":{"timeout":30,"max_bytes":2000000},"archive":{"timeout":300}};
 const variants = [["release","nts"],["release","zts"],["debug","nts"],["debug","zts"]];
 const packs = {"imagick":["imagick"],"mongodb":["mongodb"],"memcached":["igbinary","msgpack","memcached"],"swoole":["swoole"]};
 const origins = ["https://github.com/shivammathur/php-darwin/releases/download/extensions","https://artifacts.php-darwin.setup-php.com/extensions"];

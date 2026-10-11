@@ -16,7 +16,6 @@ php_darwin_validate_version "$version"
 php_darwin_validate_build "$build"
 php_darwin_validate_ts "$ts"
 asset=$(php_darwin_asset "$version" "$build" "$ts" "$arch") || exit 1
-channel=$(php_darwin_version_channel "$version") || exit 1
 release_repository=${PHP_DARWIN_RELEASE_REPOSITORY:-$(php_darwin_package_config release_repository)}
 [[ "$release_repository" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || php_darwin_die 'invalid release repository'
 tmp_dir=$(mktemp -d "${RUNNER_TEMP:-/tmp}/php-darwin-bootstrap.XXXXXX") || exit 1

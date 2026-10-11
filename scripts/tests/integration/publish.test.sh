@@ -305,12 +305,15 @@ if php_darwin_validate_cache_metadata "$legacy_extension_metadata" "$version" "$
   "$extension_source_commit" >/dev/null 2>&1; then
   php_darwin_die 'legacy cache metadata satisfied an expected extension commit'
 fi
-grep -Fq '"php_version": "7.0"' "$gh_installer" || \
-  php_darwin_die 'published installer did not embed the matching release manifest'
-installer_download=$(jq -er '.assets[0].download' "$gh_manifest") || \
-  php_darwin_die 'could not select an immutable installer asset'
-grep -Fq "\"download\": \"$installer_download\"" "$gh_installer" || \
-  php_darwin_die 'published installer did not embed the immutable release asset'
+node - "$gh_installer" "$gh_manifest" <<'NODE' || php_darwin_die 'published installer changed release download identities'
+const fs = require('node:fs'), assert = require('node:assert/strict');
+const script = fs.readFileSync(process.argv[2], 'utf8');
+const manifest = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
+const embedded = JSON.parse(script.match(/release-manifest\.json\) cat <<'PHP_DARWIN_MANIFEST'\n([\s\S]*?)\nPHP_DARWIN_MANIFEST/)[1]);
+const fields = ['name', 'download', 'architecture', 'build', 'thread_safety', 'minimum_macos', 'sha256', 'bytes'];
+assert.deepEqual(embedded, {schema: manifest.schema, php_version: manifest.php_version,
+  assets: manifest.assets.map(asset => Object.fromEntries(fields.map(field => [field, asset[field]])))});
+NODE
 
 # A subsequent publish keeps the generation referenced by the previous
 # installer, uploads a new immutable generation, and removes older immutable

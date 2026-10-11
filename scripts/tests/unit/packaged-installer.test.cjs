@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const {execFileSync, spawnSync} = require('node:child_process');
 const {generate} = require('../../installer/generate-install.cjs');
-const {digest, validateContext} = require('../../installer/install-extensions.cjs');
+const {digest, validateContext, validateEntry, prefetchSource, selectRequested, supportsPack} = require('../../installer/install-extensions.cjs');
 const {staleArchives} = require('../../release/extension-retention.cjs');
 const configuration = require('../../../conf/extension-packs.json');
 const platforms = require('../../../conf/platforms.json');
@@ -23,6 +23,56 @@ test('the release bootstrap embeds download identities without build-time proven
   assert.ok(!source.includes('producer-only'));
   const embedded=source.match(/release-manifest\.json\) cat <<'PHP_DARWIN_MANIFEST'\n([\s\S]*?)\nPHP_DARWIN_MANIFEST/)[1];
   assert.deepEqual(JSON.parse(embedded),{schema:1,php_version:'8.5',assets:[asset]});
+  for (const unused of ['build_runner', 'test_runners', 'brew_prefix', 'platform_key', 'tap_snapshot', 'tap_repository',
+    'artifact_bucket', 'compression_level', 'repack_concurrency', 'runtime_resources', 'MAGICK_CONFIGURE_PATH', 'igbinary.h']) {
+    assert.ok(!source.includes(unused), `bootstrap must not ship ${unused}`);
+  }
+  assert.ok(!source.includes('platforms.json)'));
+  assert.ok(!source.includes('variants)'));
+});
+test('trimmed prefetch retains selection and metadata checks for every supported configuration', () => {
+  const source = prefetchSource();
+  const api = require('node:vm').runInNewContext(source.slice(0, source.indexOf('\n(async () =>')) +
+    '\n({validateEntry, selectRequested})', {require});
+  for (const php_version of configuration.versions) for (const [architecture, platform] of Object.entries(platforms)) {
+    for (const build of ['release', 'debug']) for (const thread_safety of ['nts', 'zts']) {
+      for (const name of Object.keys(configuration.packs)) {
+        const entry = {schema:1, name, php_version, architecture, build, thread_safety, minimum_macos:platform.minimum_macos,
+          sha256:'a'.repeat(64), inputs_sha256:'b'.repeat(64), bytes:123, php_api:'20250925',
+          file:`${name}-${php_version}-${build}-${thread_safety}-${architecture}-${'a'.repeat(64)}.tar.zst`};
+        if (!supportsPack(name, php_version)) {assert.throws(() => api.validateEntry(entry)); continue;}
+        assert.equal(api.validateEntry(entry), validateEntry(entry));
+        for (const patch of [{architecture:'other'}, {build:'other'}, {thread_safety:'other'}, {php_version:'0.0'},
+          {sha256:'invalid'}, {inputs_sha256:''}, {bytes:0}, {bytes:Infinity}, {minimum_macos:platform.minimum_macos-1},
+          {file:'../unsafe.tar.zst'}, {php_api:'invalid'}, {schema:2}]) {
+          assert.throws(() => api.validateEntry({...entry, ...patch}));
+          assert.throws(() => validateEntry({...entry, ...patch}));
+        }
+      }
+    }
+  }
+  for (const input of ['imagick, mongodb', 'PHP-imagick, :mongodb', 'memcached, :igbinary', 'mongodb-1.20',
+    'imagick, imagick@3.8', 'swoole', 'xdebug, pcov', 'php_memcached, msgpack@2']) {
+    assert.equal(JSON.stringify(api.selectRequested(input)), JSON.stringify(selectRequested(input)));
+  }
+});
+test('trimmed prefetch still rejects corrupt downloads and retries the mirror', async t => {
+  const directory = fixture(t), source = prefetchSource(), bytes = Buffer.from('verified pack');
+  const requests = [];
+  let corruptAll = false;
+  const api = require('node:vm').runInNewContext(source.slice(0, source.indexOf('\n(async () =>')) + '\n({download})', {
+    require, AbortSignal, setTimeout, console: {warn() {}},
+    fetch: async url => {requests.push(url); return new Response(corruptAll || url.includes('primary') ? 'corrupt bytes' : bytes);},
+  });
+  const output = path.join(directory, 'pack.tar.zst');
+  const options = {sha256:digest(bytes), bytes:bytes.length, bases:['https://primary.invalid','https://mirror.invalid'], sleep:async () => {}};
+  await api.download('pack.tar.zst', output, options);
+  assert.deepEqual(fs.readFileSync(output), bytes);
+  assert.ok(requests.some(url => url.includes('primary')) && requests.some(url => url.includes('mirror')));
+  fs.unlinkSync(output); corruptAll = true;
+  await assert.rejects(api.download('pack.tar.zst', output, options), /checksum\/size mismatch/);
+  assert.equal(fs.existsSync(output), false);
+  assert.equal(fs.existsSync(output+'.partial'), false);
 });
 test('configured versions and platforms are authoritative, including retention of Swoole', () => {
   configuration.versions.push('8.8');
@@ -76,14 +126,17 @@ test('bootstrap authenticates before executing a packaged controller and preserv
   result=spawnSync('bash',[bootstrap,'8.5','release','nts',archive,''],options);
   assert.notEqual(result.status,0);assert.equal(fs.existsSync(log),false);
 });
-test('PHP and optional-pack downloads overlap, and the prefetch worker preserves multiple requests', async t => {
+for (const architecture of Object.keys(platforms)) test(`PHP and optional-pack downloads overlap on ${architecture}, preserving multiple requests`, async t => {
   const http = require('node:http');
   const {spawn} = require('node:child_process');
   const directory = fixture(t), bin = path.join(directory,'bin'), tree = path.join(directory,'tree');
   fs.mkdirSync(bin);fs.mkdirSync(path.join(tree,'var/php-darwin/installer'),{recursive:true});
-  for (const [name,body] of Object.entries({uname:'case "$1" in -s) echo Darwin;; -m) echo arm64;; esac',sw_vers:'echo 14.0',brew:'exit 0'})) fs.writeFileSync(path.join(bin,name),'#!/bin/bash\n'+body+'\n',{mode:0o755});
+  const minimum_macos = platforms[architecture].minimum_macos;
+  for (const [name,body] of Object.entries({uname:`case "$1" in -s) echo Darwin;; -m) echo ${architecture};; esac`,sw_vers:`echo ${minimum_macos}.0`,brew:'exit 0'})) fs.writeFileSync(path.join(bin,name),'#!/bin/bash\n'+body+'\n',{mode:0o755});
   fs.writeFileSync(path.join(tree,'var/php-darwin/installer/install.sh'),`#!/bin/bash
 while [ ! -f "$PHP_DARWIN_PREFETCH_DIR/complete" ]; do sleep 0.01; done
+test "$(cat "$PHP_DARWIN_PREFETCH_DIR/complete")" = 0 || exit 1
+test -f "$PHP_DARWIN_PREFETCH_DIR/imagick.json" && test -f "$PHP_DARWIN_PREFETCH_DIR/mongodb.json" || exit 1
 cmp "$PHP_DARWIN_PREFETCH_DIR/requested.txt" '${directory}/expected'
 `);
   fs.writeFileSync(path.join(directory,'expected'),'imagick\nmongodb');
@@ -91,12 +144,14 @@ cmp "$PHP_DARWIN_PREFETCH_DIR/requested.txt" '${directory}/expected'
   execFileSync('tar',['--zstd','-cf',archive,'-C',tree,'var/php-darwin/installer/install.sh']);
   const bytes = fs.readFileSync(archive), hash = digest(bytes), requests = new Set();
   let phpResponse;
-  const packs = ['imagick','mongodb'].map(name => ({schema:1,name,php_version:'8.5',build:'release',thread_safety:'nts',architecture:'arm64',
-    sha256:digest(name),inputs_sha256:'a'.repeat(64),bytes:Buffer.byteLength(name),php_api:'20250925',minimum_macos:14,
-    file:`${name}-8.5-release-nts-arm64-${digest(name)}.tar.zst`}));
+  const manifest = {schema:1,php_version:'8.5',assets:[{architecture,build:'release',thread_safety:'nts',
+    name:`php_8.5-nts-release+darwin_${architecture}.tar.zst`,download:`php_8.5-nts-release+darwin_${architecture}.${hash}.tar.zst`,sha256:hash,bytes:bytes.length,minimum_macos}]};
+  const packs = ['imagick','mongodb'].map(name => ({schema:1,name,php_version:'8.5',build:'release',thread_safety:'nts',architecture,
+    sha256:digest(name),inputs_sha256:'a'.repeat(64),bytes:Buffer.byteLength(name),php_api:'20250925',minimum_macos,
+    file:`${name}-8.5-release-nts-${architecture}-${digest(name)}.tar.zst`}));
+  let manifestRequests = 0;
   const server = http.createServer((request,response) => {
-    if (request.url === '/php-manifest') return response.end(JSON.stringify({schema:1,php_version:'8.5',assets:[{architecture:'arm64',build:'release',thread_safety:'nts',
-      name:'php_8.5-nts-release+darwin_arm64.tar.zst',download:`php_8.5-nts-release+darwin_arm64.${hash}.tar.zst`,sha256:hash,bytes:bytes.length,minimum_macos:14}]}));
+    if (request.url === '/php-manifest') {manifestRequests++; return response.end(JSON.stringify(manifest));}
     if (request.url.endsWith('-manifest.json')) return response.end(JSON.stringify({schema:1,assets:packs}));
     if (request.url === '/php-archive') phpResponse = response;
     else {
@@ -110,7 +165,10 @@ cmp "$PHP_DARWIN_PREFETCH_DIR/requested.txt" '${directory}/expected'
   t.after(() => {server.closeAllConnections();server.close();});
   const base = `http://127.0.0.1:${server.address().port}`;
   const bootstrap = path.join(directory,'bootstrap.sh');
-  const source = generate({output:bootstrap}).replace(/^const origins = .*;$/m, `const origins = [${JSON.stringify(base+'/extensions')}];`);
+  const manifestFile = path.join(directory,'manifest.json');
+  fs.writeFileSync(manifestFile,JSON.stringify(manifest));
+  const embedded = architecture === 'x86_64';
+  const source = generate({output:bootstrap, manifest:embedded ? manifestFile : undefined}).replace(/^const origins = .*;$/m, `const origins = [${JSON.stringify(base+'/extensions')}];`);
   fs.writeFileSync(bootstrap,source);
   const child = spawn('bash',[bootstrap,'8.5','release','nts','','imagick,mongodb'],{env:{...process.env,PATH:bin+':'+process.env.PATH,
     PHP_DARWIN_MANIFEST_URL:base+'/php-manifest',PHP_DARWIN_RELEASE_URL:base+'/php-archive',PHP_DARWIN_MIRROR_URL:''},stdio:['ignore','pipe','pipe']});
@@ -118,4 +176,5 @@ cmp "$PHP_DARWIN_PREFETCH_DIR/requested.txt" '${directory}/expected'
   const timeout=setTimeout(()=>child.kill('SIGTERM'),15000);t.after(()=>clearTimeout(timeout));
   const code = await new Promise(resolve=>child.on('exit',resolve));
   assert.equal(code,0,log);assert.deepEqual([...requests].sort(),['imagick','mongodb']);
+  assert.equal(manifestRequests,embedded ? 0 : 1,'embedded identities must avoid an extra metadata request');
 });
