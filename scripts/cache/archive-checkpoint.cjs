@@ -92,6 +92,11 @@ function verifyCheckpoint(directory, expected) {
       metadata.archive !== item.archive || metadata.php_version !== expected.php || metadata.build !== expected.build || metadata.thread_safety !== expected.ts ||
       metadata.architecture !== expected.arch || metadata.homebrew_php_commit !== expected.phpCommit ||
       metadata.homebrew_extensions_commit !== expected.extensionsCommit) throw new Error('Archive checkpoint integrity/input mismatch');
+  // Workflow revisions do not invalidate reusable software. However, archives
+  // predating the packaged controller must be repackaged from cached bottles.
+  if (metadata.installer?.schema !== 1 || metadata.installer?.path !== 'var/php-darwin/installer/install.sh') {
+    throw new Error('Archive checkpoint lacks a supported packaged installer');
+  }
   return {...item, name: item.prefix + checkpoint.key};
 }
 

@@ -33,6 +33,7 @@ async function main(stage) {
     fs.writeFileSync(path.join(builds, item.archive), content);
     fs.writeFileSync(path.join(builds, item.archive + '.sha256'), crypto.createHash('sha256').update(content).digest('hex') + '  ' + item.archive + '\n');
     fs.writeFileSync(path.join(builds, item.metadata), JSON.stringify({ archive: item.archive,
+      installer: {schema: 1, path: 'var/php-darwin/installer/install.sh'},
       php_version: inputs.php, build: inputs.build, thread_safety: inputs.ts, architecture: inputs.arch,
       homebrew_php_commit: inputs.phpCommit, homebrew_extensions_commit: inputs.extensionsCommit }));
     stageCheckpoint(inputs, builds, upload);

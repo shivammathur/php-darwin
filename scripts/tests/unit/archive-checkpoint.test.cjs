@@ -21,6 +21,7 @@ function fixture(t) {
   fs.writeFileSync(path.join(builds, item.archive), bytes);
   fs.writeFileSync(path.join(builds, item.archive + '.sha256'), crypto.createHash('sha256').update(bytes).digest('hex') + '  ' + item.archive + '\n');
   fs.writeFileSync(path.join(builds, item.metadata), JSON.stringify({ archive: item.archive,
+    installer: {schema: 1, path: 'var/php-darwin/installer/install.sh'},
     php_version: inputs.php, architecture: inputs.arch, build: inputs.build, thread_safety: inputs.ts,
     homebrew_php_commit: inputs.phpCommit, homebrew_extensions_commit: inputs.extensionsCommit }));
   stageCheckpoint(inputs, builds, staged);
@@ -109,6 +110,33 @@ test('archive or metadata corruption is rejected before reuse', async t => {
   const result = await restoreCheckpoint(f.cache, f.inputs, path.join(f.root, 'restore'), { temporary: f.root });
   assert.equal(result.hit, false);
   assert.match(f.warnings[0], /digest mismatch/);
+});
+
+test('legacy or unsupported installers are cache misses in both restore paths', async t => {
+  for (const installer of [undefined, {schema: 2, path: 'var/php-darwin/installer/install.sh'}, {schema: 1, path: 'var/other.sh'}]) {
+    const f = fixture(t);
+    const metadataFile = path.join(f.staged, f.item.metadata);
+    const metadata = JSON.parse(fs.readFileSync(metadataFile));
+    metadata.installer = installer;
+    fs.writeFileSync(metadataFile, JSON.stringify(metadata));
+    // Model an authentic old checkpoint, not metadata corruption: its digest
+    // and ZIP identity remain valid and only its archive contract is outdated.
+    const checkpointFile = path.join(f.staged, f.item.checkpoint);
+    const checkpoint = JSON.parse(fs.readFileSync(checkpointFile));
+    checkpoint.metadata_sha256 = crypto.createHash('sha256').update(fs.readFileSync(metadataFile)).digest('hex');
+    fs.writeFileSync(checkpointFile, JSON.stringify(checkpoint));
+    command('zip', ['-q', f.zip, ...f.item.files], {cwd: f.staged});
+    const data = fs.readFileSync(f.zip);
+    f.artifact.digest = 'sha256:' + crypto.createHash('sha256').update(data).digest('hex');
+    f.cache.api = async (route, options) => route.includes('/artifacts?') ?
+      {artifacts: [f.artifact]} : options.consume(new Response(data));
+    const destination = path.join(f.root, 'legacy-restore');
+    assert.equal((await restoreCheckpoint(f.cache, f.inputs, destination, {temporary: f.root})).hit, false);
+    assert.equal((await restoreEarly(f.cache, f.inputs, destination, {runId: '10', temporary: f.root})).hit, false);
+    assert.equal(fs.existsSync(destination), false);
+    assert.equal(f.warnings.length, 2);
+    assert.ok(f.warnings.every(message => message.includes('lacks a supported packaged installer')));
+  }
 });
 
 test('changed inputs, expired artifacts, and explicit rebuilds cannot hit a checkpoint', async t => {
