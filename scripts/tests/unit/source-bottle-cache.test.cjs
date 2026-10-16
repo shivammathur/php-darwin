@@ -571,3 +571,19 @@ test('Python source bottles exclude undeclared gettext and use a distinct cache 
   assert.equal(configureCache({...info, dependencies: [{name: 'gettext'}]}), undefined);
   assert.equal(configureCache({full_name: 'httpd', dependencies: []}), undefined);
 });
+
+test('private candidates rebuild requested targets while retaining verified dependency reuse', async t => {
+  const f = fixture(t);
+  await install(f.args);
+  f.freshRunner();
+  const previous = process.env.PHP_DARWIN_PRIVATE_SOURCE_SHA256;
+  process.env.PHP_DARWIN_PRIVATE_SOURCE_SHA256 = 'a'.repeat(64);
+  t.after(() => {
+    if (previous === undefined) delete process.env.PHP_DARWIN_PRIVATE_SOURCE_SHA256;
+    else process.env.PHP_DARWIN_PRIVATE_SOURCE_SHA256 = previous;
+  });
+  f.args.cache.readOnly = true;
+  f.args.cache.saveCache = () => assert.fail('Private candidates must never publish source bottles');
+  assert.deepEqual(await install(f.args), {built: 1, restored: 1});
+  assert.deepEqual(f.events.filter(args => args.includes('--build-bottle')).map(args => args.at(-1)), ['shivammathur/php/php@8.4']);
+});

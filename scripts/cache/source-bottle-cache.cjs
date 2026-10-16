@@ -250,8 +250,12 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
     let bottle;
     let missReason = 'not-cached';
     try {
-      bottle = readBottle(directory, key);
-      if (!bottle) {
+      // Embargoed candidates may share a version but contain different bytes.
+      // Build requested PHP/extensions afresh; approved dependencies still reuse
+      // their existing verified bottles. Private jobs never save source bottles.
+      const privateTarget = target && Boolean(process.env.PHP_DARWIN_PRIVATE_SOURCE_SHA256);
+      if (!privateTarget) bottle = readBottle(directory, key);
+      if (!bottle && !privateTarget) {
         // Never use a partial/prefix match for compiled packages.
         const restoredKey = await cache.restoreCache([directory], key, [], build);
         if (restoredKey === key) bottle = readBottle(directory, key);

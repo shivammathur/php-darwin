@@ -38,9 +38,18 @@ git -C "$destination" update-ref "refs/remotes/origin/$branch" "$source_commit" 
 git -C "$destination" config "branch.$branch.remote" origin || exit 1
 git -C "$destination" config "branch.$branch.merge" "refs/heads/$branch" || exit 1
 git -C "$destination" config php-darwin.snapshot-commit "$source_commit" || exit 1
+snapshot_branch=$branch
+if [ -n "${PHP_DARWIN_PRIVATE_SOURCE_SHA256:-}" ]; then
+  [[ "$PHP_DARWIN_PRIVATE_SOURCE_SHA256" =~ ^[a-f0-9]{64}$ ]] || exit 1
+  # Homebrew switches non-default branches back to upstream before updating.
+  # Never ask it to rebase an unpublished candidate commit onto public main.
+  snapshot_branch=php-darwin-staged
+  git -C "$destination" config php-darwin.private-snapshot "$source_commit" || exit 1
+  git -C "$destination" checkout -q -b "$snapshot_branch" || exit 1
+fi
 
 [ "$(git -C "$destination" rev-parse HEAD)" = "$source_commit" ] || exit 1
-[ "$(git -C "$destination" symbolic-ref --short HEAD)" = "$branch" ] || exit 1
+[ "$(git -C "$destination" symbolic-ref --short HEAD)" = "$snapshot_branch" ] || exit 1
 [ "$(git -C "$destination" rev-parse --is-shallow-repository)" = true ] || exit 1
 snapshot_status=$(git -C "$destination" status --porcelain) || exit 1
 [ -z "$snapshot_status" ] || exit 1

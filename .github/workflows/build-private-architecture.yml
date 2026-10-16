@@ -1,0 +1,88 @@
+name: Build and test one private PHP architecture
+
+on:
+  workflow_call:
+    inputs:
+      php-version:
+        required: true
+        type: string
+      build-id:
+        required: true
+        type: string
+      arch:
+        required: true
+        type: string
+      runner:
+        required: true
+        type: string
+      test-runners:
+        required: true
+        type: string
+    secrets:
+      PRIVATE_R2_ACCESS_KEY_ID:
+        required: true
+      PRIVATE_R2_SECRET_ACCESS_KEY:
+        required: true
+      CF_R2_AWS_S3_ENDPOINT:
+        required: true
+      TOKEN:
+        required: false
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  PRIVATE_BUILD_ID: ${{ inputs.build-id }}
+  PHP_VERSION: ${{ inputs.php-version }}
+  CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.PRIVATE_R2_ACCESS_KEY_ID }}
+  CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.PRIVATE_R2_SECRET_ACCESS_KEY }}
+  CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
+  GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+
+jobs:
+  build:
+    name: Build ${{ inputs.arch }} ${{ matrix.build }}/${{ matrix.ts }}
+    strategy:
+      fail-fast: false
+      matrix:
+        build: [release, debug]
+        ts: [nts, zts]
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 180
+    env:
+      ARCH: ${{ inputs.arch }}
+      BUILD: ${{ matrix.build }}
+      TS: ${{ matrix.ts }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/node-runtime
+      - name: Prepare standalone storage client
+        run: bash scripts/private/tools.sh
+      - name: Build, verify and store private package
+        run: '"$PHP_DARWIN_NODE" scripts/private/run.cjs "build-$ARCH-$BUILD-$TS" bash scripts/private/build.sh'
+
+  test:
+    name: Test ${{ matrix.runner }}
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: ${{ fromJSON(inputs.test-runners) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    env:
+      ARCH: ${{ inputs.arch }}
+      TEST_RUNNER: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/node-runtime
+      - name: Prepare standalone storage client
+        run: bash scripts/private/tools.sh
+      - name: Verify private packages on this macOS version
+        run: '"$PHP_DARWIN_NODE" scripts/private/run.cjs "test-$TEST_RUNNER" bash scripts/private/test.sh'
+

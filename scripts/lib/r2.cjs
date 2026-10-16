@@ -18,13 +18,14 @@ function credentials(env = process.env) {
     AWS_DEFAULT_REGION: 'auto', AWS_EC2_METADATA_DISABLED: 'true', AWS_MAX_ATTEMPTS: '1', AWS_RETRY_MODE: 'standard',
     AWS_REQUEST_CHECKSUM_CALCULATION: 'when_required', AWS_RESPONSE_CHECKSUM_VALIDATION: 'when_required', AWS_PAGER: '' };
 }
-function r2({ endpoint, env, run, retry }) {
+function r2({ endpoint, env, run, retry, bucket = 'php-darwin', privateObjects = false }) {
+  if (!/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(bucket)) throw new Error('Invalid R2 bucket');
   const options = { env: credentials(env) };
   const api = async (operation, key, args = []) => {
     if (typeof key !== 'string' || !key || key.startsWith('/') || /[\x00-\x1f\x7f]/.test(key) || key.split('/').includes('..')) {
       throw new Error('Invalid R2 object key');
     }
-    return JSON.parse(await run('aws', ['--endpoint-url', endpoint, 's3api', operation, '--bucket', 'php-darwin',
+    return JSON.parse(await run('aws', ['--endpoint-url', endpoint, 's3api', operation, '--bucket', bucket,
       '--key', key, '--cli-connect-timeout', '5', '--cli-read-timeout', '120', '--output', 'json', ...args], options));
   };
   async function head(key) {
@@ -70,20 +71,22 @@ function r2({ endpoint, env, run, retry }) {
       return actual.bytes === object.ContentLength && actual.sha256 === sha256;
     });
   }
-  async function ensure(file, key, { immutable = true, contentType = 'application/octet-stream' } = {}) {
+  async function ensure(file, key, { immutable = true, contentType = 'application/octet-stream', replace = true } = {}) {
     const expected = await fingerprint(file);
     // Every published archive is far below PutObject's 5 GiB limit. Explicit
     // PutObject avoids implicit multipart uploads and their separate commit.
     if (expected.bytes > 5 * 1024 ** 3) throw new Error(`R2 single upload exceeds 5 GiB: ${key}`);
     let attempted = false;
-    const cacheControl = immutable ? 'public, max-age=31536000, immutable' : 'no-cache, max-age=0, must-revalidate';
+    const cacheControl = privateObjects ? 'private, no-store' :
+      immutable ? 'public, max-age=31536000, immutable' : 'no-cache, max-age=0, must-revalidate';
     await retry(`Publish R2 ${key}`, async () => {
       const existing = await head(key);
       if (await matches(key, expected, existing)) return;
+      if (existing && !replace) throw new Error(`R2 immutable object conflict: ${key}`);
       attempted = true;
       const result = await api('put-object', key, ['--body', file, '--content-length', String(expected.bytes),
         '--content-md5', expected.contentMD5, '--metadata', JSON.stringify({ sha256: expected.sha256 }),
-        '--cache-control', cacheControl, '--content-type', contentType]);
+        '--cache-control', cacheControl, '--content-type', contentType, ...(!replace ? ['--if-none-match', '*'] : [])]);
       if (result.ETag !== `"${expected.md5}"`) throw new Error(`R2 upload checksum mismatch: ${key}`);
       const stored = await head(key);
       if (!stored || stored.ContentLength !== expected.bytes || stored.ETag !== result.ETag ||
@@ -92,6 +95,18 @@ function r2({ endpoint, env, run, retry }) {
     console.log(`Verified R2 origin: ${key}; ${expected.bytes} bytes, SHA256 ${expected.sha256}${attempted ? ' (uploaded)' : ' (reused)'}`);
     return { ...expected, uploaded: attempted };
   }
-  return { head, restore, ensure };
+  async function download(key, file) {
+    return retry(`Download R2 ${key}`, async () => {
+      const object = await head(key);
+      if (!object) throw new Error(`Missing R2 object: ${key}`);
+      await read(key, file, object);
+      const actual = await fingerprint(file);
+      if (actual.bytes !== object.ContentLength || (object.Metadata?.sha256 && object.Metadata.sha256 !== actual.sha256)) {
+        throw new Error(`R2 download checksum mismatch: ${key}`);
+      }
+      return actual;
+    });
+  }
+  return { head, restore, ensure, download };
 }
 module.exports = { fingerprint, credentials, r2 };

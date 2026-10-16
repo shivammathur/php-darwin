@@ -351,8 +351,11 @@ validate_homebrew() {
   [ "$(git -C "$tap_path" remote get-url origin)" = "$tap_repository" ] || \
     php_darwin_die "the cached $tap snapshot has the wrong origin"
   tap_branch=$(php_darwin_package_config tap_branch)
-  [ "$(git -C "$tap_path" symbolic-ref --short HEAD)" = "$tap_branch" ] || \
-    php_darwin_die "the cached $tap snapshot is not on $tap_branch"
+  if [ "$(git -C "$tap_path" symbolic-ref --short HEAD)" != "$tap_branch" ]; then
+    bash "$script_dir/../../installer/validate-tap.sh" "$tap_path" "$version" '' "$tap_repository" \
+      "$(jq -er .homebrew_php_commit "$cache_metadata")" "$tap_branch" true || \
+      php_darwin_die "the cached $tap snapshot is not a verified staged branch"
+  fi
   [ "$(git -C "$tap_path" config "branch.$tap_branch.remote")" = origin ] && \
     [ "$(git -C "$tap_path" config "branch.$tap_branch.merge")" = "refs/heads/$tap_branch" ] || \
     php_darwin_die "the cached $tap snapshot is not configured for updates"

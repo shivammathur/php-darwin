@@ -40,7 +40,9 @@ if [ -n "$expected_branch" ]; then
     printf 'Could not resolve the Homebrew tap branch\n' >&2
     exit 1
   }
-  [ "$actual_branch" = "$expected_branch" ] || {
+  private_snapshot=$(git -C "$tap_path" config --get php-darwin.private-snapshot 2>/dev/null) || private_snapshot=
+  [ "$actual_branch" = "$expected_branch" ] || \
+    { [ "$actual_branch" = php-darwin-staged ] && [ -n "$expected_commit" ] && [ "$private_snapshot" = "$expected_commit" ]; } || {
     printf 'Homebrew tap branch mismatch: %s\n' "$actual_branch" >&2
     exit 1
   }

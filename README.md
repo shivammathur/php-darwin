@@ -71,6 +71,8 @@ bash install.sh 8.4 release nts "" "imagick, mongodb, memcached, swoole"
 Downloads use GitHub Releases with a checksum-verified Cloudflare fallback.
 Homebrew installs and links the selected PHP as the default.
 
+For embargoed releases, see [private R2 staging and release promotion](docs/private-releases.md).
+
 ## License
 
 [MIT](LICENSE).

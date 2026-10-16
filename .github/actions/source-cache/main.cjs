@@ -9,6 +9,9 @@ async function main() {
     throw new Error('Source bottle installation requires a macOS Actions runner');
   }
   const cache = new ReleaseCache({ tag: process.env.INPUT_RELEASE || 'cache' });
+  if (process.env.PHP_DARWIN_PRIVATE_SOURCE_SHA256) cache.readOnly = true;
+  const privateOptions = process.env.PHP_DARWIN_PRIVATE_SOURCE_SHA256 ?
+    {cacheRoot: path.join(process.env.RUNNER_TEMP, 'php-darwin-private', 'source-bottles')} : {};
   const mode = process.env['INPUT_DEPENDENCY-MODE'] || 'approved';
   if (!['approved', 'update'].includes(mode)) throw new Error('Invalid dependency mode');
   if (mode === 'update' && (!process.env.GITHUB_WORKFLOW_REF?.includes('/test-source-cache.yml@') ||
@@ -21,7 +24,7 @@ async function main() {
   }
   const approvedDependencies = lock ? new ApprovedDependencies(lock) : undefined;
   if (process.env.INPUT_STAGE === 'tools') {
-    const result = await install({ formula: 'jq', dependencyRoots: ['jq', 'zstd'], cache, approvedDependencies });
+    const result = await install({ ...privateOptions, formula: 'jq', dependencyRoots: ['jq', 'zstd'], cache, approvedDependencies });
     writeOutputs(result);
     return;
   }
@@ -35,7 +38,7 @@ async function main() {
     const result = { built: 0, restored: 0 };
     const preparedTargets = [];
     for (const formula of formulae) {
-      const installed = await install({ formula, cache, context, skipLink: true, approvedDependencies, preparedTargets,
+      const installed = await install({ ...privateOptions, formula, cache, context, skipLink: true, approvedDependencies, preparedTargets,
         forceSource: !!context.php.source_commit || process.env.BUILD !== 'release' || process.env.TS !== 'nts' || process.env['INPUT_FORCE-SOURCE'] === 'true' });
       preparedTargets.push(formula);
       result.built += installed.built;
@@ -55,7 +58,7 @@ async function main() {
   const formula = override || command('bash', ['-c',
     '. scripts/lib/lib.sh; requested=$(php_darwin_requested_formula "$PHP_VERSION" "$BUILD" "$TS") || exit 1; printf "%s/%s" "$(php_darwin_package_config tap)" "$requested"'
   ]).trim();
-  const result = await install({ formula, cache, approvedDependencies, forceSource: process.env['INPUT_FORCE-SOURCE'] === 'true',
+  const result = await install({ ...privateOptions, formula, cache, approvedDependencies, forceSource: process.env['INPUT_FORCE-SOURCE'] === 'true',
     beforeTarget: override ? undefined : () => command('bash', ['scripts/build/build.sh', 'snapshot-dependencies'], {inherit: true}) });
   if (!override) command('bash', ['scripts/build/build.sh', 'finalize'], { inherit: true });
   writeOutputs(result);
