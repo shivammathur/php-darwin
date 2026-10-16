@@ -32,6 +32,8 @@ private URL, credentials or obsolete bottle definitions. The installed/archive
 PHP version is checked against the uploaded release version.
 Packaged private snapshots use a marked local branch, allowing a later Homebrew
 update to switch to public `main` without replaying the candidate recipe commit.
+If the public tap later differs, normal freshness checks can rebuild from its
+public inputs; the synthetic commit does not need to exist on GitHub.
 
 Each run uses `builds/RUN_ID-ATTEMPT/`:
 

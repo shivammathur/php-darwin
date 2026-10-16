@@ -85,4 +85,3 @@ jobs:
         run: bash scripts/private/tools.sh
       - name: Verify private packages on this macOS version
         run: '"$PHP_DARWIN_NODE" scripts/private/run.cjs "test-$TEST_RUNNER" bash scripts/private/test.sh'
-

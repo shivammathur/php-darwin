@@ -189,4 +189,12 @@ printf 'changed php source\n' >> "$php_path/Formula/php.rb" || \
   php_darwin_die 'could not change the stable PHP formula fixture'
 run_gate 1 'arm64 x86_64'
 
+# A private release's synthetic tap commit is intentionally absent upstream.
+# Both scheduled and queued freshness checks must request a regular rebuild.
+git init -q --bare "$work_dir/public-origin.git" || exit 1
+git -C "$php_path" remote add origin "$work_dir/public-origin.git" || exit 1
+jq '.homebrew_php_commit=("f"*40)' "$manifest" > "$manifest.private" || exit 1
+mv "$manifest.private" "$manifest" || exit 1
+run_gate 1 'arm64 x86_64'
+
 printf 'Stable update validation passed\n'

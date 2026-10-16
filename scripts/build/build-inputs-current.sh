@@ -33,8 +33,14 @@ esac
 commit=$(jq -er --arg key "$commit_key" '.[$key] | select(type == "string" and test("^[0-9a-f]{40}$"))' \
   "$manifest") || php_darwin_die "could not read the published $kind source commit"
 if ! git -C "$source_path" cat-file -e "$commit^{commit}" 2>/dev/null; then
-  git -C "$source_path" fetch --no-tags --depth=1 origin "$commit" || \
-    php_darwin_die "could not fetch the published $kind source commit"
+  if ! git -C "$source_path" fetch --no-tags --depth=1 origin "$commit"; then
+    # Private release snapshots are packaged with PHP, but their synthetic
+    # commits do not exist in the public tap. Treat unavailable history as
+    # stale so the regular update pipeline can replace it with public inputs.
+    printf 'Published %s source commit is unavailable; requiring a fresh build\n' "$kind" >&2
+    printf 'false\n'
+    exit 0
+  fi
 fi
 
 # Verify the old raw hash before comparing projections. This also prevents a
