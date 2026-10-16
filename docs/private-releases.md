@@ -34,6 +34,9 @@ Packaged private snapshots use a marked local branch, allowing a later Homebrew
 update to switch to public `main` without replaying the candidate recipe commit.
 If the public tap later differs, normal freshness checks can rebuild from its
 public inputs; the synthetic commit does not need to exist on GitHub.
+Scheduled builds wait while the public tap is older than the published PHP
+version. Publication also rejects downgrades, including older builds that were
+already queued when the staged security release was published.
 
 Each run uses `builds/RUN_ID-ATTEMPT/`:
 
@@ -49,7 +52,8 @@ There are no Actions artifact uploads in this flow. Child process stdout/stderr,
 including failures, is captured into private R2 logs. GitHub still exposes the
 run's existence, branch, timing, status and dispatch inputs; do not use inputs
 for credentials. Infrastructure failures or forcibly killed runners can prevent
-private log upload. A failed log upload fails its job and prevents approval.
+private log upload. A build/test log-upload failure fails its job and prevents
+the approval job from running.
 
 The configured macOS runners can be hosted or trusted self-hosted machines.
 Self-hosted jobs retain the normal pipeline's Homebrew preservation behavior;

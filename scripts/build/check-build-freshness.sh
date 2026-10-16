@@ -31,6 +31,14 @@ case "$status" in
   200)
     if php_darwin_validate_release_manifest "$manifest" "$version" "$channel" 2>/dev/null && \
       php_darwin_release_manifest_has_current_platforms "$manifest"; then
+      if [ "$channel" = stable ]; then
+        tap_behind=$("${PHP_DARWIN_NODE:-node}" "$script_dir/stable-version.cjs" tap-behind "$manifest") || exit 1
+        if [ "$tap_behind" = true ]; then
+          printf 'build-required=false\n' >> "${GITHUB_OUTPUT:?}"
+          printf 'Published PHP %s is newer than the public tap; deferring this build\n' "$version"
+          exit 0
+        fi
+      fi
       current=$(bash "$script_dir/../lib/source-hash.sh" "$version") || exit 1
       current_extensions=$(bash "$script_dir/extensions-source-hash.sh" "$version") || exit 1
       published=$(jq -er '.source_hash' "$manifest") || exit 1

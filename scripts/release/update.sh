@@ -51,6 +51,11 @@ for version in "${version_values[@]}"; do
   case "$http_status" in
     200)
       if php_darwin_validate_release_manifest "$manifest" "$version" stable 2>/dev/null; then
+        tap_behind=$("${PHP_DARWIN_NODE:-node}" "$script_dir/../build/stable-version.cjs" tap-behind "$manifest") || exit 1
+        if [ "$tap_behind" = true ]; then
+          printf 'PHP %s is newer than the public tap; waiting for the tap to catch up\n' "$version"
+          continue
+        fi
         dependencies_current=$("${PHP_DARWIN_NODE:-node}" "$script_dir/../build/package-inputs.cjs" current "$manifest") || exit 1
         published=$(jq -er '.source_hash' "$manifest") || \
           php_darwin_die "could not read the PHP $version published source hash"

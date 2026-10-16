@@ -362,6 +362,23 @@ while IFS= read -r previous_download; do
     php_darwin_die 'publisher removed the previous installer generation'
 done < <(jq -r '.assets[].download' "$previous_generation/php-$version-manifest.json")
 
+# An already queued older build must not overwrite a staged security release.
+newer_generation="$work_dir/newer-generation"
+newer_generation_json="$work_dir/newer-generation-assets.json"
+cp -R "$previous_generation" "$newer_generation" || exit 1
+jq '.php_semver="7.0.34"' "$previous_generation/php-$version-manifest.json" > "$newer_generation/php-$version-manifest.json" || exit 1
+php_darwin_test_release_assets "$newer_generation" "$newer_generation_json" || exit 1
+: > "$gh_log"
+if GH_RELEASE_EXISTS=true GH_RELEASE_ASSETS_JSON="$newer_generation_json" \
+  GH_PREVIOUS_ASSETS="$newer_generation" PHP_VERSION="$version" \
+  PATH="$fake_bin:$PATH" bash "$script_dir/../../release/publish.sh" "$builds_dir" >"$work_dir/downgrade.log" 2>&1; then
+  php_darwin_die 'an older queued build replaced a newer security release'
+fi
+grep -Fq 'refusing to replace PHP 7.0.34 with older PHP 7.0.33' "$work_dir/downgrade.log" || \
+  php_darwin_die 'the stale publication failed for an unrelated reason'
+! grep -Eq '^(release (upload|delete|delete-asset|create)|api --method (PATCH|DELETE|POST)) ' "$gh_log" || \
+  php_darwin_die 'the rejected downgrade mutated release assets'
+
 # A malformed prior manifest cannot authorize deletion of any immutable asset.
 invalid_previous_generation="$work_dir/invalid-previous-generation"
 invalid_previous_json="$work_dir/invalid-previous-assets.json"

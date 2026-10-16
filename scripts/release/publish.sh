@@ -299,6 +299,11 @@ previous_manifest_valid=false
 if [ -f "$previous_assets/$tag-manifest.json" ] && \
   php_darwin_validate_release_manifest "$previous_assets/$tag-manifest.json" "$version" "$channel"; then
   previous_manifest_valid=true
+  if [ "$channel" = stable ]; then
+    previous_semver=$(jq -er .php_semver "$previous_assets/$tag-manifest.json") || exit 1
+    downgrade=$("${PHP_DARWIN_NODE:-node}" "$script_dir/../build/stable-version.cjs" older "$semver" "$previous_semver") || exit 1
+    [ "$downgrade" = false ] || php_darwin_die "refusing to replace PHP $previous_semver with older PHP $semver"
+  fi
   jq -r '.assets[] | (.download // .name) as $download | $download, ($download + ".sha256")' \
     "$previous_assets/$tag-manifest.json" >> "$retained_assets" || \
     php_darwin_die 'could not record the previous immutable release assets'

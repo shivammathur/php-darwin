@@ -197,4 +197,15 @@ jq '.homebrew_php_commit=("f"*40)' "$manifest" > "$manifest.private" || exit 1
 mv "$manifest.private" "$manifest" || exit 1
 run_gate 1 'arm64 x86_64'
 
+# A newly published security release can precede the public tap update.
+for formula_file in "$php_path"/Formula/*.rb; do
+  printf '  url "https://www.php.net/distributions/php-8.5.0.tar.xz"\n' >> "$formula_file"
+done
+run_gate 0
+for formula_file in "$php_path"/Formula/*.rb; do
+  sed 's/php-8.5.0.tar.xz/php-8.5.1.tar.xz/' "$formula_file" > "$formula_file.new" || exit 1
+  mv "$formula_file.new" "$formula_file" || exit 1
+done
+run_gate 1 'arm64 x86_64'
+
 printf 'Stable update validation passed\n'
