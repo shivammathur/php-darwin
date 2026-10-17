@@ -10,6 +10,13 @@ function execute(program, args, env) {
 }
 function batch(entries, mode, { run = execute, output = 'builds/extensions', indexOutput = 'builds/index' } = {}) {
   if (!['build', 'test'].includes(mode)) throw new Error('Invalid batch mode');
+  // Imported producer reports are not evidence for this compatibility runner.
+  // Clear them before preparation can fail or the batch can be interrupted.
+  if (mode === 'test' && fs.existsSync(output)) {
+    for (const report of fs.globSync('**/validation.txt', { cwd: output })) {
+      fs.rmSync(path.join(output, report), { force: true });
+    }
+  }
   const failures = [], index = [];
   let corePinned = process.env.PHP_DARWIN_CORE_PREPARED === process.env.HOMEBREW_CORE_COMMIT &&
     /^[a-f0-9]{40}$/.test(process.env.HOMEBREW_CORE_COMMIT || '');
@@ -53,8 +60,6 @@ function batch(entries, mode, { run = execute, output = 'builds/extensions', ind
           const matches = archiveEntries(output, [identity]).filter(item => key(item.entry) === identity);
           if (matches.length !== 1) throw new Error(`Missing or duplicate test archive: ${identity}`);
           directory = matches[0].directory;
-          // Never leave an older producer report behind if this check fails.
-          fs.rmSync(path.join(directory, 'validation.txt'), { force: true });
         }
         run(process.execPath, ['scripts/tests/native/extension-pack.test.cjs'], { ...env,
           EXTENSION_PACK: entry.name, EXTENSION_PACK_OUTPUT: directory });

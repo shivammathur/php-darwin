@@ -216,3 +216,35 @@ test('test mode accepts flattened and grouped artifacts and rejects missing vari
     assert.throws(() => batch([{...selected, thread_safety: 'zts'}], 'test', {run, output}), /Failed test variants/);
   }
 });
+
+test('failed PHP preparation leaves no producer reports while other variants retain fresh compatibility evidence', t => {
+  const directory = fixture(t), output = path.join(directory, 'packs'), previous = process.env.RUNNER_TEMP;
+  process.env.RUNNER_TEMP = directory;
+  t.after(() => { if (previous === undefined) delete process.env.RUNNER_TEMP; else process.env.RUNNER_TEMP = previous; });
+  const entries = [{ build: 'debug' }, { build: 'debug', thread_safety: 'zts' }, { build: 'release' }]
+    .flatMap(variant => ['imagick', 'mongodb', 'memcached'].map(name => entry(name, variant)));
+  const folder = metadata => path.join(output, `extension-${key(metadata)}`);
+  for (const metadata of entries) writeArchive(folder(metadata), metadata);
+  const tested = [], prepared = [];
+  const run = (_program, args, env) => {
+    if (args[0] === 'scripts/build/prepare-extension-pack.sh') {
+      if (!prepared.length) {
+        for (const metadata of entries) assert.equal(fs.existsSync(path.join(folder(metadata), 'validation.txt')), false);
+      }
+      prepared.push(`${env.BUILD}-${env.TS}`);
+      if (env.TS === 'zts') throw new Error('Fixture PHP manifest transfer failed');
+      return;
+    }
+    assert.equal(args[0], 'scripts/tests/native/extension-pack.test.cjs');
+    const metadata = entries.find(item => item.name === env.EXTENSION_PACK && item.build === env.BUILD && item.thread_safety === env.TS);
+    tested.push(key(metadata));
+    writeArchive(env.EXTENSION_PACK_OUTPUT, metadata);
+  };
+  const failed = entries.filter(item => item.thread_safety === 'zts');
+  assert.throws(() => batch(entries, 'test', { run, output }),
+    { message: `Failed test variants: ${failed.map(key).join(', ')}` });
+  assert.deepEqual(prepared, ['debug-nts', 'debug-zts', 'release-nts']);
+  assert.deepEqual(tested, entries.filter(item => item.thread_safety === 'nts').map(key));
+  for (const metadata of failed) assert.equal(fs.existsSync(path.join(folder(metadata), 'validation.txt')), false);
+  for (const metadata of entries.filter(item => item.thread_safety === 'nts')) verifyArchive(output, metadata);
+});
