@@ -29,17 +29,13 @@ function rewriteFormula(text, source) {
 }
 async function validateSource(file, source) {
   const actual = await fingerprint(file);
-  if (actual.bytes > 256 * 1024 ** 2 || (source.sha256 && source.sha256 !== actual.sha256)) throw new Error('Source archive checksum/size mismatch');
-  // Inspect without extracting or executing uploaded source code.
-  const root = `php-${source.version}`;
-  const members = command('tar', ['-tf', file]).trim().split('\n');
-  if (!members.length || members.some(name => !name.startsWith(root + '/') || name.split('/').includes('..') || /[\x00-\x1f]/.test(name))) {
-    throw new Error('Invalid source archive members');
-  }
-  const header = `${root}/main/php_version.h`;
-  if (members.filter(name => name === header).length !== 1 || !members.includes(`${root}/configure`)) throw new Error('Not a PHP release tarball');
-  const version = command('tar', ['-xOf', file, header]).match(/^#define PHP_VERSION "([^"]+)"$/m)?.[1];
-  if (version !== source.version) throw new Error('Source header version differs from filename');
+  if (actual.bytes > 256 * 1024 ** 2 || (source.sha256 && source.sha256 !== actual.sha256) ||
+      (source.bytes && source.bytes !== actual.bytes)) throw new Error('Source archive checksum/size mismatch');
+  // The same bounded reader handles release tarballs and Git exports. It
+  // rejects links, special files, duplicate members and mixed roots.
+  try {
+    command('python3', [path.join(__dirname, 'source_archive.py'), file, source.version]);
+  } catch { throw new Error('Invalid PHP source archive'); }
   return {...source, sha256: actual.sha256, bytes: actual.bytes};
 }
 function rewriteTap(directory, source) {

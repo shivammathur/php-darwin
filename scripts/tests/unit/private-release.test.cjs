@@ -83,15 +83,15 @@ test('source archive validation checks its header and rejects misleading version
   fs.writeFileSync(path.join(root, 'configure'), 'fixture');
   for (const ext of ['xz', 'gz']) {
     const file = path.join(directory, `php-8.4.99.tar.${ext}`);
-    assert.equal(spawnSync('tar', [ext === 'xz' ? '-cJf' : '-czf', file, '-C', directory, 'php-8.4.99']).status, 0);
+    assert.equal(spawnSync('tar', [ext === 'xz' ? '-cJf' : '-czf', file, '-C', directory, 'php-8.4.99'], {env: {...process.env, COPYFILE_DISABLE: '1'}}).status, 0);
     const result = await validateSource(file, sourceName(path.basename(file), '8.4'));
     assert.match(result.sha256, /^[a-f0-9]{64}$/);
     await assert.rejects(validateSource(file, {...sourceName(path.basename(file)), sha256: 'f'.repeat(64)}), /checksum/);
   }
   fs.writeFileSync(path.join(root, 'main/php_version.h'), '#define PHP_VERSION "8.4.98"\n');
   const wrong = path.join(directory, 'wrong.tar.gz');
-  spawnSync('tar', ['-czf', wrong, '-C', directory, 'php-8.4.99']);
-  await assert.rejects(validateSource(wrong, sourceName('php-8.4.99.tar.gz')), /header version/);
+  spawnSync('tar', ['-czf', wrong, '-C', directory, 'php-8.4.99'], {env: {...process.env, COPYFILE_DISABLE: '1'}});
+  await assert.rejects(validateSource(wrong, sourceName('php-8.4.99.tar.gz')), /Invalid PHP source archive/);
 });
 test('approval survives deletion of GitHub runs and binds the complete tested bytes', () => {
   const record = approved();
@@ -160,4 +160,9 @@ test('quarantined builds cannot be signed or promoted, and storage errors fail c
   await requireUnquarantined({head: async key => {assert.equal(key, 'builds/123-1/quarantine.json'); return null;}}, '123-1');
   await assert.rejects(requireUnquarantined({head: async () => ({ContentLength: 1})}, '123-1'), /quarantined/);
   await assert.rejects(requireUnquarantined({head: async () => {throw new Error('storage unavailable');}}, '123-1'), /unavailable/);
+});
+
+test('bounded source reader rejects malformed Git exports and release archives', () => {
+  const result = spawnSync('python3', [path.join(__dirname, 'private-source.test.py')], {encoding: 'utf8'});
+  assert.equal(result.status, 0, result.stderr);
 });
