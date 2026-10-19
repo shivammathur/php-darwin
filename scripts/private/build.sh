@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 022
 [ "${GITHUB_ACTIONS:-}" = true ] || { echo 'Private builds require an Actions runner'; exit 1; }
 node_runtime=${PHP_DARWIN_NODE:?}
 work="${RUNNER_TEMP:?}/php-darwin-private"

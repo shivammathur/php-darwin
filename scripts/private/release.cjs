@@ -10,6 +10,7 @@ const sha = value => crypto.createHash('sha256').update(JSON.stringify(value)).d
 const variants = ['release-nts', 'release-zts', 'debug-nts', 'debug-zts'];
 const repository = 'shivammathur/php-darwin';
 const hex = /^[a-f0-9]{64}$/;
+const permissionPolicy = 'public-readable-v1';
 function validatePlan(plan, id) {
   buildId(id);
   const source = sourceName(plan.source?.name, plan.php_version);
@@ -18,7 +19,8 @@ function validatePlan(plan, id) {
       plan.source.url !== source.url || !hex.test(plan.source.sha256 || '') ||
       !Number.isSafeInteger(plan.source.bytes) || plan.source.bytes <= 0 || plan.source.bytes > 256 * 1024 ** 2 ||
       !['tap_commit', 'base_tap_commit', 'extensions_commit', 'core_commit'].every(key => /^[a-f0-9]{40}$/.test(plan[key] || '')) ||
-      !hex.test(plan.tap_sha256 || '') || !Array.isArray(plan.builds) || plan.builds.length !== 8 || !Array.isArray(plan.tests)) {
+      !hex.test(plan.tap_sha256 || '') || !Array.isArray(plan.builds) || plan.builds.length !== 8 || !Array.isArray(plan.tests) ||
+      (plan.artifact_permissions !== undefined && plan.artifact_permissions !== permissionPolicy)) {
     throw new Error('Invalid private build plan');
   }
   const expected = ['arm64', 'x86_64'].flatMap(arch => variants.map(variant => `${arch}-${variant}`)).sort();
@@ -59,7 +61,8 @@ function names(plan, b) {
 function validateBuild(record, plan, b) {
   const expected = names(plan, b);
   if (!record || record.variant !== variantKey(b) || record.arch !== b.arch || record.plan_sha256 !== sha(plan) ||
-      record.status !== 'success' || !Array.isArray(record.files) || record.files.length !== expected.length ||
+      record.status !== 'success' || (plan.artifact_permissions && record.artifact_permissions !== plan.artifact_permissions) ||
+      !Array.isArray(record.files) || record.files.length !== expected.length ||
       JSON.stringify(record.files.map(f => f.name).sort()) !== JSON.stringify(expected.slice().sort()) ||
       record.files.some(f => !hex.test(f.sha256 || '') || !Number.isSafeInteger(f.bytes) || f.bytes <= 0 || f.bytes > 256 * 1024 ** 2)) {
     throw new Error('Invalid staged build record');
@@ -67,6 +70,9 @@ function validateBuild(record, plan, b) {
   return record;
 }
 async function readPlan(store) { return validatePlan(await getJSON(store, `${prefix()}/plan.json`), process.env.PRIVATE_BUILD_ID); }
+async function requireUnquarantined(store, id = process.env.PRIVATE_BUILD_ID) {
+  if (await store.head(`${prefix(id)}/quarantine.json`)) throw new Error('Private build is quarantined');
+}
 function envFile(plan) {
   // Only validated values are written into the shell environment file.
   const env = {PHP_VERSION: plan.php_version, HOMEBREW_PHP_COMMIT: plan.tap_commit,
@@ -102,7 +108,8 @@ async function planBuild(store) {
   const tests = Object.entries(platforms).flatMap(([arch, p]) => p.test_runners.filter(r => r !== 'macos-latest').map(runner => ({arch, runner})));
   const plan = {schema: 1, id: process.env.PRIVATE_BUILD_ID, repository, revision: process.env.GITHUB_SHA,
     ref: process.env.GITHUB_REF, php_version: minor, source, base_tap_commit: base, tap_commit: commit,
-    extensions_commit: extensions, core_commit: core, tap_sha256: (await fingerprint(tar)).sha256, builds, tests};
+    extensions_commit: extensions, core_commit: core, tap_sha256: (await fingerprint(tar)).sha256, builds, tests,
+    artifact_permissions: permissionPolicy};
   validatePlan(plan, plan.id);
   await store.ensure(file, `${prefix()}/inputs/${source.name}`, {replace: false});
   await store.ensure(tar, `${prefix()}/inputs/tap.tar.gz`, {replace: false});
@@ -177,12 +184,14 @@ async function saveBuild(store) {
   const metadata = JSON.parse(fs.readFileSync(path.join('builds', names(plan, b)[2])));
   if (metadata.php_semver !== plan.source.version || metadata.homebrew_php_commit !== plan.tap_commit ||
       metadata.homebrew_extensions_commit !== plan.extensions_commit) throw new Error('Built PHP differs from staged source');
+  command('python3', ['scripts/private/check-permissions.py', path.join('builds', names(plan, b)[0])]);
   for (const name of names(plan, b)) {
     const file = path.join('builds', name), digest = await fingerprint(file);
     await store.ensure(file, `${prefix()}/packages/${name}`, {replace: false});
     files.push({name, sha256: digest.sha256, bytes: digest.bytes});
   }
-  const result = {status: 'success', plan_sha256: sha(plan), variant: variantKey(b), arch: b.arch, files};
+  const result = {status: 'success', plan_sha256: sha(plan), variant: variantKey(b), arch: b.arch, files,
+    artifact_permissions: permissionPolicy};
   validateBuild(result, plan, b);
   await putJSON(store, `${prefix()}/results/build-${variantKey(b)}.json`, result);
 }
@@ -211,6 +220,7 @@ async function testResult(store) {
     plan_sha256: sha(plan), arch: process.env.ARCH, runner: process.env.TEST_RUNNER, build_sha256: builds.map(sha).sort()});
 }
 async function approve(store) {
+  await requireUnquarantined(store);
   const plan = await readPlan(store), builds = [], tests = [];
   for (const b of plan.builds) builds.push(validateBuild(await getJSON(store, `${prefix()}/results/build-${variantKey(b)}.json`), plan, b));
   for (const t of plan.tests) tests.push(await getJSON(store, `${prefix()}/results/test-${t.runner}.json`));
@@ -220,6 +230,7 @@ async function approve(store) {
   await putJSON(store, `${prefix()}/ready.json`, record);
 }
 async function releaseInputs(store) {
+  await requireUnquarantined(store);
   const record = await getJSON(store, `${prefix()}/ready.json`);
   const {plan, builds} = verifyReady(record, process.env.PRIVATE_BUILD_ID, process.env.PRIVATE_RELEASE_SIGNING_KEY);
   if (plan.php_version !== process.env.PHP_VERSION || plan.source.version !== process.env.RELEASE_VERSION ||
@@ -247,7 +258,7 @@ async function archiveRun(store) {
   // Delete only after the private workflow record has been durably verified.
   command('gh', ['api', '--method', 'DELETE', `repos/${repository}/actions/runs/${runId}`]);
 }
-module.exports = {validatePlan, validateBuild, variantKey, names, sign, verifyReady, sha};
+module.exports = {validatePlan, validateBuild, variantKey, names, sign, verifyReady, sha, requireUnquarantined};
 if (require.main === module) {
   const operations = {plan: planBuild, prepare: store => prepare(store, 'build'), 'activate-tap': activateTap, seed,
     'save-build': saveBuild, 'test-inputs': testInputs, 'test-result': testResult, 'clean-local': cleanLocal,

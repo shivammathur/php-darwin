@@ -5,7 +5,7 @@ const path = require('node:path');
 const os = require('node:os');
 const {spawnSync} = require('node:child_process');
 const {sourceName, selectSource, rewriteFormula, rewriteTap, validateSource} = require('../../private/source.cjs');
-const {validatePlan, verifyReady, sign, names, variantKey, sha} = require('../../private/release.cjs');
+const {validatePlan, validateBuild, verifyReady, sign, names, variantKey, sha, requireUnquarantined} = require('../../private/release.cjs');
 const {r2} = require('../../lib/r2.cjs');
 const {fixture} = require('../helpers/r2-fixture.cjs');
 const key = 'f'.repeat(64);
@@ -143,4 +143,21 @@ test('private workflow handoffs never use GitHub artifacts, caches or publishers
       assert.match(workflow, /scripts\/private\/run\.cjs/);
     }
   }
+});
+
+test('new plans require permission validation for every package', () => {
+  const {plan, builds} = approved().payload;
+  plan.artifact_permissions = 'public-readable-v1';
+  validatePlan(plan, plan.id);
+  const record = {...builds[0], plan_sha256: sha(plan)};
+  assert.throws(() => validateBuild(record, plan, plan.builds[0]), /Invalid staged build/);
+  record.artifact_permissions = plan.artifact_permissions;
+  validateBuild(record, plan, plan.builds[0]);
+  assert.throws(() => validatePlan({...plan, artifact_permissions: 'unknown'}, plan.id), /Invalid private build plan/);
+});
+
+test('quarantined builds cannot be signed or promoted, and storage errors fail closed', async () => {
+  await requireUnquarantined({head: async key => {assert.equal(key, 'builds/123-1/quarantine.json'); return null;}}, '123-1');
+  await assert.rejects(requireUnquarantined({head: async () => ({ContentLength: 1})}, '123-1'), /quarantined/);
+  await assert.rejects(requireUnquarantined({head: async () => {throw new Error('storage unavailable');}}, '123-1'), /unavailable/);
 });
