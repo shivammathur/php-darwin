@@ -10,7 +10,12 @@ function sourceName(name, minor) {
     url: `https://www.php.net/distributions/${name}`};
 }
 function selectSource(keys, minor, requested) {
-  if (requested) return sourceName(requested, minor);
+  if (requested) {
+    if (!requested.includes('/')) return sourceName(requested, minor);
+    const match = /^sha256\/([a-f0-9]{64})\/([^/]+)$/.exec(requested);
+    if (!match) throw new Error('Invalid immutable source upload');
+    return {...sourceName(match[2], minor), sha256: match[1], upload_key: `uploads/${requested}`};
+  }
   const sources = keys.filter(key => key.startsWith('uploads/')).flatMap(key => {
     try { return [sourceName(key.slice(8), minor)]; } catch { return []; }
   });

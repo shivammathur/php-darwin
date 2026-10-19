@@ -40,6 +40,22 @@ test('generated formula removes stale bottles/revisions without changing depende
   assert.ok(result.includes('  depends_on "icu4c"')); assert.ok(result.includes('    sha256 "patch"'));
   assert.throws(() => rewriteFormula('class Php\nend\n', source), /Unsupported/);
 });
+test('revised sources use a digest-bound upload key while retaining the PHP archive filename', () => {
+  const digest = 'b'.repeat(64);
+  const source = selectSource([], '8.4', `sha256/${digest}/php-8.4.99.tar.xz`);
+  assert.equal(source.name, 'php-8.4.99.tar.xz');
+  assert.equal(source.sha256, digest);
+  assert.equal(source.upload_key, `uploads/sha256/${digest}/${source.name}`);
+  const record = approved();
+  record.payload.plan.source = {...source, bytes: 100};
+  validatePlan(record.payload.plan, '123-1');
+  for (const invalid of [`../${source.name}`, `sha256/${digest}/../${source.name}`,
+    `sha256/${digest}/php-8.3.99.tar.xz`, `sha256/${digest.toUpperCase()}/${source.name}`]) {
+    assert.throws(() => selectSource([], '8.4', invalid));
+  }
+  record.payload.plan.source.sha256 = 'c'.repeat(64);
+  assert.throws(() => validatePlan(record.payload.plan, '123-1'), /upload key/);
+});
 test('private tap rewrites versioned formulae and aliases for the current stable minor', t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'private-tap-'));
   t.after(() => fs.rmSync(directory, {recursive: true, force: true}));

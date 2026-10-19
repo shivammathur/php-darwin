@@ -14,6 +14,10 @@ const permissionPolicy = 'public-readable-v1';
 function validatePlan(plan, id) {
   buildId(id);
   const source = sourceName(plan.source?.name, plan.php_version);
+  if (plan.source.upload_key !== undefined &&
+      plan.source.upload_key !== `uploads/sha256/${plan.source.sha256}/${source.name}`) {
+    throw new Error('Source upload key differs from its immutable digest');
+  }
   if (plan.schema !== 1 || plan.id !== id || plan.repository !== repository ||
       !/^[a-f0-9]{40}$/.test(plan.revision || '') || plan.php_version !== source.minor || plan.source.minor !== source.minor || plan.source.version !== source.version ||
       plan.source.url !== source.url || !hex.test(plan.source.sha256 || '') ||
@@ -89,9 +93,10 @@ async function planBuild(store) {
   command('bash', ['-c', '. scripts/lib/lib.sh; php_darwin_validate_channel "$PHP_VERSION" stable']);
   let source = selectSource(process.env.SOURCE_FILE ? [] : await uploads(), minor, process.env.SOURCE_FILE);
   const file = path.join(workdir(), source.name);
-  await store.download(`uploads/${source.name}`, file);
+  await store.download(source.upload_key || `uploads/${source.name}`, file);
   const expected = process.env.SOURCE_SHA256 || '';
   if (expected && !hex.test(expected)) throw new Error('Invalid expected source checksum');
+  if (expected && source.sha256 && expected !== source.sha256) throw new Error('Source input digest differs from its upload key');
   source = await validateSource(file, {...source, ...(expected ? {sha256: expected} : {})});
   const pin = kind => command('bash', ['scripts/build/source-commit.sh', kind], {env: {GITHUB_OUTPUT: ''}}).trim();
   const base = pin('php'), extensions = pin('extensions'), core = pin('core');
