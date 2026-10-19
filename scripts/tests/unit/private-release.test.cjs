@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const {spawnSync} = require('node:child_process');
-const {sourceName, selectSource, rewriteFormula, validateSource} = require('../../private/source.cjs');
+const {sourceName, selectSource, rewriteFormula, rewriteTap, validateSource} = require('../../private/source.cjs');
 const {validatePlan, verifyReady, sign, names, variantKey, sha} = require('../../private/release.cjs');
 const {r2} = require('../../lib/r2.cjs');
 const {fixture} = require('../helpers/r2-fixture.cjs');
@@ -39,6 +39,41 @@ test('generated formula removes stale bottles/revisions without changing depende
   assert.ok(!/bottle do|revision 3|mirror/.test(result));
   assert.ok(result.includes('  depends_on "icu4c"')); assert.ok(result.includes('    sha256 "patch"'));
   assert.throws(() => rewriteFormula('class Php\nend\n', source), /Unsupported/);
+});
+test('private tap rewrites versioned formulae and aliases for the current stable minor', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'private-tap-'));
+  t.after(() => fs.rmSync(directory, {recursive: true, force: true}));
+  const text = 'class Php < Formula\n  url "https://old"\n  sha256 "old"\nend\n';
+  const source = {...sourceName('php-8.5.99.tar.xz'), sha256: 'a'.repeat(64)};
+  for (const layout of ['versioned', 'alias', 'formula-link']) {
+    const tap = path.join(directory, layout);
+    fs.mkdirSync(path.join(tap, 'Formula'), {recursive: true});
+    fs.mkdirSync(path.join(tap, 'Aliases'));
+    fs.writeFileSync(path.join(tap, 'Formula/php@8.4.rb'), text);
+    for (const suffix of ['', '-zts', '-debug', '-debug-zts']) {
+      const name = `php@8.5${suffix}`;
+      const target = (layout === 'versioned' ? name : `php${suffix}`) + '.rb';
+      fs.writeFileSync(path.join(tap, 'Formula', target), text);
+      if (layout === 'alias') fs.symlinkSync('../Formula/' + target, path.join(tap, 'Aliases', name));
+      if (layout === 'formula-link') fs.symlinkSync(target, path.join(tap, 'Formula', name + '.rb'));
+    }
+    rewriteTap(tap, source);
+    for (const suffix of ['', '-zts', '-debug', '-debug-zts']) {
+      const name = (layout === 'versioned' ? `php@8.5${suffix}` : `php${suffix}`) + '.rb';
+      assert.equal(fs.readFileSync(path.join(tap, 'Formula', name), 'utf8'), rewriteFormula(text, source));
+    }
+    assert.equal(fs.readFileSync(path.join(tap, 'Formula/php@8.4.rb'), 'utf8'), text);
+    if (layout !== 'alias') continue;
+    const alias = path.join(tap, 'Aliases/php@8.5-zts');
+    fs.unlinkSync(alias);
+    fs.symlinkSync('../Formula/php.rb', alias);
+    assert.throws(() => rewriteTap(tap, source), /Invalid PHP formula aliases/);
+    fs.unlinkSync(alias);
+    fs.writeFileSync(path.join(tap, 'outside.rb'), text);
+    fs.symlinkSync('../outside.rb', alias);
+    assert.throws(() => rewriteTap(tap, source), /Invalid PHP formula aliases/);
+    assert.equal(fs.readFileSync(path.join(tap, 'outside.rb'), 'utf8'), text);
+  }
 });
 test('source archive validation checks its header and rejects misleading versions for both compressions', async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'private-source-'));

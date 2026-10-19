@@ -42,18 +42,27 @@ async function validateSource(file, source) {
   if (version !== source.version) throw new Error('Source header version differs from filename');
   return {...source, sha256: actual.sha256, bytes: actual.bytes};
 }
+function rewriteTap(directory, source) {
+  directory = fs.realpathSync(directory);
+  const formulaRoot = path.join(directory, 'Formula') + path.sep;
+  const files = new Set();
+  for (const suffix of ['', '-zts', '-debug', '-debug-zts']) {
+    const name = `php@${source.minor}${suffix}`;
+    const direct = path.join(directory, 'Formula', name + '.rb');
+    const file = fs.realpathSync(fs.existsSync(direct) ? direct : path.join(directory, 'Aliases', name));
+    if (!file.startsWith(formulaRoot) || !file.endsWith('.rb') || !fs.statSync(file).isFile() || files.has(file)) {
+      throw new Error('Invalid PHP formula aliases');
+    }
+    files.add(file);
+  }
+  for (const file of files) fs.writeFileSync(file, rewriteFormula(fs.readFileSync(file, 'utf8'), source));
+}
 function prepareTap(directory, source, commit) {
   command('git', ['clone', '--no-checkout', '--depth=1', 'https://github.com/shivammathur/homebrew-php', directory]);
   directory = fs.realpathSync(directory);
   command('git', ['-C', directory, 'fetch', '--depth=1', 'origin', commit]);
   command('git', ['-C', directory, 'checkout', '--detach', commit]);
-  const files = new Set();
-  for (const suffix of ['', '-zts', '-debug', '-debug-zts']) {
-    const file = fs.realpathSync(path.join(directory, 'Formula', `php@${source.minor}${suffix}.rb`));
-    if (!file.startsWith(directory + path.sep) || files.has(file)) throw new Error('Invalid PHP formula aliases');
-    files.add(file);
-    fs.writeFileSync(file, rewriteFormula(fs.readFileSync(file, 'utf8'), source));
-  }
+  rewriteTap(directory, source);
   const treeEnv = {...process.env, GIT_AUTHOR_NAME: 'PHP Darwin', GIT_AUTHOR_EMAIL: 'builds@setup-php.com',
     GIT_COMMITTER_NAME: 'PHP Darwin', GIT_COMMITTER_EMAIL: 'builds@setup-php.com',
     GIT_AUTHOR_DATE: '2000-01-01T00:00:00Z', GIT_COMMITTER_DATE: '2000-01-01T00:00:00Z'};
@@ -73,4 +82,4 @@ function seedCache(file, source, beforeCopy = () => {}) {
     fs.copyFileSync(file, destination);
   }
 }
-module.exports = {sourceName, selectSource, rewriteFormula, validateSource, prepareTap, seedCache};
+module.exports = {sourceName, selectSource, rewriteFormula, rewriteTap, validateSource, prepareTap, seedCache};
