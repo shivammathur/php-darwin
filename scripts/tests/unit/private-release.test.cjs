@@ -97,3 +97,15 @@ test('private storage uses its own bucket, conditional writes and non-public cac
   await assert.rejects(store.ensure(file, 'builds/123-1/file', {replace: false}), /conflict/);
   assert.equal(f.calls.filter(c => c.operation === 'put-object').length, 1);
 });
+
+
+test('private workflow handoffs never use GitHub artifacts, caches or publishers', () => {
+  for (const name of ['cache-private.yml', 'build-private-architecture.yml', 'cleanup-private.yml']) {
+    const workflow = fs.readFileSync(path.resolve(__dirname, '../../../.github/workflows', name), 'utf8');
+    assert.doesNotMatch(workflow, /actions\/(?:upload-artifact|download-artifact|cache)@|gh\s+(?:release|run download)|scripts\/release\.sh/);
+    if (name !== 'cleanup-private.yml') {
+      assert.doesNotMatch(workflow, /contents: write|secrets\.TOKEN/);
+      assert.match(workflow, /scripts\/private\/run\.cjs/);
+    }
+  }
+});

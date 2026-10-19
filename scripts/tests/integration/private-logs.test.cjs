@@ -27,17 +27,22 @@ function writable(p){const s=fs.lstatSync(p);if(s.isDirectory()){fs.chmodSync(p,
 writable(directory);fs.rmSync(directory,{recursive:true,force:true});
 `, {mode:0o755});
   const worker = path.join(directory, 'worker.cjs');
-  fs.writeFileSync(worker, "const fs=require('node:fs'),path=require('node:path');const d=path.join(process.env.RUNNER_TEMP,'php-darwin-private','protected');fs.mkdirSync(d,{recursive:true});fs.chmodSync(d,0o700);fs.writeFileSync(path.join(d,'scratch'),'private');fs.chmodSync(d,0o500);console.log('PRIVATE_SOURCE_DETAILS');console.error('::error::PRIVATE_COMPILER_OUTPUT');process.exitCode=Number(process.argv[2]);\n");
-  for (const [label, status, transfer, cleanup] of [['build-x86_64-release-nts', 0, false], ['build-arm64-debug-zts', 1, false], ['test-macos-14', 0, false], ['cleanup-failure', 0, false, true], ['upload-failure', 0, true]]) {
+  fs.writeFileSync(worker, "const fs=require('node:fs'),path=require('node:path');const d=path.join(process.env.RUNNER_TEMP,'php-darwin-private','protected');fs.mkdirSync(d,{recursive:true});fs.chmodSync(d,0o700);fs.writeFileSync(path.join(d,'scratch'),'private');fs.chmodSync(d,0o500);for(const name of ['GITHUB_STEP_SUMMARY','GITHUB_ENV','GITHUB_PATH','GITHUB_STATE','GITHUB_OUTPUT']){if(process.env[name])fs.writeFileSync(process.env[name],name==='GITHUB_OUTPUT'&&process.env.PRIVATE_TEST_PLAN==='true'?'architectures={}':'PRIVATE_FILE_COMMAND');}console.log('PRIVATE_SOURCE_DETAILS');console.error('::error::PRIVATE_COMPILER_OUTPUT');process.exitCode=Number(process.argv[2]);\n");
+  for (const [label, status, transfer, cleanup] of [['build-x86_64-release-nts', 0, false], ['build-arm64-debug-zts', 1, false], ['test-macos-14', 0, false], ['cleanup-failure', 0, false, true], ['plan', 0, false], ['upload-failure', 0, true]]) {
+    const publicFiles = Object.fromEntries(['GITHUB_STEP_SUMMARY', 'GITHUB_ENV', 'GITHUB_PATH', 'GITHUB_STATE', 'GITHUB_OUTPUT'].map(name => [name, path.join(directory, name)]));
+    for (const file of Object.values(publicFiles)) fs.writeFileSync(file, '');
     const result = spawnSync(process.execPath, [path.resolve(__dirname, '../../private/run.cjs'), label, process.execPath, worker, String(status)], {
-      encoding:'utf8', env:{...process.env, PATH:bin+path.delimiter+process.env.PATH, RUNNER_TEMP:directory, FAKE_R2:directory,
+      encoding:'utf8', env:{...process.env, ...publicFiles, PRIVATE_TEST_PLAN:String(label === 'plan'), PATH:bin+path.delimiter+process.env.PATH, RUNNER_TEMP:directory, FAKE_R2:directory,
         GITHUB_ACTIONS:'true', PRIVATE_BUILD_ID:'123-1', CF_R2_AWS_S3_ENDPOINT:'https://'+'a'.repeat(32)+'.r2.cloudflarestorage.com', FAIL_TRANSFER:String(transfer), FAIL_CLEANUP:String(!!cleanup)},
     });
     assert.equal(result.status, status || Number(transfer) || Number(!!cleanup));
-    assert.ok(!/PRIVATE_SOURCE_DETAILS|PRIVATE_COMPILER_OUTPUT|PRIVATE_TRANSFER_DIAGNOSTIC|PRIVATE_CLEANUP_DIAGNOSTIC|::error::/.test(result.stdout+result.stderr));
+    for (const [name, file] of Object.entries(publicFiles)) {
+      assert.equal(fs.readFileSync(file, 'utf8'), name === 'GITHUB_OUTPUT' && label === 'plan' ? 'architectures={}' : '');
+    }
+    assert.ok(!/PRIVATE_SOURCE_DETAILS|PRIVATE_FILE_COMMAND|PRIVATE_COMPILER_OUTPUT|PRIVATE_TRANSFER_DIAGNOSTIC|PRIVATE_CLEANUP_DIAGNOSTIC|::error::/.test(result.stdout+result.stderr));
     if(!transfer){
       const saved=fs.readFileSync(path.join(directory,encodeURIComponent(`builds/123-1/logs/${label}.log`)),'utf8');
-      assert.match(saved,/PRIVATE_SOURCE_DETAILS/);assert.match(saved,/PRIVATE_COMPILER_OUTPUT/);
+      assert.match(saved,/PRIVATE_SOURCE_DETAILS/);assert.match(saved,/PRIVATE_COMPILER_OUTPUT/);assert.match(saved,/PRIVATE_FILE_COMMAND/);
     }
     if (cleanup) assert.match(fs.readFileSync(path.join(directory,encodeURIComponent(`builds/123-1/logs/${label}-cleanup.log`)),'utf8'),/PRIVATE_CLEANUP_DIAGNOSTIC/);
     if (!status && !transfer && !cleanup) assert.ok(!fs.existsSync(path.join(directory,'php-darwin-private')));

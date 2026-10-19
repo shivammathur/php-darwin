@@ -1,7 +1,9 @@
 name: Stage private PHP
-run-name: Stage private PHP ${{ inputs.php-version }}
+run-name: Stage private PHP ${{ inputs.php-version || vars.PRIVATE_TEST_PHP_VERSION }}
 
 on:
+  push:
+    branches: [feature/private-r2-releases]
   workflow_dispatch:
     inputs:
       php-version:
@@ -22,19 +24,21 @@ permissions:
   actions: read
 
 concurrency:
-  group: private-php-${{ inputs.php-version }}
+  group: private-php-${{ inputs.php-version || vars.PRIVATE_TEST_PHP_VERSION }}
   cancel-in-progress: false
 
 env:
   PRIVATE_BUILD_ID: ${{ github.run_id }}-${{ github.run_attempt }}
-  PHP_VERSION: ${{ inputs.php-version }}
+  PHP_VERSION: ${{ inputs.php-version || vars.PRIVATE_TEST_PHP_VERSION }}
   CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.PRIVATE_R2_ACCESS_KEY_ID }}
   CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.PRIVATE_R2_SECRET_ACCESS_KEY }}
   CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
-  GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+  GH_TOKEN: ${{ github.token }}
 
 jobs:
   plan:
+    # Branch trials are explicit and cannot start on ordinary code pushes.
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[private-stage]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -55,7 +59,7 @@ jobs:
       matrix: ${{ fromJSON(needs.plan.outputs.architectures) }}
     uses: ./.github/workflows/build-private-architecture.yml
     with:
-      php-version: ${{ inputs.php-version }}
+      php-version: ${{ inputs.php-version || vars.PRIVATE_TEST_PHP_VERSION }}
       build-id: ${{ github.run_id }}-${{ github.run_attempt }}
       arch: ${{ matrix.arch }}
       runner: ${{ matrix.runner }}
@@ -64,7 +68,6 @@ jobs:
       PRIVATE_R2_ACCESS_KEY_ID: ${{ secrets.PRIVATE_R2_ACCESS_KEY_ID }}
       PRIVATE_R2_SECRET_ACCESS_KEY: ${{ secrets.PRIVATE_R2_SECRET_ACCESS_KEY }}
       CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
-      TOKEN: ${{ secrets.TOKEN }}
 
   approve:
     name: Seal tested private build

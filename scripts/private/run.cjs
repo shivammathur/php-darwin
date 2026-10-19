@@ -16,24 +16,40 @@ async function uploadLog(label, log) {
 async function run(label, program, args) {
   if (!/^[a-z0-9_-]+$/.test(label || '') || !program) throw new Error('Invalid private step');
   const log = path.join(workdir(), `${label}.log`), fd = fs.openSync(log, 'w', 0o600);
+  // GitHub file commands bypass captured stdout/stderr. Only the planner may
+  // expose its validated matrix; all other child channels remain job-local.
+  const env = {...process.env};
+  for (const name of ['GITHUB_STEP_SUMMARY', 'GITHUB_ENV', 'GITHUB_PATH', 'GITHUB_STATE', 'GITHUB_OUTPUT']) {
+    if (name === 'GITHUB_OUTPUT' && label === 'plan') continue;
+    if (env[name]) env[name] = path.join(workdir(), `${label}-${name.toLowerCase()}`);
+  }
   console.log('Private operation started; detailed diagnostics are stored in R2.');
   let child;
-  const forward = signal => { if (child) child.kill(signal); };
+  const forward = signal => {
+    if (!child?.pid || child.exitCode !== null || child.signalCode !== null) return;
+    try { process.kill(-child.pid, signal); }
+    catch (error) { if (error.code !== 'ESRCH') throw error; }
+  };
   process.on('SIGTERM', () => forward('SIGTERM')); process.on('SIGINT', () => forward('SIGINT'));
   let status = 1;
   try {
     status = await new Promise(resolve => {
-      child = spawn(program, args, {stdio: ['ignore', fd, fd]});
+      child = spawn(program, args, {env, detached: true, stdio: ['ignore', fd, fd]});
       child.on('error', error => { fs.writeSync(fd, String(error)); resolve(1); });
       child.on('close', code => resolve(code ?? 1));
     });
   } finally {
     if (/^(build|test)-/.test(label)) {
       const cleanup = await new Promise(resolve => {
-        const child = spawn(process.execPath, [path.join(__dirname, 'release.cjs'), 'clean-local'], {stdio: ['ignore', fd, fd]});
+        const child = spawn(process.execPath, [path.join(__dirname, 'release.cjs'), 'clean-local'], {env, stdio: ['ignore', fd, fd]});
         child.on('error', () => resolve(false)); child.on('close', code => resolve(code === 0));
       });
       if (!cleanup) status = 1;
+    }
+    const summary = path.join(workdir(), `${label}-github_step_summary`);
+    if (fs.existsSync(summary)) {
+      fs.writeSync(fd, '\nPrivate step summary:\n');
+      fs.writeSync(fd, fs.readFileSync(summary));
     }
     fs.closeSync(fd);
   }
