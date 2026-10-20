@@ -27,7 +27,7 @@ async function putJSON(store, key, value) {
 async function getJSON(store, key) {
   const file = path.join(workdir(), `record-${require('node:crypto').randomUUID()}.json`);
   try {
-    const metadata = await store.head(key);
+    const metadata = await retryPolicy()('Read private record metadata', () => store.head(key));
     if (!metadata || metadata.ContentLength > 8 * 1024 ** 2) throw new Error('Missing or oversized private record');
     await store.download(key, file);
     return JSON.parse(fs.readFileSync(file));
