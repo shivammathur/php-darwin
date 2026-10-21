@@ -172,8 +172,8 @@ against existing published packages. setup-php first runs without installed PHP,
 then repeats on the hot path; optional packs must come from the private cache.
 Standalone E2E runs require optional packs by default. The PHP publication
 workflow tests the PHP archive and bundled coverage modules immediately;
-optional packs have separate compatibility gates and can still target the
-previous PHP patch or nightly commit until their own publication completes.
+optional packs have separate compatibility gates. Stable packs are reused across
+PHP patch releases; nightly packs must match the published PHP source commit.
 The action source remains unchanged. The harness supplies hosted-runner context
 on repository self-hosted macOS machines and verifies archive provenance, cached
 modules and the absence of source builds, because stock setup-php skips the cache
@@ -337,6 +337,13 @@ Native Swoole checks exercise shared tables, including the legacy Swoole 2.x API
 used by PHP 5.6, and the timer/event loop on Swoole 4.x and later.
 `update-extensions.yml` checks every configured PHP version every six hours,
 using the same recipe and published-PHP freshness checks as the cache planner.
+Stable PHP patch releases through the configured current stable series do not
+invalidate optional packs. Extension and dependency recipe changes still trigger
+rebuilds, as do missing or invalid packs. PHP 8.6/8.7 packs continue to track the
+exact PHP release and source commit. Use `force=true` on `cache-extensions.yml`
+to repair a stable pack when compatibility or another problem requires rebuilding.
+The installer continues to require the same PHP minor series, module API,
+architecture, debug/release and NTS/ZTS variant, and a successful module-load test.
 It dispatches one cache run per version with missing or changed packs, including
 separate PHP 8.6 and 8.7 runs. Each run has its own version concurrency lock and
 can validate and publish independently. When all packs are current, it dispatches
@@ -390,8 +397,9 @@ For an interrupted campaign, pass completed `resume-runs` to `cache-extensions.y
 in oldest-to-newest order. The latest successful artifact for each pack wins.
 Ubuntu jobs download exact artifact IDs, verify archive hashes and native reports,
 and retain their bytes; Macs only build unpublished gaps and run compatibility.
-Already published variants are retained when their PHP release/source commit still
-matches. Normal runs without `resume-runs` apply full recipe freshness checks.
+Already published variants are retained when their stable PHP minor series or
+nightly PHP release/source commit still matches. Normal runs without `resume-runs`
+apply full recipe freshness checks.
 The planner logs why each pack needs rebuilding. PHP Darwin implementation changes
 and repository revisions do not invalidate PHP, extension or dependency caches.
 Dependency preparation is handled by `update-dependencies.yml`; a missing approved dependency

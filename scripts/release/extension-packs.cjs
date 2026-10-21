@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { command, digest, key, validateEntry, origins, standaloneSource, supportsPack } = require('../installer/install-extensions.cjs');
+const { command, digest, key, validateEntry, origins, standaloneSource, supportsPack, phpReleaseMatches } = require('../installer/install-extensions.cjs');
 const configuration = require('../../conf/extension-packs.json');
 const platforms = require('../../conf/platforms.json');
 const { buildMatrix, reuseMatrix, testMatrix } = require('./extension-batches.cjs');
@@ -56,9 +56,7 @@ function freshnessReason(entry, repositories, phpManifest) {
     if (entry.name === 'memcached' && JSON.stringify(entry.headers) !== JSON.stringify(['igbinary', 'msgpack'])) {
       return 'missing serializer development headers';
     }
-    const phpVersion = phpManifest.php_src_commit ? entry.php_semver?.split('-')[0] : entry.php_semver;
-    if (phpVersion !== phpManifest.php_semver ||
-        (phpManifest.php_src_commit || '') !== (entry.php_src_commit || '')) return 'PHP release changed';
+    if (!phpReleaseMatches(entry, phpManifest)) return 'PHP release changed';
     if (!entry.source_records?.length) return 'missing recipe records';
     for (const record of entry.source_records) {
       const repository = repositories[record.repository];
@@ -106,8 +104,7 @@ async function validatePublishedPHP(entries, retry = retryPolicy()) {
   for (const version of new Set(entries.map(entry => entry.php_version))) {
     const manifest = await readPHPManifest(version, retry);
     for (const entry of entries.filter(entry => entry.php_version === version)) {
-      const semver = manifest.php_src_commit ? entry.php_semver?.split('-')[0] : entry.php_semver;
-      if (semver !== manifest.php_semver || (entry.php_src_commit || '') !== (manifest.php_src_commit || '') ||
+      if (!phpReleaseMatches(entry, manifest) ||
           !manifest.assets.some(asset => asset.architecture === entry.architecture && asset.build === entry.build &&
             asset.thread_safety === entry.thread_safety)) {
         throw new Error(`Published PHP ${version} no longer matches ${key(entry)}; refusing stale extension publication`);
@@ -152,8 +149,7 @@ async function selectEntries({
       }
       // Resume fills holes in the requested release, without rebuilding already
       // published packs. Normal scheduled runs still apply full freshness checks.
-      if (resumeRuns.length && previous && previous.php_semver?.split('-')[0] === phpManifest.php_semver?.split('-')[0] &&
-          (previous.php_src_commit || '') === (phpManifest.php_src_commit || '')) continue;
+      if (resumeRuns.length && previous && phpReleaseMatches(previous, phpManifest)) continue;
       const reason = force ? 'forced rebuild' :
         previous ? freshnessReason(previous, repositories, phpManifest) : 'not published';
       if (!reason) continue;
@@ -228,7 +224,7 @@ async function publish(directory, { run = transferCommand, retry = retryPolicy()
     return { entry, archive };
   });
   if (new Set(entries.map(({ entry }) => key(entry))).size !== entries.length) throw new Error('Invalid extension publish batch');
-  // Recovery may outlive a PHP release or nightly API update. Reject its stale
+  // Recovery may outlive a PHP series or nightly API update. Reject its stale
   // packs before uploads, even when their earlier compatibility reports passed.
   await validatePublishedPHP(entries.map(({ entry }) => entry), retry);
   const repo = 'shivammathur/php-darwin';

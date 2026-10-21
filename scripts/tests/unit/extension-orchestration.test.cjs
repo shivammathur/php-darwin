@@ -33,6 +33,22 @@ test('base matching requires exact release, source and all variants before insta
     assert.throws(() => validateBase(entry('imagick'), { ...context, ...change }), /does not match/);
   }
 });
+test('stable packs survive patch releases while minor series and variant mismatches remain rejected', () => {
+  const versions = require('../../../conf/extension-packs.json').versions.filter(version => !['8.6', '8.7'].includes(version));
+  for (const php_version of versions) {
+    const base = {...context, php_version, php_semver: `${php_version}.2`, php_src_commit: ''};
+    const pack = entry('imagick', {...base, php_semver: `${php_version}.1`});
+    validateBase(pack, base);
+    for (const change of [{php_semver: '8.7.2'}, {php_semver: ''}, {php_semver: `${php_version}.2-dev`},
+      {php_src_commit: 'c'.repeat(40)}, {architecture: 'x86_64'}, {thread_safety: 'zts'}, {build: 'debug'}]) {
+      assert.throws(() => validateBase(pack, {...base, ...change}), /does not match/);
+    }
+  }
+  for (const php_version of ['8.6', '8.7']) {
+    const base = {...context, php_version, php_semver: `${php_version}.1`};
+    assert.throws(() => validateBase(entry('imagick', {php_version, php_semver: `${php_version}.0-dev`}), base), /does not match/);
+  }
+});
 test('installation overlaps independent packs, waits before enabling and retains successes on a missing pack', async t => {
   const root = directory(t), names = ['imagick', 'mongodb', 'memcached'];
   fs.writeFileSync(path.join(root, 'requested.txt'), names.join('\n'));

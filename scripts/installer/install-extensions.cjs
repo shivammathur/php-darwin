@@ -212,11 +212,25 @@ function requestedPacks(directory) {
   }
   return names;
 }
+function phpReleaseMatches(entry, base) {
+  if (!entry.php_semver || !base.php_semver ||
+      (base.php_version && base.php_version !== entry.php_version)) return false;
+  const [major, minor] = entry.php_version.split('.').map(Number);
+  const [stableMajor, stableMinor] = packageConfig.current_version.split('.').map(Number);
+  if ((major < stableMajor || (major === stableMajor && minor <= stableMinor)) &&
+      !entry.php_src_commit && !base.php_src_commit) {
+    // Stable modules are reusable across patch releases. Installation still
+    // checks the module API, architecture, build mode and actual module load.
+    return [entry.php_semver, base.php_semver].every(version =>
+      /^\d+\.\d+\.\d+$/.test(version) && version.split('.').slice(0, 2).join('.') === entry.php_version);
+  }
+  return entry.php_semver.replace(/-dev$/, '') === base.php_semver.replace(/-dev$/, '') &&
+    (entry.php_src_commit || '') === (base.php_src_commit || '');
+}
 function validateBase(entry, base) {
   validateContext(base);
   if (!['php_version', 'architecture', 'build', 'thread_safety'].every(field => entry[field] === base[field]) ||
-      !entry.php_semver || !base.php_semver || entry.php_semver.replace(/-dev$/, '') !== base.php_semver.replace(/-dev$/, '') ||
-      (entry.php_src_commit || '') !== (base.php_src_commit || '')) {
+      !phpReleaseMatches(entry, base)) {
     throw new Error('Extension cache does not match the installed PHP release/source');
   }
 }
@@ -552,7 +566,7 @@ function install(directory, name, { phpConfig = 'php-config', php = 'php' } = {}
   }
 }
 module.exports = { packs, supportsPack, extensions, extensionIni, standaloneSource, prefetchSource, origins, command, digest, safePath, key, validateContext, validateEntry, phpApi,
-  selectRequested, requestedPacks, validateBase, activate, activateCached, configureModules, enableInstalled, download, prefetch, runtimeContext, inspectTree, packEnvironment, relocateResources, prepareArchive, movePrepared, install };
+  selectRequested, requestedPacks, phpReleaseMatches, validateBase, activate, activateCached, configureModules, enableInstalled, download, prefetch, runtimeContext, inspectTree, packEnvironment, relocateResources, prepareArchive, movePrepared, install };
 if (require.main === module) (async () => {
   const [mode, directory, ...args] = process.argv.slice(2);
   if (mode === 'standalone' && !directory) return process.stdout.write(standaloneSource());

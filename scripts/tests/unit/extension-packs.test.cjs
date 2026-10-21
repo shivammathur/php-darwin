@@ -117,7 +117,7 @@ test('publication-only recovery requires trusted main and every recovery gate in
   source.head_repository.full_name = 'other/php-darwin';
   await assert.rejects(validatePublishRun('123', run), /Untrusted/);
 });
-test('publication requires the current PHP release and exact nightly source for every variant', async t => {
+test('publication allows stable patches but requires the same minor series and exact nightly source', async t => {
   const metadata = { ...entry('imagick'), php_src_commit: 'a'.repeat(40), php_semver: '8.4.26-dev' };
   const current = { schema: 1, php_version: '8.4', php_semver: '8.4.26', php_src_commit: metadata.php_src_commit, assets: [context] };
   let manifest = current, status = 200, reads = 0;
@@ -140,6 +140,8 @@ test('publication requires the current PHP release and exact nightly source for 
   manifest = { ...current, php_src_commit: undefined };
   await validatePublishedPHP([entry('imagick')]);
   manifest.php_semver = '8.4.27';
+  await validatePublishedPHP([entry('imagick')]);
+  manifest.php_semver = '8.5.0';
   await assert.rejects(validatePublishedPHP([entry('imagick')]), /refusing stale extension publication/);
   status = 404;
   await assert.rejects(validatePublishedPHP([metadata]), /HTTP 404/);
@@ -156,7 +158,7 @@ test('publication verifies bytes and current PHP before committing manifests wit
     if (url.endsWith('/php-8.4-manifest.json')) {
       baseReads++;
       return Response.json({ schema: 1, php_version: '8.4', assets: [context],
-        php_semver: failure === 'stale' || (failure === 'php-changed' && baseReads > 1) ? '8.4.27' : '8.4.26' });
+        php_semver: failure === 'stale' || (failure === 'php-changed' && baseReads > 1) ? '8.5.0' : '8.4.26' });
     }
     return new Response('', { status: url.includes('api.github.com') ? 200 : 404 });
   });
@@ -411,6 +413,44 @@ test('shared selection finds missing packs, changed nightly PHP and changed reci
   assert.deepEqual(result.selected.map(key), [key(removed)]);
   fs.writeFileSync(path.join(directory, 'formula.rb'), 'changed');
   assert.equal((await selectEntries(options)).selected.length, 16);
+});
+test('all stable patch upgrades reuse packs; extension releases, force and nightly commits still rebuild', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'stable-extension-reuse-'));
+  t.after(() => fs.rmSync(directory, {recursive: true, force: true}));
+  t.mock.method(console, 'log', () => {});
+  const recipe = 'version "1.0.0"';
+  fs.writeFileSync(path.join(directory, 'formula.rb'), recipe);
+  const versions = require('../../../conf/extension-packs.json').versions;
+  const nightly = version => ['8.6', '8.7'].includes(version);
+  const manifests = new Map(versions.map(php_version => [php_version,
+    ['debug', 'release'].flatMap(build => ['nts', 'zts'].flatMap(thread_safety =>
+      ['arm64', 'x86_64'].map(architecture => {
+        const metadata = {...entry('imagick'), php_version, build, thread_safety, architecture,
+          minimum_macos: require('../../../conf/platforms.json')[architecture].minimum_macos,
+          php_semver: `${php_version}.0${nightly(php_version) ? '-dev' : ''}`,
+          ...(nightly(php_version) ? {php_src_commit: 'a'.repeat(40)} : {}),
+          source_records: [{repository: 'extensions', path: 'formula.rb', sha256: digest(recipe)}]};
+        metadata.file = `${key(metadata)}-${metadata.sha256}.tar.zst`;
+        return metadata;
+      })))]));
+  let nightlyCommit = 'a'.repeat(40);
+  t.mock.method(globalThis, 'fetch', async url => {
+    const [, kind, version] = url.match(/(extensions|php)-(\d+\.\d+)-manifest\.json$/);
+    return Response.json({schema: 1, php_version: version,
+      php_semver: `${version}.${nightly(version) ? '0' : '1'}`,
+      ...(nightly(version) ? {php_src_commit: nightlyCommit} : {}), assets: manifests.get(version)});
+  });
+  const options = {versions, builds: ['debug', 'release'], modes: ['nts', 'zts'], selectedPacks: ['imagick'],
+    repositories: {extensions: directory}, force: false, resumeRuns: []};
+  assert.deepEqual((await selectEntries(options)).selected, []);
+  assert.equal((await selectEntries({...options, force: true})).selected.length, versions.length * 8);
+  nightlyCommit = 'b'.repeat(40);
+  const changed = (await selectEntries(options)).selected;
+  assert.equal(changed.length, 16);
+  assert.ok(changed.every(pack => nightly(pack.php_version)));
+  nightlyCommit = 'a'.repeat(40);
+  fs.writeFileSync(path.join(directory, 'formula.rb'), 'version "1.0.1"');
+  assert.equal((await selectEntries(options)).selected.length, versions.length * 8);
 });
 test('read the module API from the installed PHP headers using supported php-config options', t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-php-api-'));
@@ -670,8 +710,9 @@ test('freshness tracks software inputs and ignores php-darwin builder revisions'
   const repositories = { core: directory };
   assert.ok(unchanged(metadata, repositories, { php_semver: '8.4.26' }));
   assert.equal(freshnessReason(metadata, repositories, { php_semver: '8.4.26' }), null);
-  assert.equal(freshnessReason(metadata, repositories, { php_semver: '8.4.27' }), 'PHP release changed');
-  assert.equal(unchanged(metadata, repositories, { php_semver: '8.4.27' }), false);
+  assert.equal(freshnessReason(metadata, repositories, { php_semver: '8.4.27' }), null);
+  assert.equal(unchanged(metadata, repositories, { php_semver: '8.4.27' }), true);
+  assert.equal(freshnessReason(metadata, repositories, { php_semver: '8.5.0' }), 'PHP release changed');
   const nightly = { ...metadata, php_version: '8.7', php_semver: '8.7.0-dev', php_src_commit: 'a'.repeat(40) };
   nightly.file = `${key(nightly)}-${nightly.sha256}.tar.zst`;
   assert.ok(unchanged(nightly, repositories, { php_semver: '8.7.0', php_src_commit: nightly.php_src_commit }));
