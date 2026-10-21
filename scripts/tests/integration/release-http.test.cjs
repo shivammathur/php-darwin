@@ -3,6 +3,9 @@ const assert = require('node:assert/strict');
 const http = require('node:http');
 const fs = require('node:fs');
 const os = require('node:os');
+const path = require('node:path');
+const { execFile, spawnSync } = require('node:child_process');
+const { promisify } = require('node:util');
 const { Readable } = require('node:stream');
 const { once } = require('node:events');
 const { curlRequest, errorDetails } = require('../../lib/release-http.cjs');
@@ -15,6 +18,33 @@ async function server(t, handle) {
   t.after(() => new Promise(resolve => { instance.closeAllConnections(); instance.close(resolve); }));
   return `http://127.0.0.1:${instance.address().port}`;
 }
+
+test('macOS bootstrap downloads survive a broken Homebrew curl on PATH', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'php-darwin-bootstrap-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(directory, 'curl'), '#!/bin/sh\necho "Library not loaded: libssl.3.dylib" >&2\nexit 126\n', { mode: 0o755 });
+  const env = { ...process.env, PATH: `${directory}${path.delimiter}${process.env.PATH}`,
+    RUNNER_TEMP: directory, GITHUB_ENV: path.join(directory, 'env'), GITHUB_PATH: path.join(directory, 'path') };
+  assert.equal(spawnSync('curl', ['--version'], { env }).status, 126);
+  // Exercise the macOS action on Linux CI too; both provide /usr/bin/curl.
+  const action = path.resolve(__dirname, '../../../.github/actions/node-runtime/main.cjs');
+  const prepared = spawnSync(process.execPath, ['-e',
+    `Object.defineProperty(process, 'platform', {value: 'darwin'}); require(${JSON.stringify(action)});`], { env, encoding: 'utf8' });
+  assert.equal(prepared.status, 0, prepared.stderr);
+  Object.assign(env, Object.fromEntries(fs.readFileSync(env.GITHUB_ENV, 'utf8').trim().split('\n').map(line => {
+    const equal = line.indexOf('='); return [line.slice(0, equal), line.slice(equal + 1)];
+  })));
+  env.PATH = `${fs.readFileSync(env.GITHUB_PATH, 'utf8').trim()}${path.delimiter}${env.PATH}`;
+  const url = await server(t, (_request, response) => response.end('verified download'));
+  const execute = promisify(execFile);
+  for (const curl of ['curl', env.HOMEBREW_CURL_PATH]) {
+    assert.equal((await execute(curl, ['--fail', '--silent', url], { env })).stdout, 'verified download');
+  }
+  const modulePath = path.resolve(__dirname, '../../lib/release-http.cjs');
+  const downloaded = await execute(env.PHP_DARWIN_NODE, ['-e',
+    `require(${JSON.stringify(modulePath)}).curlRequest(${JSON.stringify(url)}).then(r => r.text()).then(s => process.stdout.write(s));`], { env });
+  assert.equal(downloaded.stdout, 'verified download');
+});
 
 test('curl transfers binary uploads and downloads without changing bytes or headers', async t => {
   const bytes = Buffer.from([0, 255, 10, 13, 34, 92, 128]);

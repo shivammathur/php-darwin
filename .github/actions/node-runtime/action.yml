@@ -1,5 +1,5 @@
-name: Preserve the Actions Node runtime
-description: Keep Node helpers independent of Homebrew cleanup
+name: Preserve bootstrap tools
+description: Keep Node helpers and macOS downloads independent of Homebrew cleanup
 runs:
   using: node24
   main: main.cjs
