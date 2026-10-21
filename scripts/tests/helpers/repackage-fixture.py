@@ -30,12 +30,15 @@ with tempfile.TemporaryDirectory() as temporary:
     (tap / 'tool.sh').write_text('#!/bin/sh\nexit 0\n')
     (tap / 'tool.sh').chmod(0o755)
     (tap / 'formula-link').symlink_to('Formula/php.rb')
-    run('git', 'init', '-b', 'main', str(tap))
+    branch = sys.argv[1] if len(sys.argv) > 1 else 'main'
+    run('git', 'init', '-b', branch, str(tap))
     run('git', '-C', str(tap), 'add', '.')
     run('git', '-C', str(tap), '-c', 'commit.gpgsign=false', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-m', 'fixture')
     commit = run('git', '-C', str(tap), 'rev-parse', 'HEAD')
     run('git', '-C', str(tap), 'remote', 'add', 'origin', 'https://github.com/shivammathur/homebrew-php')
     run('git', '-C', str(tap), 'update-ref', 'refs/remotes/origin/main', commit)
+    if branch == 'php-darwin-staged':
+        run('git', '-C', str(tap), 'config', 'php-darwin.private-snapshot', commit)
     source_hash = run('bash', str(ROOT / 'scripts/lib/source-hash.sh'), '8.5', env={**os.environ, 'HOMEBREW_PHP_PATH': str(tap)})
     archive_name = 'php_8.5-nts-release+darwin_arm64.tar.zst'
     metadata = json.loads((ROOT / 'templates/cache-metadata.json').read_text())

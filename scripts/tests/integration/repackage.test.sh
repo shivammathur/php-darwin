@@ -2,3 +2,4 @@
 set -euo pipefail
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 python3 "$script_dir/../helpers/repackage-fixture.py"
+python3 "$script_dir/../helpers/repackage-fixture.py" php-darwin-staged

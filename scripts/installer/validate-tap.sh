@@ -40,18 +40,27 @@ if [ -n "$expected_branch" ]; then
     printf 'Could not resolve the Homebrew tap branch\n' >&2
     exit 1
   }
-  [ "$actual_branch" = "$expected_branch" ] || {
-    printf 'Homebrew tap branch mismatch: %s\n' "$actual_branch" >&2
-    exit 1
-  }
-  remote_commit=$(git -C "$tap_path" rev-parse "refs/remotes/origin/$expected_branch") || {
-    printf 'Could not resolve the Homebrew tap remote branch\n' >&2
-    exit 1
-  }
-  [ "$remote_commit" = "$expected_commit" ] || {
-    printf 'Homebrew tap remote branch does not match its snapshot commit\n' >&2
-    exit 1
-  }
+  # Published security archives retain their private staging branch. Their
+  # recorded commit and formula hash authenticate that immutable snapshot;
+  # it must not be relabelled as the public branch during installer refreshes.
+  private_snapshot=$(git -C "$tap_path" config --get php-darwin.private-snapshot 2>/dev/null) || private_snapshot=
+  if [ "$actual_branch" = php-darwin-staged ] && [ -n "$expected_commit" ] && \
+    [ -n "$expected_hash" ] && [ "$private_snapshot" = "$expected_commit" ]; then
+    :
+  else
+    [ "$actual_branch" = "$expected_branch" ] || {
+      printf 'Homebrew tap branch mismatch: %s\n' "$actual_branch" >&2
+      exit 1
+    }
+    remote_commit=$(git -C "$tap_path" rev-parse "refs/remotes/origin/$expected_branch") || {
+      printf 'Could not resolve the Homebrew tap remote branch\n' >&2
+      exit 1
+    }
+    [ "$remote_commit" = "$expected_commit" ] || {
+      printf 'Homebrew tap remote branch does not match its snapshot commit\n' >&2
+      exit 1
+    }
+  fi
 fi
 if [ -n "$expected_hash" ]; then
   actual_hash=$(HOMEBREW_PHP_PATH="$tap_path" bash "$script_dir/../lib/source-hash.sh" "$version") || {

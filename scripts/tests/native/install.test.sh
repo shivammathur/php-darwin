@@ -351,11 +351,16 @@ validate_homebrew() {
   [ "$(git -C "$tap_path" remote get-url origin)" = "$tap_repository" ] || \
     php_darwin_die "the cached $tap snapshot has the wrong origin"
   tap_branch=$(php_darwin_package_config tap_branch)
-  [ "$(git -C "$tap_path" symbolic-ref --short HEAD)" = "$tap_branch" ] || \
-    php_darwin_die "the cached $tap snapshot is not on $tap_branch"
-  [ "$(git -C "$tap_path" config "branch.$tap_branch.remote")" = origin ] && \
-    [ "$(git -C "$tap_path" config "branch.$tap_branch.merge")" = "refs/heads/$tap_branch" ] || \
-    php_darwin_die "the cached $tap snapshot is not configured for updates"
+  bash "$script_dir/../../installer/validate-tap.sh" "$tap_path" "$version" \
+    "$(jq -er .source_hash "$cache_metadata")" "$tap_repository" "$source_commit" "$tap_branch" >/dev/null || \
+    php_darwin_die "the cached $tap snapshot does not match its published provenance"
+  # Private security snapshots deliberately remain pinned to their staged
+  # branch; public snapshots must retain their normal update configuration.
+  if [ "$(git -C "$tap_path" symbolic-ref --short HEAD)" != php-darwin-staged ]; then
+    [ "$(git -C "$tap_path" config "branch.$tap_branch.remote")" = origin ] && \
+      [ "$(git -C "$tap_path" config "branch.$tap_branch.merge")" = "refs/heads/$tap_branch" ] || \
+      php_darwin_die "the cached $tap snapshot is not configured for updates"
+  fi
   tap_trust_before_value=$(cat "$tap_trust_before") || \
     php_darwin_die "could not read the initial $tap trust state"
   case "$tap_trust_before_value" in true|false) ;; *)

@@ -51,6 +51,32 @@ bash "$script_dir/../../build/create-tap-snapshot.sh" "$source_tap" "$source_com
 [ "$(bash "$script_dir/../../installer/tap-action.sh" "$cached_tap" "$cached_tap" 8.5 \
   "$source_hash" "$repository" "$source_commit" "$branch")" = keep ] || \
   php_darwin_die 'an exact installed tap snapshot was not kept'
+private_tap="$fixture_dir/private-cache"
+cp -R "$cached_tap" "$private_tap" || exit 1
+git -C "$private_tap" checkout -q -b php-darwin-staged || exit 1
+git -C "$private_tap" update-ref -d "refs/remotes/origin/$branch" || exit 1
+for marker in absent "$(printf '0%.0s' {1..40})"; do
+  if [ "$marker" != absent ]; then git -C "$private_tap" config php-darwin.private-snapshot "$marker" || exit 1; fi
+  if bash "$script_dir/../../installer/validate-tap.sh" "$private_tap" 8.5 "$source_hash" \
+    "$repository" "$source_commit" "$branch" >/dev/null 2> "$validation_log"; then
+    php_darwin_die 'accepted an unauthenticated private tap snapshot'
+  fi
+done
+git -C "$private_tap" config php-darwin.private-snapshot "$source_commit" || exit 1
+[ "$(bash "$script_dir/../../installer/validate-tap.sh" "$private_tap" 8.5 "$source_hash" \
+  "$repository" "$source_commit" "$branch")" = "$source_hash" ] || \
+  php_darwin_die 'rejected the authenticated private security snapshot'
+for rejected_hash in '' "$(printf '0%.0s' {1..64})"; do
+  if bash "$script_dir/../../installer/validate-tap.sh" "$private_tap" 8.5 "$rejected_hash" \
+    "$repository" "$source_commit" "$branch" >/dev/null 2> "$validation_log"; then
+    php_darwin_die 'accepted a private snapshot without its matching source hash'
+  fi
+done
+printf 'changed\n' >> "$private_tap/Formula/php.rb" || exit 1
+if bash "$script_dir/../../installer/validate-tap.sh" "$private_tap" 8.5 "$source_hash" \
+  "$repository" "$source_commit" "$branch" >/dev/null 2> "$validation_log"; then
+  php_darwin_die 'accepted changed private snapshot formulae'
+fi
 printf 'finder metadata\n' > "$cached_tap/.DS_Store" || \
   php_darwin_die 'could not create the unrelated tap fixture'
 [ "$(bash "$script_dir/../../installer/tap-action.sh" "$cached_tap" "$cached_tap" 8.5 \
