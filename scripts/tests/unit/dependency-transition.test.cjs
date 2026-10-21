@@ -109,6 +109,8 @@ test('optional extensions defer for queued PHP jobs, failed validation and stale
   const manifest = {};
   assert.equal(checker({runs: [{...success, status: 'queued'}], run: () => assert.fail('No freshness probe while running')})('8.4', manifest), false);
   assert.equal(checker({runs: [{...success, conclusion: 'failure'}], run: () => assert.fail('No probe after failure')})('8.4', manifest), false);
+  assert.equal(checker({runs: [success, {...success, id: 2, conclusion: 'cancelled'}],
+    run: (_args, env) => fs.writeFileSync(env.GITHUB_OUTPUT, 'build-required=false\n')})('8.4', manifest), true);
   for (const stale of [true, false]) assert.equal(checker({runs: [success], run: (_args, env) => fs.writeFileSync(env.GITHUB_OUTPUT, `build-required=${stale}\n`)})('8.4', manifest), !stale);
 });
 

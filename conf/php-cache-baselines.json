@@ -1,0 +1,486 @@
+{
+  "schema": 1,
+  "tap_commit": "979acc954debcb201f8a2a9792f0c7a472dff879",
+  "releases": {
+    "5.6": {
+      "php_semver": "5.6.40",
+      "homebrew_php_commit": "fdf933facc27e39dddac627c792b3975d26f3fd1",
+      "source_hash": "a392cf8d3adafefb5ee2ebdbbc7604623777f012486bffd1f713889e7125d855",
+      "tap_only_updates": true,
+      "records": [
+        {
+          "path": "Formula/php@5.6.rb",
+          "published_sha256": "4fab564339af94183a5774ab89d94971a3ea318b62edf28d8396e4029e735068",
+          "sha256": "fb9763fd59100393feee663e9f0c95a597fa1c8d0f5d713cbd08fba0d9d15ea1",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "87eb18d302f59db124fde4473010b77905bde4ae116e1dfdee659041d165f52a"
+        },
+        {
+          "path": "Formula/php@5.6-zts.rb",
+          "published_sha256": "c925e1edb50f0f1be33bbfd044409d10c9560c61ebfcb2223b4d952983a1ad56",
+          "sha256": "91a7ca95f6ff5b08551afea199c0ff9bd01e5ac6076145c850a65365f5ac5b05",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "f7a0e61bfb695c453f4ed028e1a4a171302758825735eb0abceb7feee6c97065"
+        },
+        {
+          "path": "Formula/php@5.6-debug.rb",
+          "published_sha256": "19831409c77fd3601518ccc9186647756f6d5f145c1a50b7cfa37590e1c1221f",
+          "sha256": "4d41804085e916a03ac26089e32e17b014e5a9c20b384d26d7ba5375708151cd",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "c0505568f2fde0a3bdb037d628307c4a4f09fe06fa6a03edc3de69f9b62585e5"
+        },
+        {
+          "path": "Formula/php@5.6-debug-zts.rb",
+          "published_sha256": "306e31f4119fcd1dda389ef1c69df69a3634534cd3970b1bd55847e200a377e6",
+          "sha256": "00f57ea3158c0e9e509afc587d6f32d785651e90c97d834951fc420b80f18b3d",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "15c09262c88414e7c5fa8274217e9ca6c418ded706ff8a8a52af9517f92c85f0"
+        }
+      ]
+    },
+    "7.0": {
+      "php_semver": "7.0.33",
+      "homebrew_php_commit": "a7184aa8e29f3a803439f769cc0940fbbfadfc5d",
+      "source_hash": "b2f79938d25cdde4b10ab39bdd2d380a53c4ffa85e9aacec7da03ed97a12a0d3",
+      "tap_only_updates": true,
+      "records": [
+        {
+          "path": "Formula/php@7.0.rb",
+          "published_sha256": "0a4ffcf70f2eb49c7ec184f387b06b08bdaef3d6b20449625590062a8e3c172d",
+          "sha256": "dd8fcb4ba8369eecaf1dc711564cde3e23978db3ead0db1e386eedcf7f88da25",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "e80145bea631a59c5a8aedf0e40123477259077151cc08828e8325863f3266e9"
+        },
+        {
+          "path": "Formula/php@7.0-zts.rb",
+          "published_sha256": "6492f2b80f7cb4e22f0774e55278d8b1d8cf40713995c2b5942b583978385808",
+          "sha256": "5d70f9ee74b69d28a4f067f2739ebf2a9bf602df0f19a40594a7fdf08ec31c9c",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "028ae0f3f4c5491a245097d0ad8b58aed0b7ea8cf0a2f10d87b1ee2a7cd5cd08"
+        },
+        {
+          "path": "Formula/php@7.0-debug.rb",
+          "published_sha256": "a0dd4ba1b41da75aae0d81238124da1499979faf610005172428663483db8457",
+          "sha256": "ade9ea5a3b952b667d32c66be9d887eced9944fb4900533fe8cbe51ec83db055",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "e638256bc47ea1c81e4d5e390224b06735c3b0784501b9d4555e91479d159bd5"
+        },
+        {
+          "path": "Formula/php@7.0-debug-zts.rb",
+          "published_sha256": "fffcdce81cf7bfeff494fe0ddbf0887fc678cfa524077c36e3e124a2e70de623",
+          "sha256": "ed53a1d2673d6934b875152117e0989be57b29036cc094a6d9a69ba118b32c77",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "23a047d29608129ef4df66da1e4d93b238b2c4f9120b126a5dd6bb497f55a2e3"
+        }
+      ]
+    },
+    "7.1": {
+      "php_semver": "7.1.33",
+      "homebrew_php_commit": "0db64425a4472e8c31e3e4732489f5553e5f5357",
+      "source_hash": "cc89db6b4be52c86048dca5a7a484aa17f3a6228dbb41e8ccb4c7c2053a4e57b",
+      "tap_only_updates": true,
+      "records": [
+        {
+          "path": "Formula/php@7.1.rb",
+          "published_sha256": "d6ec880180a39b58aee3b998c63888f23ed39c30016c352bf1607c744b546f7a",
+          "sha256": "409d59c375130cde43f2b51f5e057a01f8d0fd7211c82475215a6564eaacabbd",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "568dbcb9f387162c614e580df659a30d1f98e2feb388c1b2ec5e41ff83341b8c"
+        },
+        {
+          "path": "Formula/php@7.1-zts.rb",
+          "published_sha256": "6ab782ba54be9f7e9d10fc93cfc2a6fde61a4a882ec467c77ed9efaaab7971af",
+          "sha256": "d7a553b1de455d5df9af8eed3a2eb261ec07ab7b1e18479d27928ab4bf89ece4",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "fd80a67d0f7060a378d012b69f2c206cb4005f6d8123099473cbec63419bdc30"
+        },
+        {
+          "path": "Formula/php@7.1-debug.rb",
+          "published_sha256": "72c4125186fa6baacd036e80b16e264d048602bf49e7d73a7557cfb095cb4203",
+          "sha256": "e75784bdad11a86c097b179a62fb3318d616f5d936d977ca023d7d006b9b28ce",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "e03d7f6e410657485c27871d464d2168aff942dc2767415f523a828a23368557"
+        },
+        {
+          "path": "Formula/php@7.1-debug-zts.rb",
+          "published_sha256": "179731839b694a1dadee80e44f794693324c4138c571f21c1e75c1001bc4bf59",
+          "sha256": "4c974efca3a5b241995096e62ad0846b0425b55da17d0ab8e255d30b11be99b5",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "fff5b7162f5485e7caa1ac9de703f78bdda07c2994a4862abc91bc71591ae5ba"
+        }
+      ]
+    },
+    "7.2": {
+      "php_semver": "7.2.34",
+      "homebrew_php_commit": "3f9c7857cc6774dd80ff4e2dcec5a1219fbac92c",
+      "source_hash": "0b8c44eb008f08933f98e854636a7454fc7afd9591e08f8e86a01e8f58e01c83",
+      "tap_only_updates": true,
+      "records": [
+        {
+          "path": "Formula/php@7.2.rb",
+          "published_sha256": "ea9d0515279f8f38077c14ffbf819cbd900a4ba3e3a5b68f0efa1112d6436272",
+          "sha256": "9b6f070993c470b67a78be219792906d7a6771ebbbb64ecc4deb564c6176c300",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "ebb874f192cc2c6aa6e54b06b2536cb7d1fc8b3697d39410a041d0b59be891a7"
+        },
+        {
+          "path": "Formula/php@7.2-zts.rb",
+          "published_sha256": "a2312d566bbe7a680453f6c95c54ed1d12112e5de1ece1cba5e86cadf136f55b",
+          "sha256": "52838dfc59d7a7b64835d194318bef5532a4c281268a59f88477184555f80d35",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "d093d5de4d631bf6045ca40a8eff3e6d9333874bac478f8c16d2a35caabea3b5"
+        },
+        {
+          "path": "Formula/php@7.2-debug.rb",
+          "published_sha256": "7774e8374a0279243f813e4ba56d1b51b8d40b391e5f9176fc7337884ff6a062",
+          "sha256": "5b165514e7466fc1dc8970496cea1dd79ea8f4da12b1be5ece07678990ce3000",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "7c33deccd7034163c171f406269b7e2f05c44d1e872b2b7cb99df68f65caa0a0"
+        },
+        {
+          "path": "Formula/php@7.2-debug-zts.rb",
+          "published_sha256": "6a42e1a86230044fc88cb7e829d912297cc80cbfa9c287be3e7fa294405621b7",
+          "sha256": "de8259d936de314b844954b2926b7e2f8d4721b3be6176e4bd8b2ce1e9e2c1c7",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "8de80269ad432c1942751c8997d87564d8fa37f9c89a7e1fd3a4f412a36697bf"
+        }
+      ]
+    },
+    "7.3": {
+      "php_semver": "7.3.33",
+      "homebrew_php_commit": "9a29bc534eca27d58f8a15598e9c4013ecab754d",
+      "source_hash": "80de587687f792dcdfaef2631c0d6d0a0d9d837645859064e3db55fad1191424",
+      "tap_only_updates": true,
+      "records": [
+        {
+          "path": "Formula/php@7.3.rb",
+          "published_sha256": "a64e67b1f8a6100f7dc379991098b89d1a199eb4668be97f85b5ea21efdc0eb7",
+          "sha256": "c22899cbc65d8ab25436a1af591c290dfeb69b970cd18d7dc856b2829ad9c69e",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "69b4190c5df5a22b53b7daccf1f7979227ad2ec108375fb6ab573910100eb562"
+        },
+        {
+          "path": "Formula/php@7.3-zts.rb",
+          "published_sha256": "a65c41b8af0b0ef6fda6be8e2b2e5e8677c3ca1fbdddf867e784b77f6844bd77",
+          "sha256": "02b1cd3e8a605e448a5969190c283e40e8d4a0c40e5e9a03b22efeeb10c425f0",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "8b46992be4e1351f321ce13e0d632f03143ff6a2c4559a16e381a30a46c0c2a0"
+        },
+        {
+          "path": "Formula/php@7.3-debug.rb",
+          "published_sha256": "fbef544992670ae3e746c4802a681403b1e32545d4e3190a8e2d6e33f0c57682",
+          "sha256": "c7d7de0a5a69cae36c304df4067b02f2daaed43a545fc98f9ba5450bfdeff7a5",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "93960760a627e1fdd5ab5239dd185f29dcf18ee17377655782dd64dbee7c6c35"
+        },
+        {
+          "path": "Formula/php@7.3-debug-zts.rb",
+          "published_sha256": "5bae9c7235f66c677dc8790476c68a1d032f3add9c65a87c50fdf877bc535356",
+          "sha256": "bb967b1c417c771aa16f54d1eb874b4b316733b535d77d866e35f2dfee8a8862",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "1efcf932ae39b2735f710141af730a796810656a375e10c26046fccbb96bcdfc"
+        }
+      ]
+    },
+    "7.4": {
+      "php_semver": "7.4.33",
+      "homebrew_php_commit": "072905d674669a1fc670c728b55a239815b06b54",
+      "source_hash": "336adff3e5a61ad509a4d0771ea885fc644a7b811c771fa1936491024c8ead03",
+      "tap_only_updates": true,
+      "records": [
+        {
+          "path": "Formula/php@7.4.rb",
+          "published_sha256": "998aa11db0d4ea378749f6db50487009df1c2da069121c700eff758d319c0555",
+          "sha256": "427676c74fecb4b89bb0cf5e70349df592556b4a8c3af04a750f80c7fe64d537",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "cbe5caeadcba2f90bb62a08ab7e17140258dedc335731731d9be1aedd1657e8b"
+        },
+        {
+          "path": "Formula/php@7.4-zts.rb",
+          "published_sha256": "1b6c44307dfc21d1f685f0c1e72e75b039e72dc90a0bb1cabcf18b07ca5ce1c9",
+          "sha256": "015891e45d4c07e49fc8134c2fd8937803aa8b57d564335659d6db3e374d6a7c",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "709464e3c655dcef62950f8ddb4397493830b21b0ffc8a84e9a1da42858656cf"
+        },
+        {
+          "path": "Formula/php@7.4-debug.rb",
+          "published_sha256": "5c3d2cc6e04dfef79d2e8ea54d9941b577b8033e219d26a25577e01c63ef4e68",
+          "sha256": "5cd1bbaabc738f44fdb8ac2c020a9fb55f4139941026fd6a9c14d697a462faec",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "62009effa323f3da7fdcb0a190c6b79f1b2a907fbd98471ded53b47c2d3c7e27"
+        },
+        {
+          "path": "Formula/php@7.4-debug-zts.rb",
+          "published_sha256": "65fea2a02110b4be7c879d83cc59c467863e1e1311ed9b7dc0d795cee7e6962c",
+          "sha256": "8a5fa3f9a60f8a2b7428e07eb3591cf0c47be6283e3219275b27f610d11b84b2",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "13eb0ac56aba2b7b137096cec9ed04a6cdf68f894d0803e52e993e66b0f74613"
+        }
+      ]
+    },
+    "8.0": {
+      "php_semver": "8.0.30",
+      "homebrew_php_commit": "1cfbf7fa7b5117be4b83dff84dbe12a18a7fd6cf",
+      "source_hash": "0496b5492a7ca9ea18e127d5c462822ccb525271b6330e51314e817cb9713002",
+      "tap_only_updates": true,
+      "records": [
+        {
+          "path": "Formula/php@8.0.rb",
+          "published_sha256": "4755a0c6d3ac4c9053bc7d5fd4033b31ddfd9bd4bc3fc1daa019354d4256a099",
+          "sha256": "0f8dab88fcbeef4e8e25a79e1a370f8340f3476d070a2b7d4cd1ff1c6b679658",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "767711b25e13390c43432b482d212afed0975d3e739470e0209791d0a09b8a47"
+        },
+        {
+          "path": "Formula/php@8.0-zts.rb",
+          "published_sha256": "53fddc27250d438c0bfb639e3fd1f94b2a6e5859fa0af4fd030f6ce2d26b70ff",
+          "sha256": "1cce5e45320699dbdb5285fc3317772caeda738015dcd61c5e0c245d21cb4c53",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "1680bfdfbf68747b60c6e420c80c3f5d9cd4e8d22fab61df4ad230e886a83cf5"
+        },
+        {
+          "path": "Formula/php@8.0-debug.rb",
+          "published_sha256": "c3341ae89792ad48bc7c1c6c389d16449f258e31c0630f94d22ca2f1f9f84cc1",
+          "sha256": "afc253b0b0d829dccf921c8b27216907aa11661462440f87f36b5b475254fedf",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "0e48f05fc90a135a3616988ef42ae6c9b572ff28cdaa06713a6a8284747a4e24"
+        },
+        {
+          "path": "Formula/php@8.0-debug-zts.rb",
+          "published_sha256": "0f87927a1ca9356ac1505e8baceb07df5ae8f798245a3d7709ed9b3b3d09b1b8",
+          "sha256": "e6ac57f693291be44106cf750a3c2f1f73217276ee40164e810ce3e772195d45",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "2a1c89834e8df5432d6d8d50549aa54dd5055d5a755a6c6b11b7d248721faf58"
+        }
+      ]
+    },
+    "8.1": {
+      "php_semver": "8.1.34",
+      "homebrew_php_commit": "ad8bcc8658ade521c0d9d252159fd469639135ab",
+      "source_hash": "fc56c4f85e8c7b06655ca02e40ffb5e473d94b68ffa6d8a2ea1304eafa68305b",
+      "tap_only_updates": true,
+      "records": [
+        {
+          "path": "Formula/php@8.1.rb",
+          "published_sha256": "f0ba67088f05fe093022a9f0476936b2de52decd1b39538a7bef93e3ad79d225",
+          "sha256": "8b3595c286bdd581c445119a4409537a3a1b1fdd6737947b066dba96da2847ac",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "df086f7e57e597c0228761ca95bd318ccb02f8d1d877f0ff5ea45c6a63fadf9e"
+        },
+        {
+          "path": "Formula/php@8.1-zts.rb",
+          "published_sha256": "948448c08ad776b11f13a9b5e753c5e3739381e1523954895b4a180eb15f828c",
+          "sha256": "bc84cc6913d3f593eff40a57a5d2832d2470ece58575be98460388139d518a7e",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "a76ab542bcd3e627f12eca4816e2ab0125568acea1ab7fe9468c71936cd24d70"
+        },
+        {
+          "path": "Formula/php@8.1-debug.rb",
+          "published_sha256": "f59230ca0fe3fca78854c29d083632b10ae96a979ce37fb544d13b3dfc34fbb6",
+          "sha256": "aa64d2032a2de8215e6815bd86e30491ca5d0248cca029a309e21419da5c8ca7",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "b85aa20c6994f770649fca40b677566a77a4442359129ebd0bd819d206194bad"
+        },
+        {
+          "path": "Formula/php@8.1-debug-zts.rb",
+          "published_sha256": "8669b67071e4bd6c748e37aad812f345f06df1a4c698a2435195cbe791b38920",
+          "sha256": "7d2997eedbbf7cafc473110da828930c4534f7b371d59d4076203f8e0c80bb49",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "8ff20bb1c5e074c6fddff2ff8d6c4202eb96e2229020b5ab4fac02e4eec0a91a"
+        }
+      ]
+    },
+    "8.2": {
+      "php_semver": "8.2.35",
+      "homebrew_php_commit": "8891168f53c33a1cc29b3ec03414a1abf0adf78e",
+      "source_hash": "c2c8b97a3eff6e8088b30bca374adc0d4d7e24fd9de294e5bf1a38917ca4738b",
+      "tap_only_updates": false,
+      "records": [
+        {
+          "path": "Formula/php@8.2.rb",
+          "published_sha256": "686713be796c094be6243c8292e702795d512bbdc2713146704f180647076074",
+          "sha256": "fff20db781ab2146ee2eb3d61440ecb83cf94de0b81815345dce283b5345189b",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "a26634a9e2c2891cfa9ec00eccc4092d4e9eaa1fd6148c9f006ec5fd29bd3fc0"
+        },
+        {
+          "path": "Formula/php@8.2-zts.rb",
+          "published_sha256": "8b677466e2ed2421fcbd021422c228a77e1ad7fa0934ed653435fa302ee44ccf",
+          "sha256": "6d938979f0942618a597b444bb9137fb68a0d84d7a26af4a4db0be6532e47794",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "c5981edc16ee171cfb747cc1437f1a1d5b7f833a59daa9f22f7516a92b48bd34"
+        },
+        {
+          "path": "Formula/php@8.2-debug.rb",
+          "published_sha256": "b6ce816cb4ee9ae9bead178dd4156a2370ef1ce5a598b51bbdc369e6e5bcab63",
+          "sha256": "5ad1b5460981a9b41a64f2d18940789dee911281de10d7ca7de1df00de9e7ed2",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "303fe7fa901d38ee1b05159bcd4d8f83e54f431c3274a3d441d687fe58181b44"
+        },
+        {
+          "path": "Formula/php@8.2-debug-zts.rb",
+          "published_sha256": "71d6526dd12705386cb9ae0f0896d10d24af6562a8b3d92d626c012d5761ace3",
+          "sha256": "da2246e589df81881112f5b2fe92536501750d462ce8c556000e373c9cd0335e",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "c41ca1cccf65625e93c4607a111bec0d0704d447b7d7c091b5036b44c9754072"
+        }
+      ]
+    },
+    "8.3": {
+      "php_semver": "8.3.36",
+      "homebrew_php_commit": "c3bc18df9abe00baa8747a82cf4d7ddf67e1735a",
+      "source_hash": "cf75754609b3a6ce95db182a5394eba5bc0ed41ace2b86443416ac0023b2510b",
+      "tap_only_updates": false,
+      "records": [
+        {
+          "path": "Formula/php@8.3.rb",
+          "published_sha256": "2838974ccce21f404eaeb40d68aae89cf596e7a62bccdb40915b510963248fbb",
+          "sha256": "0e88863f39e126cd5e06da39859da157d6f52418625db44b71c4afb2f351d60e",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "55b13b85dfac38080aa0898a5a0a8c0e75d9eac52abf09c731d410da758d7cab"
+        },
+        {
+          "path": "Formula/php@8.3-zts.rb",
+          "published_sha256": "e5d92a0b4e3c0d805f6b0ca6ebc92bf560486513d3805a5b75a8ce9977da488f",
+          "sha256": "4396ceacbc7cc975bee1de1c688942b18833a66b75bedbde3b6adb5a08d336b5",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "184ae897a6f91645ce58fe920eed111a47806f512df2b530972cec2cfdd0ac05"
+        },
+        {
+          "path": "Formula/php@8.3-debug.rb",
+          "published_sha256": "4c4fe7d42eb5bc9f0d21b675bae109fa36b6f2aac8dacb899b867a47fe9c1c28",
+          "sha256": "aa49fbf6326792ccef2b2cb98f8055f3b6e00f60b7e8d57780bf11f6926110e1",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "f449689c59d7696def4140ef292a1b5129ea6d726db46fbdb1bbe30c0130606b"
+        },
+        {
+          "path": "Formula/php@8.3-debug-zts.rb",
+          "published_sha256": "2390e39046ddf2dea81a34392efdc8c9227cec3a004957aaf55ddf178389e779",
+          "sha256": "712755ce32caf2322a3087a81e23dc2addd5512bfda1785b3f8ed94edaafc9c2",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "b266cde82c4ef58f7351aefe62564124001f1e251248830758eeea18171fa704"
+        }
+      ]
+    },
+    "8.4": {
+      "php_semver": "8.4.27",
+      "homebrew_php_commit": "9126869c72aed48aa6aa2d6371c9340074ec2a40",
+      "source_hash": "28d975b4c93ae466a2f12a02867060ab07af34d5189f588d9956897d3c4d3abe",
+      "tap_only_updates": false,
+      "records": [
+        {
+          "path": "Formula/php@8.4.rb",
+          "published_sha256": "41226e74cb669c601254d9576df31b6f7f225752b3bdbb5d40e2bccc138eb7e4",
+          "sha256": "7acc0a6f8a400451eccd03a33a608e3a97327a1c546160d59285cea4b9eba0fc",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "0a54c6b11c36d47065e37fa719d63f69988785992aeada3e27eda4d32657fd36"
+        },
+        {
+          "path": "Formula/php@8.4-zts.rb",
+          "published_sha256": "13b8e7ed190f19b15b7def2e3e4d07711e35cce556f614d33b304db4ade212b1",
+          "sha256": "6627add4be0c9115cd3323b00f49f74c27827c9ec4cc5c06473df89a080edfec",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "3be54edb9fce937e6b4ec2a3352311bfd0f3dd98c675430c342bfba424a38575"
+        },
+        {
+          "path": "Formula/php@8.4-debug.rb",
+          "published_sha256": "013da5cac74386dba1da856b4b3d1d7932da01ac0f882810e085bae8cd2b59a7",
+          "sha256": "1992e777154631e44a71ced94e53e3b49c77eecc969528b6bc51bad3600a99b8",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "ca113a0f11abff95c1026709078ef70aa438e0c3a1d088c2e8817fd657f7dabc"
+        },
+        {
+          "path": "Formula/php@8.4-debug-zts.rb",
+          "published_sha256": "d8d5c1d372b9584ec311be091c1afe12127adb72d3164fb97fe64fa693c62b2e",
+          "sha256": "a9c9823a02bcff3bf118f56879da81b562c7d05a551fe84bbb43dbbc799e84ed",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "e26059c9a147f193b96cf8b437eaca0668e266f514be0aa0c007ec5ee7d78d13"
+        }
+      ]
+    },
+    "8.5": {
+      "php_semver": "8.5.12",
+      "homebrew_php_commit": "5019d22991d1d00b5bdfb08758411338847a8b76",
+      "source_hash": "79a7467917d8c43caea66eba1fef16e4abe5431000f25b1db4588eb0735484c5",
+      "tap_only_updates": false,
+      "records": [
+        {
+          "path": "Formula/php.rb",
+          "published_sha256": "07146a2ed92978d741d795decea1e06a780494abe978d27bf6d7995613b92ce4",
+          "sha256": "06251202ce83f6bd2ca8fa2960f9014f181e53a3dcb3ee7563d8547cd4f80e6d",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "19cb6e92f3fdf2e2afcb85e45c2e932f2b305c3aa74d6b3199079a5e53bdb079"
+        },
+        {
+          "path": "Formula/php-zts.rb",
+          "published_sha256": "8ffe4ffdc54bb1ee98fa4d852ca8ae8d8816f91af6009e005e397180940b52e3",
+          "sha256": "c053fcdd839bc9f70817d078e23f77006c38d1b681d40028c77f1c59ffca4045",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "8fdc164e47cc233e328616203c7a238adad12dfb31f0fc6f441e678617c65f12"
+        },
+        {
+          "path": "Formula/php-debug.rb",
+          "published_sha256": "a7415bc91056c7f6dfe8952e4d48b93bc2a92bfacfa9f50c513450dfef90e09e",
+          "sha256": "0827b2c87927665192cb08b5242feef686a51353659279b7472dc810a8c0a540",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "35178423d3281704efddc0eb9312877cf703777d5f07dc288523f9e2bb95e8da"
+        },
+        {
+          "path": "Formula/php-debug-zts.rb",
+          "published_sha256": "37d1233ca46cd38f7d5b9325cd0e13250a7ad826fae7841fbfb8db935af7ce92",
+          "sha256": "6f2579c9fde801357d30db9c90f6f73879cd8d231a9de144cf6c212a8bd090d9",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "9f44c76969ab8611942d918441b4252c69c42aec20524514f869ff269753ed4f"
+        }
+      ]
+    }
+  }
+}

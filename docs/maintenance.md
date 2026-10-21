@@ -77,6 +77,18 @@ workflows compare relevant formula, runtime dependency, packaging and php-src
 inputs before dispatching work. Package metadata records normalized recipe
 inputs; new bottles for unrelated platforms do not invalidate existing caches.
 An older manifest without dependency provenance requires a controlled refresh.
+
+`conf/php-cache-baselines.json` acknowledges the October 2026 private security
+publications against the current public tap recipes. Each entry is bound to the
+published PHP version, original recipe commit, aggregate source hash, and individual
+recipe hashes. It changes freshness comparisons only; archive contents and published
+build provenance remain unchanged. A different publication no longer matches the
+entry, and future changes to the accepted tap recipes invalidate freshness normally.
+The PHP 5.6–8.1 entries use `tap_only_updates`: retain the complete published PHP
+cache until its PHP tap recipes change, even if dependencies or cached coverage
+extensions change. PHP 8.2–8.5 continue to check dependencies and coverage extensions.
+An unacknowledged private recipe mismatch must resolve its original Git baseline
+before it can trigger a replacement build.
 Compression settings and installer-only changes do not invalidate PHP packages.
 
 The nightly freshness gate defers an unpinned run when the four PHP formulae

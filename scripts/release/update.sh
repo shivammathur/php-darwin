@@ -58,6 +58,11 @@ for version in "${version_values[@]}"; do
           php_darwin_die "could not read the PHP $version published cached extension source hash"
         php_current=$(bash "$script_dir/../build/build-inputs-current.sh" "$manifest" "$version" php "$current" "$published") || \
           php_darwin_die "could not compare PHP $version build inputs"
+        tap_only=$("${PHP_DARWIN_NODE:-node}" "$script_dir/../build/package-inputs.cjs" tap-only "$manifest") || exit 1
+        if [ "$php_current" = true ] && [ "$tap_only" = true ] && php_darwin_release_manifest_has_current_platforms "$manifest"; then
+          printf 'Retaining published PHP %s: the accepted homebrew-php recipes have not changed\n' "$version"
+          continue
+        fi
         extensions_current=$(bash "$script_dir/../build/build-inputs-current.sh" "$manifest" "$version" extensions \
           "$current_extensions" "$published_extensions") || \
           php_darwin_die "could not compare PHP $version extension build inputs"

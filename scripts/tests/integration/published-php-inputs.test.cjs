@@ -38,6 +38,7 @@ test('all PHP versions compare published recipes without fetching private stagin
     assert.equal(run('build/build-inputs-current.sh', [manifest, version, 'php', current, published]), 'true', version);
     fs.appendFileSync(changed, '  depends_on "new-library"\n');
     current = run('lib/source-hash.sh', [version]);
-    assert.equal(run('build/build-inputs-current.sh', [manifest, version, 'php', current, published]), 'false', version);
+    assert.throws(() => run('build/build-inputs-current.sh', [manifest, version, 'php', current, published]),
+      /could not fetch the published php source commit/, 'an unknown private publication must not trigger replacement');
   }
 });

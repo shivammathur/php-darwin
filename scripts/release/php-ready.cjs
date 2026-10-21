@@ -18,10 +18,12 @@ function checker({runs = [...activeRuns('cache-stable.yml'), ...activeRuns('cach
   const pending = pendingVersions(runs);
   return (version, manifest) => {
     if (pending.has(version)) return false;
-    const latest = runs.filter(item => item.display_title === `Cache stable PHP ${version}` || item.display_title === `Cache nightly PHP ${version}`)
+    const latest = runs.filter(item => item.conclusion !== 'cancelled' &&
+      (item.display_title === `Cache stable PHP ${version}` || item.display_title === `Cache nightly PHP ${version}`))
       .sort((a, b) => b.id - a.id)[0];
     // Legacy PHP can outlive Actions history. Current published inputs remain
     // usable when no recent run exists; a known failed run still blocks updates.
+    // Cancelled attempts did not replace the publication and do not invalidate it.
     if (latest && latest.conclusion !== 'success') return false;
     const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'php-darwin-ready-'));
     try {

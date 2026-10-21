@@ -30,10 +30,13 @@ case "$kind" in
     # Published packages can contain recipes from private staging commits.
     # Complete manifest records can compare those inputs without fetching Git.
     recorded=$("${PHP_DARWIN_NODE:-node}" "$script_dir/package-inputs.cjs" php-current "$manifest" "${formulae[@]}") || exit 1
-    if [ "$recorded" != unknown ]; then
+    accepted=$("${PHP_DARWIN_NODE:-node}" "$script_dir/package-inputs.cjs" baseline "$manifest") || exit 1
+    if [ "$recorded" = true ] || { [ "$recorded" = false ] && [ "$accepted" = true ]; }; then
       printf '%s\n' "$recorded"
       exit 0
     fi
+    # A mismatch against an unacknowledged private publication is not evidence
+    # that the public tap is newer. Require its original Git baseline below.
     ;;
   extensions)
     source_path=${HOMEBREW_EXTENSIONS_PATH:?}
