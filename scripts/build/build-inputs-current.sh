@@ -22,6 +22,18 @@ case "$kind" in
   php)
     source_path=${HOMEBREW_PHP_PATH:?}
     commit_key=homebrew_php_commit
+    formulae=()
+    while read -r build ts; do
+      formula=$(php_darwin_formula "$version" "$build" "$ts") || exit 1
+      formulae+=("$formula")
+    done < <(php_darwin_configured_variants)
+    # Published packages can contain recipes from private staging commits.
+    # Complete manifest records can compare those inputs without fetching Git.
+    recorded=$("${PHP_DARWIN_NODE:-node}" "$script_dir/package-inputs.cjs" php-current "$manifest" "${formulae[@]}") || exit 1
+    if [ "$recorded" != unknown ]; then
+      printf '%s\n' "$recorded"
+      exit 0
+    fi
     ;;
   extensions)
     source_path=${HOMEBREW_EXTENSIONS_PATH:?}
