@@ -14,7 +14,8 @@ permissions:
   actions: read
 
 concurrency:
-  group: validate-${{ github.ref }}
+  # Independent manual consumers must not cancel each other's validation.
+  group: validate-${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.ref }}
   cancel-in-progress: true
 
 jobs:
