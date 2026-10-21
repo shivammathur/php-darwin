@@ -1,90 +1,67 @@
-name: Mirror published PHP releases
-run-name: Mirror PHP ${{ inputs.php-version || 'all' }} releases (update installers ${{ inputs.publish-installers }})
+name: Mirror GitHub release builds
+run-name: Mirror published PHP ${{ inputs.php-versions }} builds — ${{ inputs.ticket }}
 on:
   workflow_dispatch:
     inputs:
-      php-version:
-        description: PHP minor version or all
-        default: all
+      ticket:
+        description: Dispatch tracking identifier
         required: true
         type: string
-      repackage:
-        description: Add packaged installers on Linux and test both architectures without rebuilding PHP
-        default: false
-        type: boolean
-      publish-installers:
-        description: Also update the GitHub release installers after verifying R2
-        default: false
-        type: boolean
+      php-versions:
+        description: 'Minor versions separated by spaces, or all (stable releases only)'
+        required: true
+        type: string
+        default: all
 permissions:
   contents: read
 jobs:
-  validate:
-    if: inputs.repackage
-    permissions:
-      contents: read
-      actions: read
-    uses: ./.github/workflows/validate.yml
-  matrix:
+  versions:
+    if: github.repository == 'shivammathur/php-darwin'
     runs-on: ubuntu-latest
     outputs:
-      versions: ${{ steps.matrix.outputs.versions }}
+      versions: ${{ steps.select.outputs.versions }}
+      shared_version: ${{ steps.select.outputs.shared_version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - id: matrix
+      - id: select
         env:
-          PHP_VERSION: ${{ inputs.php-version || 'all' }}
-        run: |
-          source scripts/lib/lib.sh
-          if [ "$PHP_VERSION" = all ]; then
-            versions=$(php_darwin_configured_versions | cut -d ' ' -f2 | jq -Rsc 'split("\n") | map(select(length > 0))')
-          else
-            php_darwin_validate_version "$PHP_VERSION"
-            versions=$(jq -cn --arg version "$PHP_VERSION" '[$version]')
-          fi
-          echo "versions=$versions" >> "$GITHUB_OUTPUT"
-  repackage:
-    if: inputs.repackage
-    needs: [matrix, validate]
-    strategy:
-      fail-fast: false
-      matrix:
-        php-version: ${{ fromJSON(needs.matrix.outputs.versions) }}
-    permissions:
-      contents: write
-      actions: read
-    uses: ./.github/workflows/repackage-version.yml
-    with:
-      php-version: ${{ matrix.php-version }}
-      publish: ${{ inputs.publish-installers }}
-    secrets: inherit
+          PHP_VERSIONS: ${{ inputs.php-versions }}
+        run: python3 scripts/mirror-github-release.py matrix
   mirror:
-    if: ${{ !inputs.repackage }}
-    needs: matrix
+    name: Mirror PHP ${{ matrix.php }}
+    needs: versions
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
     strategy:
       fail-fast: false
-      max-parallel: 4
       matrix:
-        php-version: ${{ fromJSON(needs.matrix.outputs.versions) }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      contents: write
+        php: ${{ fromJSON(needs.versions.outputs.versions) }}
     concurrency:
-      group: php-darwin-release-publish-${{ matrix.php-version }}
+      group: php-darwin-release-publish-${{ matrix.php }}
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Verify and mirror the published release
+      - name: Download and verify published release assets
         env:
-          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
-          PHP_VERSION: ${{ matrix.php-version }}
-          PUBLISH_INSTALLER: ${{ inputs.publish-installers }}
+          GH_TOKEN: ${{ github.token }}
+          PHP_VERSION: ${{ matrix.php }}
+          SOURCE_VERSION: ${{ matrix.php }}
+        run: python3 scripts/mirror-github-release.py download "$PHP_VERSION" "$RUNNER_TEMP/mirror" "$SOURCE_VERSION"
+      - name: Upload and verify existing mirrors
+        env:
           CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
           CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
           CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
-        run: bash scripts/release/sync-release.sh
+        run: python3 scripts/mirror-github-release.py publish "$RUNNER_TEMP/mirror"
+      - name: Preserve transfer receipt
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mirror-receipt-${{ matrix.php }}
+          path: ${{ runner.temp }}/mirror/receipt.json
+          if-no-files-found: warn
+          retention-days: 30
