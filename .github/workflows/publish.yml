@@ -30,7 +30,7 @@ jobs:
       - name: Preserve replaced public metadata
         env:
           GH_TOKEN: ${{ github.token }}
-          PHP_SERIES: ${{ inputs.minor }}
+          PHP_SERIES: '${{ inputs.minor }}'
         run: python3 publication/publish.py backup "$PHP_SERIES"
       - id: backup
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -43,7 +43,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PRIVATE_PACKAGE_ACCESS: ${{ secrets.PRIVATE_PACKAGE_ACCESS }}
-          PHP_SERIES: ${{ inputs.minor }}
+          PHP_SERIES: '${{ inputs.minor }}'
           BACKUP_ARTIFACT_ID: ${{ steps.backup.outputs.artifact-id }}
           BACKUP_ARTIFACT_DIGEST: ${{ steps.backup.outputs.artifact-digest }}
         run: python3 publication/publish.py publish "$PHP_SERIES"
@@ -69,7 +69,7 @@ jobs:
       - name: Download and verify published files
         env:
           GH_TOKEN: ${{ github.token }}
-          PHP_SERIES: ${{ inputs.minor }}
+          PHP_SERIES: '${{ inputs.minor }}'
         run: python3 publication/publish.py verify "$PHP_SERIES"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
