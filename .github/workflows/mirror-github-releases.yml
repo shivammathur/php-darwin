@@ -1,0 +1,63 @@
+name: Mirror GitHub release builds
+run-name: Mirror published PHP ${{ inputs.php-versions }} builds
+on:
+  workflow_dispatch:
+    inputs:
+      php-versions:
+        description: 'Minor versions separated by spaces, or all (stable releases only)'
+        required: true
+        type: string
+        default: all
+permissions:
+  contents: read
+jobs:
+  versions:
+    if: github.repository == 'shivammathur/php-darwin'
+    runs-on: ubuntu-latest
+    outputs:
+      versions: ${{ steps.select.outputs.versions }}
+      shared_version: ${{ steps.select.outputs.shared_version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: select
+        env:
+          PHP_VERSIONS: ${{ inputs.php-versions }}
+        run: python3 scripts/mirror-github-release.py matrix
+  mirror:
+    name: Mirror PHP ${{ matrix.php }}
+    needs: versions
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ${{ fromJSON(needs.versions.outputs.versions) }}
+    concurrency:
+      group: php-darwin-release-publish-${{ matrix.php }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Download and verify published release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PHP_VERSION: ${{ matrix.php }}
+          SOURCE_VERSION: ${{ matrix.php }}
+        run: python3 scripts/mirror-github-release.py download "$PHP_VERSION" "$RUNNER_TEMP/mirror" "$SOURCE_VERSION"
+      - name: Upload and verify existing mirrors
+        env:
+          CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
+          CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
+          CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
+        run: python3 scripts/mirror-github-release.py publish "$RUNNER_TEMP/mirror"
+      - name: Preserve transfer receipt
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mirror-receipt-${{ matrix.php }}
+          path: ${{ runner.temp }}/mirror/receipt.json
+          if-no-files-found: warn
+          retention-days: 30
