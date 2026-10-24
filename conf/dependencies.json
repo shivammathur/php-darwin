@@ -158,13 +158,46 @@
           }
         },
         "brotli": {
-          "version": "1.2.0",
-          "bottle": {
-            "formula": "brotli",
-            "version": "1.2.0",
-            "tag": "arm64_sonoma",
-            "sha256": "46b1cc7ef8ba325e56f7363de1068a84449dac940187dd2290a75e7008b3b4e1",
-            "url": "https://ghcr.io/v2/homebrew/core/brotli/blobs/sha256:46b1cc7ef8ba325e56f7363de1068a84449dac940187dd2290a75e7008b3b4e1"
+          "version": "1.2.1",
+          "source": {
+            "key": "php-darwin-source-v1-fa54ff25c9d9758fd513123870b4caddb13f49f9eb4bfc9050ed39a066d81ccb",
+            "sha256": "f38608f421b90f6a8b8df9fddc43d9abff614f752d196643639a5aecebb40e61",
+            "inputs": {
+              "environment": {
+                "arch": "arm64",
+                "macos": "14",
+                "prefix": "/opt/homebrew",
+                "homebrew": "Homebrew 7",
+                "compiler": "Apple clang version 15.0.0 (clang-1500.3.9.4)\nTarget: arm64-apple-darwin23.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_15.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "14.5",
+                "buildEnv": {
+                  "CC": "",
+                  "CXX": "",
+                  "CFLAGS": "",
+                  "CXXFLAGS": "",
+                  "CPPFLAGS": "",
+                  "LDFLAGS": "",
+                  "MACOSX_DEPLOYMENT_TARGET": "",
+                  "SDKROOT": "",
+                  "HOMEBREW_CC": "",
+                  "HOMEBREW_CXX": "",
+                  "HOMEBREW_ARCH": ""
+                }
+              },
+              "formula": "brotli",
+              "version": "1.2.1",
+              "recipe": "c2349113ec78d617e0503eab00bcb8c7dd86d12496f06adb9d212ea6e78fd408",
+              "dependencies": [
+                {
+                  "name": "cmake",
+                  "version": "4.4.3",
+                  "recipe": "c368595b6f40e7a258276b7a719ec68cfa078a1dc13bd8ff2bee43455936f5f8",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": []
+                }
+              ]
+            }
           }
         },
         "libnghttp2": {
@@ -3561,13 +3594,46 @@
           }
         },
         "brotli": {
-          "version": "1.2.0",
-          "bottle": {
-            "formula": "brotli",
-            "version": "1.2.0",
-            "tag": "sonoma",
-            "sha256": "c9d272f3ac33b730d548da14ca323e8b4e0185273a6c85b0f12a4bbcd9f684af",
-            "url": "https://ghcr.io/v2/homebrew/core/brotli/blobs/sha256:c9d272f3ac33b730d548da14ca323e8b4e0185273a6c85b0f12a4bbcd9f684af"
+          "version": "1.2.1",
+          "source": {
+            "key": "php-darwin-source-v1-c99afc5ee5e53eb0e8dbf4d725197149bdaa380269002507c41383f6c2becbca",
+            "sha256": "1c530f018a01fbb4a5bacda1fd98dbe8ded0050275d7c4be1fd0740318351fff",
+            "inputs": {
+              "environment": {
+                "arch": "x86_64",
+                "macos": "15",
+                "prefix": "/usr/local",
+                "homebrew": "Homebrew 7",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
+                "buildEnv": {
+                  "CC": "",
+                  "CXX": "",
+                  "CFLAGS": "",
+                  "CXXFLAGS": "",
+                  "CPPFLAGS": "",
+                  "LDFLAGS": "",
+                  "MACOSX_DEPLOYMENT_TARGET": "",
+                  "SDKROOT": "",
+                  "HOMEBREW_CC": "",
+                  "HOMEBREW_CXX": "",
+                  "HOMEBREW_ARCH": ""
+                }
+              },
+              "formula": "brotli",
+              "version": "1.2.1",
+              "recipe": "c2349113ec78d617e0503eab00bcb8c7dd86d12496f06adb9d212ea6e78fd408",
+              "dependencies": [
+                {
+                  "name": "cmake",
+                  "version": "4.4.3",
+                  "recipe": "c368595b6f40e7a258276b7a719ec68cfa078a1dc13bd8ff2bee43455936f5f8",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": []
+                }
+              ]
+            }
           }
         },
         "libnghttp2": {
@@ -13065,6 +13131,7 @@
     "net-snmp": "0ccdcb95308638e5d97507d9d9a40b5fada62dd8",
     "openldap": "0ccdcb95308638e5d97507d9d9a40b5fada62dd8",
     "openssl@4": "0ccdcb95308638e5d97507d9d9a40b5fada62dd8",
-    "python@3.14": "0ccdcb95308638e5d97507d9d9a40b5fada62dd8"
+    "python@3.14": "0ccdcb95308638e5d97507d9d9a40b5fada62dd8",
+    "brotli": "62b56d1ba43fd195950eded4820ad56f94f1a515"
   }
 }
