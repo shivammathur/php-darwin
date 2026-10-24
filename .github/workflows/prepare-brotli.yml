@@ -2,6 +2,9 @@ name: Prepare Brotli for package replacement
 run-name: Prepare Brotli 1.2.1 on both baseline platforms
 on:
   workflow_dispatch:
+  push:
+    branches: [fix/brotli-1.2.1-repack]
+    paths: [.github/workflows/prepare-brotli.yml]
 permissions:
   contents: read
 jobs:
