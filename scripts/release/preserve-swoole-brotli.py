@@ -130,15 +130,19 @@ def preserve(original, previous, rebuilt, entry, output, evidence):
     directory.mkdir(parents=True, exist_ok=True)
     destination = directory / f'{key}.tar.zst'
     config = json.loads((ROOT / 'conf/build.json').read_text())
-    compressor = subprocess.Popen(['zstd', '--ultra', '-' + str(config['compression_level']), '-T2', '-q', '-f', '-o', str(destination)], stdin=subprocess.PIPE)
-    try:
-        with tarfile.open(fileobj=compressor.stdin, mode='w|') as target:
+    with tempfile.NamedTemporaryFile(prefix='swoole-preserved-', suffix='.tar') as raw:
+        with tarfile.open(fileobj=raw, mode='w') as target:
             for info, data in transformed.values():
                 target.format = tarfile.PAX_FORMAT if info.pax_headers else tarfile.GNU_FORMAT
                 target.addfile(info, io.BytesIO(data) if data is not None else None)
-    finally:
-        compressor.stdin.close()
-        if compressor.wait() != 0: raise RuntimeError('Compression failed')
+            end = target.offset + 2 * tarfile.BLOCKSIZE
+        # Match BSD tar's two-block ending. Extra record padding can make its
+        # external zstd reader receive SIGPIPE after tar stops at the end marker.
+        # Trimming padding changes no archive members or their attributes.
+        raw.flush()
+        raw.truncate(end)
+        subprocess.run(['zstd', '--ultra', '-' + str(config['compression_level']), '-T2',
+                        '-q', '-f', raw.name, '-o', str(destination)], check=True)
     after = {}
     for member, stream in repack.members(destination):
         if member.name in after: raise ValueError('Duplicate output member')

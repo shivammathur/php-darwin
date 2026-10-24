@@ -75,6 +75,10 @@ with tempfile.TemporaryDirectory() as temp:
     result = m.preserve(old, previous, new, current, root/'output', root/'evidence')
     output = next((root/'output').rglob('*.tar.zst'))
     actual = m.read_archive(output, result)
+    uncompressed = subprocess.check_output(['zstd', '-dc', str(output)])
+    final_member = list(actual.values())[-1][0]
+    end = final_member.offset_data + ((final_member.size + 511) // 512) * 512
+    assert uncompressed[end:] == bytes(1024), 'BSD tar requires only its two ending blocks'
     assert set(actual) == {m.renamed(k) for k in ['metadata.json', *oldfiles]}
     assert actual['kegs/other/1/INSTALL_RECEIPT.json'][1] == b'original receipt'
     assert actual['modules/swoole.so'][1] == newfiles['modules/swoole.so']
