@@ -3,6 +3,10 @@ set -euo pipefail
 source scripts/lib/lib.sh
 export ARCHIVE_DIR="$PWD/builds/$ARCH"
 export PHP_DARWIN_EXTENSIONS=''
+export PHP_DARWIN_TEST_PREVIOUS_INSTALLER=true
+export PHP_DARWIN_TEST_WARM=true
+bash scripts/build/cleanup-taps.sh
+bash scripts/build/check-homebrew.sh
 for BUILD in release debug; do
   for TS in nts zts; do
     export BUILD TS
@@ -14,7 +18,7 @@ for BUILD in release debug; do
     python3 scripts/tests/native/brotli-repack.test.py "$prefix" "$prefix/opt/$formula/bin/php"
     pack="$PWD/builds/extensions/swoole-$PHP_VERSION-$BUILD-$TS-$ARCH"
     if [ -d "$pack" ]; then
-      EXTENSION_PACK=swoole EXTENSION_PACK_OUTPUT="$pack" node scripts/tests/native/extension-pack.test.cjs
+      EXTENSION_PACK=swoole EXTENSION_PACK_OUTPUT="$pack" "${PHP_DARWIN_NODE:-node}" scripts/tests/native/extension-pack.test.cjs
     fi
     cleanup
     trap - EXIT

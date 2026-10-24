@@ -24,6 +24,8 @@ ABI_CHECKS = set()
 
 
 def run(*args):
+    if args[0] == 'node':
+        args = (os.environ.get('PHP_DARWIN_NODE', 'node'), *args[1:])
     return subprocess.check_output(list(map(str, args)), text=True).strip()
 
 
@@ -312,6 +314,10 @@ def main(version, architecture, replacement, output):
     platforms = json.loads((ROOT / 'conf/platforms.json').read_text())
     if os.uname().machine != architecture or int(run('sw_vers', '-productVersion').split('.')[0]) != platforms[architecture]['minimum_macos']:
         raise ValueError('Use the configured native baseline runner')
+    run('node', '-e', 'require("node:fs"); require("node:assert/strict").ok(process.versions.node)')
+    for tool in ('zstd', 'jq', 'git', 'tar', 'otool', 'nm', 'codesign', 'install_name_tool'):
+        if not shutil.which(tool):
+            raise ValueError(f'Missing native packaging tool: {tool}')
     evidence = output / 'evidence'
     evidence.mkdir(parents=True, exist_ok=True)
     package = json.loads((ROOT / 'conf/package.json').read_text())
