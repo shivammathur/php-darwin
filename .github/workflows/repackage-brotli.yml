@@ -1,5 +1,5 @@
-name: Replace Brotli in published packages
-run-name: Repackage PHP and Swoole with Brotli 1.2.1
+name: Replace Brotli in published PHP packages
+run-name: Repackage PHP with Brotli 1.2.1 on Ubuntu
 on:
   workflow_call:
     inputs:
@@ -66,8 +66,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     env:
       ARCH: ${{ matrix.arch }}
       PHP_VERSION: ${{ matrix.version }}
@@ -78,7 +78,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/runner-preflight
       - uses: ./.github/actions/node-runtime
       - uses: ./.github/actions/download-artifacts
         with:
@@ -86,10 +85,10 @@ jobs:
           run-id: ${{ inputs.preparation-run }}
           github-token: ${{ secrets.TOKEN || github.token }}
           path: replacement
+      - name: Install the Mach-O symbol reader
+        run: sudo apt-get update && sudo apt-get install -y llvm zstd
       - name: Replace Brotli and prove the remaining payload is preserved
         run: python3 scripts/release/repackage-brotli.py "$PHP_VERSION" "$ARCH" replacement builds
-      - name: Validate all PHP variants and repackaged Swoole runtimes
-        run: bash scripts/tests/native/brotli-repack.test.sh
       - uses: ./.github/actions/upload-artifacts
         with:
           name: brotli-packages-${{ matrix.version }}-${{ matrix.arch }}
@@ -102,9 +101,36 @@ jobs:
           name: brotli-evidence-${{ matrix.version }}-${{ matrix.arch }}
           path: builds/evidence
           if-no-files-found: ignore
+  test:
+    needs: [plan, repackage]
+    if: inputs.packages-run == ''
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    env:
+      ARCH: ${{ matrix.arch }}
+      PHP_VERSION: ${{ matrix.version }}
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_INSTALL_CLEANUP: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/runner-preflight
+      - uses: ./.github/actions/node-runtime
+      - name: Restore native archive tools
+        run: bash scripts/build/archive-tools.sh
+      - uses: ./.github/actions/download-artifacts
+        with:
+          name: brotli-packages-${{ matrix.version }}-${{ matrix.arch }}
+          path: builds
+      - name: Validate all PHP variants, warm installs and the previous installer
+        run: bash scripts/tests/native/brotli-repack.test.sh
   publish-php:
-    if: ${{ always() && !cancelled() && inputs.publish && needs.plan.result == 'success' && needs.validate.result == 'success' && (needs.repackage.result == 'success' || (needs.repackage.result == 'skipped' && inputs.packages-run != '')) }}
-    needs: [plan, validate, repackage]
+    if: ${{ always() && !cancelled() && inputs.publish && needs.plan.result == 'success' && needs.validate.result == 'success' && (needs.test.result == 'success' || (needs.test.result == 'skipped' && inputs.packages-run != '')) && (needs.repackage.result == 'success' || (needs.repackage.result == 'skipped' && inputs.packages-run != '')) }}
+    needs: [plan, validate, repackage, test]
     strategy:
       fail-fast: false
       matrix:
@@ -143,53 +169,3 @@ jobs:
             cp -a "packages/brotli-packages-$PHP_VERSION-$arch/$arch" builds/
           done
           bash scripts/release/publish.sh builds
-  publish-extensions:
-    if: ${{ always() && !cancelled() && inputs.publish && needs.validate.result == 'success' && needs.publish-php.result == 'success' && (needs.repackage.result == 'success' || (needs.repackage.result == 'skipped' && inputs.packages-run != '')) }}
-    needs: [validate, repackage, publish-php]
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    permissions:
-      contents: write
-      actions: read
-    concurrency:
-      group: extension-cache-publish
-      cancel-in-progress: false
-      queue: max
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/download-artifacts
-        with:
-          pattern: brotli-packages-*
-          run-id: ${{ inputs.packages-run || github.run_id }}
-          github-token: ${{ secrets.TOKEN || github.token }}
-          path: packages
-      - name: Check source packs have not changed and publish validated replacements
-        env:
-          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
-          CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
-          CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
-          CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
-        run: |
-          mkdir -p builds/extensions
-          node - <<'JS'
-          const fs = require('node:fs');
-          const {readManifest} = require('./scripts/release/extension-packs.cjs');
-          (async () => {
-            for (const directory of fs.readdirSync('packages')) {
-              const base = `packages/${directory}`;
-              const file = fs.readdirSync(`${base}/evidence`).find(n => /^extensions-.*-manifest.json$/.test(n));
-              const version = file.slice(11, -14);
-              const current = await readManifest(version);
-              const old = JSON.parse(fs.readFileSync(`${base}/evidence/${file}`));
-              const arch = directory.split('-').at(-1);
-              for (const entry of old.assets.filter(e => e.architecture === arch && e.dependencies.some(d => d.name === 'brotli'))) {
-                const found = current.assets.find(e => e.file === entry.file);
-                if (!found || found.sha256 !== entry.sha256) throw new Error('Swoole source publication changed');
-              }
-              if (fs.existsSync(`${base}/extensions`)) fs.cpSync(`${base}/extensions`, 'builds/extensions', {recursive:true});
-            }
-            await require('./scripts/release/extension-packs.cjs').publish('builds/extensions');
-          })().catch(e => { console.error(e); process.exitCode = 1; });
-          JS

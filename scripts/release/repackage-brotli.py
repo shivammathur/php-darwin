@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""Replace Brotli in authenticated published archives without compiling consumers."""
+"""Replace only Brotli in authenticated PHP archives, using Ubuntu workers."""
 import argparse
 import copy
-import hashlib
 import importlib.util
 import io
 import json
@@ -10,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import struct
 import subprocess
 import tarfile
 import tempfile
@@ -19,7 +19,8 @@ spec = importlib.util.spec_from_file_location('repack', ROOT / 'scripts/release/
 repack = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(repack)
 OLD, NEW = '1.2.0', '1.2.1'
-MAGIC = {bytes.fromhex(value) for value in ('cffaedfe', 'cefaedfe', 'feedfacf', 'feedface', 'cafebabe', 'bebafeca')}
+OLD_ROOT, NEW_ROOT = f'Cellar/brotli/{OLD}', f'Cellar/brotli/{NEW}'
+MAGIC = bytes.fromhex('cffaedfe')
 ABI_CHECKS = set()
 
 
@@ -35,113 +36,79 @@ def write_json(path, value):
 
 
 def renamed(value):
-    value = value.replace(f'brotli/{OLD}', f'brotli/{NEW}')
+    value = value.replace(OLD_ROOT, NEW_ROOT)
     return re.sub(r'(libbrotli(?:common|dec|enc)\.)1\.2\.0(\.dylib)', rf'\g<1>{NEW}\2', value)
 
 
-def update_record(records, replacement):
-    matches = [i for i, item in enumerate(records) if item.get('formula') == 'brotli']
-    if len(matches) != 1:
-        raise ValueError('Expected exactly one Brotli recipe record')
-    records[matches[0]] = replacement
+def symbols(file):
+    args = ('nm', '-gU') if os.uname().sysname == 'Darwin' else ('llvm-nm', '-g', '--defined-only', '-j')
+    return {line.split()[-1] for line in run(*args, file).splitlines() if line.split()}
 
 
-def native_patch(file, private=False):
-    """Change Mach-O load commands, then repair and verify the ad-hoc signature."""
-    refs = [line.strip().split(' (compatibility version')[0]
-            for line in run('otool', '-L', file).splitlines()[1:]]
-    args = []
-    for ref in refs:
-        target = renamed(ref)
-        if private and 'libbrotli' in ref:
-            target = '@loader_path/' + os.path.relpath(private / 'lib' / Path(target).name, file.parent)
-        if target != ref:
-            args += ['-change', ref, target]
-    if private and file.name.endswith('.dylib'):
-        args += ['-id', '@loader_path/' + file.name]
-    if args:
-        run('install_name_tool', *args, file)
-        run('codesign', '--force', '--sign', '-', file)
-        run('codesign', '--verify', '--strict', file)
-    return bool(args)
-
-
-def verify_exports(previous, replacement):
-    key = repack.digest(previous), repack.digest(replacement)
-    if key in ABI_CHECKS:
-        return
-    def symbols(file):
-        return {line.split()[-1] for line in run('nm', '-gU', file).splitlines() if line.split()}
-    missing = symbols(previous) - symbols(replacement)
-    if missing:
-        raise ValueError(f'Brotli replacement removes exported symbols: {sorted(missing)}')
-    ABI_CHECKS.add(key)
-
-
-def extract_replacement(archive, root):
-    """Bound all paths and reject traversal through links on macOS's Python 3.9."""
-    def relative(name):
-        while name.startswith('./'):
-            name = name[2:]
-        if name in ('', '.'):
-            return Path('.')
-        path = Path(name)
-        if path.is_absolute() or '..' in path.parts:
-            raise ValueError('Unsafe replacement member')
-        return path
-    members = archive.getmembers()
-    paths = {relative(m.name): m for m in members}
-    if len(paths) != len(members):
-        raise ValueError('Duplicate replacement member')
-    for name, member in paths.items():
-        if any(parent in paths and not paths[parent].isdir() for parent in name.parents):
-            raise ValueError('Replacement member traverses a link')
-        if member.issym():
-            destination = (root / name.parent / member.linkname).resolve()
-            if not destination.is_relative_to(root.resolve()):
-                raise ValueError('Replacement symlink escapes its root')
-        elif member.islnk():
-            target = relative(member.linkname)
-            if target not in paths or not paths[target].isfile():
-                raise ValueError('Invalid replacement hardlink')
-        elif not member.isfile() and not member.isdir():
-            raise ValueError('Unsupported replacement member')
-    # Every destination and link was checked before extracting anything.
-    archive.extractall(root)
+def macho(content):
+    """Read thin 64-bit Mach-O headers without executing target binaries."""
+    if len(content) < 32 or content[:4] != MAGIC:
+        raise ValueError('Expected a thin 64-bit Mach-O binary')
+    cpu, = struct.unpack_from('<I', content, 4)
+    count, total = struct.unpack_from('<II', content, 16)
+    if 32 + total > len(content):
+        raise ValueError('Truncated Mach-O load commands')
+    position, libraries, minimum = 32, [], None
+    for _ in range(count):
+        command, size = struct.unpack_from('<II', content, position)
+        if size < 8 or position + size > 32 + total:
+            raise ValueError('Invalid Mach-O load command')
+        if command in (0xc, 0xd, 0x80000018, 0x8000001f, 0x80000023):
+            name, _, current, compatible = struct.unpack_from('<IIII', content, position + 8)
+            if name < 24 or name >= size:
+                raise ValueError('Invalid Mach-O library name')
+            reference = content[position + name:position + size].split(b'\0', 1)[0].decode()
+            libraries.append({'id': command == 0xd, 'path': reference, 'current': current, 'compatible': compatible})
+        if command == 0x32:
+            platform, minimum = struct.unpack_from('<II', content, position + 8)
+            if platform != 1:
+                raise ValueError('Replacement is not a macOS binary')
+        elif command == 0x24:
+            minimum, = struct.unpack_from('<I', content, position + 8)
+        position += size
+    if position != 32 + total:
+        raise ValueError('Mach-O load-command size mismatch')
+    return {'cpu': cpu, 'minimum': minimum, 'libraries': libraries}
 
 
 def prepare_replacement(directory, architecture, temporary):
     provenance = json.loads((directory / 'provenance.json').read_text())
     if provenance['architecture'] != architecture or provenance['version'] != NEW or len(provenance['sources']) != 1:
         raise ValueError('Replacement identity mismatch')
+    approved = json.loads((ROOT / 'conf/dependencies.json').read_text())['platforms'][architecture]['packages']['brotli']
+    if approved != {'version': NEW, 'source': provenance['sources'][0]}:
+        raise ValueError('Replacement is not the approved source bottle')
     keg = temporary / 'replacement'
-    keg.mkdir()
     with tarfile.open(directory / f'brotli-{NEW}.tar.gz') as archive:
-        extract_replacement(archive, keg)
-    version = subprocess.check_output([str(keg / 'bin/brotli'), '--version'], text=True,
-                                     env={**os.environ, 'DYLD_LIBRARY_PATH': str(keg / 'lib')}).strip()
-    if version != 'brotli ' + NEW:
-        raise ValueError('Replacement executable version mismatch')
+        archive.extractall(keg, filter='data')
+    platform = json.loads((ROOT / 'conf/platforms.json').read_text())[architecture]
     for name in ('common', 'dec', 'enc'):
         library = keg / f'lib/libbrotli{name}.{NEW}.dylib'
-        if architecture not in run('lipo', '-archs', library):
+        header = macho(library.read_bytes())
+        if header['cpu'] != {'arm64': 0x100000c, 'x86_64': 0x1000007}[architecture]:
             raise ValueError('Wrong replacement library architecture')
-        if 'compatibility version 1.0.0, current version 1.2.1' not in run('otool', '-L', library):
-            raise ValueError('Wrong Brotli ABI/version')
+        if not header['minimum'] or header['minimum'] > platform['minimum_macos'] << 16:
+            raise ValueError('Replacement raises the minimum macOS version')
+        identity, = [entry for entry in header['libraries'] if entry['id']]
+        if identity != {'id': True, 'path': f'{platform["brew_prefix"]}/opt/brotli/lib/libbrotli{name}.1.dylib',
+                        'current': 0x10201, 'compatible': 0x10000}:
+            raise ValueError('Wrong Brotli install name, ABI or version')
     return keg, provenance
 
 
-def transform(archive, expected, keg, provenance, output, evidence, private=False):
+def transform(archive, expected, keg, provenance, output, evidence):
     if repack.digest(archive) != expected['sha256'] or archive.stat().st_size != expected['bytes']:
         raise ValueError('Input archive checksum/size mismatch')
-    name = expected['file'] if private else expected['name']
-    metadata_name = 'metadata.json' if private else 'var/php-darwin/' + name.replace('.tar.zst', '.json')
-    old_root = ('kegs' if private else 'Cellar') + f'/brotli/{OLD}'
-    new_root = renamed(old_root)
-    before, changes, changed_binaries = {}, {}, []
-    with tempfile.TemporaryDirectory(prefix='brotli-repack-') as tmp:
-        tmp = Path(tmp)
-        # Only materialize metadata, receipts, tap records and affected Mach-O files.
+    name = expected['name']
+    metadata_name = 'var/php-darwin/' + name.replace('.tar.zst', '.json')
+    before, changes, metadata = {}, {}, None
+    with tempfile.TemporaryDirectory(prefix='brotli-repack-') as temporary:
+        tmp = Path(temporary)
         for member, stream in repack.members(archive):
             content = stream.read() if stream else None
             if member.name in before:
@@ -149,18 +116,22 @@ def transform(archive, expected, keg, provenance, output, evidence, private=Fals
             before[member.name] = repack.record(member, content)
             if member.name == metadata_name:
                 metadata = json.loads(content)
-            if not private and member.isfile() and (member.name.endswith('/INSTALL_RECEIPT.json') or
-                                                      member.name.startswith('var/php-darwin/homebrew-php/')):
+            if member.isfile() and member.name.endswith('/INSTALL_RECEIPT.json'):
                 target = tmp / member.name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(content)
-                target.chmod(member.mode)
-            if member.name == old_root or member.name.startswith(old_root + '/'):
-                if content and content[:4] in MAGIC and member.name.endswith('.dylib'):
+            if member.name == OLD_ROOT or member.name.startswith(OLD_ROOT + '/'):
+                if content and content[:4] == MAGIC and member.name.endswith('.dylib'):
                     previous = tmp / 'previous' / Path(member.name).name
                     previous.parent.mkdir(exist_ok=True)
                     previous.write_bytes(content)
-                    verify_exports(previous, keg / 'lib' / renamed(previous.name))
+                    replacement = keg / 'lib' / renamed(previous.name)
+                    key = repack.digest(previous), repack.digest(replacement)
+                    if key not in ABI_CHECKS:
+                        missing = symbols(previous) - symbols(replacement)
+                        if missing:
+                            raise ValueError(f'Brotli removes exported symbols: {sorted(missing)}')
+                        ABI_CHECKS.add(key)
                 changes[member.name] = None
                 continue
             if member.issym() or member.islnk():
@@ -169,67 +140,34 @@ def transform(archive, expected, keg, provenance, output, evidence, private=Fals
                     updated.name, updated.linkname = renamed(member.name), renamed(member.linkname)
                     updated.pax_headers = {k: renamed(v) if k in ('path', 'linkpath') else v for k, v in updated.pax_headers.items()}
                     changes[member.name] = updated, None
-            if content and content[:4] in MAGIC and b'BrotliDecoder' in content:
-                target = tmp / 'native' / member.name
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(content)
-                target.chmod(member.mode | 0o200)
-                # Refuse to claim a dynamic replacement fixes an embedded decoder.
-                symbols = run('nm', '-gU', target)
-                if re.search(r'\b_BrotliDecoder(?:Decompress|CreateInstance|DecompressStream)$', symbols, re.M):
-                    raise ValueError(f'Statically linked Brotli decoder needs rebuilding: {member.name}')
-                if native_patch(target):
-                    changes[member.name] = copy.deepcopy(member), target.read_bytes()
-                    changed_binaries.append(member.name)
-            elif content and content[:4] in MAGIC and f'brotli/{OLD}'.encode() in content:
-                target = tmp / 'native' / member.name
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(content)
-                target.chmod(member.mode | 0o200)
-                if native_patch(target):
-                    changes[member.name] = copy.deepcopy(member), target.read_bytes()
-                    changed_binaries.append(member.name)
+            if content and content[:4] == MAGIC and (b'brotli' in content or b'BrotliDecoder' in content):
+                if any(renamed(entry['path']) != entry['path'] for entry in macho(content)['libraries']):
+                    raise ValueError(f'Consumer needs rebuilding; refusing to modify its load commands: {member.name}')
+                binary = tmp / 'consumer'
+                binary.write_bytes(content)
+                if any(re.match(r'^_BrotliDecoder(?:Decompress|CreateInstance|DecompressStream)$', symbol) for symbol in symbols(binary)):
+                    raise ValueError(f'Statically linked decoder needs rebuilding: {member.name}')
+        if metadata is None or metadata['archive'] != name:
+            raise ValueError('Missing or mismatched archive metadata')
         for field in ('architecture', 'build', 'thread_safety', 'minimum_macos'):
             if metadata[field] != expected[field]:
                 raise ValueError(f'Archive identity mismatch: {field}')
-        if private:
-            if metadata != {k: v for k, v in expected.items() if k not in ('file', 'sha256', 'bytes')}:
-                raise ValueError('Extension archive metadata differs from manifest')
-            dependency, = [p for p in metadata['dependencies'] if p['name'] == 'brotli']
-            if dependency['versions'] != [OLD]:
-                raise ValueError('Unexpected original Brotli version')
-            dependency['versions'] = [NEW]
-            update_record(metadata['source_records'], provenance['source_record'])
-            metadata['inputs_sha256'] = hashlib.sha256(json.dumps({k: v for k, v in metadata.items()
-                if k not in ('inputs_sha256', 'relocations')}, separators=(',', ':')).encode()).hexdigest()
-        else:
-            if metadata['archive'] != name:
-                raise ValueError('PHP archive name mismatch')
-            package, = [p for p in metadata['packages'] if p['name'] == 'brotli']
-            if package['opt_target'] != '../' + old_root:
-                raise ValueError('Unexpected original Brotli version')
-            package['opt_target'] = '../' + new_root
-            for link in metadata['links']:
-                link['path'], link['target'] = renamed(link['path']), renamed(link['target'])
-            update_record(metadata['build_inputs']['source_records'], provenance['source_record'])
-        replacement = tmp / new_root
+        package, = [p for p in metadata['packages'] if p['name'] == 'brotli']
+        if package['opt_target'] != '../' + OLD_ROOT:
+            raise ValueError('Unexpected original Brotli version')
+        package['opt_target'] = '../' + NEW_ROOT
+        for link in metadata['links']:
+            link['path'], link['target'] = renamed(link['path']), renamed(link['target'])
+        records = metadata['build_inputs']['source_records']
+        index, = [i for i, record in enumerate(records) if record.get('formula') == 'brotli']
+        records[index] = provenance['source_record']
+        replacement = tmp / NEW_ROOT
         shutil.copytree(keg, replacement, symlinks=True)
-        if private:
-            # Use the same runtime filter as ordinary extension packaging.
-            shutil.rmtree(replacement)
-            run('node', '-e', "require('./scripts/build/extension-pack.cjs').copyRuntime(process.argv[1], process.argv[2])",
-                keg, replacement)
-            for file in replacement.rglob('*'):
-                if file.is_file() and not file.is_symlink() and file.read_bytes()[:4] in MAGIC:
-                    native_patch(file, private=replacement)
         metadata_file = tmp / metadata_name
         write_json(metadata_file, metadata)
-        if not private:
-            controller = tmp / repack.CONTROLLER
-            run('node', ROOT / 'scripts/installer/generate-install.cjs', controller, metadata_file, tmp)
-            changes[repack.CONTROLLER] = None  # Replaced below using the original attributes.
-        for member, stream in repack.members(archive):
-            if member.name == metadata_name or (not private and member.name == repack.CONTROLLER):
+        run('node', ROOT / 'scripts/installer/generate-install.cjs', tmp / repack.CONTROLLER, metadata_file, tmp)
+        for member, _ in repack.members(archive):
+            if member.name in (metadata_name, repack.CONTROLLER):
                 changes[member.name] = copy.deepcopy(member), (tmp / member.name).read_bytes()
         additions = []
         for file in sorted(replacement.rglob('*')):
@@ -239,8 +177,7 @@ def transform(archive, expected, keg, provenance, output, evidence, private=Fals
                 continue
             with tarfile.open(fileobj=io.BytesIO(), mode='w') as helper:
                 member = helper.gettarinfo(str(file), str(file.relative_to(tmp)))
-            member.mtime = int(member.mtime)
-            member.mode &= 0o7777
+            member.mtime, member.mode = int(member.mtime), member.mode & 0o7777
             additions.append((member, file.read_bytes() if member.isfile() else None))
         output.mkdir(parents=True, exist_ok=True)
         destination = output / name
@@ -274,76 +211,48 @@ def transform(archive, expected, keg, provenance, output, evidence, private=Fals
             after[member.name] = repack.record(member, stream.read() if stream else None)
         excluded = set(changes) | {renamed(n) for n in changes} | {m.name for m, _ in additions}
         unchanged = repack.verify_payload(before, after, excluded)
-        if any(n == old_root or n.startswith(old_root + '/') for n in after):
+        if any(n == OLD_ROOT or n.startswith(OLD_ROOT + '/') for n in after):
             raise ValueError('Old Brotli keg survived')
-        if not any(n.startswith(new_root + '/') for n in after):
-            raise ValueError('New Brotli keg missing')
-        for member, content in additions:
+        for member, content in additions + [change for change in changes.values() if change]:
             if after[member.name] != repack.record(member, content):
-                raise ValueError(f'Replacement changed: {member.name}: {after[member.name]} != {repack.record(member, content)}')
-        for original, change in changes.items():
-            if change and after[change[0].name] != repack.record(*change):
-                raise ValueError(f'Changed member verification failed: {original}')
-        if any('/bin/php' in n or '/sbin/php-fpm' in n for n in changed_binaries):
-            raise ValueError('PHP unexpectedly needs relinking')
-        sha = repack.digest(destination)
-        limits = json.loads((ROOT / 'conf/build.json').read_text())
-        limit = limits['extension_max_archive_bytes'] if private else limits['max_archive_bytes'][metadata['php_version']]
-        if destination.stat().st_size > limit:
+                raise ValueError(f'Changed member verification failed: {member.name}')
+        if destination.stat().st_size > json.loads((ROOT / 'conf/build.json').read_text())['max_archive_bytes'][metadata['php_version']]:
             raise ValueError('Repacked archive exceeds its size limit')
-        if private:
-            identity = '-'.join(str(expected[k]) for k in ('name', 'php_version', 'build', 'thread_safety', 'architecture'))
-            file = f'{identity}-{sha}.tar.zst'
-            destination.rename(output / file)
-            result = {**metadata, 'file': file, 'sha256': sha, 'bytes': (output / file).stat().st_size}
-            write_json(output / (identity + '.json'), result)
-        else:
-            write_json(output / name.replace('.tar.zst', '.json'), metadata)
-            (output / (name + '.sha256')).write_text(f'{sha}  {name}\n')
+        sha = repack.digest(destination)
+        write_json(output / name.replace('.tar.zst', '.json'), metadata)
+        (output / (name + '.sha256')).write_text(f'{sha}  {name}\n')
         proof = {'archive': name, 'input_sha256': expected['sha256'], 'sha256': sha,
                  'old_brotli': OLD, 'new_brotli': NEW, 'unchanged_members': unchanged,
-                 'relinked_binaries': changed_binaries, 'php_rebuilt': False, 'extensions_rebuilt': False,
+                 'php_rebuilt': False, 'consumer_binaries_unchanged': True,
                  'replacement_source': provenance['sources'][0], 'changed_members': sorted(excluded)}
         write_json(evidence / (name + '.json'), proof)
         print(json.dumps({k: v for k, v in proof.items() if k not in ('replacement_source', 'changed_members')}), flush=True)
 
 
 def main(version, architecture, replacement, output):
-    if os.uname().sysname != 'Darwin':
-        raise ValueError('Mach-O changes and signing require macOS')
-    platforms = json.loads((ROOT / 'conf/platforms.json').read_text())
-    if os.uname().machine != architecture or int(run('sw_vers', '-productVersion').split('.')[0]) != platforms[architecture]['minimum_macos']:
-        raise ValueError('Use the configured native baseline runner')
-    run('node', '-e', 'require("node:fs"); require("node:assert/strict").ok(process.versions.node)')
-    for tool in ('zstd', 'jq', 'git', 'tar', 'otool', 'nm', 'codesign', 'install_name_tool'):
+    if os.uname().sysname != 'Linux':
+        raise ValueError('Published PHP archives must be repackaged on Ubuntu')
+    for tool in ('llvm-nm', 'zstd', 'jq', 'git', 'tar'):
         if not shutil.which(tool):
-            raise ValueError(f'Missing native packaging tool: {tool}')
+            raise ValueError(f'Missing packaging tool: {tool}')
     evidence = output / 'evidence'
     evidence.mkdir(parents=True, exist_ok=True)
     package = json.loads((ROOT / 'conf/package.json').read_text())
-    with tempfile.TemporaryDirectory(prefix='brotli-update-') as tmp:
-        tmp = Path(tmp)
+    with tempfile.TemporaryDirectory(prefix='brotli-update-') as temporary:
+        tmp = Path(temporary)
         keg, provenance = prepare_replacement(replacement, architecture, tmp)
-        for private in (False, True):
-            tag = 'extensions' if private else f'php-{version}'
-            manifest_name = f'extensions-{version}-manifest.json' if private else f'php-{version}-manifest.json'
-            origins = [f'https://github.com/{package["release_repository"]}/releases/download/{tag}', f'{package["artifact_mirror"]}/{tag}']
-            manifest_file = evidence / manifest_name
-            repack.fetch([base + '/' + manifest_name for base in origins], manifest_file)
-            manifest = json.loads(manifest_file.read_text())
-            for entry in manifest['assets']:
-                if entry['architecture'] != architecture:
-                    continue
-                if private and not any(d['name'] == 'brotli' for d in entry['dependencies']):
-                    continue
-                filename = entry['file'] if private else entry['download']
-                archive = tmp / filename
-                repack.fetch([base + '/' + filename for base in origins], archive, entry['sha256'])
-                destination = output / ('extensions' if private else architecture)
-                if private:
-                    destination /= '-'.join(entry[k] for k in ('name', 'php_version', 'build', 'thread_safety', 'architecture'))
-                transform(archive, entry, keg, provenance, destination, evidence, private)
-                archive.unlink()
+        origins = [f'https://github.com/{package["release_repository"]}/releases/download/php-{version}', f'{package["artifact_mirror"]}/php-{version}']
+        manifest_name = f'php-{version}-manifest.json'
+        manifest_file = evidence / manifest_name
+        repack.fetch([base + '/' + manifest_name for base in origins], manifest_file)
+        manifest = json.loads(manifest_file.read_text())
+        for entry in manifest['assets']:
+            if entry['architecture'] != architecture:
+                continue
+            archive = tmp / entry['download']
+            repack.fetch([base + '/' + entry['download'] for base in origins], archive, entry['sha256'])
+            transform(archive, entry, keg, provenance, output / architecture, evidence)
+            archive.unlink()
 
 
 if __name__ == '__main__':
