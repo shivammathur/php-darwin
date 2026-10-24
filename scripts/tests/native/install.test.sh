@@ -150,6 +150,7 @@ validate_runtime() {
   local expected_pear_dir
   local pear_dir
   local php_info
+  local -a fpm_options=()
 
   [ -d "$brew_prefix/lib/php/pecl" ] || \
     php_darwin_die 'the shared Homebrew PECL directory is missing'
@@ -177,7 +178,10 @@ validate_runtime() {
   "$php_bin" -d date.timezone=UTC -v || php_darwin_die 'php -v failed'
   "$php_bin" -d date.timezone=UTC -m || php_darwin_die 'php -m failed'
   "$php_config" --version || php_darwin_die 'php-config failed'
-  "$php_fpm" -d date.timezone=UTC -v || php_darwin_die 'php-fpm failed'
+  if [ "${PHP_DARWIN_TEST_FPM_NO_JIT:-false}" = true ]; then
+    fpm_options=(-d opcache.jit_buffer_size=0)
+  fi
+  "$php_fpm" "${fpm_options[@]}" -d date.timezone=UTC -v || php_darwin_die 'php-fpm failed'
   php_info=$("$php_bin" -d date.timezone=UTC -i) || php_darwin_die 'php -i failed'
   grep -F 'Thread Safety' <<< "$php_info" || php_darwin_die 'thread-safety metadata is missing'
   grep -F 'Debug Build' <<< "$php_info" || php_darwin_die 'debug-build metadata is missing'

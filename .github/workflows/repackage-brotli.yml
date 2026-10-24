@@ -8,7 +8,7 @@ on:
         type: string
         required: true
       packages-run:
-        description: Successful repackaging run to publish without repeating native checks
+        description: Reuse archives and successful native checks, retrying the remaining checks
         type: string
         default: ''
       php-versions:
@@ -28,6 +28,8 @@ jobs:
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       versions: ${{ steps.plan.outputs.versions }}
+      test-matrix: ${{ steps.plan.outputs.test-matrix }}
+      test-count: ${{ steps.plan.outputs.test-count }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -48,15 +50,27 @@ jobs:
           const versions = process.env.PHP_VERSIONS === 'all' ? configured : process.env.PHP_VERSIONS.trim().split(/\s+/);
           if (!versions.length || new Set(versions).size !== versions.length || versions.some(v => !configured.includes(v))) throw new Error('Invalid PHP versions');
           const matrix = {include: versions.flatMap(version => Object.entries(require('./conf/platforms.json')).map(([arch, p]) => ({version, arch, runner:p.build_runner})))};
+          let tests = matrix.include;
           if (process.env.PACKAGES_RUN) {
             if (!/^[1-9][0-9]*$/.test(process.env.PACKAGES_RUN)) throw new Error('Invalid packages run');
             const source = JSON.parse(execFileSync('gh', ['api', `repos/shivammathur/php-darwin/actions/runs/${process.env.PACKAGES_RUN}`]));
-            if (source.path !== '.github/workflows/mirror.yml' || source.conclusion !== 'success' || source.head_repository.full_name !== 'shivammathur/php-darwin') throw new Error('Unverified package run');
+            if (source.path !== '.github/workflows/mirror.yml' || source.status !== 'completed' || !['success', 'failure'].includes(source.conclusion) || source.head_repository.full_name !== 'shivammathur/php-darwin') throw new Error('Unverified package run');
+            const jobPages = JSON.parse(execFileSync('gh', ['api', '--paginate', '--slurp', `repos/shivammathur/php-darwin/actions/runs/${process.env.PACKAGES_RUN}/jobs?per_page=100`]));
+            const jobs = jobPages.flatMap(p => p.jobs);
+            for (const {version, arch, runner} of matrix.include) {
+              const selected = jobs.filter(j => j.name === `brotli / repackage (${version}, ${arch}, ${runner})`);
+              if (selected.length !== 1 || selected[0].conclusion !== 'success') throw new Error(`Unverified repackaging: ${version}/${arch}`);
+            }
+            tests = tests.filter(({version, arch, runner}) => {
+              const selected = jobs.filter(j => j.name === `brotli / test (${version}, ${arch}, ${runner})`);
+              return selected.length !== 1 || selected[0].conclusion !== 'success';
+            });
             const pages = JSON.parse(execFileSync('gh', ['api', '--paginate', '--slurp', `repos/shivammathur/php-darwin/actions/runs/${process.env.PACKAGES_RUN}/artifacts?per_page=100`]));
             const artifacts = pages.flatMap(p => p.artifacts).filter(a => !a.expired);
             for (const {version, arch} of matrix.include) if (artifacts.filter(a => a.name === `brotli-packages-${version}-${arch}`).length !== 1) throw new Error(`Missing verified packages: ${version}/${arch}`);
           }
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, `matrix=${JSON.stringify(matrix)}\nversions=${JSON.stringify(versions)}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `matrix=${JSON.stringify(matrix)}\nversions=${JSON.stringify(versions)}\ntest-matrix=${JSON.stringify({include:tests})}\ntest-count=${tests.length}\n`);
+          console.log(`Reusing ${matrix.include.length - tests.length} successful native checks; testing ${tests.length} version/architecture pairs`);
           JS
   validate:
     uses: ./.github/workflows/validate.yml
@@ -103,10 +117,10 @@ jobs:
           if-no-files-found: ignore
   test:
     needs: [plan, repackage]
-    if: inputs.packages-run == ''
+    if: ${{ always() && !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.test-count != '0' && (needs.repackage.result == 'success' || (needs.repackage.result == 'skipped' && inputs.packages-run != '')) }}
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+      matrix: ${{ fromJSON(needs.plan.outputs.test-matrix) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     env:
@@ -125,11 +139,13 @@ jobs:
       - uses: ./.github/actions/download-artifacts
         with:
           name: brotli-packages-${{ matrix.version }}-${{ matrix.arch }}
+          run-id: ${{ inputs.packages-run || github.run_id }}
+          github-token: ${{ secrets.TOKEN || github.token }}
           path: builds
       - name: Validate all PHP variants, warm installs and the previous installer
         run: bash scripts/tests/native/brotli-repack.test.sh
   publish-php:
-    if: ${{ always() && !cancelled() && inputs.publish && needs.plan.result == 'success' && needs.validate.result == 'success' && (needs.test.result == 'success' || (needs.test.result == 'skipped' && inputs.packages-run != '')) && (needs.repackage.result == 'success' || (needs.repackage.result == 'skipped' && inputs.packages-run != '')) }}
+    if: ${{ always() && !cancelled() && inputs.publish && needs.plan.result == 'success' && needs.validate.result == 'success' && (needs.test.result == 'success' || (needs.test.result == 'skipped' && needs.plan.outputs.test-count == '0')) && (needs.repackage.result == 'success' || (needs.repackage.result == 'skipped' && inputs.packages-run != '')) }}
     needs: [plan, validate, repackage, test]
     strategy:
       fail-fast: false

@@ -20,7 +20,7 @@ on:
         description: Replace Brotli using this verified preparation run, then test both architectures
         type: string
       brotli-packages-run:
-        description: Publish previously validated Brotli repackaging artifacts without repeating work
+        description: Reuse Brotli archives and successful native checks, retrying remaining checks
         type: string
 permissions:
   contents: read
