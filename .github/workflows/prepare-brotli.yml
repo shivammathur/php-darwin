@@ -57,7 +57,7 @@ jobs:
           mkdir -p replacement
           "$PHP_DARWIN_NODE" - <<'JS'
           const fs = require('node:fs');
-          const {command} = require('./scripts/cache/source-bottle-cache.cjs');
+          const {command} = require('./scripts/installer/install-extensions.cjs');
           const {sourceRecords} = require('./scripts/build/extension-pack.cjs');
           const worker = JSON.parse(fs.readFileSync('dependency-worker.json'));
           if (worker.version !== '1.2.1' || worker.sources.length !== 1) throw new Error('Expected one Brotli 1.2.1 source bottle');

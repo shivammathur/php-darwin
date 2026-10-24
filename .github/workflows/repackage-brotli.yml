@@ -1,0 +1,177 @@
+name: Replace Brotli in published packages
+run-name: Repackage PHP and Swoole with Brotli 1.2.1
+on:
+  workflow_call:
+    inputs:
+      preparation-run:
+        description: Successful Brotli preparation run
+        type: string
+        required: true
+      php-versions:
+        description: Space-separated versions, or all
+        type: string
+        default: all
+      publish:
+        description: Publish only after every archive passes native validation
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  actions: read
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      versions: ${{ steps.plan.outputs.versions }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREPARATION_RUN: ${{ inputs.preparation-run }}
+          PHP_VERSIONS: ${{ inputs.php-versions }}
+        run: |
+          node - <<'JS'
+          const fs = require('node:fs'), {execFileSync} = require('node:child_process');
+          if (!/^[1-9][0-9]*$/.test(process.env.PREPARATION_RUN)) throw new Error('Invalid source run');
+          const run = JSON.parse(execFileSync('gh', ['api', `repos/shivammathur/php-darwin/actions/runs/${process.env.PREPARATION_RUN}`]));
+          if (run.path !== '.github/workflows/prepare-brotli.yml' || run.conclusion !== 'success' || run.head_repository.full_name !== 'shivammathur/php-darwin') throw new Error('Unverified Brotli preparation run');
+          const configured = fs.readFileSync('conf/versions', 'utf8').trim().split('\n').filter(s => s && !s.startsWith('#')).map(s => s.trim().split(/\s+/)[1]);
+          const versions = process.env.PHP_VERSIONS === 'all' ? configured : process.env.PHP_VERSIONS.trim().split(/\s+/);
+          if (!versions.length || new Set(versions).size !== versions.length || versions.some(v => !configured.includes(v))) throw new Error('Invalid PHP versions');
+          const matrix = {include: versions.flatMap(version => Object.entries(require('./conf/platforms.json')).map(([arch, p]) => ({version, arch, runner:p.build_runner})))};
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `matrix=${JSON.stringify(matrix)}\nversions=${JSON.stringify(versions)}\n`);
+          JS
+  validate:
+    uses: ./.github/workflows/validate.yml
+  repackage:
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    env:
+      ARCH: ${{ matrix.arch }}
+      PHP_VERSION: ${{ matrix.version }}
+      GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_INSTALL_CLEANUP: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/runner-preflight
+      - uses: ./.github/actions/node-runtime
+      - uses: ./.github/actions/download-artifacts
+        with:
+          name: brotli-1.2.1-${{ matrix.arch }}
+          run-id: ${{ inputs.preparation-run }}
+          github-token: ${{ secrets.TOKEN || github.token }}
+          path: replacement
+      - name: Replace Brotli and prove the remaining payload is preserved
+        run: python3 scripts/release/repackage-brotli.py "$PHP_VERSION" "$ARCH" replacement builds
+      - name: Validate all PHP variants and repackaged Swoole runtimes
+        run: bash scripts/tests/native/brotli-repack.test.sh
+      - uses: ./.github/actions/upload-artifacts
+        with:
+          name: brotli-packages-${{ matrix.version }}-${{ matrix.arch }}
+          path: builds
+          if-no-files-found: error
+          compression-level: 0
+      - uses: ./.github/actions/upload-artifacts
+        if: always()
+        with:
+          name: brotli-evidence-${{ matrix.version }}-${{ matrix.arch }}
+          path: builds/evidence
+          if-no-files-found: ignore
+  publish-php:
+    if: inputs.publish
+    needs: [plan, validate, repackage]
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ${{ fromJSON(needs.plan.outputs.versions) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      actions: read
+    concurrency:
+      group: php-darwin-release-publish-${{ matrix.version }}
+      cancel-in-progress: false
+    env:
+      PHP_VERSION: ${{ matrix.version }}
+      GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+      PHP_DARWIN_MIRROR_REQUIRED: 'true'
+      CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
+      CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
+      CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/download-artifacts
+        with:
+          pattern: brotli-packages-${{ matrix.version }}-*
+          path: packages
+      - name: Verify source manifests and publish immutable replacements
+        run: |
+          mkdir current builds
+          gh release download "php-$PHP_VERSION" --pattern "php-$PHP_VERSION-manifest.json" --dir current
+          for arch in arm64 x86_64; do
+            cmp "current/php-$PHP_VERSION-manifest.json" "packages/brotli-packages-$PHP_VERSION-$arch/evidence/php-$PHP_VERSION-manifest.json"
+            cp -a "packages/brotli-packages-$PHP_VERSION-$arch/$arch" builds/
+          done
+          bash scripts/release/publish.sh builds
+  publish-extensions:
+    if: inputs.publish
+    needs: [validate, repackage, publish-php]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      actions: read
+    concurrency:
+      group: extension-cache-publish
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/download-artifacts
+        with:
+          pattern: brotli-packages-*
+          path: packages
+      - name: Check source packs have not changed and publish validated replacements
+        env:
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+          CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
+          CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
+          CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
+        run: |
+          mkdir -p builds/extensions
+          node - <<'JS'
+          const fs = require('node:fs');
+          const {readManifest} = require('./scripts/release/extension-packs.cjs');
+          (async () => {
+            for (const directory of fs.readdirSync('packages')) {
+              const base = `packages/${directory}`;
+              const file = fs.readdirSync(`${base}/evidence`).find(n => /^extensions-.*-manifest.json$/.test(n));
+              const version = file.slice(11, -14);
+              const current = await readManifest(version);
+              const old = JSON.parse(fs.readFileSync(`${base}/evidence/${file}`));
+              const arch = directory.split('-').at(-1);
+              for (const entry of old.assets.filter(e => e.architecture === arch && e.dependencies.some(d => d.name === 'brotli'))) {
+                const found = current.assets.find(e => e.file === entry.file);
+                if (!found || found.sha256 !== entry.sha256) throw new Error('Swoole source publication changed');
+              }
+              if (fs.existsSync(`${base}/extensions`)) fs.cpSync(`${base}/extensions`, 'builds/extensions', {recursive:true});
+            }
+            await require('./scripts/release/extension-packs.cjs').publish('builds/extensions');
+          })().catch(e => { console.error(e); process.exitCode = 1; });
+          JS

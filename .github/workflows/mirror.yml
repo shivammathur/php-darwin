@@ -16,16 +16,31 @@ on:
         description: Also update the GitHub release installers after verifying R2
         default: false
         type: boolean
+      brotli-preparation-run:
+        description: Replace Brotli using this verified preparation run, then test both architectures
+        type: string
 permissions:
   contents: read
 jobs:
+  brotli:
+    if: inputs.brotli-preparation-run != ''
+    permissions:
+      contents: write
+      actions: read
+    uses: ./.github/workflows/repackage-brotli.yml
+    with:
+      preparation-run: ${{ inputs.brotli-preparation-run }}
+      php-versions: ${{ inputs.php-version }}
+      publish: ${{ inputs.publish-installers }}
+    secrets: inherit
   validate:
-    if: inputs.repackage
+    if: inputs.repackage && inputs.brotli-preparation-run == ''
     permissions:
       contents: read
       actions: read
     uses: ./.github/workflows/validate.yml
   matrix:
+    if: inputs.brotli-preparation-run == ''
     runs-on: ubuntu-latest
     outputs:
       versions: ${{ steps.matrix.outputs.versions }}
