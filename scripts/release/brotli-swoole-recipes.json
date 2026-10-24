@@ -1,0 +1,110 @@
+{
+  "Formula/swoole@8.3.rb": {
+    "formula": "shivammathur/extensions/swoole@8.3",
+    "repository": "shivammathur/homebrew-extensions",
+    "path": "Formula/swoole@8.3.rb",
+    "sha256": "b18970d3bc6a526f6cca382799b7a307ee6157288a0ef79b89dba7095f25db26",
+    "inputs_schema": 1,
+    "inputs_mode": "platforms",
+    "inputs_sha256": "08278798ed9914ac56946b9dc6966dd5bdfffbabeebd22b273a996189a57ef18"
+  },
+  "Formula/swoole@7.3.rb": {
+    "formula": "shivammathur/extensions/swoole@7.3",
+    "repository": "shivammathur/homebrew-extensions",
+    "path": "Formula/swoole@7.3.rb",
+    "sha256": "0bede58d403d98f5df4bb4c295a051d0894a835eba1b3e86277b7601100507bb",
+    "inputs_schema": 1,
+    "inputs_mode": "platforms",
+    "inputs_sha256": "ee60d0116c72a7627ae6584863fe81b669c4b347a4ef6ad943ee9dc79487fcc4"
+  },
+  "Formula/swoole@7.4.rb": {
+    "formula": "shivammathur/extensions/swoole@7.4",
+    "repository": "shivammathur/homebrew-extensions",
+    "path": "Formula/swoole@7.4.rb",
+    "sha256": "a34817fcebbbf429b2640bd2e480fe3f9c8a5f043992f3e3e304c008e62c78a6",
+    "inputs_schema": 1,
+    "inputs_mode": "platforms",
+    "inputs_sha256": "0b2edd4b628fea59554579976102047de2d7a3d29e53397c92df0dc6409937b1"
+  },
+  "Formula/swoole@7.0.rb": {
+    "formula": "shivammathur/extensions/swoole@7.0",
+    "repository": "shivammathur/homebrew-extensions",
+    "path": "Formula/swoole@7.0.rb",
+    "sha256": "c3b2de0a35a450ae62100281f1b52ad611985f3d78edd9050734154e96ea37c2",
+    "inputs_schema": 1,
+    "inputs_mode": "platforms",
+    "inputs_sha256": "411125a17636c4a5bc061e7fdbb294de03ccfe00c34eb854965f201e6a9ffb2d"
+  },
+  "Formula/swoole@8.0.rb": {
+    "formula": "shivammathur/extensions/swoole@8.0",
+    "repository": "shivammathur/homebrew-extensions",
+    "path": "Formula/swoole@8.0.rb",
+    "sha256": "c43cec4ec0b401ba23264c9699fb9fa1147867094fb1776523cfac2ce9b5aad2",
+    "inputs_schema": 1,
+    "inputs_mode": "platforms",
+    "inputs_sha256": "38c9700bc56fc7f98abe75897e249260b7b8796e982790be7c26374436df3fac"
+  },
+  "Formula/swoole@5.6.rb": {
+    "formula": "shivammathur/extensions/swoole@5.6",
+    "repository": "shivammathur/homebrew-extensions",
+    "path": "Formula/swoole@5.6.rb",
+    "sha256": "31075b602c2618898657d124757b2030f5c62635f7ab6c38e23206756edb561a",
+    "inputs_schema": 1,
+    "inputs_mode": "platforms",
+    "inputs_sha256": "de2abee18bae6b653688ba009bab9e9e10b13687d9cbd84363350f3ead44bdf9"
+  },
+  "Formula/swoole@8.4.rb": {
+    "formula": "shivammathur/extensions/swoole@8.4",
+    "repository": "shivammathur/homebrew-extensions",
+    "path": "Formula/swoole@8.4.rb",
+    "sha256": "2f22b348bcae169ff0ac081d188b8cbdbaedf70dbcdaee12f96545d4d7b7cc4c",
+    "inputs_schema": 1,
+    "inputs_mode": "platforms",
+    "inputs_sha256": "0bcfd825bc4046c37a90fd0494bcfec67c85440464015e1873cc58e060516249"
+  },
+  "Formula/swoole@7.1.rb": {
+    "formula": "shivammathur/extensions/swoole@7.1",
+    "repository": "shivammathur/homebrew-extensions",
+    "path": "Formula/swoole@7.1.rb",
+    "sha256": "b5e21573e0f5b9a78eb6974e91e5fef90d545447b186b6eb5d2639d2cd3382b0",
+    "inputs_schema": 1,
+    "inputs_mode": "platforms",
+    "inputs_sha256": "9a63e60b58af66549a2d6b012d7f4b0f83a81daa80189ebf38bf4e888174ae57"
+  },
+  "Formula/swoole@8.5.rb": {
+    "formula": "shivammathur/extensions/swoole@8.5",
+    "repository": "shivammathur/homebrew-extensions",
+    "path": "Formula/swoole@8.5.rb",
+    "sha256": "a657aff3b7e6ffdce1d8a1d73ea37f13f1fbb9ab540a983e31486aa55a884acc",
+    "inputs_schema": 1,
+    "inputs_mode": "platforms",
+    "inputs_sha256": "181c78bedc985b2e661558e8e53199d9613d45ba06850d04669c8e7b748bc51e"
+  },
+  "Formula/swoole@8.1.rb": {
+    "formula": "shivammathur/extensions/swoole@8.1",
+    "repository": "shivammathur/homebrew-extensions",
+    "path": "Formula/swoole@8.1.rb",
+    "sha256": "82f0cca35553b49372564681ebba10ec3438f4c0b2bc0d1643e44a0adea2717d",
+    "inputs_schema": 1,
+    "inputs_mode": "platforms",
+    "inputs_sha256": "e7c721847b2874cf8a3a1fcb3062e6ad7f3295377b06636ca654be5e6c1bf0f0"
+  },
+  "Formula/swoole@8.2.rb": {
+    "formula": "shivammathur/extensions/swoole@8.2",
+    "repository": "shivammathur/homebrew-extensions",
+    "path": "Formula/swoole@8.2.rb",
+    "sha256": "2b8375390155650941eb04de221ba553ed8faa57bb381750f9f0079826ce956f",
+    "inputs_schema": 1,
+    "inputs_mode": "platforms",
+    "inputs_sha256": "a6f2349f120a54277e8d7164357f09b39ed1ca227edca6e4de411021f2cdf59d"
+  },
+  "Formula/swoole@7.2.rb": {
+    "formula": "shivammathur/extensions/swoole@7.2",
+    "repository": "shivammathur/homebrew-extensions",
+    "path": "Formula/swoole@7.2.rb",
+    "sha256": "e94f948061f8c139e32883f8b2272c84e9c33c6989040dd925fa3c209716f052",
+    "inputs_schema": 1,
+    "inputs_mode": "platforms",
+    "inputs_sha256": "e11b8edbfec4a6f405511053fbf9b5b5e633b0a2a7bad8d9a696b7c030f7ef7e"
+  }
+}

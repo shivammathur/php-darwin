@@ -1,0 +1,196 @@
+name: Preserve Swoole archive layout for Brotli
+on:
+  workflow_call:
+    inputs:
+      source-runs:
+        description: JSON object mapping PHP versions to successful main Swoole rebuild runs
+        required: true
+        type: string
+      publish:
+        default: false
+        type: boolean
+permissions:
+  contents: read
+  actions: read
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - id: plan
+        env:
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+          SOURCE_RUNS: ${{ inputs.source-runs }}
+        run: |
+          node - <<'JS'
+          const fs = require('node:fs');
+          const {validatePublishRun} = require('./scripts/release/extension-packs.cjs');
+          (async () => {
+            const sources = JSON.parse(process.env.SOURCE_RUNS);
+            if (!sources || Array.isArray(sources) || !Object.keys(sources).length || Object.keys(sources).some(v => !/^(5\.6|7\.[0-4]|8\.[0-5])$/.test(v))) throw new Error('Invalid PHP source selection');
+            await Promise.all(Object.values(sources).map(run => validatePublishRun(String(run))));
+            const platforms = require('./conf/platforms.json');
+            const matrix = {include:Object.entries(sources).flatMap(([version, run]) => Object.entries(platforms).map(([arch, p]) => ({version, run:String(run), arch, runner:p.build_runner})))};
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `matrix=${JSON.stringify(matrix)}\n`);
+          })().catch(error => { console.error(error); process.exitCode = 1; });
+          JS
+  validate:
+    uses: ./.github/workflows/validate.yml
+  package:
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/download-artifacts
+        with:
+          pattern: extension-built-${{ matrix.version }}-${{ matrix.arch }}-*
+          github-token: ${{ secrets.TOKEN || github.token }}
+          run-id: ${{ matrix.run }}
+          path: rebuilt
+          merge-multiple: 'true'
+      - name: Install archive tools
+        run: sudo apt-get update && sudo apt-get install -y zstd
+      - name: Preserve the original structure and ancillary files
+        run: python3 scripts/release/preserve-swoole-brotli.py '${{ matrix.version }}' '${{ matrix.arch }}' rebuilt builds/extensions builds/evidence
+      - uses: ./.github/actions/upload-artifacts
+        with:
+          name: swoole-preserved-${{ matrix.version }}-${{ matrix.arch }}
+          path: builds
+          compression-level: 0
+          if-no-files-found: error
+      - uses: ./.github/actions/upload-artifacts
+        with:
+          name: swoole-preservation-${{ matrix.version }}-${{ matrix.arch }}
+          path: builds/evidence
+          if-no-files-found: error
+  test:
+    needs: [plan, package]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_INSTALL_CLEANUP: '1'
+      HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/runner-preflight
+      - uses: ./.github/actions/node-runtime
+      - name: Restore archive tools
+        run: bash scripts/build/archive-tools.sh
+      - uses: ./.github/actions/download-artifacts
+        with:
+          name: swoole-preserved-${{ matrix.version }}-${{ matrix.arch }}
+          path: builds
+      - name: Validate every preserved archive natively
+        run: EXTENSION_ENTRIES="$(cat builds/evidence/entries.json)" "$PHP_DARWIN_NODE" scripts/build/extension-batch.cjs test
+      - uses: ./.github/actions/upload-artifacts
+        with:
+          name: swoole-tested-${{ matrix.version }}-${{ matrix.arch }}
+          path: builds/extensions
+          compression-level: 0
+          if-no-files-found: error
+  publish:
+    if: inputs.publish
+    needs: [plan, validate, package, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      actions: read
+    concurrency:
+      group: extension-cache-publish
+      cancel-in-progress: false
+      queue: max
+    env:
+      GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+      SOURCE_RUNS: ${{ inputs.source-runs }}
+      CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
+      CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
+      CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/download-artifacts
+        with:
+          pattern: swoole-tested-*
+          path: builds/extensions
+          merge-multiple: 'true'
+      - uses: ./.github/actions/download-artifacts
+        with:
+          pattern: swoole-preservation-*
+          path: evidence
+      - name: Revalidate original runs and publish the exact tested archives
+        env:
+          EXTENSION_PUBLISH_REPORT: ${{ runner.temp }}/extension-publication.json
+        run: |
+          node - <<'JS'
+          const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict');
+          const {validatePublishRun,publish} = require('./scripts/release/extension-packs.cjs');
+          const {archiveEntries,verifyArchive} = require('./scripts/release/extension-batches.cjs');
+          (async () => {
+            const sources = JSON.parse(process.env.SOURCE_RUNS);
+            await Promise.all(Object.values(sources).map(run => validatePublishRun(String(run))));
+            const expected = [];
+            for (const version of Object.keys(sources)) {
+              const response = await fetch(`https://github.com/shivammathur/php-darwin/releases/download/extensions/extensions-${version}-manifest.json`);
+              if (!response.ok) throw new Error(`Cannot verify current PHP ${version} extension manifest`);
+              const current = await response.json(), incoming = [];
+              let baseline;
+              for (const arch of ['arm64','x86_64']) {
+                const dir = path.join('evidence', `swoole-preservation-${version}-${arch}`);
+                const original = JSON.parse(fs.readFileSync(path.join(dir, `extensions-${version}-manifest.json`)));
+                if (baseline) assert.deepEqual(original, baseline, 'Architecture baselines differ');
+                baseline = original;
+                const entries = JSON.parse(fs.readFileSync(path.join(dir, 'entries.json')));
+                if (entries.length !== 4) throw new Error('Missing preserved variants');
+                for (const entry of entries) {
+                  const key = [entry.name,entry.php_version,entry.build,entry.thread_safety,entry.architecture].join('-');
+                  const proof = JSON.parse(fs.readFileSync(path.join(dir, `${key}.json`)));
+                  if (proof.sha256 !== entry.sha256 || proof.layout_preserved !== true || proof.rebuilt_executable_bytes_preserved !== true || proof.platform !== 'Linux') throw new Error('Missing preservation evidence');
+                  const matches = archiveEntries('builds/extensions', [key]);
+                  if (matches.length !== 1) throw new Error('Missing or duplicate tested archive');
+                  const verified = verifyArchive(matches[0].directory, entry).entry;
+                  assert.deepEqual(verified, entry, 'Tested metadata differs from preserved metadata');
+                  incoming.push(entry);
+                  expected.push(key);
+                }
+              }
+              // A failed upload may already have published some complete versions.
+              // Accept only our exact replacements, preserving every other entry.
+              const identity = entry => [entry.name,entry.php_version,entry.build,entry.thread_safety,entry.architecture].join('-');
+              current.assets = current.assets.map(entry => {
+                const replacement = incoming.find(item => identity(item) === identity(entry));
+                if (replacement && entry.sha256 === replacement.sha256) {
+                  assert.deepEqual(entry, replacement, 'Published replacement differs from the tested artifact');
+                  return baseline.assets.find(item => identity(item) === identity(entry));
+                }
+                return entry;
+              });
+              assert.deepEqual(current, baseline, `Published extension inputs changed: ${version}`);
+            }
+            if (archiveEntries('builds/extensions').length !== expected.length) throw new Error('Unexpected publication archives');
+            await publish('builds/extensions');
+          })().catch(error => { console.error(error); process.exitCode = 1; });
+          JS
+      - uses: ./.github/actions/upload-artifacts
+        if: always()
+        with:
+          name: swoole-publication-${{ github.run_id }}
+          path: ${{ runner.temp }}/extension-publication.json
+          if-no-files-found: ignore

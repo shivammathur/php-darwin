@@ -22,11 +22,24 @@ on:
       brotli-packages-run:
         description: Reuse Brotli archives and successful native checks, retrying remaining checks
         type: string
+      swoole-brotli-runs:
+        description: Preserve the original layout of rebuilt Swoole packs; JSON PHP-version to main-run mapping
+        type: string
 permissions:
   contents: read
 jobs:
+  swoole-brotli:
+    if: inputs.swoole-brotli-runs != ''
+    permissions:
+      contents: write
+      actions: read
+    uses: ./.github/workflows/preserve-swoole-brotli.yml
+    with:
+      source-runs: ${{ inputs.swoole-brotli-runs }}
+      publish: ${{ inputs.publish-installers }}
+    secrets: inherit
   brotli:
-    if: inputs.brotli-preparation-run != ''
+    if: inputs.brotli-preparation-run != '' && inputs.swoole-brotli-runs == ''
     permissions:
       contents: write
       actions: read
@@ -38,13 +51,13 @@ jobs:
       publish: ${{ inputs.publish-installers }}
     secrets: inherit
   validate:
-    if: inputs.repackage && inputs.brotli-preparation-run == ''
+    if: inputs.repackage && inputs.brotli-preparation-run == '' && inputs.swoole-brotli-runs == ''
     permissions:
       contents: read
       actions: read
     uses: ./.github/workflows/validate.yml
   matrix:
-    if: inputs.brotli-preparation-run == ''
+    if: inputs.brotli-preparation-run == '' && inputs.swoole-brotli-runs == ''
     runs-on: ubuntu-latest
     outputs:
       versions: ${{ steps.matrix.outputs.versions }}

@@ -15,7 +15,7 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
       concurrency["queue"] == "max" && concurrency["cancel-in-progress"] == false
     File.basename(file)
   end.compact
-  expected = %w[cache-extensions.yml publish-extensions.yml recover-extensions.yml]
+  expected = %w[cache-extensions.yml publish-extensions.yml recover-extensions.yml preserve-swoole-brotli.yml]
   abort "Missing shared extension publication lock" unless publishers.sort == expected.sort
   {"prepare-dependency.yml" => "runtime", "prepare-build-tool.yml" => "tool"}.each do |name, kind|
     worker = YAML.safe_load(File.read(File.join(ARGV.fetch(0), ".github/workflows", name)), aliases: true).fetch("jobs").fetch("worker")
