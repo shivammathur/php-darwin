@@ -40,6 +40,19 @@ def renamed(value):
     return re.sub(r'(libbrotli(?:common|dec|enc)\.)1\.2\.0(\.dylib)', rf'\g<1>{NEW}\2', value)
 
 
+def update_controller(controller, original_metadata, metadata):
+    if controller is None:
+        raise ValueError('Missing packaged installer')
+    pattern = r"(?<=cat <<'PHP_DARWIN_METADATA'\n)(.*?)(?=^PHP_DARWIN_METADATA$)"
+    matches = list(re.finditer(pattern, controller, re.MULTILINE | re.DOTALL))
+    if len(matches) != 1 or json.loads(matches[0][1]) != original_metadata:
+        raise ValueError('Packaged installer metadata mismatch')
+    # Keep every line of existing installer code; only its Brotli data changes.
+    match = matches[0]
+    return (renamed(controller[:match.start()]) + json.dumps(metadata, indent=2) + '\n' +
+            renamed(controller[match.end():]))
+
+
 def symbols(file):
     args = ('nm', '-gU') if os.uname().sysname == 'Darwin' else ('llvm-nm', '-g', '--defined-only', '-j')
     return {line.split()[-1] for line in run(*args, file).splitlines() if line.split()}
@@ -106,7 +119,7 @@ def transform(archive, expected, keg, provenance, output, evidence):
         raise ValueError('Input archive checksum/size mismatch')
     name = expected['name']
     metadata_name = 'var/php-darwin/' + name.replace('.tar.zst', '.json')
-    before, changes, metadata = {}, {}, None
+    before, changes, metadata, controller = {}, {}, None, None
     with tempfile.TemporaryDirectory(prefix='brotli-repack-') as temporary:
         tmp = Path(temporary)
         for member, stream in repack.members(archive):
@@ -116,10 +129,8 @@ def transform(archive, expected, keg, provenance, output, evidence):
             before[member.name] = repack.record(member, content)
             if member.name == metadata_name:
                 metadata = json.loads(content)
-            if member.isfile() and member.name.endswith('/INSTALL_RECEIPT.json'):
-                target = tmp / member.name
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(content)
+            if member.name == repack.CONTROLLER:
+                controller = content.decode()
             if member.name == OLD_ROOT or member.name.startswith(OLD_ROOT + '/'):
                 if content and content[:4] == MAGIC and member.name.endswith('.dylib'):
                     previous = tmp / 'previous' / Path(member.name).name
@@ -152,6 +163,7 @@ def transform(archive, expected, keg, provenance, output, evidence):
         for field in ('architecture', 'build', 'thread_safety', 'minimum_macos'):
             if metadata[field] != expected[field]:
                 raise ValueError(f'Archive identity mismatch: {field}')
+        original_metadata = copy.deepcopy(metadata)
         package, = [p for p in metadata['packages'] if p['name'] == 'brotli']
         if package['opt_target'] != '../' + OLD_ROOT:
             raise ValueError('Unexpected original Brotli version')
@@ -165,7 +177,9 @@ def transform(archive, expected, keg, provenance, output, evidence):
         shutil.copytree(keg, replacement, symlinks=True)
         metadata_file = tmp / metadata_name
         write_json(metadata_file, metadata)
-        run('node', ROOT / 'scripts/installer/generate-install.cjs', tmp / repack.CONTROLLER, metadata_file, tmp)
+        (tmp / repack.CONTROLLER).parent.mkdir(parents=True, exist_ok=True)
+        (tmp / repack.CONTROLLER).write_text(update_controller(controller, original_metadata, metadata))
+        run('bash', '-n', tmp / repack.CONTROLLER)
         for member, _ in repack.members(archive):
             if member.name in (metadata_name, repack.CONTROLLER):
                 changes[member.name] = copy.deepcopy(member), (tmp / member.name).read_bytes()
@@ -179,6 +193,10 @@ def transform(archive, expected, keg, provenance, output, evidence):
                 member = helper.gettarinfo(str(file), str(file.relative_to(tmp)))
             member.mtime, member.mode = int(member.mtime), member.mode & 0o7777
             additions.append((member, file.read_bytes() if member.isfile() else None))
+        previous_layout = {renamed(n): value['type'] for n, value in before.items()
+                           if n == OLD_ROOT or n.startswith(OLD_ROOT + '/')}
+        if previous_layout != {member.name: member.type.hex() for member, _ in additions}:
+            raise ValueError('Brotli replacement changes the package file structure')
         output.mkdir(parents=True, exist_ok=True)
         destination = output / name
         compressor = subprocess.Popen(['zstd', '--ultra', '-19', '--long=27', '-T2', '-q', '-f', '-o', str(destination)], stdin=subprocess.PIPE)

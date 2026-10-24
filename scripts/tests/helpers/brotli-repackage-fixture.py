@@ -36,8 +36,9 @@ with tempfile.TemporaryDirectory() as temporary:
     metadata_name = 'var/php-darwin/' + name.replace('.tar.zst', '.json')
     with tarfile.open(raw, 'w') as target:
         for member_name, content in [(metadata_name, json.dumps(metadata).encode()),
-                (module.repack.CONTROLLER, b'previous controller'),
+                (module.repack.CONTROLLER, ("#!/bin/bash\n# Preserve this previous controller verbatim\ncat <<'PHP_DARWIN_METADATA'\n" + json.dumps(metadata) + "\nPHP_DARWIN_METADATA\nprintf '%s' 'Cellar/brotli/1.2.0'\n").encode()),
                 ('Cellar/brotli/1.2.0/lib/libbrotlidec.1.2.0.dylib', b'old decoder fixture'),
+                ('Cellar/brotli/1.2.0/INSTALL_RECEIPT.json', b'{"runtime_dependencies":[]}'),
                 ('Cellar/php/8.5.12/bin/php', b'unchanged PHP'),
                 ('Cellar/php/8.5.12/INSTALL_RECEIPT.json', b'{"runtime_dependencies":[]}'),
                 ('Cellar/curl/8/lib/libcurl.dylib', b'unchanged curl')]:
@@ -45,6 +46,9 @@ with tempfile.TemporaryDirectory() as temporary:
             info.size, info.mode, info.uid, info.gid, info.mtime = len(content), 0o755, 501, 20, 1234567890
             info.pax_headers = {'SCHILY.xattr.user.fixture': 'preserve me'}
             target.addfile(info, io.BytesIO(content))
+        info = tarfile.TarInfo('Cellar/brotli/1.2.0/lib/libbrotlidec.1.dylib')
+        info.type, info.linkname = tarfile.SYMTYPE, 'libbrotlidec.1.2.0.dylib'
+        target.addfile(info)
         info = tarfile.TarInfo('lib/libbrotlidec.1.2.0.dylib')
         info.type, info.linkname = tarfile.SYMTYPE, '../Cellar/brotli/1.2.0/lib/libbrotlidec.1.2.0.dylib'
         target.addfile(info)
@@ -54,6 +58,8 @@ with tempfile.TemporaryDirectory() as temporary:
     module.transform(archive, expected, keg, provenance, root / 'output', root / 'evidence')
     contents = {m.name: (m, s.read() if s else None) for m, s in module.repack.members(root / 'output' / name)}
     assert not any('brotli/1.2.0' in n for n in contents)
+    assert b'# Preserve this previous controller verbatim' in contents[module.repack.CONTROLLER][1]
+    assert contents[module.repack.CONTROLLER][1].endswith(b"printf '%s' 'Cellar/brotli/1.2.1'\n")
     assert contents['Cellar/php/8.5.12/bin/php'][1] == b'unchanged PHP'
     assert contents['Cellar/php/8.5.12/bin/php'][0].uid == 501
     assert contents['Cellar/php/8.5.12/bin/php'][0].pax_headers['SCHILY.xattr.user.fixture'] == 'preserve me'
