@@ -7,6 +7,10 @@ on:
         description: Successful Brotli preparation run
         type: string
         required: true
+      packages-run:
+        description: Successful repackaging run to publish without repeating native checks
+        type: string
+        default: ''
       php-versions:
         description: Space-separated versions, or all
         type: string
@@ -32,6 +36,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PREPARATION_RUN: ${{ inputs.preparation-run }}
+          PACKAGES_RUN: ${{ inputs.packages-run }}
           PHP_VERSIONS: ${{ inputs.php-versions }}
         run: |
           node - <<'JS'
@@ -43,12 +48,21 @@ jobs:
           const versions = process.env.PHP_VERSIONS === 'all' ? configured : process.env.PHP_VERSIONS.trim().split(/\s+/);
           if (!versions.length || new Set(versions).size !== versions.length || versions.some(v => !configured.includes(v))) throw new Error('Invalid PHP versions');
           const matrix = {include: versions.flatMap(version => Object.entries(require('./conf/platforms.json')).map(([arch, p]) => ({version, arch, runner:p.build_runner})))};
+          if (process.env.PACKAGES_RUN) {
+            if (!/^[1-9][0-9]*$/.test(process.env.PACKAGES_RUN)) throw new Error('Invalid packages run');
+            const source = JSON.parse(execFileSync('gh', ['api', `repos/shivammathur/php-darwin/actions/runs/${process.env.PACKAGES_RUN}`]));
+            if (source.path !== '.github/workflows/mirror.yml' || source.conclusion !== 'success' || source.head_repository.full_name !== 'shivammathur/php-darwin') throw new Error('Unverified package run');
+            const pages = JSON.parse(execFileSync('gh', ['api', '--paginate', '--slurp', `repos/shivammathur/php-darwin/actions/runs/${process.env.PACKAGES_RUN}/artifacts?per_page=100`]));
+            const artifacts = pages.flatMap(p => p.artifacts).filter(a => !a.expired);
+            for (const {version, arch} of matrix.include) if (artifacts.filter(a => a.name === `brotli-packages-${version}-${arch}`).length !== 1) throw new Error(`Missing verified packages: ${version}/${arch}`);
+          }
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `matrix=${JSON.stringify(matrix)}\nversions=${JSON.stringify(versions)}\n`);
           JS
   validate:
     uses: ./.github/workflows/validate.yml
   repackage:
     needs: plan
+    if: inputs.packages-run == ''
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
@@ -89,7 +103,7 @@ jobs:
           path: builds/evidence
           if-no-files-found: ignore
   publish-php:
-    if: inputs.publish
+    if: ${{ always() && !cancelled() && inputs.publish && needs.plan.result == 'success' && needs.validate.result == 'success' && (needs.repackage.result == 'success' || (needs.repackage.result == 'skipped' && inputs.packages-run != '')) }}
     needs: [plan, validate, repackage]
     strategy:
       fail-fast: false
@@ -117,6 +131,8 @@ jobs:
       - uses: ./.github/actions/download-artifacts
         with:
           pattern: brotli-packages-${{ matrix.version }}-*
+          run-id: ${{ inputs.packages-run || github.run_id }}
+          github-token: ${{ secrets.TOKEN || github.token }}
           path: packages
       - name: Verify source manifests and publish immutable replacements
         run: |
@@ -128,7 +144,7 @@ jobs:
           done
           bash scripts/release/publish.sh builds
   publish-extensions:
-    if: inputs.publish
+    if: ${{ always() && !cancelled() && inputs.publish && needs.validate.result == 'success' && needs.publish-php.result == 'success' && (needs.repackage.result == 'success' || (needs.repackage.result == 'skipped' && inputs.packages-run != '')) }}
     needs: [validate, repackage, publish-php]
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -146,6 +162,8 @@ jobs:
       - uses: ./.github/actions/download-artifacts
         with:
           pattern: brotli-packages-*
+          run-id: ${{ inputs.packages-run || github.run_id }}
+          github-token: ${{ secrets.TOKEN || github.token }}
           path: packages
       - name: Check source packs have not changed and publish validated replacements
         env:

@@ -20,6 +20,7 @@ repack = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(repack)
 OLD, NEW = '1.2.0', '1.2.1'
 MAGIC = {bytes.fromhex(value) for value in ('cffaedfe', 'cefaedfe', 'feedfacf', 'feedface', 'cafebabe', 'bebafeca')}
+ABI_CHECKS = set()
 
 
 def run(*args):
@@ -51,7 +52,7 @@ def native_patch(file, private=False):
     for ref in refs:
         target = renamed(ref)
         if private and 'libbrotli' in ref:
-            target = '@loader_path/' + Path(target).name
+            target = '@loader_path/' + os.path.relpath(private / 'lib' / Path(target).name, file.parent)
         if target != ref:
             args += ['-change', ref, target]
     if private and file.name.endswith('.dylib'):
@@ -61,6 +62,18 @@ def native_patch(file, private=False):
         run('codesign', '--force', '--sign', '-', file)
         run('codesign', '--verify', '--strict', file)
     return bool(args)
+
+
+def verify_exports(previous, replacement):
+    key = repack.digest(previous), repack.digest(replacement)
+    if key in ABI_CHECKS:
+        return
+    def symbols(file):
+        return {line.split()[-1] for line in run('nm', '-gU', file).splitlines() if line.split()}
+    missing = symbols(previous) - symbols(replacement)
+    if missing:
+        raise ValueError(f'Brotli replacement removes exported symbols: {sorted(missing)}')
+    ABI_CHECKS.add(key)
 
 
 def prepare_replacement(directory, architecture, temporary):
@@ -109,6 +122,11 @@ def transform(archive, expected, keg, provenance, output, evidence, private=Fals
                 target.write_bytes(content)
                 target.chmod(member.mode)
             if member.name == old_root or member.name.startswith(old_root + '/'):
+                if content and content[:4] in MAGIC and member.name.endswith('.dylib'):
+                    previous = tmp / 'previous' / Path(member.name).name
+                    previous.parent.mkdir(exist_ok=True)
+                    previous.write_bytes(content)
+                    verify_exports(previous, keg / 'lib' / renamed(previous.name))
                 changes[member.name] = None
                 continue
             if member.issym() or member.islnk():
@@ -169,7 +187,7 @@ def transform(archive, expected, keg, provenance, output, evidence, private=Fals
                 keg, replacement)
             for file in replacement.rglob('*'):
                 if file.is_file() and not file.is_symlink() and file.read_bytes()[:4] in MAGIC:
-                    native_patch(file, private=True)
+                    native_patch(file, private=replacement)
         metadata_file = tmp / metadata_name
         write_json(metadata_file, metadata)
         if not private:

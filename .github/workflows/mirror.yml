@@ -19,6 +19,9 @@ on:
       brotli-preparation-run:
         description: Replace Brotli using this verified preparation run, then test both architectures
         type: string
+      brotli-packages-run:
+        description: Publish previously validated Brotli repackaging artifacts without repeating work
+        type: string
 permissions:
   contents: read
 jobs:
@@ -30,6 +33,7 @@ jobs:
     uses: ./.github/workflows/repackage-brotli.yml
     with:
       preparation-run: ${{ inputs.brotli-preparation-run }}
+      packages-run: ${{ inputs.brotli-packages-run }}
       php-versions: ${{ inputs.php-version }}
       publish: ${{ inputs.publish-installers }}
     secrets: inherit
