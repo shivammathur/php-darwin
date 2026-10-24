@@ -1,0 +1,80 @@
+name: Prepare Brotli for package replacement
+run-name: Prepare Brotli 1.2.1 on both baseline platforms
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  prepare:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-14
+          - arch: x86_64
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+      HOMEBREW_PHP_COMMIT: 3f50da2cfcd8887501f29c3f4115e187d7b05179
+      HOMEBREW_EXTENSIONS_COMMIT: e71fc1893787b054350a2a433c97742798387f73
+      PHP_DARWIN_DEPENDENCY_UPDATES: '["brotli"]'
+      HOMEBREW_DEVELOPER: '1'
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_INSTALL_FROM_API: '1'
+      HOMEBREW_NO_INSTALL_CLEANUP: '1'
+      HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Select only the Brotli security release
+        run: |
+          node - <<'JS'
+          const fs = require('node:fs');
+          const lock = require('./conf/dependencies.json');
+          const recipes = {...lock.recipe_commits, brotli: '62b56d1ba43fd195950eded4820ad56f94f1a515'};
+          fs.appendFileSync(process.env.GITHUB_ENV, `HOMEBREW_CORE_COMMIT=${lock.core_commit}\nPHP_DARWIN_RECIPE_COMMITS=${JSON.stringify(recipes)}\n`);
+          JS
+      - uses: ./.github/actions/dependency-environment
+      - name: Prepare a clean baseline environment
+        run: |
+          "$PHP_DARWIN_NODE" scripts/cache/update-dependencies.cjs clean
+          bash scripts/build/check-homebrew.sh
+          brew install --formula --force-bottle jq
+      - name: Build and verify only Brotli
+        run: '"$PHP_DARWIN_NODE" scripts/cache/dependency-worker.cjs brotli'
+      - name: Export the verified replacement and recipe
+        run: |
+          mkdir -p replacement
+          "$PHP_DARWIN_NODE" - <<'JS'
+          const fs = require('node:fs');
+          const {command} = require('./scripts/cache/source-bottle-cache.cjs');
+          const {sourceRecords} = require('./scripts/build/extension-pack.cjs');
+          const worker = JSON.parse(fs.readFileSync('dependency-worker.json'));
+          if (worker.version !== '1.2.1' || worker.sources.length !== 1) throw new Error('Expected one Brotli 1.2.1 source bottle');
+          fs.writeFileSync('replacement/provenance.json', JSON.stringify({...worker, recipe_commit: '62b56d1ba43fd195950eded4820ad56f94f1a515', source_record: sourceRecords(['brotli'])[0]}, null, 2) + '\n');
+          const keg = command('brew', ['--prefix', 'brotli']);
+          command('tar', ['-czf', 'replacement/brotli-1.2.1.tar.gz', '-C', fs.realpathSync(keg), '.']);
+          JS
+      - uses: ./.github/actions/upload-artifacts
+        with:
+          name: brotli-1.2.1-${{ matrix.arch }}
+          path: replacement
+          if-no-files-found: error
+          retention-days: 30
+      - uses: ./.github/actions/upload-artifacts
+        if: always()
+        with:
+          name: brotli-diagnostics-${{ matrix.arch }}
+          path: |
+            dependency-worker.json
+            ${{ runner.temp }}/METRICS.jsonl
+            ${{ runner.temp }}/BOTTLE_MISSES.jsonl
+            ${{ runner.temp }}/SOURCE_BOTTLE_MISSES.jsonl
+          if-no-files-found: ignore
