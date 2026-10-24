@@ -19,8 +19,11 @@ CONTROLLER = 'var/php-darwin/installer/install.sh'
 TRANSFERS = json.loads((ROOT / 'conf/transfers.json').read_text())
 
 def digest(file):
+    result = hashlib.sha256()
     with open(file, 'rb') as stream:
-        return hashlib.file_digest(stream, 'sha256').hexdigest()
+        for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+            result.update(chunk)
+    return result.hexdigest()
 
 def members(archive):
     process = subprocess.Popen(['zstd', '-qdc', str(archive)], stdout=subprocess.PIPE)

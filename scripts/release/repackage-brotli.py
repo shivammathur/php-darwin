@@ -76,6 +76,38 @@ def verify_exports(previous, replacement):
     ABI_CHECKS.add(key)
 
 
+def extract_replacement(archive, root):
+    """Bound all paths and reject traversal through links on macOS's Python 3.9."""
+    def relative(name):
+        while name.startswith('./'):
+            name = name[2:]
+        if name in ('', '.'):
+            return Path('.')
+        path = Path(name)
+        if path.is_absolute() or '..' in path.parts:
+            raise ValueError('Unsafe replacement member')
+        return path
+    members = archive.getmembers()
+    paths = {relative(m.name): m for m in members}
+    if len(paths) != len(members):
+        raise ValueError('Duplicate replacement member')
+    for name, member in paths.items():
+        if any(parent in paths and not paths[parent].isdir() for parent in name.parents):
+            raise ValueError('Replacement member traverses a link')
+        if member.issym():
+            destination = (root / name.parent / member.linkname).resolve()
+            if not destination.is_relative_to(root.resolve()):
+                raise ValueError('Replacement symlink escapes its root')
+        elif member.islnk():
+            target = relative(member.linkname)
+            if target not in paths or not paths[target].isfile():
+                raise ValueError('Invalid replacement hardlink')
+        elif not member.isfile() and not member.isdir():
+            raise ValueError('Unsupported replacement member')
+    # Every destination and link was checked before extracting anything.
+    archive.extractall(root)
+
+
 def prepare_replacement(directory, architecture, temporary):
     provenance = json.loads((directory / 'provenance.json').read_text())
     if provenance['architecture'] != architecture or provenance['version'] != NEW or len(provenance['sources']) != 1:
@@ -83,7 +115,7 @@ def prepare_replacement(directory, architecture, temporary):
     keg = temporary / 'replacement'
     keg.mkdir()
     with tarfile.open(directory / f'brotli-{NEW}.tar.gz') as archive:
-        archive.extractall(keg, filter='data')
+        extract_replacement(archive, keg)
     version = subprocess.check_output([str(keg / 'bin/brotli'), '--version'], text=True,
                                      env={**os.environ, 'DYLD_LIBRARY_PATH': str(keg / 'lib')}).strip()
     if version != 'brotli ' + NEW:

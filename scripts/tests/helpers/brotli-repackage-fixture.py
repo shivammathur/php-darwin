@@ -14,6 +14,23 @@ spec = importlib.util.spec_from_file_location('brotli_repack', ROOT / 'scripts/r
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
+for names in [('../escape',), ('absolute', '/escape'), ('link', 'link/file')]:
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        with tarfile.open(root / 'unsafe.tar', 'w') as archive:
+            for name in names:
+                member = tarfile.TarInfo(name)
+                if name == 'link':
+                    member.type, member.linkname = tarfile.SYMTYPE, 'inside'
+                archive.addfile(member)
+        with tarfile.open(root / 'unsafe.tar') as archive:
+            try:
+                module.extract_replacement(archive, root / 'output')
+            except ValueError:
+                pass
+            else:
+                raise AssertionError('Accepted an unsafe replacement archive')
+
 with tempfile.TemporaryDirectory() as temporary:
     root = Path(temporary)
     keg = root / 'keg'
