@@ -29,6 +29,12 @@ runs:
   using: composite
   steps:
     - uses: ./.github/actions/runner-preflight
+    - uses: ./.github/actions/node-runtime
+    - name: Restore missing archive tools
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: bash scripts/build/archive-tools.sh
     - name: Resolve and verify the actual runner architecture
       id: target
       shell: bash

@@ -152,6 +152,8 @@ if [ -n "${PHP_DARWIN_SOURCE_CACHE_NODE:-}" ]; then
   "$PHP_DARWIN_SOURCE_CACHE_NODE" "${PHP_DARWIN_SOURCE_CACHE_ACTION:?}" install-extensions \
     "$extension_tap_path/Abstract/abstract-php-extension.rb" "$brew_prefix/opt/$formula" \
     "${extension_references[@]}" || php_darwin_die "could not cache PHP $version extension bottles"
+elif [ "$(php_darwin_platform_value "$(php_darwin_normalize_arch "$(uname -m)")" source_builds)" != true ]; then
+  php_darwin_die 'This platform requires the bottle-only source-cache action; direct source fallback is disabled'
 elif [ -n "$suffix" ]; then
   brew install --verbose --build-from-source --skip-link \
     "${extension_references[@]}" || \

@@ -167,6 +167,15 @@ IFS=$'\t' read -r manifest_hash manifest_commit manifest_php_src_commit manifest
   php_darwin_die 'stable manifest fields were not preserved across parsing'
 
 legacy_manifest="$work_dir/legacy-stable-manifest.json"
+previous_platform_manifest="$work_dir/previous-platform-manifest.json"
+jq '(.assets[] | select(.architecture == "arm64") | .minimum_macos)=14' "$gh_manifest" > "$previous_platform_manifest"
+php_darwin_validate_release_manifest "$previous_platform_manifest" "$version" stable >/dev/null || \
+  php_darwin_die 'the previous ARM baseline became unreadable during migration'
+if php_darwin_release_manifest_has_current_platforms "$previous_platform_manifest"; then
+  php_darwin_die 'the previous ARM baseline was incorrectly considered current'
+fi
+php_darwin_release_manifest_has_current_platforms "$gh_manifest" || \
+  php_darwin_die 'the migrated release was not considered current'
 jq '.php_src_commit=null' "$gh_manifest" > "$legacy_manifest" || \
   php_darwin_die 'could not create a legacy stable manifest fixture'
 legacy_manifest_values=$(php_darwin_validate_release_manifest \
@@ -185,7 +194,7 @@ IFS=$'\t' read -r _ _ _ _ _ legacy_asset_download _ <<< "$legacy_asset_values" |
 [ "$legacy_asset_download" = "$manifest_asset" ] || \
   php_darwin_die 'legacy release asset name was not preserved'
 legacy_arm_manifest="$work_dir/legacy-arm-manifest.json"
-jq '.assets |= map(select(.architecture == "arm64"))' "$legacy_asset_manifest" > "$legacy_arm_manifest" || \
+jq '.assets |= map(select(.architecture == "arm64") | .minimum_macos=14)' "$legacy_asset_manifest" > "$legacy_arm_manifest" || \
   php_darwin_die 'could not create an ARM64-only manifest fixture'
 legacy_arm_values=$(php_darwin_validate_release_manifest \
   "$legacy_arm_manifest" "$version" stable "$manifest_asset") || \

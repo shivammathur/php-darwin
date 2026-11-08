@@ -40,7 +40,8 @@ function validatePlatform(platform, arch) {
       const env = inputs?.environment;
       if (!hex.test(sha256 || '') || !inputs || !validKey(inputs, key) ||
           inputs.formula !== formula || inputs.version !== entry.version ||
-          env?.arch !== arch || String(env.macos) !== String(platform.macos) || env.prefix !== platform.prefix) {
+          env?.arch !== arch || !/^[0-9]+$/.test(String(env.macos)) ||
+          Number(env.macos) < 11 || Number(env.macos) > platform.macos || env.prefix !== platform.prefix) {
         throw new Error(`Approved source bottle identity differs: ${formula}`);
       }
     }

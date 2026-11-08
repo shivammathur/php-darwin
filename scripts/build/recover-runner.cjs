@@ -35,11 +35,14 @@ function currentWorker(rows, pid) {
 
 function orphan(row, worker, uid, repository) {
   const ruby = path.join(repository, 'Library/Homebrew/vendor/portable-ruby/');
+  const homebrewRuby = row.executable.startsWith(ruby) && /^[\w.+-]+\/bin\/ruby$/.test(row.executable.slice(ruby.length));
   return row.ppid === 1 && row.uid === uid && row.started < worker.started && !row.state.startsWith('Z') &&
-    row.executable.startsWith(ruby) && /^[\w.+-]+\/bin\/ruby$/.test(row.executable.slice(ruby.length));
+    (homebrewRuby || ['/bin/bash', '/bin/sh'].includes(row.executable));
 }
 
 function installerCommand(args, repository) {
+  const shell = args.indexOf(path.join(repository, 'Library/Homebrew/brew.sh'));
+  if (shell > 0 && args[shell + 1] === 'update') return true;
   const index = args.indexOf(path.join(repository, 'Library/Homebrew/brew.rb'));
   return index > 0 && (['install', 'reinstall', 'upgrade'].includes(args[index + 1]) ||
     (args[index + 1] === 'php-darwin-source' && args[index + 2] === 'install'));
@@ -53,7 +56,7 @@ function holdsLocks(pid, prefix) {
   const directory = path.join(prefix, 'var/homebrew/locks');
   const output = command('/usr/sbin/lsof', ['-nP', '-a', '-p', String(pid), '-F', 'pn']);
   const files = output.split('\n').filter(line => line.startsWith('n')).map(line => line.slice(1))
-    .filter(file => path.dirname(file) === directory && /^[\w@.+-]+\.lock$/.test(path.basename(file)));
+    .filter(file => path.dirname(file) === directory && /^(?:[\w@.+-]+\.lock|update)$/.test(path.basename(file)));
   for (const file of [...new Set(files)]) {
     // lsof on macOS does not report flock ownership. Require this process to
     // be the only opener, then prove the existing inode is exclusively locked.

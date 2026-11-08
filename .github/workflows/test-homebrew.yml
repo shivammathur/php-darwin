@@ -10,6 +10,8 @@ on:
       - scripts/tests/helpers/prepare-e2e.sh
       - scripts/build/ensure-core-history.sh
       - scripts/build/check-homebrew.sh
+      - scripts/build/archive-tools.sh
+      - .github/actions/node-runtime/**
 permissions:
   contents: read
 jobs:
@@ -18,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [macos-latest, macos-15-intel]
+        runner: [macos-26, macos-15-intel]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     env:
@@ -28,6 +30,11 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/runner-preflight
+      - uses: ./.github/actions/node-runtime
+      - name: Restore missing archive tools
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/build/archive-tools.sh
       - name: Clean taps and check the runner
         run: |
           bash scripts/build/cleanup-taps.sh

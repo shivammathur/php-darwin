@@ -91,6 +91,8 @@ jobs:
       - uses: ./.github/actions/runner-preflight
       - uses: ./.github/actions/node-runtime
       - name: Restore archive tools
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: bash scripts/build/archive-tools.sh
       - uses: ./.github/actions/download-artifacts
         with:

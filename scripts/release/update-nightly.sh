@@ -97,10 +97,10 @@ pinned_source_commit=
 if [ "$force" = false ] && [ "$published" = "$current" ] && \
   [ "$formula_current" = true ] && [ "$extensions_current" = true ] && [ "$dependencies_current" = true ] && [ "$manifest_current_platforms" = false ] && \
   [ -n "$manifest_source_commit" ] && [ -n "$manifest_extension_commit" ]; then
-  architectures=x86_64
+  architectures=$(php_darwin_release_manifest_outdated_architectures "$manifest") || exit 1
   pinned_extension_commit=$manifest_extension_commit
   pinned_source_commit=$manifest_source_commit
-  printf 'Completing PHP %s nightly with Intel caches while retaining current ARM caches\n' "$version"
+  printf 'Updating PHP %s nightly platform caches: %s\n' "$version" "$architectures"
 fi
 if [ "$build" = true ]; then
   if [ -n "$published" ]; then

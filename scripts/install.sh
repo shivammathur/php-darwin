@@ -428,7 +428,7 @@ const {pipeline} = require('node:stream/promises');
 const {Readable} = require('node:stream');
 const hex = /^[a-f0-9]{64}$/;
 const configuration = {"versions":["5.6","7.0","7.1","7.2","7.3","7.4","8.0","8.1","8.2","8.3","8.4","8.5","8.6","8.7"],"pack_versions":{"swoole":["5.6","7.0","7.1","7.2","7.3","7.4","8.0","8.1","8.2","8.3","8.4","8.5"]}};
-const platforms = {"arm64":{"minimum_macos":14},"x86_64":{"minimum_macos":15}};
+const platforms = {"arm64":{"minimum_macos":15,"minimum_archive_macos":14},"x86_64":{"minimum_macos":15,"minimum_archive_macos":15}};
 const buildConfig = {"extension_max_archive_bytes":180000000};
 const transfers = {"attempts":3,"retry_delay":1,"retry_after_max":30,"metadata":{"timeout":30,"max_bytes":2000000},"archive":{"timeout":300}};
 const variants = [["release","nts"],["release","zts"],["debug","nts"],["debug","zts"]];
@@ -461,7 +461,8 @@ function validateEntry(entry) {
   if (entry.schema !== 1 || !hex.test(entry.sha256) || !hex.test(entry.inputs_sha256) ||
       !/^[0-9]{8}$/.test(entry.php_api) ||
       !Number.isInteger(entry.bytes) || entry.bytes < 1 || entry.bytes > buildConfig.extension_max_archive_bytes ||
-      !Number.isInteger(entry.minimum_macos) || entry.minimum_macos < platforms[entry.architecture].minimum_macos ||
+      !Number.isInteger(entry.minimum_macos) ||
+      entry.minimum_macos < (platforms[entry.architecture].minimum_archive_macos ?? platforms[entry.architecture].minimum_macos) ||
       entry.file !== `${key(entry)}-${entry.sha256}.tar.zst`) throw new Error('Invalid extension cache metadata');
   return entry;
 }

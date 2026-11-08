@@ -206,6 +206,8 @@ install_formula() {
 
   [ -s "$before_manifest" ] || php_darwin_die 'the clean Homebrew snapshot is missing'
   if [ "$stage" != finalize ]; then
+    [ "$(php_darwin_platform_value "$arch" source_builds)" = true ] || \
+      php_darwin_die "$arch requires the bottle-only source-cache action; direct source fallback is disabled"
     brew install --verbose "$tap/$requested_formula" || php_darwin_die "could not install $requested_formula"
   fi
   brew unlink "$formula" >/dev/null 2>&1 || true

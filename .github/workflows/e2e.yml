@@ -69,6 +69,11 @@ jobs:
       - name: Preserve the Actions Node runtime
         uses: ./.github/actions/node-runtime
 
+      - name: Restore missing archive tools
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/build/archive-tools.sh
+
       - name: Record preinstalled PHP and services
         run: bash scripts/tests/helpers/prepare-e2e.sh
 
@@ -110,6 +115,11 @@ jobs:
 
       - name: Preserve the Actions Node runtime
         uses: ./.github/actions/node-runtime
+
+      - name: Restore missing archive tools
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/build/archive-tools.sh
 
       - name: Record preinstalled PHP and services
         run: bash scripts/tests/helpers/prepare-e2e.sh
@@ -163,6 +173,9 @@ jobs:
 
       - name: Replace cached modules with Homebrew formulae without duplicate INIs
         if: inputs.optional-packs && inputs.php-version == '7.2'
+        env:
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+          PHP_DARWIN_CACHE_ONLY: 'true'
         run: '"$PHP_DARWIN_NODE" scripts/tests/e2e/tap-ini-replacement.test.cjs'
 
       - name: Install and exercise ordinary Brew and PECL extensions

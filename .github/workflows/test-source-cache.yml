@@ -26,6 +26,7 @@ on:
       - scripts/tests/native/source-bottle-*.test.sh
       - scripts/tests/native/approved-dependencies.test.cjs
       - scripts/tests/native/icu-reuse.test.sh
+      - scripts/tests/helpers/published-installer.sh
       - conf/dependencies.json
       - conf/platforms.json
       - conf/package.json
@@ -44,10 +45,28 @@ jobs:
     if: github.ref_type == 'branch'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    outputs:
+      runners: ${{ steps.platforms.outputs.runners }}
+      extension-matrix: ${{ steps.platforms.outputs.extension-matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Select platforms which permit source builds
+        id: platforms
+        run: |
+          node - <<'JS'
+          const fs = require('node:fs');
+          const platforms = Object.values(require('./conf/platforms.json'));
+          const runners = platforms.filter(platform => platform.source_builds === true).map(platform => platform.build_runner);
+          const variants = fs.readFileSync('conf/variants', 'utf8').trim().split('\n')
+            .filter(line => line.trim() && !line.startsWith('#')).map(line => line.trim().split(/\s+/));
+          const extensions = {include: platforms.flatMap(platform => variants
+            .filter(([build, ts]) => platform.source_builds || platform.extension_source_builds.includes(`${build}/${ts}`))
+            .map(([build, ts]) => ({runner: platform.build_runner, build, ts})))};
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `runners=${JSON.stringify(runners)}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `extension-matrix=${JSON.stringify(extensions)}\n`);
+          JS
       - env:
           GH_TOKEN: ${{ secrets.TOKEN || github.token }}
           CACHE_RELEASE: source-bottles-test-${{ github.run_id }}
@@ -60,11 +79,14 @@ jobs:
 
   source-cache:
     needs: prepare
+    if: needs.prepare.outputs.runners != '[]'
     name: Source bottles on ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
-        runner: [macos-14, macos-15-intel]
+        # These fixtures deliberately compile cache misses. Bottle-only
+        # platforms are covered by test-cache-completeness.yml instead.
+        runner: ${{ fromJSON(needs.prepare.outputs.runners) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     env:
@@ -162,10 +184,7 @@ jobs:
     name: Extension bottles on ${{ matrix.runner }} (${{ matrix.build }}/${{ matrix.ts }})
     strategy:
       fail-fast: false
-      matrix:
-        runner: [macos-14, macos-15-intel]
-        build: [release, debug]
-        ts: [nts, zts]
+      matrix: ${{ fromJSON(needs.prepare.outputs.extension-matrix) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     env:
@@ -180,6 +199,8 @@ jobs:
           persist-credentials: false
       - name: Recover abandoned Homebrew installers
         uses: ./.github/actions/runner-preflight
+      - name: Preserve Node before extension fixture setup
+        uses: ./.github/actions/node-runtime
       - name: Remove unused Homebrew taps
         run: bash scripts/build/cleanup-taps.sh
       - name: Install published PHP and prepare extension source

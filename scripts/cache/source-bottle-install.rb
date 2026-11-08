@@ -5,12 +5,24 @@
 require "formula_installer"
 require "cmd/install"
 
+require "json"
+platforms = JSON.parse(File.read(File.expand_path("../../conf/platforms.json", __dir__)))
+arch = Hardware::CPU.arm? ? "arm64" : "x86_64"
+policy = platforms.fetch(arch)
+extension_tap = JSON.parse(File.read(File.expand_path("../../conf/package.json", __dir__))).fetch("extension_tap")
+targets = ARGV.reject { |arg| arg.start_with?("-") }
+extension_source = targets.length == 1 &&
+                   targets.first.match?(%r{\A#{Regexp.escape(extension_tap)}/[A-Za-z0-9@+_.-]+\z}) &&
+                   policy.fetch("extension_source_builds", []).include?(ENV["HOMEBREW_PHP_DARWIN_EXTENSION_VARIANT"])
+raise "#{arch} is bottle-only; source compilation is disabled by conf/platforms.json" unless
+  policy.fetch("source_builds") == true || extension_source
+
 raise "Expected an explicitly planned source build" unless
   ARGV.include?("--ignore-dependencies") && ARGV.include?("--build-bottle")
 
 # Set this inside brew: newer launchers only inherit HOMEBREW_* variables.
 if (pkg_config_path = ENV["HOMEBREW_PHP_DARWIN_PKG_CONFIG_PATH"])
-  ENV["PKG_CONFIG"] = "pkg-config --with-path=#{pkg_config_path}"
+  ENV["PKG_CONFIG"] = ["pkg-config", *pkg_config_path.split(File::PATH_SEPARATOR).map { |directory| "--with-path=#{directory}" }].join(" ")
 end
 
 module PhpDarwinSourceBuildEnvironment

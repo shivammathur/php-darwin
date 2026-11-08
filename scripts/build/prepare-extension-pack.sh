@@ -3,6 +3,8 @@ set -euo pipefail
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=scripts/lib/lib.sh
 . "$script_dir/../lib/lib.sh"
+# shellcheck source=scripts/lib/retry.sh
+. "$script_dir/../lib/retry.sh"
 [ "${GITHUB_ACTIONS:-}" = true ] || php_darwin_die 'extension builds require an Actions runner'
 php_darwin_configure_homebrew_environment
 mode=${1:-build}
@@ -24,12 +26,17 @@ if [ "$(php_darwin_version_channel "$PHP_VERSION")" = nightly ]; then
   printf 'PHP_DARWIN_PHP_SRC_COMMIT=%s\n' "$php_src_commit" >> "${GITHUB_ENV:?}"
 fi
 [ "$mode" = build ] || exit 0
-brew tap shivammathur/extensions
+php_darwin_retry brew tap shivammathur/extensions
 brew trust shivammathur/extensions
 extension_tap=$(brew --repository shivammathur/extensions)
+[ "$(git -C "$extension_tap" rev-parse --show-toplevel)" -ef "$extension_tap" ] || \
+  php_darwin_die 'homebrew-extensions is not an independent Git checkout'
+extension_repository=$(php_darwin_package_config extension_tap_repository)
+[ "$(git -C "$extension_tap" remote get-url origin)" = "$extension_repository" ] || \
+  php_darwin_die 'homebrew-extensions has an unexpected origin'
 if [ "$(git -C "$extension_tap" rev-parse HEAD)" != "${HOMEBREW_EXTENSIONS_COMMIT:?}" ]; then
   if ! git -C "$extension_tap" cat-file -e "$HOMEBREW_EXTENSIONS_COMMIT^{commit}" 2>/dev/null; then
-    git -C "$extension_tap" fetch --depth=1 origin "$HOMEBREW_EXTENSIONS_COMMIT"
+    php_darwin_retry git -C "$extension_tap" fetch --depth=1 origin "$HOMEBREW_EXTENSIONS_COMMIT"
   fi
   git -C "$extension_tap" checkout --detach "$HOMEBREW_EXTENSIONS_COMMIT"
 fi

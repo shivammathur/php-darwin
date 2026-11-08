@@ -186,13 +186,15 @@ jobs:
       homebrew-extensions-commit: ${{ needs.matrix.outputs.extensions-source-commit }}
       homebrew-core-commit: ${{ needs.matrix.outputs.core-commit }}
       source-cache-release: ${{ inputs.source-cache-release }}
-      save-source-bottles: ${{ inputs.publish }}
+      # Trusted staging runs must prepare reusable bottles before publication.
+      # Keeping PHP release manifests unchanged must not discard those builds.
+      save-source-bottles: ${{ inputs.publish || github.ref == 'refs/heads/main' }}
       reuse-archives: ${{ inputs.reuse-archives }}
       force-source: ${{ inputs.force-source }}
 
   cache-bottles:
     name: Cache missing dependency bottles in Cloudflare
-    if: ${{ always() && !cancelled() && inputs.publish && needs.matrix.outputs.build-required == 'true' }}
+    if: ${{ always() && !cancelled() && (inputs.publish || github.ref == 'refs/heads/main') && needs.matrix.outputs.build-required == 'true' }}
     needs: [matrix, architecture]
     uses: ./.github/workflows/cache-bottles.yml
     permissions:

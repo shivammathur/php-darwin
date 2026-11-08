@@ -4,7 +4,8 @@
     {"formula": "^python@[0-9]+\\.[0-9]+$", "unless_dependency": "gettext", "values": {"ac_cv_header_libintl_h": "no", "ac_cv_lib_intl_textdomain": "no"}}
   ],
   "configuration_files": {
-    "openldap": ["etc/openldap/slapd.conf", "etc/openldap/slapd.ldif"]
+    "openldap": ["etc/openldap/slapd.conf", "etc/openldap/slapd.ldif"],
+    "openssl@4": ["etc/openssl@4/openssl.cnf"]
   },
   "installed_files": [
     {"formula": "^icu4c(?:@[0-9]+)?$", "paths": ["lib/pkgconfig/icu-uc.pc", "lib/pkgconfig/icu-i18n.pc", "include/unicode/utypes.h"]}

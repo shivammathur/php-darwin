@@ -107,14 +107,22 @@ jq -e '
   (keys | sort) == ["arm64", "x86_64"] and
   .arm64.brew_prefix == "/opt/homebrew" and .x86_64.brew_prefix == "/usr/local" and
   all(.[];
+    (.source_builds | type == "boolean") and
+    (.extension_source_builds | type == "array" and length == (unique | length)) and
+    all(.extension_source_builds[]; . == "release/zts" or . == "debug/nts" or . == "debug/zts") and
     (.minimum_macos | type == "number" and floor == . and . > 0) and
+    (.minimum_archive_macos | type == "number" and floor == . and . > 0) and
+    .minimum_archive_macos <= .minimum_macos and .minimum_macos == 15 and
     (.platform_key | type == "string" and length > 0) and
-    (.build_runner | type == "string" and length > 0) and
+    (.build_runner | type == "string" and length > 0 and (test("(^|-)latest($|-)") | not)) and
     (.test_runners | type == "array" and length > 0 and length == (unique | length)) and
-    all(.test_runners[]; type == "string" and length > 0) and
+    all(.test_runners[]; type == "string" and length > 0 and (test("(^|-)latest($|-)") | not)) and
     (.build_runner as $runner | .test_runners | index($runner) != null)
   )
 ' "$script_dir/../../../conf/platforms.json" >/dev/null || php_darwin_die 'invalid platform configuration'
+if grep -ERq 'macos-(14|latest)' "$script_dir/../../../.github/workflows"; then
+  php_darwin_die 'a workflow still schedules a retired or floating macOS runner'
+fi
 jq -e '
   keys == ["platforms", "purpose", "schema"] and .schema == 1 and
   .platforms == {"arm64": {"minimum_macos": 14}}

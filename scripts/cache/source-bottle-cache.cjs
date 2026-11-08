@@ -40,6 +40,7 @@ function softwareInputs(inputs) {
     ...(inputs.pkg_config_path ? {pkg_config_path: inputs.pkg_config_path} : {}),
     ...(inputs.openssl_build_environment ? {openssl_build_environment: inputs.openssl_build_environment} : {}),
     ...(inputs.configure_cache ? {configure_cache: inputs.configure_cache} : {}),
+    ...(inputs.configuration_files?.length ? {configuration_files: inputs.configuration_files} : {}),
     environment: {arch: environment.arch, macos: environment.macos, prefix: environment.prefix},
     dependencies: (inputs.dependencies || []).map(dependency => ({
       name: dependency.name, version: dependency.version,
@@ -79,6 +80,9 @@ function buildInputs(formula, environment) {
     // Net-SNMP otherwise autodetects PCRE from the legacy PHP build dependencies.
     // Its formula does not declare PCRE, so consumers would omit that library.
     ...(configureCache(info) ? {configure_cache: configureCache(info)} : {}),
+    // The bottle must contain these defaults even when a warm runner already
+    // has customized etc files. Keep older incomplete bottles under old keys.
+    ...(configurationFiles(info.full_name).length ? {configuration_files: configurationFiles(info.full_name)} : {}),
     dependencies: info.dependencies.map(dep => ({ ...dep, recipe: recipeHash(dep.recipe) })),
   };
 }
@@ -118,6 +122,7 @@ function readBottle(directory, key) {
 
 async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
   forceSource = false, skipLink = false, context, dependencyRoots, approvedDependencies, preparedTargets = [], beforeTarget,
+  cacheOnly = process.env.PHP_DARWIN_CACHE_ONLY === 'true',
   run = command, query = inspect, inputs = buildInputs, buildEnvironment = environment,
   log = console.log, warn = console.warn, prefetch = prefetchBottles }) {
   if (!/^(?:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/)?[A-Za-z0-9@+_.-]+$/.test(formula)) {
@@ -136,6 +141,15 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
     throw new Error('Invalid dependency preparation roots');
   }
   const platform = buildEnvironment();
+  const policy = require('../../conf/platforms.json')[platform.arch];
+  const sourceBuilds = policy?.source_builds;
+  if (typeof sourceBuilds !== 'boolean') throw new Error(`Missing source-build policy for ${platform.arch}`);
+  const extensionVariant = `${context?.build}/${context?.ts}`;
+  const extensionTap = require('../../conf/package.json').extension_tap;
+  // Only the requested ABI-specific extension may use the exception. Its
+  // dependencies, PHP itself and cache-only consumers must still use bottles.
+  const extensionSource = !dependencyRoots && formula.startsWith(`${extensionTap}/`) &&
+    policy.extension_source_builds?.includes(extensionVariant);
   const approved = approvedDependencies?.versions(platform) || {};
   const resolved = query(dependencyRoots ? 'seed' : 'plan', requested,
     dependencyRoots ? requested.some(name => name.includes('/')) : forceSource, approved);
@@ -234,7 +248,7 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
       const incomplete = item.missing_build_files?.length > 0;
       if (incomplete) log(`Restoring incomplete ${item.full_name} bottle; missing: ${item.missing_build_files.join(', ')}`);
       run('brew', incomplete ? ['reinstall', '--formula', '--verbose', '--force-bottle', item.full_name] :
-        ['install', '--formula', ...flags, item.full_name], { inherit: true });
+        ['install', '--formula', '--force-bottle', ...flags, item.full_name], { inherit: true });
       metric({ result: 'upstream-bottle' });
       continue;
     }
@@ -272,6 +286,10 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
       metric({ result: 'restored', key });
       continue;
     }
+    const canBuild = sourceBuilds || (target && item.full_name === formula && extensionSource);
+    if (cacheOnly || !canBuild) {
+      throw new Error(`Required bottle is unavailable: ${item.full_name} ${item.version} (${key}); ${!canBuild ? `${platform.arch} is bottle-only; source compilation is disabled by conf/platforms.json for this target` : 'prepare its cache before installation'}`);
+    }
     const buildMissing = async (waitedMs = 0) => {
       // Another PHP version may have produced this library while this job
       // waited for ownership. Recheck the exact key before compiling anything.
@@ -306,6 +324,7 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
         // PKG_CONFIG command survives it, and pkgconf's --with-path takes
         // precedence over that recursive dependency search path.
         const env = build.pkg_config_path ? {HOMEBREW_PHP_DARWIN_PKG_CONFIG_PATH: build.pkg_config_path} : {};
+        if (target && extensionSource) env.HOMEBREW_PHP_DARWIN_EXTENSION_VARIANT = extensionVariant;
         if (build.configure_cache) env.HOMEBREW_PHP_DARWIN_CONFIGURE_CACHE = JSON.stringify(build.configure_cache);
         brewSource('install', ['--formula', '--build-bottle', ...flags, item.full_name], { run, inherit: true, env });
         compileMs = Date.now() - compileStarted;

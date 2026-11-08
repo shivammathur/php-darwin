@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { runSetupPhp } = require('../helpers/run-setup-php.cjs');
+const { cleanupBuildDirectory } = require('../helpers/cleanup-build-directory.cjs');
 const { command, digest } = require('../../installer/install-extensions.cjs');
 
 assert.equal(process.env.GITHUB_ACTIONS, 'true', 'This fixture modifies CI extension installations');
@@ -22,9 +23,16 @@ for (const module of ['yaml', 'redis']) {
     { stdio: 'inherit', env: { ...process.env, HOMEBREW_NO_AUTOREMOVE: '1' } });
 }
 spawnSync('pecl', ['uninstall', 'redis'], { stdio: 'inherit' });
-fs.rmSync('/tmp/redis-6.3.0', { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+// Unchanged setup-php uses this fixed directory and runs configure/make with
+// sudo. Earlier CI runs can leave root-owned .libs entries behind.
+const redisSource = '/tmp/redis-6.3.0';
+cleanupBuildDirectory(redisSource);
 const extensionDirectory = command('php-config', ['--extension-dir']);
-for (const module of ['redis', 'yaml']) fs.rmSync(path.join(extensionDirectory, `${module}.so`), { force: true });
+// setup-php also keeps a suffixless copy for explicit PECL versions. Remove
+// that fixture version so a prior CI job cannot bypass phpize/configure/make.
+for (const file of ['redis.so', 'redis-6.3.0', 'yaml.so']) {
+  fs.rmSync(path.join(extensionDirectory, file), { force: true });
+}
 assert.equal(command('php', ['-d', 'display_errors=stderr', '-r', "echo extension_loaded('redis') ? 'loaded' : 'absent';"]),
   'absent', 'The downstream fixture must remove preinstalled Redis before testing a fresh source build');
 Object.assign(process.env, { INPUT_EXTENSIONS: 'memcached, yaml, redis-6.3.0', 'INPUT_COVERAGE': 'none',

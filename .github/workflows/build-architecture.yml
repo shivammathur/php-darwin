@@ -118,7 +118,12 @@ jobs:
         # test-bot purges the prefix into /tmp on disposable runners. Shared
         # runners must retain their installed PHP, services and dependencies.
         if: ${{ steps.early-checkpoint.outputs.hit != 'true' && runner.environment != 'self-hosted' }}
-        run: brew test-bot --only-cleanup-before
+        run: |
+          # Cleanup resolves formulae for the image's existing prefix links.
+          # Initialize the tap before that process caches an empty formula list.
+          . scripts/lib/retry.sh
+          php_darwin_retry brew tap --force homebrew/core
+          brew test-bot --only-cleanup-before
 
       - name: Pin Homebrew core before resolving dependencies
         if: ${{ steps.early-checkpoint.outputs.hit != 'true' }}

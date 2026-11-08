@@ -53,7 +53,7 @@ def verify_payload(before, after, excluded):
         raise ValueError(f'Repack changed the runtime payload: {changed[:5]}')
     return len(before)
 
-def repack(archive, expected, output, evidence):
+def repack(archive, expected, output, evidence, baseline=False):
     if digest(archive) != expected['sha256'] or archive.stat().st_size != expected['bytes']:
         raise ValueError('Input archive checksum/size mismatch')
     name = expected['name']
@@ -95,14 +95,23 @@ def repack(archive, expected, output, evidence):
                 raise ValueError(f'Archive identity mismatch: {field}')
         if metadata['archive'] != name:
             raise ValueError('Archive name mismatch')
+        original_baseline = {field: metadata[field] for field in ('minimum_macos', 'platform_key')}
+        platform = json.loads((ROOT / 'conf/platforms.json').read_text())[metadata['architecture']]
+        if not platform.get('minimum_archive_macos', platform['minimum_macos']) <= metadata['minimum_macos'] <= platform['minimum_macos']:
+            raise ValueError('Archive has an unsupported macOS baseline')
+        if baseline:
+            # Raise the supported installation boundary without changing any
+            # runtime bytes or their original build/toolchain provenance.
+            metadata['minimum_macos'] = platform['minimum_macos']
+            metadata['platform_key'] = platform['platform_key']
         metadata['installer'] = {'schema': 1, 'path': CONTROLLER}
         metadata_file = directory / 'metadata.json'
         metadata_file.write_text(json.dumps(metadata, indent=2) + '\n')
         # Use the same producer validation as normal PHP packaging.
         env = {**os.environ, 'META': str(metadata_file), 'VERSION': metadata['php_version'], 'BUILD': metadata['build'],
                'TS': metadata['thread_safety'], 'ARCH': metadata['architecture'], 'PREFIX': metadata['brew_prefix'],
-               'MACOS': str(metadata['minimum_macos'])}
-        subprocess.run(['bash', '-c', '. scripts/lib/lib.sh; php_darwin_validate_cache_metadata "$META" "$VERSION" "$BUILD" "$TS" "$ARCH" "$PREFIX" "$MACOS"'], cwd=ROOT, env=env, check=True, stdout=subprocess.DEVNULL)
+               'MACOS': str(metadata['minimum_macos']), 'PLATFORM_KEY': metadata['platform_key']}
+        subprocess.run(['bash', '-c', '. scripts/lib/lib.sh; php_darwin_validate_cache_metadata "$META" "$VERSION" "$BUILD" "$TS" "$ARCH" "$PREFIX" "$MACOS" "" "" "" "" "$MACOS" "$PLATFORM_KEY"'], cwd=ROOT, env=env, check=True, stdout=subprocess.DEVNULL)
         package = json.loads((ROOT / 'conf/package.json').read_text())
         subprocess.run(['bash', str(ROOT / 'scripts/installer/validate-tap.sh'), str(directory / metadata['tap_snapshot']),
                         metadata['php_version'], metadata['source_hash'], package['tap_repository'],
@@ -153,7 +162,9 @@ def repack(archive, expected, output, evidence):
         (output / (name + '.sha256')).write_text(f'{sha}  {name}\n')
         evidence.mkdir(parents=True, exist_ok=True)
         proof = {'archive': name, 'input_sha256': expected['sha256'], 'sha256': sha, 'payload_members_unchanged': payload_count,
-                 'installer_sha256': digest(controller), 'php_rebuilt': False, 'platform': os.uname().sysname}
+                 'installer_sha256': digest(controller), 'php_rebuilt': False, 'platform': os.uname().sysname,
+                 'previous_baseline': original_baseline,
+                 'baseline': {field: metadata[field] for field in ('minimum_macos', 'platform_key')}}
         (evidence / (name + '.json')).write_text(json.dumps(proof, indent=2) + '\n')
         return proof
 
@@ -171,7 +182,7 @@ def fetch(urls, output, expected=None):
                 if attempt + 1 < TRANSFERS['attempts']: time.sleep(TRANSFERS['retry_delay'] * 2 ** attempt)
     raise failure
 
-def run(version, output):
+def run(version, output, baseline=False):
     package = json.loads((ROOT / 'conf/package.json').read_text())
     build = json.loads((ROOT / 'conf/build.json').read_text())
     origins = [f'https://github.com/{package["release_repository"]}/releases/download/php-{version}', f'{package["artifact_mirror"]}/php-{version}']
@@ -185,7 +196,7 @@ def run(version, output):
         with tempfile.TemporaryDirectory(prefix='php-download-') as directory:
             archive = Path(directory) / entry['name']
             fetch([f'{base}/{entry["download"]}' for base in origins], archive, entry['sha256'])
-            proof = repack(archive, entry, output / entry['architecture'], evidence)
+            proof = repack(archive, entry, output / entry['architecture'], evidence, baseline)
             print(json.dumps(proof), flush=True)
     with concurrent.futures.ThreadPoolExecutor(max_workers=build.get('repack_concurrency', 2)) as pool:
         list(pool.map(worker, manifest['assets']))
@@ -194,6 +205,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('version')
     parser.add_argument('output', type=Path)
+    parser.add_argument('--baseline', action='store_true', help='Adopt the configured supported macOS baseline while preserving runtime bytes')
     arguments = parser.parse_args()
     if os.uname().sysname != 'Linux': raise RuntimeError('Published archives must be repackaged on Linux')
-    run(arguments.version, arguments.output.resolve())
+    run(arguments.version, arguments.output.resolve(), arguments.baseline)

@@ -1,0 +1,39 @@
+name: Migrate published PHP to the current macOS baseline
+run-name: Migrate PHP ${{ inputs.php-version }} to macOS 15
+
+on:
+  workflow_dispatch:
+    inputs:
+      php-version:
+        description: Published PHP minor version
+        required: true
+        type: string
+      publish:
+        description: Publish only after all compatibility and preservation checks pass
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: platform-migration-${{ inputs.php-version }}
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    uses: ./.github/workflows/repackage-version.yml
+    secrets: inherit
+    with:
+      php-version: ${{ inputs.php-version }}
+      baseline: true
+      publish: ${{ inputs.publish }}
+  install:
+    needs: migrate
+    if: inputs.publish && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/e2e.yml
+    secrets: inherit
+    with:
+      php-version: ${{ inputs.php-version }}
+      optional-packs: true

@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { command, digest, key, validateEntry, origins, standaloneSource, supportsPack, phpReleaseMatches } = require('../installer/install-extensions.cjs');
 const configuration = require('../../conf/extension-packs.json');
+const acceptedBaselines = require('../../conf/extension-cache-baselines.json');
 const platforms = require('../../conf/platforms.json');
 const { buildMatrix, reuseMatrix, testMatrix } = require('./extension-batches.cjs');
 const { retention } = require('./extension-retention.cjs');
@@ -50,17 +51,26 @@ async function dispatch({ versions = process.env.PHP_VERSIONS || undefined, afte
     console.log(`Dispatched optional extension caches for PHP ${batch.join(', ')}`);
   }
 }
-function freshnessReason(entry, repositories, phpManifest) {
+function publicationIdentity(entry) {
+  return digest(JSON.stringify([entry.sha256, entry.php_semver, entry.php_src_commit || '', entry.source_records]));
+}
+function freshnessReason(entry, repositories, phpManifest, baselines = acceptedBaselines) {
   try {
     validateEntry(entry);
+    if (entry.minimum_macos < platforms[entry.architecture].minimum_macos) return 'macOS baseline changed';
     if (entry.name === 'memcached' && JSON.stringify(entry.headers) !== JSON.stringify(['igbinary', 'msgpack'])) {
       return 'missing serializer development headers';
     }
     if (!phpReleaseMatches(entry, phpManifest)) return 'PHP release changed';
     if (!entry.source_records?.length) return 'missing recipe records';
+    const accepted = baselines.schema === 1 && baselines.assets?.[key(entry)] === publicationIdentity(entry);
     for (const record of entry.source_records) {
       const repository = repositories[record.repository];
       if (!repository || !record.path || record.path.includes('..') || path.isAbsolute(record.path)) return 'invalid recipe record';
+      // Preserve the verified migration publications across dependency-only
+      // refreshes. Changed extension recipes still rebuild; replacements no
+      // longer match this exact archive and provenance baseline.
+      if (accepted && record.repository === 'Homebrew/homebrew-core') continue;
       if (!recipeCurrent(record, repository)) {
         return `recipe changed: ${record.repository}/${record.path}`;
       }
@@ -144,12 +154,13 @@ async function selectEntries({
         throw new Error(`Published PHP cache variant is unavailable: ${identity}`);
       }
       const previous = existing.assets.find(asset => key(asset) === identity);
-      if (recovery.has(identity)) {
+      if (recovery.has(identity) && recovery.get(identity).minimum_macos >= platforms[architecture].minimum_macos) {
         reused.push(recovery.get(identity)); selected.push(context); continue;
       }
       // Resume fills holes in the requested release, without rebuilding already
       // published packs. Normal scheduled runs still apply full freshness checks.
-      if (resumeRuns.length && previous && phpReleaseMatches(previous, phpManifest)) continue;
+      if (resumeRuns.length && previous && previous.minimum_macos >= platforms[architecture].minimum_macos &&
+          phpReleaseMatches(previous, phpManifest)) continue;
       const reason = force ? 'forced rebuild' :
         previous ? freshnessReason(previous, repositories, phpManifest) : 'not published';
       if (!reason) continue;
@@ -215,6 +226,7 @@ async function validatePublishRun(id, run = transferCommand, retry = retryPolicy
 async function publish(directory, { run = transferCommand, retry = retryPolicy() } = {}) {
   const entries = scan(directory).filter(file => file.endsWith('.json')).map(file => {
     const entry = validateEntry(JSON.parse(fs.readFileSync(file)));
+    if (entry.minimum_macos < platforms[entry.architecture].minimum_macos) throw new Error('Extension publication requires the current macOS baseline');
     const archive = path.join(path.dirname(file), entry.file);
     const bytes = fs.readFileSync(archive);
     if (digest(bytes) !== entry.sha256 || bytes.length !== entry.bytes) throw new Error('Invalid extension publish artifact');
@@ -317,7 +329,7 @@ async function publish(directory, { run = transferCommand, retry = retryPolicy()
     fs.rmSync(staging, { recursive: true, force: true });
   }
 }
-module.exports = { unchanged, freshnessReason, readManifest, selectEntries, plan, publish, compatibilityMatrix, versionBatches, dispatch, validatePublishRun, validatePublishedPHP };
+module.exports = { unchanged, freshnessReason, publicationIdentity, readManifest, selectEntries, plan, publish, compatibilityMatrix, versionBatches, dispatch, validatePublishRun, validatePublishedPHP };
 if (require.main === module) (async () => {
   if (process.argv[2] === 'dispatch') await dispatch();
   else if (process.argv[2] === 'plan') await plan();

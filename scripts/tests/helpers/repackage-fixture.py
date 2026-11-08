@@ -124,6 +124,14 @@ with tempfile.TemporaryDirectory() as temporary:
     repeated = {**expected, 'sha256':proof['sha256'], 'bytes':(root/'out'/archive_name).stat().st_size}
     repeat_proof = module.repack(root/'out'/archive_name, repeated, root/'repeat', root/'repeat-evidence')
     assert repeat_proof['payload_members_unchanged'] == proof['payload_members_unchanged']
+    migration = module.repack(archive, expected, root/'migration', root/'migration-evidence', baseline=True)
+    migrated = json.loads((root/'migration'/archive_name.replace('.tar.zst','.json')).read_text())
+    assert migrated['minimum_macos'] == 15 and migrated['platform_key'] == 'arm64_sequoia'
+    assert migrated['macos_version'] == metadata['macos_version']
+    assert migrated['homebrew_php_commit'] == metadata['homebrew_php_commit']
+    assert migration['previous_baseline'] == {'minimum_macos':14, 'platform_key':'arm64_sonoma'}
+    assert migration['payload_members_unchanged'] == proof['payload_members_unchanged']
+    assert module.verify_payload(before, inventory(root/'migration'/archive_name), excluded) == proof['payload_members_unchanged']
     try: module.repack(archive, {**expected,'architecture':'x86_64'}, root/'wrong', root/'wrong-evidence')
     except ValueError as error: assert 'identity mismatch' in str(error)
     else: raise AssertionError('accepted wrong architecture')

@@ -1,0 +1,97 @@
+name: Verify complete caches and core tap compatibility
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      core: ${{ steps.core.outputs.commit }}
+      php: ${{ steps.php.outputs.commit }}
+      extensions: ${{ steps.extensions.outputs.commit }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - id: core
+        run: echo "commit=$(node scripts/cache/approved-dependencies.cjs core)" >> "$GITHUB_OUTPUT"
+      - id: php
+        run: bash scripts/build/source-commit.sh
+      - id: extensions
+        run: bash scripts/build/source-commit.sh extensions
+  dependencies:
+    needs: plan
+    name: Restore all approved dependencies on ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {arch: arm64, runner: macos-15}
+          - {arch: x86_64, runner: macos-15-intel}
+    env:
+      GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+      HOMEBREW_CORE_COMMIT: ${{ needs.plan.outputs.core }}
+      HOMEBREW_PHP_COMMIT: ${{ needs.plan.outputs.php }}
+      HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.plan.outputs.extensions }}
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_INSTALL_FROM_API: '1'
+      HOMEBREW_NO_INSTALL_CLEANUP: '1'
+      HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: '1'
+      PHP_DARWIN_CACHE_ONLY: 'true'
+      PHP_DARWIN_SOURCE_CACHE_READ_ONLY: 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/dependency-environment
+      - name: Verify full dependency coverage and cold and warm installs without compiling
+        run: '"$PHP_DARWIN_NODE" scripts/tests/native/cache-completeness.test.cjs'
+      - uses: ./.github/actions/upload-artifacts
+        if: always()
+        with:
+          name: cache-completeness-${{ matrix.arch }}
+          path: |
+            cache-coverage-*.json
+            dependency-verification-*.json
+          if-no-files-found: ignore
+  runtime:
+    name: Install every PHP series on ${{ matrix.runner }} with core tap ${{ matrix.core }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+        core: [present, absent]
+    env:
+      CORE_TAP_STATE: ${{ matrix.core }}
+      PHP_VERSION: '8.5'
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_AUTOREMOVE: '1'
+      HOMEBREW_NO_INSTALL_CLEANUP: '1'
+      HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: '1'
+      PHP_DARWIN_PREFER_MIRROR: 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/runner-preflight
+      - uses: ./.github/actions/node-runtime
+      - name: Restore archive tools
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/build/archive-tools.sh
+      - name: Prepare cold PHP installs on the CI runner
+        run: bash scripts/tests/helpers/remove-preinstalled-php.sh
+      - name: Verify published PHP and extensions with both Homebrew layouts
+        run: bash scripts/tests/e2e/core-tap.test.sh
+      - uses: ./.github/actions/upload-artifacts
+        if: always()
+        with:
+          name: core-tap-${{ matrix.runner }}-${{ matrix.core }}
+          path: ${{ runner.temp }}/core-tap-${{ matrix.core }}.jsonl
+          if-no-files-found: ignore

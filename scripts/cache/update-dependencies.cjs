@@ -135,6 +135,15 @@ async function verify() {
   const result = await install({ formula: 'jq', dependencyRoots: names, approvedDependencies: approved,
     cache: new ReleaseCache(), cacheRoot: '.source-bottle-cache', run: buildGuard() });
   if (result.built !== 0) throw new Error('Approved dependency verification compiled a package');
+  // Linkage alone does not prove that a source bottle carries the pristine
+  // configuration needed by PHP archives. Never substitute the host's etc.
+  const configurationPackages = names.filter(name => /^openssl@\d+$/.test(name) || name === 'ca-certificates')
+    .map(name => ({name, opt_target: path.join('..', path.relative(platform.prefix,
+      fs.realpathSync(path.join(platform.prefix, 'opt', name))))}));
+  const defaultsDirectory = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP, 'approved-openssl-defaults-'));
+  let defaults;
+  try { defaults = require('../build/openssl-defaults.cjs').stage(platform.prefix, configurationPackages, defaultsDirectory); }
+  finally { fs.rmSync(defaultsDirectory, {recursive: true, force: true}); }
   command('brew', ['linkage', '--test', ...names], { inherit: true });
   const openssl = names.filter(name => /^openssl@\d+$/.test(name));
   let opensslLinks = 0;
@@ -190,6 +199,7 @@ async function verify() {
     schema: 1, arch: platform.arch, core_commit: lock.core_commit, sha256,
     dependencies: names.length, cold_source_builds: result.built, hot_source_builds: hot.built,
     openssl_formulae: openssl, openssl_library_links_checked: opensslLinks,
+    openssl_default_paths_checked: defaults.paths,
   }, null, 2) + '\n');
 }
 

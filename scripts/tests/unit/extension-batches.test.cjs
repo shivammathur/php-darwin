@@ -17,7 +17,7 @@ function fixture(t) {
 }
 function entry(name = 'mongodb', patch = {}) {
   const result = { schema: 1, name, php_version: '8.4', architecture: 'arm64', build: 'release', thread_safety: 'nts',
-    php_api: '20240924', minimum_macos: 14, inputs_sha256: 'a'.repeat(64), bytes: name.length, sha256: digest(name), ...patch };
+    php_api: '20240924', minimum_macos: 15, inputs_sha256: 'a'.repeat(64), bytes: name.length, sha256: digest(name), ...patch };
   result.minimum_macos = require('../../../conf/platforms.json')[result.architecture].minimum_macos;
   result.file = `${key(result)}-${result.sha256}.tar.zst`;
   return result;
@@ -29,7 +29,7 @@ function writeArchive(folder, metadata) {
   fs.writeFileSync(path.join(folder, 'validation.txt'), JSON.stringify({ name: metadata.name, sha256: metadata.sha256,
     php_preserved: true, services_preserved: true }));
 }
-test('all 432 packs use 112 independent variant builds and 42 compatibility jobs without splitting pack preparation', () => {
+test('all 432 packs use 112 independent variant builds and 28 compatibility jobs without splitting pack preparation', () => {
   const entries = versions.flatMap(php_version => ['arm64', 'x86_64'].flatMap(architecture =>
     ['debug', 'release'].flatMap(build => ['nts', 'zts'].flatMap(thread_safety =>
       Object.keys(packs).filter(name => supportsPack(name, php_version))
@@ -39,7 +39,7 @@ test('all 432 packs use 112 independent variant builds and 42 compatibility jobs
   assert.equal(builds.length, 112);
   assert.deepEqual(builds.flatMap(job => job.entries.map(key)).sort(), entries.map(key).sort());
   const tests = testMatrix(entries).include;
-  assert.equal(tests.length, 42);
+  assert.equal(tests.length, 28);
   assert.ok(tests.every(item => item.runner !== 'macos-latest'));
   assert.equal(builds.filter(item => item.runner === 'macos-15-intel').length, 56);
   assert.equal(tests.filter(item => item.runner === 'macos-26-intel').length, 14);
@@ -154,7 +154,7 @@ test('variant recovery selects distinct payloads, retains legacy groups and reje
     JSON.stringify([entries[(artifact.artifact_id - 1) / 2]]));
   const recovered = await planRecovery('123', run, undefined, { download });
   assert.deepEqual(recovered.entries.map(e => [key(e), e.artifact_id]), entries.map((e, i) => [key(e), i * 2 + 2]));
-  assert.equal(recovered.matrix.include.length, 3, 'compatibility still groups all variants by runner');
+  assert.equal(recovered.matrix.include.length, 2, 'compatibility still groups all variants by runner');
   for (const patch of [{ build: 'release' }, { thread_safety: 'nts' }]) {
     const original = entries[1];
     entries[1] = entry('mongodb', { ...original, ...patch });

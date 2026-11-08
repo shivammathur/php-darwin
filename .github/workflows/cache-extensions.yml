@@ -43,6 +43,10 @@ on:
         description: Publish verified optional archives
         default: true
         type: boolean
+      published-php:
+        description: Repair packs for the currently published PHP snapshot without waiting for newer PHP builds
+        default: false
+        type: boolean
       resume-runs:
         description: Completed source run IDs, oldest to newest; reuse successful packs and build only unpublished gaps
         type: string
@@ -111,7 +115,7 @@ jobs:
           BUILDS: ${{ inputs.builds }}
           THREAD_SAFETY: ${{ inputs.ts }}
           FORCE: ${{ inputs.force }}
-          PHP_DARWIN_REQUIRE_CURRENT_PHP: 'true'
+          PHP_DARWIN_REQUIRE_CURRENT_PHP: ${{ !inputs.published-php }}
           HOMEBREW_PHP_PATH: ${{ github.workspace }}/homebrew-php
           HOMEBREW_EXTENSIONS_PATH: ${{ github.workspace }}/homebrew-extensions
           HOMEBREW_CORE_PATH: ${{ github.workspace }}/homebrew-core
@@ -189,7 +193,12 @@ jobs:
       - name: Clean the disposable build runner
         # test-bot assumes a disposable machine and leaves purged kegs in /tmp.
         if: ${{ runner.environment != 'self-hosted' }}
-        run: brew test-bot --only-cleanup-before
+        run: |
+          # Cleanup resolves formulae for the image's existing prefix links.
+          # Initialize the tap before that process caches an empty formula list.
+          . scripts/lib/retry.sh
+          php_darwin_retry brew tap --force homebrew/core
+          brew test-bot --only-cleanup-before
       - name: Pin approved dependencies before restoring tools
         run: |
           bash scripts/build/pin-core.sh
@@ -200,6 +209,10 @@ jobs:
         uses: ./.github/actions/source-cache
         with:
           stage: tools
+      - name: Remove unused Homebrew taps
+        # setup-php can leave a root-owned extension tap without Git metadata.
+        # Use the same checkout cleanup and permission repair as PHP builds.
+        run: bash scripts/build/cleanup-taps.sh
       - name: Cache and validate the missing packs, sharing preparation per PHP runtime
         run: '"$PHP_DARWIN_NODE" scripts/build/extension-batch.cjs build'
       - name: Preserve completed packs even when another pack fails
@@ -265,6 +278,8 @@ jobs:
         uses: ./.github/actions/runner-preflight
       - uses: ./.github/actions/node-runtime
       - name: Restore archive tools
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: bash scripts/build/archive-tools.sh
       - uses: ./.github/actions/download-artifacts
         with:

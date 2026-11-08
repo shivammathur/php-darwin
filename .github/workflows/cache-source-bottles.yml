@@ -89,13 +89,18 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: ./.github/actions/download-artifacts
+        with:
+          name: source-bottle-matrix
+          path: ${{ runner.temp }}/source-bottle-plan
       - name: Copy exact source bundles and verify public Cloudflare bytes
         env:
-          BOTTLES: ${{ toJSON(matrix.bottles) }}
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+          FORMULA: ${{ matrix.formula }}
           CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
           CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
           CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
-        run: node scripts/cache/source-bottle-mirror.cjs publish
+        run: node scripts/cache/source-bottle-mirror.cjs publish "$RUNNER_TEMP/source-bottle-plan/source-bottle-matrix.json" "$FORMULA"
       - uses: ./.github/actions/upload-artifacts
         with:
           name: source-bottle-verified-${{ matrix.formula }}

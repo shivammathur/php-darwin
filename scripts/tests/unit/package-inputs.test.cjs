@@ -74,7 +74,7 @@ test('checked-in baselines bind all four variants of the twelve accepted stable 
       ['', '-zts', '-debug', '-debug-zts'].map(suffix => `Formula/${base}${suffix}.rb`).sort());
     const raw = baseline.records.map(record => `${record.path.slice(8, -3)}\t${record.published_sha256}\n`).sort().join('');
     assert.equal(digest(raw), baseline.source_hash, version);
-    assert.equal(baseline.tap_only_updates, Number(version) <= 8.1);
+    assert.equal(baseline.tap_only_updates, true, `${version}: retain the accepted publication until its PHP recipe changes`);
     for (const record of baseline.records) {
       assert.match(record.sha256, /^[a-f0-9]{64}$/);
       assert.match(record.inputs_sha256, /^[a-f0-9]{64}$/);

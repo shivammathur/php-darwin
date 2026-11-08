@@ -11,10 +11,11 @@ const formulaPattern=/^(?:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/)?[A-Za-z0-9@+_.-]+$
 // remain pinned unless their own runtime dependencies need the transition.
 function selectRecipes(lock, discoveries, change, upstream) {
   if (!/^[a-f0-9]{40}$/.test(upstream)) throw new Error('Invalid upstream recipe snapshot');
-  const selected=new Set(), latest=new Map(), old=new Map(), runtime=new Set();
+  const selected=new Set(), latest=new Map(), old=new Map(), runtime=new Set(), required=new Set();
   for(const {before,after} of discoveries) {
     const previous=new Map(before.map(item=>[item.full_name,item]));
     for(const item of after) {
+      if (item.requested && item.full_name.includes('/')) for (const name of item.bottle_requirement_updates || []) required.add(name);
       if(item.requested && item.full_name.includes('/')) for(const name of item.runtime_formulae) runtime.add(name);
       if(item.full_name.includes('/')) continue;
       const group=latest.get(item.full_name)||[]; group.push(item);latest.set(item.full_name,group);
@@ -23,31 +24,37 @@ function selectRecipes(lock, discoveries, change, upstream) {
   }
   if(change.allRuntime) for(const name of runtime) selected.add(name);
   else for(const name of change.formulae || []) if(latest.has(name)) selected.add(name);
-  // Follow runtime dependencies forward and declaration changes backward. A
-  // patch update to Python must not advance an unrelated LLVM/compiler recipe. Build
-  // dependencies enter only when a selected consumer needs a new formula.
+  if(change.bottlesChanged || change.bootstrap) for(const name of required) if(latest.has(name)) selected.add(name);
+  // Follow unmet bottle requirements and newly introduced dependencies, then
+  // declaration changes backward. Existing compatible versions stay approved.
   let grew=true;
   while(grew) {
     grew=false;
     const add=name=>{if(latest.has(name)&&!selected.has(name)){selected.add(name);grew=true;}};
     for(const name of [...selected]) for(const item of latest.get(name)||[]) {
-      for(const dep of item.runtime_dependencies) add(dep.name);
-      for(const dep of item.required_formulae) if(!Object.values(lock.platforms).some(p=>p.packages[dep])) add(dep);
+      for(const dep of item.bottle_requirement_updates || []) add(dep);
+      for(const dep of item.runtime_dependencies) if(!Object.values(lock.platforms).some(p=>p.packages[dep.name])) add(dep.name);
+      // Follow direct missing dependencies only. A cached build tool keeps its
+      // approved recipe and runtime; today's transitive graph can introduce an
+      // unrelated Python major behind an otherwise unchanged Meson cache.
+      for(const dep of item.required_dependencies) if(!Object.values(lock.platforms).some(p=>p.packages[dep])) add(dep);
     }
     for(const [name,items] of latest) {
       if(selected.has(name))continue;
       if(items.some((item,i)=>{
         const prior=old.get(name)[i];
         return prior && [...prior.runtime_dependencies,...item.runtime_dependencies]
-          .some(dep=>selected.has(dep.name)||(change.formulae||[]).includes(dep.name)) &&
+          .some(dep=>(change.formulae||[]).includes(dep.name)) &&
           JSON.stringify(prior.runtime_dependencies.map(dep => dep.name))!==JSON.stringify(item.runtime_dependencies.map(dep => dep.name));
       })) add(name);
     }
   }
-  // Unchanged recipes do not need workers or new pins. The two architectures
-  // share one recipe map, with native planning enforcing their individual DAGs.
+  // Preserve compatible cached builds through recipe and bottle-only churn.
+  // Advance software versions or changed runtime declarations only; callers
+  // can still explicitly request a recipe refresh through the manual planner.
   const updates=[...selected].filter(name=>(latest.get(name)||[]).some((item,i)=>
-    !old.get(name)[i] || item.recipe_sha256!==old.get(name)[i].recipe_sha256)).sort();
+    !old.get(name)[i] || item.version!==old.get(name)[i].version ||
+    JSON.stringify(item.runtime_dependencies.map(dep=>dep.name))!==JSON.stringify(old.get(name)[i].runtime_dependencies.map(dep=>dep.name)))).sort();
   return {...recipes.updatePlan(lock,upstream,updates.join(' ')), updates};
 }
 
@@ -60,9 +67,7 @@ function resolvePlan(graph, previous, explicit=[]) {
   for(const item of packages) {
     const entry=previous[item.full_name];
     if(!entry || entry.version!==item.version ||
-      (entry.bottle && item.bottle && entry.bottle.sha256!==item.bottle.sha256) ||
-      (entry.source && entry.source.inputs.recipe!==item.recipe_sha256) ||
-      (entry.source && item.runtime_dependencies.some(dep=>!entry.source.inputs.dependencies.some(old=>old.name===dep.name&&(!runtime.has(item.full_name)||old.version===dep.version))))) updates.add(item.full_name);
+      (entry.source && item.runtime_dependencies.some(dep=>!entry.source.inputs.dependencies.some(old=>old.name===dep.name)))) updates.add(item.full_name);
   }
   const workers=packages.filter(item=>updates.has(item.full_name)).map(item=>({
     formula:item.full_name,version:item.version,bottled:item.bottled,kind:runtime.has(item.full_name) ? 'runtime' : 'tool',
@@ -77,8 +82,9 @@ function resolvePlan(graph, previous, explicit=[]) {
   return {updates:[...updates].filter(name=>byName.has(name)).sort(),workers};
 }
 const recipeHashes = new Map();
-function graph(requested, approved={}) {
-  return JSON.parse(brewSource('info',['graph',JSON.stringify(requested),String(requested.some(name=>name.includes('/'))),JSON.stringify(approved)]))
+function graph(requested, approved={}, bottleBaseline) {
+  return JSON.parse(brewSource('info',['graph',JSON.stringify(requested),String(requested.some(name=>name.includes('/'))),JSON.stringify(approved),
+    ...(bottleBaseline ? [JSON.stringify(bottleBaseline)] : [])]))
     .map(item => {
       const content = fs.readFileSync(item.recipe, 'utf8');
       if (recipeHashes.get(item.recipe)?.content !== content) recipeHashes.set(item.recipe, {content, hash: recipeHash(item.recipe)});
@@ -97,11 +103,12 @@ if(require.main===module) {
     const [mode,directory]=process.argv.slice(2),lock=readLock();
     if(mode==='discover') {
       native();const platform=environment();
-      const before=graph(Object.keys(lock.platforms[platform.arch].packages),Object.fromEntries(Object.entries(lock.platforms[platform.arch].packages).map(([name,value])=>[name,value.version])));
+      const versions=Object.fromEntries(Object.entries(lock.platforms[platform.arch].packages).map(([name,value])=>[name,value.version]));
+      const before=graph(Object.keys(versions),versions);
       const repository=command('brew',['--repository','homebrew/core']).trim();
       command('git',['-C',repository,'fetch','--no-tags','origin',process.env.UPSTREAM_CORE_COMMIT]);
       command('git',['-C',repository,'reset','--hard',process.env.UPSTREAM_CORE_COMMIT]);
-      const after=graph(roots());
+      const after=graph(roots(),{},versions);
       fs.writeFileSync(`dependency-discovery-${platform.arch}.json`,JSON.stringify({before,after},null,2)+'\n');
     } else if(mode==='select') {
       const inputs=JSON.parse(fs.readFileSync('dependency-inputs.json'));

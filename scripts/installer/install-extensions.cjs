@@ -41,7 +41,8 @@ function prefetchSource() {
   // Small read-only bootstrap worker, sharing selection/validation/transfer code.
   const declarations = {
     configuration: {versions: configuration.versions, pack_versions: configuration.pack_versions},
-    platforms: Object.fromEntries(Object.entries(platforms).map(([arch, value]) => [arch, {minimum_macos: value.minimum_macos}])),
+    platforms: Object.fromEntries(Object.entries(platforms).map(([arch, value]) => [arch,
+      {minimum_macos: value.minimum_macos, minimum_archive_macos: value.minimum_archive_macos}])),
     buildConfig: {extension_max_archive_bytes: buildConfig.extension_max_archive_bytes},
     transfers: {attempts: transfers.attempts, retry_delay: transfers.retry_delay, retry_after_max: transfers.retry_after_max,
       metadata: transfers.metadata, archive: {timeout: transfers.archive.timeout}},
@@ -90,7 +91,8 @@ function validateEntry(entry) {
   if (entry.schema !== 1 || !hex.test(entry.sha256) || !hex.test(entry.inputs_sha256) ||
       !/^[0-9]{8}$/.test(entry.php_api) ||
       !Number.isInteger(entry.bytes) || entry.bytes < 1 || entry.bytes > buildConfig.extension_max_archive_bytes ||
-      !Number.isInteger(entry.minimum_macos) || entry.minimum_macos < platforms[entry.architecture].minimum_macos ||
+      !Number.isInteger(entry.minimum_macos) ||
+      entry.minimum_macos < (platforms[entry.architecture].minimum_archive_macos ?? platforms[entry.architecture].minimum_macos) ||
       entry.file !== `${key(entry)}-${entry.sha256}.tar.zst`) throw new Error('Invalid extension cache metadata');
   return entry;
 }

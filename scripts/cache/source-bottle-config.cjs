@@ -3,8 +3,8 @@ const path = require('node:path');
 
 function configurationFiles(formula, recorded = []) {
   // Uninstalling a keg leaves etc behind but removes its .bottle inventory.
-  // OpenLDAP audits these two generated defaults even on a clean source build.
-  // Stage them explicitly so old configuration survives dependency cleanup.
+  // OpenLDAP audits its generated defaults; PHP archives also need OpenSSL's
+  // pristine config. Stage known defaults even after dependency cleanup.
   const defaults = require('../../conf/formula-policy.json').configuration_files[formula] || [];
   return [...new Set([...recorded, ...defaults])];
 }

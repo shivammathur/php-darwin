@@ -125,10 +125,12 @@ install_cache() {
   if [ "${PHP_DARWIN_TEST_PREVIOUS_INSTALLER:-false}" = true ] && [ "$build/$ts" = release/nts ]; then
     # Existing clients may retain the previous installer while the release
     # manifest advances. It must still accept the new archive format.
-    local previous_installer previous_status
+    local previous_installer
     previous_installer="$RUNNER_TEMP/php-darwin-previous-installer-$version.sh"
-    previous_status=$(php_darwin_request_release "https://github.com/$(php_darwin_package_config release_repository)/releases/download/php-$version/install.sh" "$previous_installer")
-    [ "$previous_status" = 200 ] || php_darwin_die 'could not read the previous release installer'
+    # shellcheck source=scripts/tests/helpers/published-installer.sh
+    . "$script_dir/../helpers/published-installer.sh"
+    php_darwin_fetch_published_installer "$version" "$previous_installer" || \
+      php_darwin_die 'could not read the previous release installer'
     printf 'Previous installer SHA256: %s\n' "$(php_darwin_sha256 "$previous_installer")"
     bash "$previous_installer" "$version" "$build" "$ts" "$archive" || \
       php_darwin_die 'previous installer cannot install the repackaged archive'

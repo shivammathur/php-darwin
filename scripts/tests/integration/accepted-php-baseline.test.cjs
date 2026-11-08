@@ -8,7 +8,7 @@ const {digest} = require('../../installer/install-extensions.cjs');
 const {recipeInputs} = require('../../lib/recipe-inputs.cjs');
 const platforms = require('../../../conf/platforms.json');
 
-test('accepted publications skip rebuilds until the permitted tap or dependency inputs change', t => {
+test('accepted stable publications retain caches across dependency refreshes until PHP recipes change', t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'accepted-php-baseline-'));
   t.after(() => fs.rmSync(root, {recursive: true, force: true}));
   const repository = path.resolve(__dirname, '../../..');
@@ -26,7 +26,7 @@ test('accepted publications skip rebuilds until the permitted tap or dependency 
     CHANNEL: 'stable', PUBLISH: 'true', FORCE: 'false', GITHUB_OUTPUT: path.join(root, 'output')};
   const run = (file, args = []) => execFileSync('bash', [path.join(root, 'scripts', file), ...args], {env, encoding: 'utf8'}).trim();
   const variants = [['release', 'nts', ''], ['release', 'zts', '-zts'], ['debug', 'nts', '-debug'], ['debug', 'zts', '-debug-zts']];
-  for (const version of ['8.1', '8.2']) {
+  for (const [version, tapOnly] of [['8.1', true], ['8.2', true], ['8.5', true], ['8.3', false]]) {
     env.PHP_VERSION = version;
     env.ONLY_VERSION = version;
     fs.writeFileSync(dependency, 'dependency\n');
@@ -37,7 +37,8 @@ test('accepted publications skip rebuilds until the permitted tap or dependency 
       '-c', 'commit.gpgsign=false', 'commit', '-qm', version]);
     const extensionCommit = execFileSync('git', ['-C', extensions, 'rev-parse', 'HEAD'], {encoding: 'utf8'}).trim();
     const records = variants.map(([_build, _ts, suffix]) => {
-      const relative = `Formula/php@${version}${suffix}.rb`;
+      const base = version === '8.5' ? 'php' : `php@${version}`;
+      const relative = `Formula/${base}${suffix}.rb`;
       fs.writeFileSync(path.join(php, relative), 'published source\n');
       return {repository: 'shivammathur/homebrew-php', path: relative, sha256: digest('published source\n')};
     });
@@ -58,7 +59,7 @@ test('accepted publications skip rebuilds until the permitted tap or dependency 
     });
     fs.writeFileSync(path.join(root, 'conf/php-cache-baselines.json'), JSON.stringify({schema: 1, releases: {[version]: {
       php_semver: manifest.php_semver, homebrew_php_commit: manifest.homebrew_php_commit, source_hash: manifest.source_hash,
-      tap_only_updates: version === '8.1', records: accepted,
+      tap_only_updates: tapOnly, records: accepted,
     }}}));
     function check(required) {
       fs.writeFileSync(log, '');
@@ -71,7 +72,7 @@ test('accepted publications skip rebuilds until the permitted tap or dependency 
     check(false);
     fs.appendFileSync(dependency, 'dependency update\n');
     fs.appendFileSync(path.join(extensions, `Formula/xdebug@${version}.rb`), 'extension update\n');
-    check(version === '8.2');
+    check(!tapOnly);
     fs.appendFileSync(path.join(php, records[0].path), 'future tap source update\n');
     check(true);
   }

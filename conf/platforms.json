@@ -1,15 +1,21 @@
 {
   "arm64": {
-    "build_runner": "macos-14",
+    "source_builds": false,
+    "extension_source_builds": ["release/zts", "debug/nts", "debug/zts"],
+    "build_runner": "macos-15",
     "brew_prefix": "/opt/homebrew",
-    "minimum_macos": 14,
-    "platform_key": "arm64_sonoma",
-    "test_runners": ["macos-14", "macos-15", "macos-26", "macos-latest"]
+    "minimum_macos": 15,
+    "minimum_archive_macos": 14,
+    "platform_key": "arm64_sequoia",
+    "test_runners": ["macos-15", "macos-26"]
   },
   "x86_64": {
+    "source_builds": true,
+    "extension_source_builds": [],
     "build_runner": "macos-15-intel",
     "brew_prefix": "/usr/local",
     "minimum_macos": 15,
+    "minimum_archive_macos": 15,
     "platform_key": "sequoia",
     "test_runners": ["macos-15-intel", "macos-26-intel"]
   }

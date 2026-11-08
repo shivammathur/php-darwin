@@ -85,8 +85,20 @@ class SourceBuildLock {
           throw new Error(`Invalid source build owner for ${key}`);
         }
         const job = await this.cache.api(`actions/jobs/${claimant.job}`, { allow: [404] });
-        const expired = this.now() - Date.parse(asset.created_at) >= this.timeout;
-        if ((job?.run_id === claimant.run && job.status === 'completed') || (!job && expired)) {
+        let finished = job?.run_id === claimant.run && job.status === 'completed';
+        if (!job) {
+          const run = await this.cache.api(`actions/runs/${claimant.run}`, { allow: [404] });
+          finished = run?.id === claimant.run && run.status === 'completed';
+          if (!run && this.now() - Date.parse(asset.created_at) >= 60000) {
+            // Deleting a cancelled run also deletes its job status. Confirm
+            // this token can still read Actions before treating both 404s as
+            // deletion; a hidden/unavailable API must not release a live claim.
+            // Give newly uploaded claims a minute for API visibility to settle.
+            const current = await this.cache.api(`actions/jobs/${owner.job}`);
+            finished = current?.run_id === owner.run && current.status === 'in_progress';
+          }
+        }
+        if (finished) {
           // Delete the immutable asset ID, never a name which a new owner could reuse.
           await this.cache.api(`releases/assets/${asset.id}`, { method: 'DELETE', allow: [404] });
           continue;

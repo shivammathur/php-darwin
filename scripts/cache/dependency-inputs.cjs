@@ -5,7 +5,7 @@ const {createHash} = require('node:crypto');
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
 function capture(repositories) {
-  const records = {};
+  const records = {}, bottles = {};
   for (const [name, directory] of Object.entries(repositories)) {
     const files = execFileSync('git', ['-C', directory, 'ls-files', '*.rb'], {encoding:'utf8'}).trim().split('\n').filter(Boolean);
     if (!files.length) throw new Error(`Missing tap formulae: ${name}`);
@@ -13,7 +13,9 @@ function capture(repositories) {
     const parsed = JSON.parse(execFileSync(process.env.PHP_DARWIN_RUBY || 'ruby', [path.join(__dirname, 'dependency-inputs.rb')],
       {input:JSON.stringify(formulae), encoding:'utf8', maxBuffer:16*1024*1024}));
     for (const file of files) {
-      const value = file.startsWith('Formula/') ? parsed[path.join(directory,file)] : fs.readFileSync(path.join(directory,file),'utf8');
+      const parsedFormula = parsed[path.join(directory,file)];
+      const value = file.startsWith('Formula/') ? parsedFormula.declarations : fs.readFileSync(path.join(directory,file),'utf8');
+      if (file.startsWith('Formula/')) bottles[`${name}/${file}`] = hash(parsedFormula.bottles);
       const formulae = [...new Set([...JSON.stringify(value).matchAll(/"@tstring_content","([a-z0-9][a-z0-9@+_.-]*)"/g)].map(match=>match[1]))].sort();
       const declarations = Array.isArray(value) ? Object.fromEntries(value.map(item => [hash(item),
         [...new Set([...JSON.stringify(item).matchAll(/"@tstring_content","([a-z0-9][a-z0-9@+_.-]*)"/g)].map(match => match[1]))].sort()])) : undefined;
@@ -26,11 +28,14 @@ function capture(repositories) {
   for (const [file, record] of Object.entries(records)) {
     definitions[record.sha256] = record; references[file] = record.sha256;
   }
-  return {schema:1, sha256:hash(references), records:references, definitions};
+  return {schema:1, sha256:hash({records: references, bottles}), records:references, definitions, bottles};
 }
 function changed(previous, next) {
   if (!previous?.records) return {changed:true, formulae:[], bootstrap:true};
-  const formulae = new Set(); let different=false, shared=false;
+  // Inspect changed bottles for their minimum runtime requirements. A bottle
+  // rebuild alone must not refresh every recipe or replace verified caches.
+  const bottleChanged = hash(previous.bottles || {}) !== hash(next.bottles || {});
+  const formulae = new Set(); let different=bottleChanged, shared=false;
   for (const key of new Set([...Object.keys(previous.records),...Object.keys(next.records)])) {
     const lookup = (inputs, key) => typeof inputs.records[key] === 'string' ? inputs.definitions?.[inputs.records[key]] : inputs.records[key];
     const before=lookup(previous, key), after=lookup(next, key);
@@ -45,7 +50,7 @@ function changed(previous, next) {
       }
     } else for (const entry of [before, after]) for (const name of entry?.formulae || []) formulae.add(name);
   }
-  return {changed:different,formulae:[...formulae].sort(),allRuntime:shared};
+  return {changed:different,formulae:[...formulae].sort(),allRuntime:shared, ...(bottleChanged ? {bottlesChanged:true} : {})};
 }
 module.exports={capture,changed};
 if(require.main===module) {

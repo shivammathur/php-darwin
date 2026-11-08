@@ -17,7 +17,7 @@ full_test=$(sed -n 's/^test-matrix=//p' "$full_output")
 full_variants=$(sed -n 's/^variant-matrix=//p' "$full_output")
 jq -e '
   .include == [
-    {php:"8.5",arch:"arm64",runner:"macos-14",test_runners:["macos-14","macos-15","macos-26"]},
+    {php:"8.5",arch:"arm64",runner:"macos-15",test_runners:["macos-15","macos-26"]},
     {php:"8.5",arch:"x86_64",runner:"macos-15-intel",test_runners:["macos-15-intel","macos-26-intel"]}
   ]
 ' <<< "$full_build" >/dev/null || php_darwin_die 'full architecture matrix uses incorrect build runners'
@@ -29,7 +29,6 @@ jq -e '
 ' <<< "$full_variants" >/dev/null || php_darwin_die 'full variant matrix does not select four independent builds'
 jq -e '
   .include == [
-    {php:"8.5",arch:"arm64",runner:"macos-14"},
     {php:"8.5",arch:"arm64",runner:"macos-15"},
     {php:"8.5",arch:"arm64",runner:"macos-26"},
     {php:"8.5",arch:"x86_64",runner:"macos-15-intel"},
@@ -121,12 +120,14 @@ while read -r runner expected_arch extra; do
   [ "$(sed -n 's/^arch=//p' "$runner_output")" = "$expected_arch" ] || \
     php_darwin_die "compatibility-test runner $runner resolved to the wrong architecture"
 done <<'RUNNERS'
-macos-14 arm64
 macos-15 arm64
 macos-26 arm64
-macos-latest arm64
 macos-15-intel x86_64
 macos-26-intel x86_64
 RUNNERS
 
-printf 'Workflow matrix validation passed (8 variant builds, 5 compatibility tests, partial publishing)\n'
+if RUNNER=macos-latest GITHUB_OUTPUT='' bash "$script_dir/../helpers/get-test-target.sh" >/dev/null 2>&1; then
+  php_darwin_die 'floating macOS runner was accepted'
+fi
+
+printf 'Workflow matrix validation passed (8 variant builds, 4 compatibility tests, partial publishing)\n'

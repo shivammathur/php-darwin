@@ -43,3 +43,31 @@ test('pinning discards modified runner formulae while retaining the local dirty-
   assert.equal(fs.readFileSync(formula, 'utf8'), 'approved formula\n');
   assert.equal(git(['status', '--porcelain']), '');
 });
+
+test('Homebrew update waits through lock and DNS failures, bounds retries, and stops on other errors', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'php-darwin-update-lock-'));
+  t.after(() => fs.rmSync(directory, {recursive: true, force: true}));
+  const bin = path.join(directory, 'bin'); fs.mkdirSync(bin);
+  fs.writeFileSync(path.join(bin, 'brew'), `#!/bin/sh
+count=0
+if [ -f "$UPDATE_FIXTURE_COUNT" ]; then count=$(cat "$UPDATE_FIXTURE_COUNT"); fi
+count=$((count + 1)); printf '%s' "$count" > "$UPDATE_FIXTURE_COUNT"
+if [ "$UPDATE_FIXTURE_MODE" = recover ] && [ "$count" -ge 3 ]; then exit 0; fi
+case "$UPDATE_FIXTURE_MODE" in
+  recover|locked) echo 'Another \`brew update\` process is already running.' >&2;;
+  dns) echo 'Could not resolve host: github.com' >&2;;
+  *) echo 'Invalid Homebrew repository' >&2;;
+esac
+exit 7
+`, {mode: 0o755});
+  fs.writeFileSync(path.join(bin, 'sleep'), '#!/bin/sh\nexit 0\n', {mode: 0o755});
+  for (const [mode, attempts, status] of [['recover', 3, 0], ['locked', 6, 7], ['dns', 6, 7], ['invalid', 1, 7]]) {
+    const count = path.join(directory, mode);
+    const result = spawnSync('bash', [path.resolve(__dirname, '../../build/update-homebrew.sh')], {
+      encoding: 'utf8', env: {...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}`,
+        GITHUB_ACTIONS: 'true', UPDATE_FIXTURE_COUNT: count, UPDATE_FIXTURE_MODE: mode},
+    });
+    assert.equal(result.status, status, result.stdout + result.stderr);
+    assert.equal(Number(fs.readFileSync(count, 'utf8')), attempts);
+  }
+});

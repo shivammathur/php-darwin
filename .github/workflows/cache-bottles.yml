@@ -9,7 +9,7 @@ on:
         type: boolean
         default: true
       source-run-id:
-        description: Workflow run containing bottle-misses artifacts (when seed is false)
+        description: Optional run containing native bottle plans for a seed retry, or bottle misses when seed is false
         type: string
         default: ''
   workflow_call:
@@ -49,13 +49,13 @@ jobs:
 
   resolve:
     name: Resolve every PHP configuration on ${{ matrix.runner }}
-    if: ${{ inputs.seed }}
+    if: ${{ inputs.seed && inputs.source-run-id == '' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        runner: [macos-14, macos-15-intel]
+        runner: [macos-15, macos-15-intel]
     env:
       HOMEBREW_NO_AUTO_UPDATE: '1'
       HOMEBREW_NO_INSTALL_FROM_API: '1'
@@ -65,12 +65,18 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: ./.github/actions/runner-preflight
+      - uses: ./.github/actions/node-runtime
+      - name: Restore missing archive tools without compiling
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/build/archive-tools.sh
       - name: Prepare current formula definitions without installing packages
         run: |
           bash scripts/build/cleanup-taps.sh
           brew tap --force homebrew/core
           export HOMEBREW_CORE_COMMIT
-          HOMEBREW_CORE_COMMIT=$(node scripts/cache/approved-dependencies.cjs core)
+          HOMEBREW_CORE_COMMIT=$("$PHP_DARWIN_NODE" scripts/cache/approved-dependencies.cjs core)
           bash scripts/build/pin-core.sh
           for tap in shivammathur/php shivammathur/extensions; do
             brew tap "$tap"
@@ -94,7 +100,7 @@ jobs:
   matrix:
     name: Deduplicate bottles into one job per dependency
     needs: resolve
-    if: ${{ always() && !cancelled() && (!inputs.seed || needs.resolve.result == 'success') }}
+    if: ${{ always() && !cancelled() && (!inputs.seed || inputs.source-run-id != '' || needs.resolve.result == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -135,13 +141,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: ./.github/actions/download-artifacts
+        with:
+          name: bottle-matrix
+          path: ${{ runner.temp }}/bottle-plan
       - name: Copy and verify exact bottles through the public Cloudflare endpoint
         env:
-          BOTTLES: ${{ toJSON(matrix.bottles) }}
+          FORMULA: ${{ matrix.formula }}
           CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
           CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
           CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
-        run: node scripts/cache/upstream-bottle-cache.cjs publish
+        run: node scripts/cache/upstream-bottle-cache.cjs publish "$RUNNER_TEMP/bottle-plan/bottle-matrix.json" "$FORMULA"
       - name: Summarize verified dependency bottles
         run: |
           jq -r '.[] | "- \(.formula) \(.version) / \(.tag): \(.result), SHA-256 `\(.sha256)`"' bottle-verification.json >> "$GITHUB_STEP_SUMMARY"

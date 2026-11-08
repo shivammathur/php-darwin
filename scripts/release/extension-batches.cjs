@@ -22,7 +22,7 @@ function reuseMatrix(entries) {
 }
 function testMatrix(entries) {
   return { include: reuseMatrix(entries).include.flatMap(group =>
-    platforms[group.architecture].test_runners.filter(runner => runner !== group.runner && runner !== 'macos-latest')
+    platforms[group.architecture].test_runners.filter(runner => runner !== group.runner)
       .map(runner => ({ ...group, runner }))) };
 }
 function variants(entries) {

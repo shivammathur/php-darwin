@@ -38,7 +38,8 @@ on:
         default: true
 
 concurrency:
-  group: approved-dependency-update
+  # Read-only previews do not hold the dependency publication queue.
+  group: ${{ inputs.plan-only && format('approved-dependency-plan-{0}', github.run_id) || 'approved-dependency-update' }}
   cancel-in-progress: false
 permissions:
   contents: read
@@ -52,6 +53,7 @@ jobs:
       upstream: ${{ steps.core.outputs.commit }}
       php: ${{ steps.php.outputs.commit }}
       extensions: ${{ steps.extensions.outputs.commit }}
+      approved-core: ${{ steps.change.outputs.approved-core }}
       matrix: ${{ steps.change.outputs.matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -75,7 +77,7 @@ jobs:
           ref: ${{ steps.extensions.outputs.commit }}
           path: homebrew-extensions
           persist-credentials: false
-      - name: Detect dependency declarations independently of PHP releases and bottle churn
+      - name: Detect changed dependency declarations and bottle identities
         id: change
         env:
           AUTOMATIC: ${{ github.event_name != 'workflow_dispatch' || inputs.automatic }}
@@ -84,10 +86,11 @@ jobs:
           node - <<'JS'
           const fs = require('node:fs');
           const {changed} = require('./scripts/cache/dependency-inputs.cjs');
-          const diff = changed(require('./conf/dependencies.json').tap_inputs, require('./dependency-inputs.json'));
+          const approved = require('./conf/dependencies.json');
+          const diff = changed(approved.tap_inputs, require('./dependency-inputs.json'));
           const automatic = process.env.AUTOMATIC === 'true';
           const matrix = {include: Object.entries(require('./conf/platforms.json')).map(([arch, p]) => ({arch, runner: p.build_runner}))};
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, `required=${!automatic || diff.changed}\nautomatic=${automatic}\nmatrix=${JSON.stringify(matrix)}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `required=${!automatic || diff.changed}\nautomatic=${automatic}\napproved-core=${approved.core_commit}\nmatrix=${JSON.stringify(matrix)}\n`);
           console.log(diff);
           JS
       - name: Resolve the candidate recipe snapshot
@@ -116,6 +119,7 @@ jobs:
     env:
       HOMEBREW_PHP_COMMIT: ${{ needs.plan.outputs.php }}
       HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.plan.outputs.extensions }}
+      HOMEBREW_CORE_COMMIT: ${{ needs.plan.outputs.approved-core }}
       UPSTREAM_CORE_COMMIT: ${{ needs.plan.outputs.upstream }}
       HOMEBREW_NO_AUTO_UPDATE: '1'
       HOMEBREW_NO_INSTALL_FROM_API: '1'
@@ -123,7 +127,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - run: echo "HOMEBREW_CORE_COMMIT=$(node scripts/cache/approved-dependencies.cjs core)" >> "$GITHUB_ENV"
       - uses: ./.github/actions/dependency-environment
       - name: Compare native dependency graphs without installing formulae
         run: '"$PHP_DARWIN_NODE" scripts/cache/dependency-transition.cjs discover'

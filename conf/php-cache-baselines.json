@@ -326,7 +326,7 @@
       "php_semver": "8.2.35",
       "homebrew_php_commit": "8891168f53c33a1cc29b3ec03414a1abf0adf78e",
       "source_hash": "c2c8b97a3eff6e8088b30bca374adc0d4d7e24fd9de294e5bf1a38917ca4738b",
-      "tap_only_updates": false,
+      "tap_only_updates": true,
       "records": [
         {
           "path": "Formula/php@8.2.rb",
@@ -366,7 +366,7 @@
       "php_semver": "8.3.36",
       "homebrew_php_commit": "c3bc18df9abe00baa8747a82cf4d7ddf67e1735a",
       "source_hash": "cf75754609b3a6ce95db182a5394eba5bc0ed41ace2b86443416ac0023b2510b",
-      "tap_only_updates": false,
+      "tap_only_updates": true,
       "records": [
         {
           "path": "Formula/php@8.3.rb",
@@ -406,7 +406,7 @@
       "php_semver": "8.4.27",
       "homebrew_php_commit": "9126869c72aed48aa6aa2d6371c9340074ec2a40",
       "source_hash": "28d975b4c93ae466a2f12a02867060ab07af34d5189f588d9956897d3c4d3abe",
-      "tap_only_updates": false,
+      "tap_only_updates": true,
       "records": [
         {
           "path": "Formula/php@8.4.rb",
@@ -446,7 +446,7 @@
       "php_semver": "8.5.12",
       "homebrew_php_commit": "5019d22991d1d00b5bdfb08758411338847a8b76",
       "source_hash": "79a7467917d8c43caea66eba1fef16e4abe5431000f25b1db4588eb0735484c5",
-      "tap_only_updates": false,
+      "tap_only_updates": true,
       "records": [
         {
           "path": "Formula/php.rb",

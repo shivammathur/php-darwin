@@ -8,6 +8,9 @@ on:
       publish:
         type: boolean
         default: false
+      baseline:
+        type: boolean
+        default: false
 permissions:
   contents: write
   actions: read
@@ -23,11 +26,15 @@ jobs:
           persist-credentials: false
       - id: platforms
         run: |
-          echo "platforms=$(jq -c '[to_entries[] | {arch:.key, runner:.value.build_runner}]' conf/platforms.json)" >> "$GITHUB_OUTPUT"
+          echo "platforms=$(jq -c '[to_entries[] | .key as $arch | .value.test_runners[] | {arch:$arch, runner:.}]' conf/platforms.json)" >> "$GITHUB_OUTPUT"
       - name: Repackage verified published archives without compiling PHP
         env:
           PHP_VERSION: ${{ inputs.php-version }}
-        run: python3 scripts/release/repackage-installer.py "$PHP_VERSION" builds
+          MIGRATE_BASELINE: ${{ inputs.baseline }}
+        run: |
+          args=()
+          if [ "$MIGRATE_BASELINE" = true ]; then args+=(--baseline); fi
+          python3 scripts/release/repackage-installer.py "$PHP_VERSION" builds "${args[@]}"
       - uses: ./.github/actions/upload-artifacts
         with:
           name: php-${{ inputs.php-version }}-arm64-packaged
@@ -55,6 +62,10 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/node-runtime
+      - name: Restore missing archive tools
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/build/archive-tools.sh
       - name: Request every supported optional pack and warm installation checks
         run: |
           {
@@ -70,7 +81,7 @@ jobs:
           runner: ${{ matrix.platform.runner }}
           github-token: ${{ secrets.TOKEN || github.token }}
   publish:
-    if: inputs.publish
+    if: inputs.publish && github.ref == 'refs/heads/main'
     needs: [repackage, test]
     runs-on: ubuntu-latest
     timeout-minutes: 30

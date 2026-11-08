@@ -9,12 +9,12 @@ const { recover, processes, installer, holdsLocks } = require('../../build/recov
 
 // All executable links, Ruby scripts, locks and cache files are private fixtures.
 // This suite never runs brew or inspects/changes a real Homebrew prefix.
-async function fixture(t, ignoreTerm, holdLock = true) {
+async function fixture(t, ignoreTerm, holdLock = true, update = false) {
   const directory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'php-darwin-preflight-')));
   const prefix = path.join(directory, 'prefix'), repository = path.join(prefix, 'Homebrew');
   const ruby = path.join(repository, 'Library/Homebrew/vendor/portable-ruby/current/bin/ruby');
-  const script = path.join(repository, 'Library/Homebrew/brew.rb');
-  const lock = path.join(prefix, 'var/homebrew/locks/fixture.formula.lock');
+  const script = path.join(repository, `Library/Homebrew/brew.${update ? 'sh' : 'rb'}`);
+  const lock = path.join(prefix, `var/homebrew/locks/${update ? 'update' : 'fixture.formula.lock'}`);
   const cache = path.join(prefix, 'cached-bottle.tar.gz'), marker = path.join(directory, 'ready.json');
   const diagnostic = path.join(directory, 'fixture.log');
   const pidFile = path.join(directory, 'fixture.pid');
@@ -24,7 +24,18 @@ async function fixture(t, ignoreTerm, holdLock = true) {
   fs.symlinkSync('/usr/bin/ruby', ruby);
   fs.symlinkSync(process.execPath, workerPath);
   fs.writeFileSync(cache, 'successful bottle must survive runner recovery');
-  fs.writeFileSync(script, `require 'json'
+  fs.writeFileSync(script, update ? `#!/bin/bash
+set -e
+exec 200>"$2"
+if [ "$5" = true ]; then
+  /usr/bin/ruby -e 'abort "fixture lock unavailable" unless File.new(200).flock(File::LOCK_EX | File::LOCK_NB)'
+fi
+if [ "$4" = true ]; then trap '' TERM; fi
+/bin/sleep 120 200>&- &
+child=$!
+/usr/bin/ruby -rjson -e 'File.write(ARGV[0], JSON.generate({pid: ARGV[1].to_i, child: ARGV[2].to_i}))' "$3" "$$" "$child" 200>&-
+while :; do wait "$child" || true; done
+` : `require 'json'
 f = File.open(ARGV.fetch(1), 'w+')
 abort 'fixture lock unavailable' if ARGV.fetch(4) == 'true' && !f.flock(File::LOCK_EX | File::LOCK_NB)
 ignore = ARGV.fetch(3) == 'true'
@@ -48,7 +59,7 @@ loop { sleep 1 }
   // loses useful startup diagnostics and can leave a late fixture untracked.
   execFileSync(process.execPath, ['-e', `
     const fs = require('node:fs'), log = fs.openSync(${JSON.stringify(diagnostic)}, 'w');
-    const child = require('node:child_process').spawn(${JSON.stringify(ruby)}, ${JSON.stringify([script, 'install', lock, marker, String(ignoreTerm), String(holdLock)])},
+    const child = require('node:child_process').spawn(${JSON.stringify(update ? '/bin/bash' : ruby)}, ${JSON.stringify([script, update ? 'update' : 'install', lock, marker, String(ignoreTerm), String(holdLock)])},
       { detached: true, stdio: ['ignore', log, log], env: { PATH: '/usr/bin:/bin' } });
     fs.writeFileSync(${JSON.stringify(pidFile)}, String(child.pid));
     let ready = false;
@@ -74,9 +85,9 @@ loop { sleep 1 }
   return { options, prefix, repository, lock, cache, record, snapshot };
 }
 
-for (const ignoreTerm of [false, true]) test(`native orphan cleanup ${ignoreTerm ? 'escalates to KILL' : 'releases locks after TERM'}`,
+for (const [ignoreTerm, update] of [[false, false], [true, false], [false, true]]) test(`native orphan ${update ? 'update' : 'installer'} cleanup ${ignoreTerm ? 'escalates to KILL' : 'releases locks after TERM'}`,
   { skip: process.platform !== 'darwin', timeout: 30000 }, async t => {
-    const f = await fixture(t, ignoreTerm), inode = fs.statSync(f.lock).ino;
+    const f = await fixture(t, ignoreTerm, true, update), inode = fs.statSync(f.lock).ino;
     assert.equal(holdsLocks(f.record.pid, f.prefix), true);
     const started = Date.now();
     assert.equal(await recover(f.options), 1);

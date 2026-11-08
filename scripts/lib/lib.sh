@@ -394,7 +394,14 @@ php_darwin_platform_value() {
   local arch=$1
   local key=$2
 
-  case "$key" in brew_prefix|build_runner|minimum_macos|platform_key|test_runners) ;; *) return 1 ;; esac
+  case "$key" in
+    source_builds)
+      jq -er --arg arch "$arch" '.[$arch].source_builds | select(type == "boolean") | tostring' \
+        < <(php_darwin_read_config platforms.json)
+      return $? ;;
+    brew_prefix|build_runner|minimum_macos|platform_key|test_runners) ;;
+    *) return 1 ;;
+  esac
   jq -er --arg arch "$arch" --arg key "$key" '.[$arch][$key]' \
     < <(php_darwin_read_config platforms.json)
 }
@@ -737,8 +744,22 @@ php_darwin_release_manifest_has_current_platforms() {
   platforms=$(php_darwin_read_config platforms.json) || return 1
   jq -e --argjson count "$expected_count" --argjson platforms "$platforms" '
     (.assets | type == "array") and (.assets | length == $count) and
-    ([.assets[].architecture] | unique) == ($platforms | keys)
+    ([.assets[].architecture] | unique) == ($platforms | keys) and
+    all(.assets[]; .minimum_macos == $platforms[.architecture].minimum_macos)
   ' "$manifest" >/dev/null
+}
+
+php_darwin_release_manifest_outdated_architectures() {
+  local platforms count
+  platforms=$(php_darwin_read_config platforms.json) || return 1
+  count=$(php_darwin_expected_asset_count) || return 1
+  count=$((count / $(jq 'length' <<< "$platforms")))
+  jq -er --argjson platforms "$platforms" --argjson count "$count" '
+    .assets as $assets |
+    [$platforms | to_entries[] | .key as $arch | .value.minimum_macos as $minimum |
+      select(([$assets[] | select(.architecture == $arch and .minimum_macos == $minimum)] | length) != $count) |
+      $arch] | join(" ") | select(length > 0)
+  ' "$1"
 }
 
 php_darwin_validate_release_manifest() {
@@ -798,7 +819,8 @@ php_darwin_validate_release_manifest() {
         "+darwin_" + .architecture + ".tar.zst") and
       (.bytes | type == "number" and floor == . and . > 0) and
       (.minimum_macos | type == "number" and floor == . and . > 0 and
-        . == $manifest_platforms[$architecture].minimum_macos) and
+        . >= ($manifest_platforms[$architecture].minimum_archive_macos // $manifest_platforms[$architecture].minimum_macos) and
+        . <= $manifest_platforms[$architecture].minimum_macos) and
       (.sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
       ((.download // .name) as $download |
         ($download | type == "string") and

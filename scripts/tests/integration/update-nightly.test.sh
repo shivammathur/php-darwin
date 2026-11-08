@@ -117,16 +117,19 @@ printf '  revision 1\n' >> "$formula_dir/php@$version.rb" || exit 1
 run_gate true
 write_formulae "$current"
 run_gate false
+jq '(.assets[] | select(.architecture == "arm64") | .minimum_macos)=14' "$manifest" > "$manifest.old"
+mv "$manifest.old" "$manifest"
+run_gate true false arm64
 jq '.assets |= map(select(.architecture == "arm64"))' "$manifest" > "$manifest.arm" || \
   php_darwin_die 'could not write the ARM64-only nightly manifest fixture'
 mv "$manifest.arm" "$manifest" || php_darwin_die 'could not install the ARM64-only nightly manifest fixture'
-run_gate true false x86_64
+run_gate true false 'arm64 x86_64'
 grep -Fxq "homebrew-php-commit=$php_commit" "$output" || \
   php_darwin_die 'nightly platform completion did not pin the published homebrew-php commit'
 grep -Fxq "homebrew-extensions-commit=$extensions_commit" "$output" || \
   php_darwin_die 'nightly platform completion did not pin the published extension commit'
 write_manifest "$previous"
-jq '.assets |= map(select(.architecture == "arm64"))' "$manifest" > "$manifest.arm" || \
+jq '.assets |= map(select(.architecture == "arm64") | .minimum_macos=14)' "$manifest" > "$manifest.arm" || \
   php_darwin_die 'could not write the stale ARM64-only nightly manifest fixture'
 mv "$manifest.arm" "$manifest" || \
   php_darwin_die 'could not install the stale ARM64-only nightly manifest fixture'

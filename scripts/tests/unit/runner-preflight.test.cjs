@@ -11,6 +11,8 @@ test('recognizes the source-build wrapper without matching read-only or unrelate
     assert.equal(installerCommand([...argv, ...command], repo), false);
   }
   assert.equal(installerCommand([...argv, 'install'], '/opt/homebrew'), false);
+  assert.equal(installerCommand(['/bin/bash', '-p', `${repo}/Library/Homebrew/brew.sh`, 'update', '--force'], repo), true);
+  assert.equal(installerCommand(['/bin/bash', `${repo}/Library/Homebrew/brew.sh`, 'info', 'update'], repo), false);
 });
 
 const worker = { pid: 100, ppid: 90, uid: 501, started: 2000, state: 'S', executable: '/runner/bin/Runner.Worker' };
@@ -35,6 +37,13 @@ test('releases an old orphan and its descendants, with no wait on a healthy runn
   assert.deepEqual(f.signals, [[81, 'SIGTERM'], [80, 'SIGTERM']]);
   f.options.wait = () => assert.fail('healthy preflight must not wait');
   assert.equal(await recover(f.options), 0);
+});
+
+test('recovers a verified abandoned Homebrew shell update with the same worker and lock guards', async () => {
+  const f = fixture();
+  f.rows[2].executable = '/bin/bash';
+  assert.equal(await recover(f.options), 1);
+  assert.deepEqual(f.signals, [[80, 'SIGTERM']]);
 });
 
 for (const [label, change] of Object.entries({

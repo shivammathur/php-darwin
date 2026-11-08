@@ -18,6 +18,23 @@ function fixture(t) {
   return {directory, bytes, bottle, platform};
 }
 
+test('baseline promotion retains verified older source bottles but rejects newer or foreign binaries', () => {
+  const {keyFor} = require('../../cache/source-bottle-cache.cjs');
+  const inputs = {formula: 'fixture', version: '1.0', environment: {arch: 'arm64', macos: '14', prefix: '/opt/homebrew'}};
+  const platform = {macos: 15, prefix: '/opt/homebrew', packages: {
+    fixture: {version: '1.0', source: {inputs, key: keyFor(inputs), sha256: 'a'.repeat(64)}}}};
+  assert.equal(validatePlatform(platform, 'arm64'), platform);
+  const approved = new ApprovedDependencies({platforms: {arm64: platform}});
+  assert.deepEqual(approved.versions({arch: 'arm64', macos: '15', prefix: '/opt/homebrew'}), {fixture: '1.0'});
+  assert.throws(() => approved.versions({arch: 'arm64', macos: '14', prefix: '/opt/homebrew'}), /Runner cannot/);
+  for (const change of [{macos: '26'}, {macos: 'invalid'}, {arch: 'x86_64'}, {prefix: '/usr/local'}]) {
+    const invalid = structuredClone(platform);
+    Object.assign(invalid.packages.fixture.source.inputs.environment, change);
+    invalid.packages.fixture.source.key = keyFor(invalid.packages.fixture.source.inputs);
+    assert.throws(() => validatePlatform(invalid, 'arm64'), /source bottle identity/);
+  }
+});
+
 test('approved upstream bottles use mirror bytes, retain dependency flags and reuse verified local files', async t => {
   const f = fixture(t), downloads = [], commands = [];
   const approved = new ApprovedDependencies({platforms: {arm64: f.platform}}, {

@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const {spawnSync} = require('node:child_process');
+const {spawnSync, execFileSync} = require('node:child_process');
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'workflow-preparation-'));
@@ -45,4 +45,46 @@ case "$1" in */../install.sh) echo existing-archive-installed >> "$CALL_LOG";; *
   const calls = fs.readFileSync(log, 'utf8');
   assert.match(calls, /existing-archive-installed/);
   assert.doesNotMatch(calls, /git|tap shivammathur\/extensions|trust/);
+});
+
+test('extension build preparation rejects a Gitless tap inside the Homebrew repository', t => {
+  const f = fixture(t), prefix = path.join(f.root, 'prefix');
+  const repository = path.join(f.root, 'Homebrew');
+  const tap = path.join(repository, 'Library/Taps/shivammathur/homebrew-extensions');
+  const phpBin = path.join(prefix, 'opt/php@8.4/bin');
+  fs.mkdirSync(tap, {recursive: true}); fs.mkdirSync(phpBin, {recursive: true});
+  fs.writeFileSync(path.join(phpBin, 'php-config'), '#!/bin/sh\necho 8.4.27\n', {mode: 0o755});
+  const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], {encoding: 'utf8', stdio: 'pipe'}).trim();
+  const initialize = (cwd, origin) => {
+    git(cwd, 'init', '-q');
+    git(cwd, '-c', 'user.name=fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--allow-empty', '-qm', 'fixture');
+    git(cwd, 'remote', 'add', 'origin', origin);
+    return git(cwd, 'rev-parse', 'HEAD');
+  };
+  const original = initialize(repository, 'https://github.com/Homebrew/brew');
+  fs.writeFileSync(path.join(tap, 'formula.rb'), 'snapshot recipe\n');
+  fs.writeFileSync(path.join(f.bin, 'brew'), `#!/bin/sh
+case "$1" in
+  --prefix) echo "$FIXTURE_PREFIX";;
+  --repository) if [ "$2" = shivammathur/extensions ]; then echo "$FIXTURE_TAP"; else echo "$FIXTURE_PREFIX"; fi;;
+  untap|tap|trust) exit 0;;
+  *) exit 93;;
+esac
+`, {mode: 0o755});
+  fs.writeFileSync(path.join(f.bin, 'bash'), '#!/bin/sh\ncase "$1" in */../install.sh) exit 0;; *) exit 95;; esac\n', {mode: 0o755});
+  const run = commit => spawnSync('/bin/bash', ['scripts/build/prepare-extension-pack.sh', 'build'], {
+    encoding: 'utf8', env: {...f.env, PHP_VERSION: '8.4', BUILD: 'release', TS: 'nts', GITHUB_ACTIONS: 'true',
+      FIXTURE_PREFIX: prefix, FIXTURE_TAP: tap, HOMEBREW_EXTENSIONS_COMMIT: commit},
+  });
+  const rejected = run('a'.repeat(40));
+  assert.equal(rejected.status, 1);
+  assert.match(rejected.stderr, /not an independent Git checkout/);
+  assert.equal(git(repository, 'rev-parse', 'HEAD'), original);
+  assert.equal(git(repository, 'remote', 'get-url', 'origin'), 'https://github.com/Homebrew/brew');
+  assert.equal(fs.readFileSync(path.join(tap, 'formula.rb'), 'utf8'), 'snapshot recipe\n');
+  const repaired = initialize(tap, require('../../../conf/package.json').extension_tap_repository);
+  const accepted = run(repaired);
+  assert.equal(accepted.status, 0, accepted.stderr);
+  git(tap, 'remote', 'set-url', 'origin', 'https://example.invalid/unexpected');
+  assert.match(run(repaired).stderr, /unexpected origin/);
 });

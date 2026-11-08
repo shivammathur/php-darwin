@@ -7,7 +7,7 @@ const {retryPolicy} = require('../../release/extension-transfers.cjs');
 function entry(hash, version = '8.5', arch = 'arm64') {
   const value = {schema: 1, name: 'imagick', php_version: version, architecture: arch,
     build: 'release', thread_safety: 'nts', sha256: hash.repeat(64), inputs_sha256: 'a'.repeat(64),
-    bytes: 1, php_api: '20250925', minimum_macos: 14};
+    bytes: 1, php_api: '20250925', minimum_macos: 15};
   value.file = `${key(value)}-${value.sha256}.tar.zst`; return value;
 }
 const manifest = (...assets) => ({schema: 1, assets});

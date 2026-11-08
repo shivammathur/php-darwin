@@ -8,7 +8,7 @@ const context = { php_version: '8.6', php_semver: '8.6.0', php_src_commit: 'a'.r
   architecture: 'arm64', build: 'release', thread_safety: 'nts' };
 function entry(name, patch = {}) {
   const value = { ...context, name, schema: 1, php_semver: '8.6.0-dev', php_api: '20260924',
-    inputs_sha256: 'b'.repeat(64), sha256: digest(name), bytes: name.length, minimum_macos: 14, ...patch };
+    inputs_sha256: 'b'.repeat(64), sha256: digest(name), bytes: name.length, minimum_macos: 15, ...patch };
   return { ...value, file: `${key(value)}-${value.sha256}.tar.zst` };
 }
 function directory(t) {

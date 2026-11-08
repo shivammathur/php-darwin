@@ -162,11 +162,14 @@ for formula_file in "$php_path"/Formula/*.rb "$extensions_path"/Formula/*.rb; do
 done
 run_gate 0
 
+jq '(.assets[] | select(.architecture == "arm64") | .minimum_macos)=14' "$manifest" > "$manifest.old"
+mv "$manifest.old" "$manifest"
+run_gate 1 arm64
 jq '.assets |= map(select(.architecture == "arm64"))' "$manifest" > "$manifest.arm" || \
   php_darwin_die 'could not write the ARM64-only stable manifest fixture'
 mv "$manifest.arm" "$manifest" || php_darwin_die 'could not install the ARM64-only stable manifest fixture'
 run_gate 0 '' $'in_progress\tCache stable PHP 8.5'
-run_gate 1 x86_64
+run_gate 1 'arm64 x86_64'
 grep -Fq -- "-f homebrew-php-commit=$php_commit" "$gh_log" || \
   php_darwin_die 'stable platform completion did not pin the published homebrew-php commit'
 grep -Fq -- "-f homebrew-extensions-commit=$extensions_commit" "$gh_log" || \

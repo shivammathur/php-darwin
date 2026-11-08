@@ -327,6 +327,62 @@ test('a lost ownership upload reply preserves the original claim', async t => {
   assert.equal(f.state.assets.length, 0);
 });
 
+test('deleted owner runs recover without waiting for the full build timeout', async t => {
+  const f = fixture(t), key = f.bottle('1').key;
+  const first = new SourceBuildLock(f.cache, {owner: {job: 1, run: 10, attempt: 1}});
+  const claim = await first.acquire(key);
+  let now = Date.parse(f.state.assets[0].created_at);
+  f.cache.wait = async delay => { now += delay; };
+  f.state.intercept = endpoint => {
+    if (endpoint === 'actions/jobs/1' || endpoint === 'actions/runs/10') return new Response(null, {status: 404});
+    if (endpoint === 'actions/jobs/2') return Response.json({run_id: 11, status: 'in_progress'});
+  };
+  const second = new SourceBuildLock(f.cache, {owner: {job: 2, run: 11, attempt: 1}, now: () => now});
+  await second.run(key, async waited => {
+    assert.ok(waited >= 60000 && waited < 120000);
+    assert.ok(!f.state.assets.some(asset => asset.id === claim.id));
+  });
+  assert.equal(f.state.assets.length, 0);
+});
+
+test('a missing job is recoverable only when its parent run has completed', async t => {
+  for (const status of ['in_progress', 'completed']) {
+    const f = fixture(t), key = f.bottle('1').key;
+    const first = new SourceBuildLock(f.cache, {owner: {job: 1, run: 10, attempt: 1}});
+    const claim = await first.acquire(key);
+    f.state.assets[0].created_at = '2000-01-01T00:00:00Z';
+    let now = Date.now();
+    f.cache.wait = async delay => { now += delay; };
+    f.state.intercept = endpoint => {
+      if (endpoint === 'actions/jobs/1') return new Response(null, {status: 404});
+      if (endpoint === 'actions/runs/10') return Response.json({id: 10, status});
+    };
+    const second = new SourceBuildLock(f.cache, {owner: {job: 2, run: 11, attempt: 1}, now: () => now, timeout: 20000});
+    if (status === 'completed') await second.run(key, async () => {});
+    else await assert.rejects(second.acquire(key), /Timed out/);
+    assert.equal(f.state.assets.some(asset => asset.id === claim.id), status !== 'completed');
+  }
+});
+
+test('deleted-run recovery fails closed when Actions access cannot be confirmed', async t => {
+  for (const status of [403, 404, 503]) {
+    const f = fixture(t), key = f.bottle('1').key;
+    const first = new SourceBuildLock(f.cache, {owner: {job: 1, run: 10, attempt: 1}});
+    const claim = await first.acquire(key);
+    f.state.assets[0].created_at = '2000-01-01T00:00:00Z';
+    let now = Date.now();
+    f.cache.wait = async delay => { now += delay; };
+    f.state.intercept = endpoint => {
+      if (endpoint === 'actions/jobs/1' || endpoint === 'actions/runs/10') return new Response(null, {status: 404});
+      if (endpoint === 'actions/jobs/2') return new Response(null, {status});
+    };
+    const second = new SourceBuildLock(f.cache, {owner: {job: 2, run: 11, attempt: 1}, now: () => now, timeout: 120000});
+    await assert.rejects(second.run(key, () => assert.fail('must preserve the claim')), new RegExp(String(status)));
+    assert.ok(f.state.assets.some(asset => asset.id === claim.id));
+    assert.equal(f.state.deleted.length, 0);
+  }
+});
+
 test('ownership polling recovers within three transport attempts without taking a live claim', async t => {
   const f = fixture(t), key = f.bottle('1').key;
   const first = new SourceBuildLock(f.cache, {owner: {job: 1, run: 10, attempt: 1}});

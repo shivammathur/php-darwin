@@ -29,7 +29,7 @@ configuration and services.
 | 8.7 | Nightly |
 
 Every version is available in release and debug builds, with NTS and ZTS variants.
-Apple Silicon (ARM64) requires macOS 14 or later; Intel (x86_64) requires macOS 15
+Apple Silicon (ARM64) and Intel (x86_64) require macOS 15
 or later.
 
 ## Extensions
@@ -54,7 +54,8 @@ Use [setup-php](https://github.com/shivammathur/setup-php) in GitHub Actions:
     extensions: imagick, mongodb, memcached, swoole
 ```
 
-To install directly on a macOS runner:
+Direct installation requires Homebrew, `jq`, and `zstd`. Install missing tools
+with `brew install jq zstd`, then run:
 
 ```sh
 curl --fail --location --output install.sh \

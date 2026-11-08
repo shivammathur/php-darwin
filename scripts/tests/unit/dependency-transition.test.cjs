@@ -13,9 +13,9 @@ const hash = 'a'.repeat(40), latest = 'b'.repeat(40);
 function graph(name, dependencies = [], extra = {}) {
   return {full_name: name, version: '1.0', requested: false, bottled: false, recipe_sha256: 'old',
     runtime_dependencies: dependencies.map(name => ({name, version: '1.0'})), runtime_formulae: dependencies,
-    required_formulae: dependencies, ...extra};
+    required_formulae: dependencies, required_dependencies: dependencies, ...extra};
 }
-test('tap dependency fingerprints ignore releases and bottle churn, identify only changed declarations and retain guards', t => {
+test('tap fingerprints detect bottle changes without broadening declaration-only updates', t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tap-dependency-'));
   t.after(() => fs.rmSync(dir, {recursive: true, force: true}));
   fs.mkdirSync(path.join(dir, 'Formula'));
@@ -26,14 +26,63 @@ test('tap dependency fingerprints ignore releases and bottle churn, identify onl
   execFileSync('git', ['-C', dir, 'init', '-q']); execFileSync('git', ['-C', dir, 'add', '.']);
   const before = capture({'homebrew-php': dir});
   write('openssl@3', '2.0');
-  assert.equal(changed(before, capture({'homebrew-php': dir})).changed, false);
+  const rebuilt = capture({'homebrew-php': dir});
+  assert.deepEqual(changed(before, rebuilt), {changed: true, formulae: [], allRuntime: false, bottlesChanged: true});
+  const legacy = {...rebuilt}; delete legacy.bottles;
+  assert.equal(changed(legacy, rebuilt).bottlesChanged, true);
   write('openssl@4', '2.0');
   const after = capture({'homebrew-php': dir});
   assert.deepEqual(changed(before, after).formulae, ['openssl@3', 'openssl@4']);
+  assert.deepEqual(changed(rebuilt, after), {changed: true, formulae: ['openssl@3', 'openssl@4'], allRuntime: false});
   write('openssl@4', '2.0', 'Hardware::CPU.intel?');
   assert.equal(changed(after, capture({'homebrew-php': dir})).changed, true);
   fs.writeFileSync(file, 'invalid ruby = (');
   assert.throws(() => capture({'homebrew-php': dir}), /Cannot parse/);
+});
+test('bottle changes select only unmet runtime requirements and retain other cached libraries', () => {
+  const before = [graph('openssl@4'), graph('curl', ['openssl@4']), graph('aom'), graph('cmake')];
+  const after = [graph('openssl@4', [], {version: '1.1', recipe_sha256: 'new'}),
+    graph('curl', ['openssl@4'], {recipe_sha256: 'new'}), graph('aom', [], {version: '1.1', recipe_sha256: 'new'}),
+    graph('cmake', [], {recipe_sha256: 'new'}), graph('shivammathur/php/php', ['curl', 'openssl@4', 'aom'],
+      {requested: true, bottle_requirement_updates: ['openssl@4']})];
+  const lock = {core_commit: hash, platforms: {arm64: {packages: Object.fromEntries(before.map(item => [item.full_name, {}]))}}};
+  assert.deepEqual(selectRecipes(lock, [{before, after}], {bottlesChanged: true}, latest).updates, ['openssl@4']);
+  after.at(-1).bottle_requirement_updates = [];
+  assert.deepEqual(selectRecipes(lock, [{before, after}], {bottlesChanged: true}, latest).updates, []);
+});
+test('a selected bottle advances only required transitive versions, preserving other cached dependencies', () => {
+  const before = [graph('a'), graph('b'), graph('c')];
+  const after = [graph('a', ['b', 'c'], {version: '1.1', bottle_requirement_updates: ['b']}),
+    graph('b', [], {version: '1.1'}), graph('c', [], {version: '1.1'}),
+    graph('shivammathur/php/php', ['a', 'b', 'c'], {requested: true, bottle_requirement_updates: ['a']})];
+  const lock = {core_commit: hash, platforms: {arm64: {packages: {a: {}, b: {}, c: {}}}}};
+  assert.deepEqual(selectRecipes(lock, [{before, after}], {bottlesChanged: true}, latest).updates, ['a', 'b']);
+});
+test('new library builds keep cached Meson and its approved Python runtime', () => {
+  const before = [graph('library'), graph('meson', ['python@3.14']), graph('python@3.14')];
+  const after = [graph('library', [], {version: '1.1', required_dependencies: ['meson'],
+    required_formulae: ['meson', 'python@3.15']}), graph('meson', ['python@3.15']), graph('python@3.15'),
+    graph('shivammathur/php/php', ['library'], {requested: true, bottle_requirement_updates: ['library']})];
+  const lock = {core_commit: hash, platforms: {x86_64: {packages: {library: {}, meson: {}, 'python@3.14': {}}}}};
+  assert.deepEqual(selectRecipes(lock, [{before, after}], {bottlesChanged: true}, latest).updates, ['library']);
+  // A genuinely new tool still imports its own missing runtime dependencies.
+  after[0].required_dependencies = ['new-tool'];
+  after.push(graph('new-tool', ['python@3.15']));
+  assert.deepEqual(selectRecipes(lock, [{before, after}], {bottlesChanged: true}, latest).updates,
+    ['library', 'new-tool', 'python@3.15']);
+});
+test('compatible cached source builds and upstream bottles survive recipe and bottle rebuild churn', () => {
+  const graphItems = [graph('openssl@4', [], {version: '4.1.0'}),
+    graph('curl', ['openssl@4'], {recipe_sha256: 'changed', bottled: true, bottle: {sha256: 'new'}}),
+    graph('aom', [], {bottled: true, bottle: {sha256: 'rebuilt'}}),
+    graph('shivammathur/php/php', ['openssl@4', 'curl', 'aom'], {requested: true})];
+  const previous = {'openssl@4': {version: '4.1.0'},
+    curl: {version: '1.0', source: {inputs: {recipe: 'old', dependencies: [{name: 'openssl@4', version: '4.0.3'}]}}},
+    aom: {version: '1.0', bottle: {sha256: 'approved'}}};
+  assert.deepEqual(resolvePlan(graphItems, previous).updates, []);
+  assert.deepEqual(resolvePlan(graphItems, previous, ['curl']).updates, ['curl']);
+  graphItems[1].runtime_dependencies = [{name: 'openssl@5', version: '5.0.0'}];
+  assert.deepEqual(resolvePlan(graphItems, previous).updates, ['curl']);
 });
 test('selective OpenSSL transition follows consumers without advancing unrelated CMake', () => {
   const before = [graph('openssl@3'), graph('curl', ['openssl@3']), graph('python@3.14', ['openssl@3']), graph('cmake')];

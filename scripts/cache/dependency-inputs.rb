@@ -1,5 +1,5 @@
-# Fingerprint dependency declarations without invalidating on bottle rebuilds or
-# software-only releases. Shared Ruby helpers are fingerprinted by the caller.
+# Track declarations and bottle identities independently. A rebuilt bottle may
+# require newer runtime libraries without changing any depends_on declarations.
 require 'json'
 require 'ripper'
 
@@ -28,6 +28,21 @@ def declarations(node, guards = [], result = [])
   result
 end
 
+def bottles(node, result = [])
+  return result unless node.is_a?(Array)
+
+  if node[0] == :method_add_block
+    call = node[1]
+    call = call[1] if call[0] == :method_add_arg
+    if call[0] == :fcall && call.dig(1, 1) == 'bottle'
+      result << clean(node)
+      return result
+    end
+  end
+  node.each { |child| bottles(child, result) if child.is_a?(Array) }
+  result
+end
+
 puts JSON.generate(JSON.parse(STDIN.read).map do |file|
   ast = Ripper.sexp(File.read(file))
   abort "Cannot parse dependency declarations: #{file}" unless ast
@@ -42,5 +57,5 @@ puts JSON.generate(JSON.parse(STDIN.read).map do |file|
   # in the formula. Fail closed instead of missing such a dependency update.
   dynamic = result.any? { |entry| entry.last.flatten.any? { |token| %i[string_embexpr var_ref const_ref vcall call].include?(token) } }
   result << ["dynamic_dependency_context", clean(ast)] if dynamic
-  [file, result]
+  [file, {declarations: result, bottles: bottles(ast)}]
 end.to_h)

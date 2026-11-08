@@ -42,8 +42,10 @@ test('trimmed prefetch retains selection and metadata checks for every supported
           file:`${name}-${php_version}-${build}-${thread_safety}-${architecture}-${'a'.repeat(64)}.tar.zst`};
         if (!supportsPack(name, php_version)) {assert.throws(() => api.validateEntry(entry)); continue;}
         assert.equal(api.validateEntry(entry), validateEntry(entry));
+        const previous = {...entry, minimum_macos: platform.minimum_archive_macos};
+        assert.equal(api.validateEntry(previous), validateEntry(previous));
         for (const patch of [{architecture:'other'}, {build:'other'}, {thread_safety:'other'}, {php_version:'0.0'},
-          {sha256:'invalid'}, {inputs_sha256:''}, {bytes:0}, {bytes:Infinity}, {minimum_macos:platform.minimum_macos-1},
+          {sha256:'invalid'}, {inputs_sha256:''}, {bytes:0}, {bytes:Infinity}, {minimum_macos:platform.minimum_archive_macos-1},
           {file:'../unsafe.tar.zst'}, {php_api:'invalid'}, {schema:2}]) {
           assert.throws(() => api.validateEntry({...entry, ...patch}));
           assert.throws(() => validateEntry({...entry, ...patch}));

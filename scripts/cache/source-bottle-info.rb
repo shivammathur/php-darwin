@@ -3,6 +3,8 @@
 require "formulary"
 require "formula_installer"
 require "json"
+require "pkg_version"
+require_relative "bottle-runtime-version"
 
 PHP_DARWIN_FORMULA_POLICY = JSON.parse(File.read(File.expand_path("../../conf/formula-policy.json", __dir__))).freeze
 
@@ -11,6 +13,7 @@ mode = ARGV.fetch(0)
 formulae = JSON.parse(ARGV.fetch(1))
 force_source = ARGV[2] == "true"
 approved_bottles = JSON.parse(ARGV[3] || "{}")
+bottle_baseline = ARGV[4] && JSON.parse(ARGV[4])
 raise "Invalid source bottle mode" unless %w[plan seed graph inputs archive].include?(mode)
 
 def current_installation?(formula)
@@ -116,6 +119,8 @@ records = resolved.map do |formula|
     end.sort_by { |dep| dep[:name] }
     record[:required_formulae] = source_dependencies(formula, planning: true, ignore_installed: true, approved_bottles:)
       .map { |dep| dep.to_formula.full_name }.uniq.sort
+    record[:required_dependencies] = active.map { |dep| dep.to_formula.full_name }
+      .select { |name| record[:required_formulae].include?(name) }.uniq.sort
     record[:runtime_formulae] = source_dependencies(formula, planning: false, runtime_only: true)
       .map { |dep| dep.to_formula.full_name }.uniq.sort
   end
@@ -142,6 +147,26 @@ records = resolved.map do |formula|
       sha256: bottle.resource.checksum.hexdigest, url: bottle.url,
       cached_download: bottle.cached_download.to_s,
     }
+    if mode == "graph" && bottle_baseline
+      # Read the selected bottle's receipt through Homebrew, including its
+      # rebuild/platform identity. An older transitive dependency can disappear
+      # when a compatible approved library replaces the one used to bottle it.
+      bottle.fetch_tab(quiet: true)
+      requirements = bottle.tab_attributes.fetch("runtime_dependencies")
+      raise "Invalid bottle dependency metadata for #{formula.full_name}" unless requirements.is_a?(Array)
+
+      record[:bottle_requirement_updates] = requirements.filter_map do |dependency|
+        name = dependency.fetch("full_name")
+        next unless record[:runtime_formulae].include?(name) && !name.include?("/")
+
+        required = PkgVersion.parse(BottleRuntimeVersion.package_version(dependency))
+        if required > Formulary.factory(name).pkg_version
+          raise "Recipe snapshot cannot satisfy #{formula.full_name}: #{name} #{required} is required"
+        end
+        current = bottle_baseline[name]
+        name if !current || PkgVersion.parse(current) < required
+      end.uniq.sort
+    end
   end
   if mode == "archive"
     record[:packages] = (source_dependencies(formula, planning: false, runtime_only: true)
@@ -153,9 +178,12 @@ records = resolved.map do |formula|
     record[:dependencies] = source_dependencies(formula, planning: false).map do |dep|
       installed_inputs(dep.to_formula)
     end.sort_by { |dep| dep[:name] }
-    # Homebrew orders recursive dependencies before direct dependencies. During
-    # an OpenSSL migration that can put the other major's .pc files first.
-    record[:pkg_config_path] = (openssl.to_formula.opt_lib/"pkgconfig").to_s if openssl
+    # Recursive dependencies can expose another major before the formula's
+    # direct dependency: libpq now uses ICU 79 while PHP still declares ICU 78.
+    # Keep the declared OpenSSL and ICU headers, libraries and .pc files first.
+    icu = formula.deps.find { |dep| dep.name.match?(/\Aicu4c@[0-9]+\z/) && !dep.optional? && !dep.test? }
+    selected = [openssl, icu].compact.map { |dep| (dep.to_formula.opt_lib/"pkgconfig").to_s }
+    record[:pkg_config_path] = selected.join(File::PATH_SEPARATOR) unless selected.empty?
   end
   record
 end

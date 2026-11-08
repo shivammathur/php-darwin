@@ -84,9 +84,11 @@ published PHP version, original recipe commit, aggregate source hash, and indivi
 recipe hashes. It changes freshness comparisons only; archive contents and published
 build provenance remain unchanged. A different publication no longer matches the
 entry, and future changes to the accepted tap recipes invalidate freshness normally.
-The PHP 5.6–8.1 entries use `tap_only_updates`: retain the complete published PHP
+The PHP 5.6–8.5 entries use `tap_only_updates`: retain the complete published PHP
 cache until its PHP tap recipes change, even if dependencies or cached coverage
-extensions change. PHP 8.2–8.5 continue to check dependencies and coverage extensions.
+extensions change. This preserves the accepted releases during dependency-cache
+updates for new builds. Later publications no longer match these baselines and
+resume normal dependency and coverage-extension freshness checks.
 An unacknowledged private recipe mismatch must resolve its original Git baseline
 before it can trigger a replacement build.
 Compression settings and installer-only changes do not invalidate PHP packages.
@@ -110,8 +112,26 @@ Homebrew's download cache. Misses fall back to Homebrew's concurrent upstream
 fetch and are mirrored afterward, one dependency per job. Retain current bottle
 downloads on persistent runners. Never substitute an older bottle for a new digest.
 
-Packages without usable upstream bottles use named GitHub Releases for
+ARM64 producers install upstream or verified cached bottles for PHP, normal NTS
+extensions, tools and dependencies. A missing bottle is an error; neither
+`force-source` nor a dependency worker can enable compilation of these packages.
+This policy is configured by `source_builds` in `conf/platforms.json`: `false`
+for ARM64 and `true` for Intel. Source-build fixtures select their runners from it.
+`extension_source_builds` permits ARM64 `release/zts`, `debug/nts` and `debug/zts`
+extension targets to build on an exact-cache miss because their ABI differs from
+the upstream extension bottles. This exception never permits dependency builds
+or compilation during a cache-only install. Normal nightly NTS extensions use
+upstream bottles too; source identity remains part of the exact variant cache key.
+Keep the approved dependencies compatible with upstream PHP/extension bottles;
+resolve ABI mismatches by preparing matching dependencies or upstream bottles.
+Intel producers can build missing bottles. Consumer installs use published archives.
+Trusted staging runs on `main` save and mirror reusable bottles even with
+`publish=false`; PHP release manifests remain unchanged until publication.
+Packages without usable upstream bottles also use named GitHub Releases for
 source bottles and `cache-locks` for build claims. Their bundles use Cloudflare first.
+Source-bottle mirroring reads GitHub's authenticated asset API after matching the
+recorded filename, size and checksum. Public release-download failures therefore
+do not require rebuilding a valid bottle; retry only the failed mirror job.
 Keys include software and dependency versions plus the target platform; PHP
 extensions additionally include the PHP API and variant. Nightly PHP source
 commits identify their software version. Recipe bytes and runner toolchain
@@ -119,8 +139,9 @@ changes do not invalidate source bottles. Legacy keys remain readable, with
 checksum and software identity verification before reuse. Existing configuration
 is restored after source bottling, including failed builds; service data is not staged. Keep configure/make output visible.
 
-Source builds select a formula's declared OpenSSL major in both pkg-config and
-compiler search paths. This selection policy is part of the consumer's cache key;
+Source builds select a formula's declared OpenSSL and ICU majors in both pkg-config
+and compiler search paths. This keeps PHP on ICU 78 when libpq introduces ICU 79.
+This selection policy is part of the consumer's cache key;
 OpenSSL's own cached bottle is unaffected. Dependency approval checks direct
 OpenSSL linkage in installed executables, libraries and plugins against the recipe.
 
@@ -166,6 +187,13 @@ Preflight cleanup reserves release capacity; post-publication cleanup failures
 are reported and retried on the next publication. An installer with a retired
 archive refreshes its manifest once. Installer-only extension publication also
 reclaims archives left unreferenced by older publishers.
+
+`conf/extension-cache-baselines.json` binds the verified migration packs to their
+archive checksums, PHP version/source and recipe records. These exact packs retain
+their bundled dependencies until an extension recipe or PHP compatibility changes.
+New publications resume normal dependency freshness checks; `force=true` still
+requests a rebuild. Dependency refreshes for new builds do not replace every
+working extension cache.
 
 Use `e2e.yml` with `checkout-installer=true` to test candidate installer bytes
 against existing published packages. setup-php first runs without installed PHP,
@@ -238,16 +266,19 @@ Homebrew core and selects the exact dependency bottles for each architecture.
 An installed, healthy keg at the approved version can be reused; otherwise the
 approved bottle is restored. A different runner compiler, SDK or installed
 dependency recipe does not cause an approved build tool such as GCC to compile
-again. PHP and extension targets can still compile when their own inputs change.
+again. Targets can compile only when their architecture and variant policy allows it.
 An unapproved dependency version or unavailable approved bottle stops with a
 dependency-update instruction instead of silently upgrading or compiling it.
 
 Tap dependency changes automatically start `update-dependencies.yml`, checked every
-two hours and by the PHP/extension dispatchers. A Linux fingerprint of dependency
-declarations ignores source releases and bottle-only churn. Native Homebrew
-resolution selects changed dependency recipes and their affected consumers while
-retaining unrelated approved tools and core recipes. `automatic=true` runs the
-same path manually. No native planning is needed when declarations are unchanged.
+two hours and by the PHP/extension dispatchers. Linux fingerprints track dependency
+declarations and bottle blocks independently. For changed bottles, native Homebrew
+reads their minimum runtime versions and selects only missing or insufficient
+dependencies. Existing source-built and upstream caches remain approved through
+recipe or bottle rebuild changes when their versions and runtime dependencies
+are compatible. Cold/warm validation still checks their actual linkage.
+`automatic=true` runs the same path manually. No native planning is needed when
+both declarations and bottles are unchanged.
 
 Each changed formula/architecture gets its own run: linked libraries use
 `prepare-dependency.yml`, build tools use `prepare-build-tool.yml`. The shared
@@ -513,8 +544,8 @@ interface on 8.4+. It checks PHP binary preservation, install provenance and
 serialization roundtrips after cold and hot installs. `checkout-installer=true`
 tests candidate installer bytes against the published archives.
 
-Full archive compatibility uses named macOS versions; `macos-latest` is exercised
-separately by `test-homebrew.yml` with published PHP 8.5. That weekly/manual smoke
+All macOS workflows use explicit versioned runner labels. `test-homebrew.yml`
+checks published PHP 8.5 on `macos-26` and `macos-15-intel`. That weekly/manual smoke
 also checks `brew update`, outside every PHP publication's cold/hot install gate.
 `brew config` and `brew doctor` run once after cleanup, before build/test work;
 per-variant checks retain receipts, linkage, relinking, FPM and preservation.

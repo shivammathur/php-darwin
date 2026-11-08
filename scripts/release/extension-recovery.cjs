@@ -83,7 +83,7 @@ async function planRecovery(id, run = command, retry = retryPolicy(), { download
         if (entry.php_version !== version || entry.architecture !== arch ||
             (build && (entry.build !== build || entry.thread_safety !== thread_safety))) throw new Error('Grouped artifact context mismatch');
         entries.push({ name: entry.name, php_version: version, architecture: arch, build: entry.build,
-          thread_safety: entry.thread_safety, sha256: entry.sha256, bytes: entry.bytes,
+          thread_safety: entry.thread_safety, minimum_macos: entry.minimum_macos, sha256: entry.sha256, bytes: entry.bytes,
           artifact_id: payloads[0].id, artifact_digest: payloads[0].digest, source_run: id });
       }
     } finally { fs.rmSync(temporary, { recursive: true, force: true }); }

@@ -125,7 +125,6 @@ function matrix(records) {
     if (!groups.has(record.formula)) groups.set(record.formula, new Map());
     groups.get(record.formula).set(record.sha256, record);
   }
-  if (groups.size > 256) throw new Error('Bottle dependency matrix exceeds 256 jobs');
   return { include: [...groups].sort(([a], [b]) => a.localeCompare(b)).map(([formula, bottles]) => ({
     formula, bottles: [...bottles.values()],
   })) };
@@ -183,13 +182,16 @@ async function publish(records, { download = transfer, run = command, env = proc
   } finally { await fsp.rm(directory, { recursive: true, force: true }); }
 }
 async function main() {
+  const { jobMatrix, recordsFor } = require('./bottle-jobs.cjs');
   if (process.argv[2] === 'matrix') {
     const result = matrix(readRecords(process.argv[3]));
     fs.writeFileSync('bottle-matrix.json', JSON.stringify(result, null, 2));
-    fs.appendFileSync(process.env.GITHUB_OUTPUT, `matrix=${JSON.stringify(result)}\ncount=${result.include.length}\n`);
-    console.log(`${result.include.length} dependency jobs`);
+    const jobs = jobMatrix(result);
+    fs.appendFileSync(process.env.GITHUB_OUTPUT, `matrix=${JSON.stringify(jobs)}\ncount=${jobs.include.length}\n`);
+    console.log(`${result.include.length} dependencies in ${jobs.include.length} jobs`);
   } else if (process.argv[2] === 'publish') {
-    const result = await publish(JSON.parse(process.env.BOTTLES));
+    const bottles = process.argv[3] ? recordsFor(JSON.parse(fs.readFileSync(process.argv[3])), process.argv[4]) : JSON.parse(process.env.BOTTLES);
+    const result = await publish(bottles);
     fs.writeFileSync('bottle-verification.json', JSON.stringify(result, null, 2));
   } else if (process.argv[2] === 'tools') {
     const { command } = require('./source-bottle-cache.cjs');

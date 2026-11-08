@@ -7,7 +7,7 @@ const os = require('node:os');
 const http = require('node:http');
 const { execFileSync } = require('node:child_process');
 const { prefetch, download, digest, key, validateEntry, validateContext, safePath, inspectTree, packEnvironment, relocateResources, phpApi, prepareArchive, movePrepared, runtimeContext, packs, supportsPack } = require('../../installer/install-extensions.cjs');
-const { unchanged, freshnessReason, selectEntries, compatibilityMatrix, versionBatches, dispatch, plan, publish, validatePublishRun, validatePublishedPHP } = require('../../release/extension-packs.cjs');
+const { unchanged, freshnessReason, publicationIdentity, selectEntries, compatibilityMatrix, versionBatches, dispatch, plan, publish, validatePublishRun, validatePublishedPHP } = require('../../release/extension-packs.cjs');
 const { copyRuntime, copyHeaders } = require('../../build/extension-pack.cjs');
 const { buildMatrix } = require('../../release/extension-batches.cjs');
 
@@ -465,7 +465,7 @@ test('read the module API from the installed PHP headers using supported php-con
 });
 function entry(name, content = Buffer.from(name)) {
   const metadata = { ...context, name, schema: 1, sha256: digest(content), inputs_sha256: '1'.repeat(64),
-    php_api: '20240924', php_semver: '8.4.26', minimum_macos: 14, bytes: content.length };
+    php_api: '20240924', php_semver: '8.4.26', minimum_macos: 15, bytes: content.length };
   metadata.file = `${key(metadata)}-${metadata.sha256}.tar.zst`;
   return metadata;
 }
@@ -710,6 +710,9 @@ test('freshness tracks software inputs and ignores php-darwin builder revisions'
   const repositories = { core: directory };
   assert.ok(unchanged(metadata, repositories, { php_semver: '8.4.26' }));
   assert.equal(freshnessReason(metadata, repositories, { php_semver: '8.4.26' }), null);
+  const previousBaseline = {...metadata, minimum_macos: 14};
+  assert.equal(validateEntry(previousBaseline), previousBaseline, 'published packs remain installable during migration');
+  assert.equal(freshnessReason(previousBaseline, repositories, {php_semver: '8.4.26'}), 'macOS baseline changed');
   assert.equal(freshnessReason(metadata, repositories, { php_semver: '8.4.27' }), null);
   assert.equal(unchanged(metadata, repositories, { php_semver: '8.4.27' }), true);
   assert.equal(freshnessReason(metadata, repositories, { php_semver: '8.5.0' }), 'PHP release changed');
@@ -724,11 +727,42 @@ test('freshness tracks software inputs and ignores php-darwin builder revisions'
   assert.equal(freshnessReason(metadata, repositories, { php_semver: '8.4.26' }), 'recipe changed: core/formula.rb');
 });
 
+test('accepted extension archives retain dependencies without hiding new recipes or PHP incompatibility', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'accepted-extension-baseline-'));
+  t.after(() => fs.rmSync(directory, {recursive: true, force: true}));
+  fs.writeFileSync(path.join(directory, 'core.rb'), 'new dependency');
+  fs.writeFileSync(path.join(directory, 'extension.rb'), 'same extension');
+  const metadata = {...entry('imagick'), source_records: [
+    {repository: 'Homebrew/homebrew-core', path: 'core.rb', sha256: digest('old dependency')},
+    {repository: 'shivammathur/homebrew-extensions', path: 'extension.rb', sha256: digest('same extension')},
+  ]};
+  const repositories = {'Homebrew/homebrew-core': directory, 'shivammathur/homebrew-extensions': directory};
+  const baseline = {schema: 1, assets: {[key(metadata)]: publicationIdentity(metadata)}};
+  const base = {php_semver: metadata.php_semver};
+  const reason = (item = metadata, php = base, accepted = baseline) => freshnessReason(item, repositories, php, accepted);
+  assert.equal(reason(), null);
+  assert.match(reason(metadata, base, {schema: 1, assets: {}}), /recipe changed: Homebrew/);
+  const replacement = {...metadata, sha256: 'f'.repeat(64)};
+  replacement.file = `${key(replacement)}-${replacement.sha256}.tar.zst`;
+  assert.match(reason(replacement), /recipe changed: Homebrew/);
+  const changedRecords = {...metadata, source_records: metadata.source_records.map(record => ({...record, sha256: 'a'.repeat(64)}))};
+  assert.match(reason(changedRecords), /recipe changed: Homebrew/);
+  assert.equal(reason({...metadata, minimum_macos: 14}), 'macOS baseline changed');
+  assert.equal(reason(metadata, {php_semver: '8.5.0'}), 'PHP release changed');
+  const nightly = {...metadata, php_version: '8.7', php_semver: '8.7.0-dev', php_src_commit: 'a'.repeat(40)};
+  nightly.file = `${key(nightly)}-${nightly.sha256}.tar.zst`;
+  const nightlyBaseline = {schema: 1, assets: {[key(nightly)]: publicationIdentity(nightly)}};
+  assert.equal(reason(nightly, {php_semver: '8.7.0-dev', php_src_commit: nightly.php_src_commit}, nightlyBaseline), null);
+  assert.equal(reason(nightly, {php_semver: '8.7.0-dev', php_src_commit: 'b'.repeat(40)}, nightlyBaseline), 'PHP release changed');
+  fs.writeFileSync(path.join(directory, 'extension.rb'), 'new extension');
+  assert.equal(reason(), 'recipe changed: shivammathur/homebrew-extensions/extension.rb');
+});
+
 test('compatibility covers newer hosts while build jobs validate the build platforms', () => {
   const entries = ['arm64', 'x86_64'].flatMap(architecture => ['imagick', 'mongodb', 'memcached'].map(name =>
     ({ ...context, architecture, name })));
   const { include } = compatibilityMatrix(entries);
-  assert.equal(include.length, 3);
+  assert.equal(include.length, 2);
   assert.ok(!include.some(item => item.runner === 'macos-15-intel'));
   assert.ok(include.some(item => item.runner === 'macos-26-intel'));
   for (const item of include) assert.deepEqual(item.entries.map(entry => entry.name), ['imagick', 'mongodb', 'memcached']);

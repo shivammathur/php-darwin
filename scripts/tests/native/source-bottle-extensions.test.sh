@@ -5,6 +5,8 @@ set -euo pipefail
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=scripts/lib/lib.sh
 . "$script_dir/../../lib/lib.sh"
+# shellcheck source=scripts/tests/helpers/published-installer.sh
+. "$script_dir/../helpers/published-installer.sh"
 php_darwin_configure_homebrew_environment
 formula=$(php_darwin_formula "${PHP_VERSION:?}" "${BUILD:?}" "${TS:?}")
 brew_prefix=$(brew --prefix)
@@ -12,7 +14,9 @@ pin_dir="${RUNNER_TEMP:?}/php-darwin-extension-test-pins"
 
 case "${1:?}" in
   prepare)
-    brew install --verbose jq zstd
+    bash "$script_dir/../../build/archive-tools.sh"
+    HOMEBREW_CORE_COMMIT=$(jq -er .core_commit "$script_dir/../../../conf/dependencies.json") \
+      bash "$script_dir/../../build/pin-core.sh"
     # Reuse the published PHP archive so these tests compile only extensions.
     # Builds leave a detached tap at their pinned revision. Let the archive
     # supply its matching tap, while preserving every installed PHP keg.
@@ -24,8 +28,8 @@ case "${1:?}" in
     # Use the installer published with these archives. A candidate bootstrap
     # can require a packaging format that has not reached this release yet.
     published_installer="$RUNNER_TEMP/source-cache-published-installer.sh"
-    installer_status=$(php_darwin_request_release "https://github.com/$(php_darwin_package_config release_repository)/releases/download/php-$PHP_VERSION/install.sh" "$published_installer")
-    [ "$installer_status" = 200 ] || php_darwin_die 'could not download the published PHP installer'
+    PHP_DARWIN_PREFER_MIRROR=true php_darwin_fetch_published_installer "$PHP_VERSION" "$published_installer" || \
+      php_darwin_die 'could not download the published PHP installer'
     PHP_DARWIN_PREFER_MIRROR=true bash "$published_installer" "$PHP_VERSION" "$BUILD" "$TS"
     mkdir -p "$pin_dir"
     # Installation preserves runner php.ini settings, including previously

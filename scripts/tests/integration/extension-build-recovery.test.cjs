@@ -27,7 +27,7 @@ test('extension builds recover a formula patched by an interrupted earlier varia
   git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-m', 'Pinned formula');
   git('remote', 'add', 'origin', require('../../../conf/package.json').extension_tap_repository);
   const commit = git('rev-parse', 'HEAD');
-  fs.writeFileSync(path.join(bin, 'uname'), '#!/bin/sh\necho Darwin\n', { mode: 0o755 });
+  fs.writeFileSync(path.join(bin, 'uname'), '#!/bin/sh\ncase "$1" in -m) echo "$FIXTURE_ARCH";; *) echo Darwin;; esac\n', { mode: 0o755 });
   fs.writeFileSync(path.join(bin, 'brew'), `#!/bin/sh
 case "$1" in
   --prefix) echo "$FIXTURE_PREFIX" ;;
@@ -38,10 +38,11 @@ case "$1" in
   *) exit 99 ;;
 esac
 `, { mode: 0o755 });
-  for (const [version, build, ts, formula] of [
-    ['7.2', 'debug', 'nts', 'php@7.2-debug'],
-    ['8.5', 'release', 'nts', 'php'],
-    ['8.5', 'debug', 'zts', 'php-debug-zts'],
+  for (const [arch, version, build, ts, formula] of [
+    ['x86_64', '7.2', 'debug', 'nts', 'php@7.2-debug'],
+    ['x86_64', '8.5', 'release', 'nts', 'php'],
+    ['x86_64', '8.5', 'debug', 'zts', 'php-debug-zts'],
+    ['arm64', '8.5', 'debug', 'zts', 'php-debug-zts'],
   ]) {
     // Reproduce a killed producer leaving its PHP 8.4 patch in the tap.
     execFileSync(process.env.PHP_DARWIN_RUBY || 'ruby',
@@ -51,14 +52,19 @@ esac
       encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`,
         RUNNER_TEMP: directory, PHP_VERSION: version, BUILD: build, TS: ts, EXTENSION_PACK: 'swoole',
         HOMEBREW_EXTENSIONS_COMMIT: commit, PHP_DARWIN_SOURCE_CACHE_NODE: '',
-        FIXTURE_PREFIX: directory, FIXTURE_TAP: tap, FIXTURE_OBSERVED: observed },
+        FIXTURE_ARCH: arch, FIXTURE_PREFIX: directory, FIXTURE_TAP: tap, FIXTURE_OBSERVED: observed },
     });
     // Stop at the mocked installation, after selecting the new variant.
     assert.equal(result.status, 1);
-    assert.ok(fs.existsSync(observed), result.stderr);
-    const selected = fs.readFileSync(observed, 'utf8');
-    assert.ok(selected.includes(`"shivammathur/php/${formula}"`));
-    assert.ok(!selected.includes('8.4-debug-zts'));
+    if (arch === 'arm64') {
+      assert.equal(fs.existsSync(observed), false, 'Legacy fallback must not install or compile on bottle-only platforms');
+      assert.match(result.stderr, /bottle-only source-cache action/);
+    } else {
+      assert.ok(fs.existsSync(observed), result.stderr);
+      const selected = fs.readFileSync(observed, 'utf8');
+      assert.ok(selected.includes(`"shivammathur/php/${formula}"`));
+      assert.ok(!selected.includes('8.4-debug-zts'));
+    }
     assert.equal(fs.readFileSync(abstract, 'utf8'), template, 'Cleanup restores the pinned formula');
     assert.equal(git('status', '--porcelain'), '');
   }

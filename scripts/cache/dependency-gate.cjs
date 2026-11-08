@@ -11,7 +11,7 @@ function activeRuns(workflow, run = args => execFileSync('gh', args, {encoding: 
 function gate({lock, inputs, dispatch = false, run = args => execFileSync('gh', args, {encoding: 'utf8', maxBuffer: 32 * 1024 * 1024})}) {
   const diff = changed(lock.tap_inputs, inputs);
   if (!diff.changed) return true;
-  console.log('Tap dependency declarations changed; waiting for verified dependency caches.');
+  console.log('Tap dependencies or bottles changed; waiting for verified dependency caches.');
   if (dispatch && !activeRuns('update-dependencies.yml', run).length) {
     run(['workflow', 'run', 'update-dependencies.yml', '--repo', repository, '--ref', 'main', '-f', 'automatic=true']);
     console.log('Dispatched the dependency planner; build tools run in prepare-build-tool.yml.');

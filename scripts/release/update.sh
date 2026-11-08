@@ -90,10 +90,10 @@ for version in "${version_values[@]}"; do
   if [ "$php_current" = true ] && [ "$extensions_current" = true ] && \
     [ "$manifest_current_platforms" = false ] && [ "$dependencies_current" = true ] && [ -n "$manifest_source_commit" ] && \
     [ -n "$manifest_extension_commit" ]; then
-    architectures=x86_64
+    architectures=$(php_darwin_release_manifest_outdated_architectures "$manifest") || exit 1
     pinned_arguments=(-f "homebrew-php-commit=$manifest_source_commit" \
       -f "homebrew-extensions-commit=$manifest_extension_commit")
-    printf 'Completing PHP %s with Intel caches while retaining current ARM caches\n' "$version"
+    printf 'Updating PHP %s platform caches: %s\n' "$version" "$architectures"
   fi
   if [ -n "$published" ]; then
     printf 'Dispatching PHP %s: published PHP source %s, current PHP source %s; published extensions %s, current extensions %s\n' \
