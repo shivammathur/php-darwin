@@ -66,7 +66,6 @@ foreach ($names as $name) {
                 throw new Exception('Kafka configuration did not retain its value');
             }
             $producer = new RdKafka\Producer($configuration);
-            $producer->setLogLevel(LOG_EMERG);
             $topic = $producer->newTopic('php-darwin');
             if ($topic->getName() !== 'php-darwin' || $producer->getOutQLen() !== 0) {
                 throw new Exception('Kafka producer initialization failed');
