@@ -463,7 +463,9 @@ validate_homebrew() {
   jq -e --arg php_fpm "$php_fpm" \
     '.formulae | length == 1 and .[0].service.run[0] == $php_fpm' \
     "$service_info" >/dev/null || php_darwin_die 'the cached PHP service does not run its own php-fpm'
-  "$php_fpm" -t || php_darwin_die 'the cached PHP-FPM configuration is invalid'
+  # Match the startup check: validate the retained FPM configuration without
+  # enabling a runner's JIT setting alongside Xdebug or PCOV.
+  "$php_fpm" -d opcache.jit_buffer_size=0 -t || php_darwin_die 'the cached PHP-FPM configuration is invalid'
 
   cleanup_homebrew_validation || php_darwin_die 'could not clean the Homebrew validation state'
   trap - EXIT HUP INT TERM

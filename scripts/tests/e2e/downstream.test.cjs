@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { runSetupPhp } = require('../helpers/run-setup-php.cjs');
 const { cleanupBuildDirectory } = require('../helpers/cleanup-build-directory.cjs');
-const { command, digest } = require('../../installer/install-extensions.cjs');
+const { command, digest, extensionFormula } = require('../../installer/install-extensions.cjs');
 
 assert.equal(process.env.GITHUB_ACTIONS, 'true', 'This fixture modifies CI extension installations');
 const version = process.env['INPUT_PHP-VERSION'];
@@ -19,7 +19,7 @@ for (const [module, header] of [['igbinary', 'igbinary.h'], ['msgpack', 'php_msg
 // Prevent a preinstalled extension from turning this into an enable-only test.
 const { spawnSync } = require('node:child_process');
 for (const module of ['yaml', 'redis']) {
-  spawnSync('brew', ['uninstall', '--force', '--ignore-dependencies', `shivammathur/extensions/${module}@${version}`],
+  spawnSync('brew', ['uninstall', '--force', '--ignore-dependencies', `shivammathur/extensions/${extensionFormula(module)}@${version}`],
     { stdio: 'inherit', env: { ...process.env, HOMEBREW_NO_AUTOREMOVE: '1' } });
 }
 spawnSync('pecl', ['uninstall', 'redis'], { stdio: 'inherit' });
@@ -28,13 +28,24 @@ spawnSync('pecl', ['uninstall', 'redis'], { stdio: 'inherit' });
 const redisSource = '/tmp/redis-6.3.0';
 cleanupBuildDirectory(redisSource);
 const extensionDirectory = command('php-config', ['--extension-dir']);
+// These extensions now have optional packs. Remove their per-module INIs
+// before deleting the binaries; otherwise setup-php can mistake a startup
+// warning mentioning the missing module for an already loaded extension.
+const scan = path.join(command('brew', ['--prefix']), 'etc/php', version, 'conf.d');
+for (const file of fs.readdirSync(scan)) {
+  if (file.endsWith('.ini') && ['yaml', 'redis'].some(module => file.includes(module))) {
+    fs.unlinkSync(path.join(scan, file));
+  }
+}
 // setup-php also keeps a suffixless copy for explicit PECL versions. Remove
 // that fixture version so a prior CI job cannot bypass phpize/configure/make.
 for (const file of ['redis.so', 'redis-6.3.0', 'yaml.so']) {
   fs.rmSync(path.join(extensionDirectory, file), { force: true });
 }
-assert.equal(command('php', ['-d', 'display_errors=stderr', '-r', "echo extension_loaded('redis') ? 'loaded' : 'absent';"]),
-  'absent', 'The downstream fixture must remove preinstalled Redis before testing a fresh source build');
+const removed = spawnSync(php, ['-r', "echo json_encode([extension_loaded('yaml'), extension_loaded('redis')]);"], { encoding: 'utf8' });
+assert.equal(removed.status, 0, removed.stderr);
+assert.equal(removed.stderr, '', 'Removing fixture extensions must not leave PHP startup warnings');
+assert.equal(removed.stdout, '[false,false]', 'The downstream fixture must remove YAML and Redis before testing fresh installations');
 Object.assign(process.env, { INPUT_EXTENSIONS: 'memcached, yaml, redis-6.3.0', 'INPUT_COVERAGE': 'none',
   'INPUT_TOOLS': 'none', 'INPUT_INI-FILE': 'production', fail_fast: 'true',
   REDIS_CONFIGURE_OPTS: '--enable-redis-igbinary=yes --enable-redis-msgpack=yes' });
