@@ -53,7 +53,7 @@ test('trimmed prefetch retains selection and metadata checks for every supported
       }
     }
   }
-  for (const input of ['imagick, mongodb', 'PHP-imagick, :mongodb', 'memcached, :igbinary', 'mongodb-1.20',
+  for (const input of ['apcu', ':apcu', 'apcu-5.1.28', 'apcu, :apcu', 'imagick, mongodb', 'PHP-imagick, :mongodb', 'memcached, :igbinary', 'mongodb-1.20',
     'imagick, imagick@3.8', 'swoole', 'xdebug, pcov', 'php_memcached, msgpack@2']) {
     assert.equal(JSON.stringify(api.selectRequested(input)), JSON.stringify(selectRequested(input)));
   }

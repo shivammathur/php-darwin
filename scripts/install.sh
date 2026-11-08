@@ -432,7 +432,7 @@ const platforms = {"arm64":{"minimum_macos":15,"minimum_archive_macos":14},"x86_
 const buildConfig = {"extension_max_archive_bytes":180000000};
 const transfers = {"attempts":3,"retry_delay":1,"retry_after_max":30,"metadata":{"timeout":30,"max_bytes":2000000},"archive":{"timeout":300}};
 const variants = [["release","nts"],["release","zts"],["debug","nts"],["debug","zts"]];
-const packs = {"imagick":["imagick"],"mongodb":["mongodb"],"memcached":["igbinary","msgpack","memcached"],"swoole":["swoole"]};
+const packs = {"apcu":["apcu"],"imagick":["imagick"],"mongodb":["mongodb"],"memcached":["igbinary","msgpack","memcached"],"swoole":["swoole"]};
 const origins = ["https://github.com/shivammathur/php-darwin/releases/download/extensions","https://artifacts.php-darwin.setup-php.com/extensions"];
 function supportsPack(name, version) {
   return Object.hasOwn(packs, name) && configuration.versions.includes(version) &&

@@ -206,6 +206,8 @@ NODE
       "$php_bin" -r "exit(extension_loaded('$optional_name') ? 0 : 1);" || \
         php_darwin_die "optional $optional_name was not activated by the packaged installer"
     done
+    "$php_bin" -d apc.enable_cli=1 "$script_dir/../helpers/apcu-smoke.php" || \
+      php_darwin_die 'APCu runtime validation failed'
   fi
   bash "$script_dir/../helpers/check-cached-extensions.sh" \
     "$archive" "$cache_metadata" "$php_bin" "$brew_prefix" "$config_id" || \

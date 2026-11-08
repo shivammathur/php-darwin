@@ -29,12 +29,12 @@ function writeArchive(folder, metadata) {
   fs.writeFileSync(path.join(folder, 'validation.txt'), JSON.stringify({ name: metadata.name, sha256: metadata.sha256,
     php_preserved: true, services_preserved: true }));
 }
-test('all 432 packs use 112 independent variant builds and 28 compatibility jobs without splitting pack preparation', () => {
+test('all 544 packs use 112 independent variant builds and 28 compatibility jobs without splitting pack preparation', () => {
   const entries = versions.flatMap(php_version => ['arm64', 'x86_64'].flatMap(architecture =>
     ['debug', 'release'].flatMap(build => ['nts', 'zts'].flatMap(thread_safety =>
       Object.keys(packs).filter(name => supportsPack(name, php_version))
         .map(name => ({ php_version, architecture, build, thread_safety, name }))))));
-  assert.equal(entries.length, 432);
+  assert.equal(entries.length, 544);
   const builds = buildMatrix(entries).include;
   assert.equal(builds.length, 112);
   assert.deepEqual(builds.flatMap(job => job.entries.map(key)).sort(), entries.map(key).sort());
@@ -45,14 +45,14 @@ test('all 432 packs use 112 independent variant builds and 28 compatibility jobs
   assert.equal(tests.filter(item => item.runner === 'macos-26-intel').length, 14);
   for (const job of builds) {
     assert.equal(variants(job.entries).length, 1);
-    assert.equal(job.entries.length, ['8.6', '8.7'].includes(job.php_version) ? 3 : 4);
+    assert.equal(job.entries.length, ['8.6', '8.7'].includes(job.php_version) ? 4 : 5);
     assert.ok(job.entries.every(item => item.php_version === job.php_version && item.architecture === job.architecture &&
       item.build === job.build && item.thread_safety === job.thread_safety));
   }
   assert.equal(reuseMatrix(entries).include.length, 28);
   for (const job of [...reuseMatrix(entries).include, ...tests]) {
     assert.equal(variants(job.entries).length, 4);
-    assert.equal(job.entries.length, ['8.6', '8.7'].includes(job.php_version) ? 12 : 16);
+    assert.equal(job.entries.length, ['8.6', '8.7'].includes(job.php_version) ? 16 : 20);
     assert.ok(job.entries.every(item => item.php_version === job.php_version && item.architecture === job.architecture));
   }
 });

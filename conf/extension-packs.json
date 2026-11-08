@@ -40,6 +40,11 @@
     ]
   },
   "packs": {
+    "apcu": [
+      {
+        "name": "apcu"
+      }
+    ],
     "imagick": [
       {
         "name": "imagick"

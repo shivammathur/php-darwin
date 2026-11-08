@@ -52,12 +52,14 @@ try {
   assert.equal(fs.statSync(result.destination).mode & 0o777, 0o755, 'Runtime must be accessible to other PHP process users');
   const load = result.modules.flatMap(module => ['-d', `extension=${extensionDirectory}/${module}.so`]);
   const checks = {
+    apcu: fs.readFileSync(path.join(__dirname, '../helpers/apcu-smoke.php'), 'utf8').replace(/^<\?php\s*/, ''),
     swoole: fs.readFileSync(path.join(__dirname, '../helpers/swoole-smoke.php'), 'utf8').replace(/^<\?php\s*/, ''),
     imagick: '$i=new Imagick(); $i->newImage(16,16,"white"); foreach (["PNG","JPEG","WEBP"] as $f) { $i->setImageFormat($f); if (strlen($i->getImageBlob())<10) { exit(1); } } try { $i->importImagePixels(0,0,1,1,"RGB",Imagick::PIXEL_CHAR,[1]); exit(1); } catch (ImagickException $e) { if (strpos($e->getMessage(),"incorrect number of elements") === false) { throw $e; } } echo "PNG JPEG WEBP and pixel validation passed\\n";',
     mongodb: '$r=class_exists("MongoDB\\\\BSON\\\\Document") ? MongoDB\\BSON\\Document::fromPHP(["cache"=>42])->toPHP() : MongoDB\\BSON\\toPHP(MongoDB\\BSON\\fromPHP(["cache"=>42])); if ($r->cache!==42) { exit(1); } echo "BSON roundtrip passed\\n";',
     memcached: '$m=new Memcached(); foreach ([Memcached::SERIALIZER_PHP,Memcached::SERIALIZER_IGBINARY,Memcached::SERIALIZER_MSGPACK] as $s) { if (!$m->setOption(Memcached::OPT_SERIALIZER,$s)) { exit(1); } } echo "PHP igbinary msgpack serializers passed\\n";',
   };
-  console.log(command(php, ['-n', ...load, '-r', checks[name]], { env: { ...process.env, ...result.environment } }));
+  const settings = name === 'apcu' ? ['-d', 'apc.enable_cli=1'] : [];
+  console.log(command(php, ['-n', ...load, ...settings, '-r', checks[name]], { env: { ...process.env, ...result.environment } }));
   const scan = path.join(temporary, 'conf.d');
   fs.mkdirSync(scan);
   const ini = path.join(temporary, 'php.ini');
@@ -78,7 +80,7 @@ process.exit(result.error || result.stderr ? 1 : (result.status ?? 1));
   for (const module of entry.modules) {
     for (const file of fs.readdirSync(scan).filter(file => file.includes(module) && file.endsWith('.ini'))) fs.unlinkSync(path.join(scan, file));
     fs.writeFileSync(path.join(scan, `${module === 'memcached' ? 30 : 20}-${module}.ini`), `[${module}]\nextension="${extensionDirectory}/${module}.so"\n`);
-    console.log(command(configuredPhp, ['-r', checks[name]], { env: { ...process.env, ...result.environment } }));
+    console.log(command(configuredPhp, [...settings, '-r', checks[name]], { env: { ...process.env, ...result.environment } }));
   }
   console.log('Tap-compatible INI replacement passed without PHP startup warnings');
   if (name === 'memcached') {

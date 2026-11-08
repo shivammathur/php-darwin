@@ -11,7 +11,7 @@ const {buildGuard} = require('../../cache/dependency-build-guard.cjs');
 assert.equal(process.env.GITHUB_ACTIONS, 'true', 'This fixture replaces CI extension installations');
 const version = process.env.PHP_VERSION;
 assert.equal(version, '7.2');
-const names = ['igbinary', 'msgpack', 'imagick', 'memcached', 'mongodb', 'swoole', 'xdebug', 'pcov'];
+const names = ['igbinary', 'msgpack', 'apcu', 'imagick', 'memcached', 'mongodb', 'swoole', 'xdebug', 'pcov'];
 const php = command('which', ['php']);
 const original = digest(fs.readFileSync(fs.realpathSync(php)));
 const scan = path.join(command('brew', ['--prefix']), 'etc/php', version, 'conf.d');

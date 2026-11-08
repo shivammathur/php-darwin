@@ -45,7 +45,7 @@ check_core() {
   fi
 }
 export PHP_DARWIN_REQUIRE_CACHE=true PHP_DARWIN_REQUIRE_PACKS=true PHP_DARWIN_REQUIRE_XDEBUG=true
-export PHP_DARWIN_EXTENSIONS=xdebug,pcov,imagick,mongodb,memcached,swoole
+export PHP_DARWIN_EXTENSIONS=xdebug,pcov,apcu,imagick,mongodb,memcached,swoole
 report="$RUNNER_TEMP/core-tap-${CORE_TAP_STATE}.jsonl"
 : > "$report"
 while read -r channel version; do

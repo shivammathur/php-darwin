@@ -17,12 +17,14 @@ function directory(t) {
   return root;
 }
 test('raw extension selection respects disabling, versions, sources and serializer constraints', () => {
+  assert.deepEqual(selectRequested('PHP-apcu, apcu, imagick'), ['apcu', 'imagick']);
   assert.deepEqual(selectRequested(' PHP-imagick, mongodb, MEMCACHED, PHP_swoole, imagick, redis'), ['imagick', 'mongodb', 'memcached', 'swoole']);
   assert.deepEqual(selectRequested('none,imagick,memcached'), ['imagick', 'memcached']);
   for (const input of ['', 'none', 'redis', 'imagick-3.8.1', 'imagick-beta', 'imagick-user/repo@main', ':imagick',
     'imagick,:imagick', 'imagick,:PHP-imagick', 'imagick,imagick-3.8.1', 'memcached,igbinary-3.2.16',
     'memcached,:msgpack', 'memcached,memcached@other', 'imagick; touch /tmp/unsafe',
-    ':swoole', 'swoole,:swoole', 'swoole,swoole-6.2.3', 'swoole,swoole@source']) {
+    ':swoole', 'swoole,:swoole', 'swoole,swoole-6.2.3', 'swoole,swoole@source',
+    ':apcu', 'apcu,:apcu', 'apcu,apcu-5.1.28', 'apcu,apcu@source']) {
     assert.deepEqual(selectRequested(input), [], input);
   }
 });
