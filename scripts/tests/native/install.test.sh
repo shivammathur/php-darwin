@@ -179,7 +179,10 @@ validate_runtime() {
   "$php_bin" -d date.timezone=UTC -v || php_darwin_die 'php -v failed'
   "$php_bin" -d date.timezone=UTC -m || php_darwin_die 'php -m failed'
   "$php_config" --version || php_darwin_die 'php-config failed'
-  "$php_fpm" -d date.timezone=UTC -v || php_darwin_die 'php-fpm failed'
+  # This is an FPM startup check. A persistent runner may retain JIT settings
+  # alongside Xdebug or PCOV, an incompatible combination that crashes PHP 8.0.
+  # Override only this process; preserve the installed configuration unchanged.
+  "$php_fpm" -d date.timezone=UTC -d opcache.jit_buffer_size=0 -v || php_darwin_die 'php-fpm failed'
   php_info=$("$php_bin" -d date.timezone=UTC -i) || php_darwin_die 'php -i failed'
   grep -F 'Thread Safety' <<< "$php_info" || php_darwin_die 'thread-safety metadata is missing'
   grep -F 'Debug Build' <<< "$php_info" || php_darwin_die 'debug-build metadata is missing'
