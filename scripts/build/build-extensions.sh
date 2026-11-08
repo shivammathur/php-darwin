@@ -30,7 +30,7 @@ cached_paths=()
 if [ -n "${EXTENSION_PACK:-}" ]; then
   configured_extensions=$(jq -er --arg name "$EXTENSION_PACK" --arg version "$version" '
     select((.pack_versions[$name] // .versions) | index($version)) | .packs[$name] | select(type == "array" and length > 0) |
-    .[] | [.name,"extension"] | @tsv' "$script_dir/../../conf/extension-packs.json") || \
+    .[] | [.name,"extension",(.formula // .name)] | @tsv' "$script_dir/../../conf/extension-packs.json") || \
     php_darwin_die 'invalid optional extension pack'
 else
   configured_extensions=$(bash "$script_dir/cached-extensions.sh" "$version" records) || \
@@ -102,11 +102,11 @@ php_darwin_validate_ts "$ts"
 mkdir -p "$work_dir" || php_darwin_die 'could not create the extension build directory'
 : > "$paths_file" || php_darwin_die 'could not create the cached extension path list'
 
-while IFS=$'\t' read -r extension extension_type; do
+while IFS=$'\t' read -r extension extension_type extension_formula; do
   if [ -n "$extension" ] && [ -n "$extension_type" ]; then
     extensions+=("$extension")
-    extension_formulae+=("$extension@$version")
-    extension_references+=("$extension_tap/$extension@$version")
+    extension_formulae+=("${extension_formula:-$extension}@$version")
+    extension_references+=("$extension_tap/${extension_formula:-$extension}@$version")
     extension_types+=("$extension_type")
   fi
 done <<< "$configured_extensions"
@@ -188,7 +188,7 @@ esac
 
 extension_index=0
 for extension_formula in "${extension_formulae[@]}"; do
-  extension=${extension_formula%@*}
+  extension=${extensions[$extension_index]}
   extension_type=${extension_types[$extension_index]}
   extension_index=$((extension_index + 1))
   source_module="$brew_prefix/opt/$extension_formula/$extension.so"

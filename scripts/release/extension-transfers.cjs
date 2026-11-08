@@ -133,7 +133,7 @@ function publicReader({ directory, run = command, report = { reads: [] } }) {
       output = error.output || output;
       throw error;
     } finally {
-      const diagnostic = { file: name, origin: base === origins[0] ? 'github' : 'cloudflare',
+      const diagnostic = { file: name, origin: base.startsWith('https://github.com/') ? 'github' : 'cloudflare',
         ...readDiagnostic(output, headers, downloaded), ...(offset ? { resume_offset: offset } : {}),
         ...(assembled ? { assembled_bytes: assembled } : {}), verified, ...(failure ? { error: failure.message } : {}) };
       report.reads.push(diagnostic);
@@ -146,21 +146,24 @@ function publicReader({ directory, run = command, report = { reads: [] } }) {
 }
 function transfers({ directory, env, endpoint, run = command, retry = retryPolicy(),
   cloudflareRetry = retryPolicy({ attempts: 3, budget: 12, delay: 1000 }) }) {
-  const repo = 'shivammathur/php-darwin', release = 'extensions';
-  let assets;
+  const repo = 'shivammathur/php-darwin';
+  const inventories = new Map();
+  const releaseOrigin = (index, release) => origins[index].replace(/\/[^/]+$/, '/' + release);
   const report = { github_reused: 0, github_uploaded: 0, cloudflare_reused: 0, cloudflare_uploaded: 0, reads: [] };
-  async function refreshAssets() {
+  async function refreshAssets(release) {
     const record = JSON.parse(await run('gh', ['api', `repos/${repo}/releases/tags/${release}`]));
-    assets = new Map(JSON.parse(await run('gh', ['api', '--paginate', '--slurp',
+    const assets = new Map(JSON.parse(await run('gh', ['api', '--paginate', '--slurp',
       `repos/${repo}/releases/${record.id}/assets?per_page=100`])).flat().map(asset => [asset.name, asset]));
+    inventories.set(release, assets);
+    return assets;
   }
   const read = publicReader({ directory, run, report });
-  async function github(file, immutable) {
+  async function github(file, immutable, release = 'extensions') {
     const name = path.basename(file), bytes = fs.readFileSync(file), sha = digest(bytes);
     let uncertain = false;
     await retry(`GitHub ${name}`, async () => {
       // Reconcile after a lost upload response before trying another upload.
-      if (!assets || uncertain) await refreshAssets();
+      const assets = !inventories.has(release) || uncertain ? await refreshAssets(release) : inventories.get(release);
       const previous = assets.get(name);
       if (previous && previous.size === bytes.length && previous.digest === `sha256:${sha}`) {
         report.github_reused++;
@@ -168,7 +171,7 @@ function transfers({ directory, env, endpoint, run = command, retry = retryPolic
         return;
       }
       if (previous && immutable) {
-        await read(file, origins[0], { fresh: false });
+        await read(file, releaseOrigin(0, release), { fresh: false });
         report.github_reused++;
         return;
       }
@@ -180,15 +183,15 @@ function transfers({ directory, env, endpoint, run = command, retry = retryPolic
     }).catch(error => { throw new Error(`GitHub publication failed: ${name}; ${error.message}`, { cause: error }); });
   }
   const store = r2({ endpoint, env, run, retry: cloudflareRetry });
-  async function mirror(file, immutable) {
+  async function mirror(file, immutable, release = 'extensions') {
     const name = path.basename(file);
     try {
-      const result = await store.ensure(file, `extensions/${name}`, { immutable });
+      const result = await store.ensure(file, `${release}/${name}`, { immutable });
       // Public delivery is checked only after the origin is verified. An edge
       // outage retries the read without reuploading an already correct object.
       let attempt = 0;
       await cloudflareRetry(`Public Cloudflare ${name}`, () =>
-        read(file, origins[1], { fresh: ++attempt > 1 || !immutable || result.uploaded, resume: immutable }));
+        read(file, releaseOrigin(1, release), { fresh: ++attempt > 1 || !immutable || result.uploaded, resume: immutable }));
       report[result.uploaded ? 'cloudflare_uploaded' : 'cloudflare_reused']++;
     } catch (error) {
       throw new Error(`Cloudflare publication failed: ${name}; ${error.message}`, { cause: error });

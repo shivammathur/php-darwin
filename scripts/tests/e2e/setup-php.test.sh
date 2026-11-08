@@ -42,6 +42,7 @@ NODE
     esac
   done
   php -d apc.enable_cli=1 "$script_dir/../helpers/apcu-smoke.php" || php_darwin_die 'APCu runtime validation failed'
+  php "$script_dir/../helpers/optional-network-smoke.php" || php_darwin_die 'Optional networking extension runtime validation failed'
   case " $optional_modules " in
     *' swoole '*) php "$script_dir/../helpers/swoole-smoke.php" || php_darwin_die 'Swoole runtime validation failed' ;;
   esac

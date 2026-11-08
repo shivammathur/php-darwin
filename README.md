@@ -38,6 +38,8 @@ or later.
 | --- | --- | --- |
 | Xdebug | All supported versions | Included |
 | PCOV | 7.1 to 8.7 | Included |
+| Redis, igbinary, msgpack | All supported versions | Optional |
+| AMQP, YAML, SSH2, RdKafka | All supported versions | Optional |
 | APCu | All supported versions | Optional |
 | Imagick | All supported versions | Optional |
 | MongoDB | All supported versions | Optional |
@@ -52,7 +54,7 @@ Use [setup-php](https://github.com/shivammathur/setup-php) in GitHub Actions:
 - uses: shivammathur/setup-php@v2
   with:
     php-version: '8.4'
-    extensions: apcu, imagick, mongodb, memcached, swoole
+    extensions: apcu, imagick, mongodb, memcached, swoole, redis, amqp, yaml, ssh2, rdkafka
 ```
 
 Direct installation requires Homebrew, `jq`, and `zstd`. Install missing tools
@@ -67,7 +69,7 @@ bash install.sh 8.4 release nts
 To include optional packs:
 
 ```sh
-bash install.sh 8.4 release nts "" "apcu, imagick, mongodb, memcached, swoole"
+bash install.sh 8.4 release nts "" "apcu, imagick, mongodb, memcached, swoole, redis, amqp, yaml, ssh2, rdkafka"
 ```
 
 Downloads use GitHub Releases with a checksum-verified Cloudflare fallback.

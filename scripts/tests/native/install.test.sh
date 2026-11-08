@@ -211,6 +211,8 @@ NODE
     done
     "$php_bin" -d apc.enable_cli=1 "$script_dir/../helpers/apcu-smoke.php" || \
       php_darwin_die 'APCu runtime validation failed'
+    "$php_bin" "$script_dir/../helpers/optional-network-smoke.php" || \
+      php_darwin_die 'Optional networking extension runtime validation failed'
   fi
   bash "$script_dir/../helpers/check-cached-extensions.sh" \
     "$archive" "$cache_metadata" "$php_bin" "$brew_prefix" "$config_id" || \

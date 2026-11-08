@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const assert = require('node:assert/strict');
-const { install, enableInstalled, command, digest } = require('../../installer/install-extensions.cjs');
+const { install, enableInstalled, command, digest, extensions, extensionIni } = require('../../installer/install-extensions.cjs');
 
 const output = process.env.EXTENSION_PACK_OUTPUT || 'builds/extensions';
 const name = process.env.EXTENSION_PACK;
@@ -59,6 +59,10 @@ try {
     memcached: '$m=new Memcached(); foreach ([Memcached::SERIALIZER_PHP,Memcached::SERIALIZER_IGBINARY,Memcached::SERIALIZER_MSGPACK] as $s) { if (!$m->setOption(Memcached::OPT_SERIALIZER,$s)) { exit(1); } } echo "PHP igbinary msgpack serializers passed\\n";',
   };
   const settings = name === 'apcu' ? ['-d', 'apc.enable_cli=1'] : [];
+  if (['redis', 'amqp', 'yaml', 'ssh2', 'rdkafka'].includes(name)) {
+    checks[name] = `$argv = array('optional-network-smoke.php', '${name}');\n` +
+      fs.readFileSync(path.join(__dirname, '../helpers/optional-network-smoke.php'), 'utf8').replace(/^<\?php\s*/, '');
+  }
   console.log(command(php, ['-n', ...load, ...settings, '-r', checks[name]], { env: { ...process.env, ...result.environment } }));
   const scan = path.join(temporary, 'conf.d');
   fs.mkdirSync(scan);
@@ -75,15 +79,15 @@ process.stderr.write(result.stderr || '');
 process.exit(result.error || result.stderr ? 1 : (result.status ?? 1));
 `, { mode: 0o755 });
   enableInstalled(temporary, name, scan, { php: configuredPhp, environmentFile: '' });
-  assert.deepEqual(fs.readdirSync(scan).sort(), entry.modules.map(module => `${module === 'memcached' ? 30 : 20}-${module}.ini`).sort());
+  assert.deepEqual(fs.readdirSync(scan).sort(), entry.modules.map(module => extensionIni(extensions[module])).sort());
   // Reproduce the tap replacing modules independently, including serializers.
   for (const module of entry.modules) {
     for (const file of fs.readdirSync(scan).filter(file => file.includes(module) && file.endsWith('.ini'))) fs.unlinkSync(path.join(scan, file));
-    fs.writeFileSync(path.join(scan, `${module === 'memcached' ? 30 : 20}-${module}.ini`), `[${module}]\nextension="${extensionDirectory}/${module}.so"\n`);
+    fs.writeFileSync(path.join(scan, extensionIni(extensions[module])), `[${module}]\nextension="${extensionDirectory}/${module}.so"\n`);
     console.log(command(configuredPhp, [...settings, '-r', checks[name]], { env: { ...process.env, ...result.environment } }));
   }
   console.log('Tap-compatible INI replacement passed without PHP startup warnings');
-  if (name === 'memcached') {
+  if (name === 'memcached' || name === 'redis') {
     assert.deepEqual(entry.headers, ['igbinary', 'msgpack']);
     const consumer = path.join(temporary, 'consumer.c');
     fs.writeFileSync(consumer, '#include <php.h>\n#include <ext/igbinary/igbinary.h>\n#include <ext/msgpack/php_msgpack.h>\n');

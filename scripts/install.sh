@@ -432,7 +432,7 @@ const platforms = {"arm64":{"minimum_macos":15,"minimum_archive_macos":14},"x86_
 const buildConfig = {"extension_max_archive_bytes":180000000};
 const transfers = {"attempts":3,"retry_delay":1,"retry_after_max":30,"metadata":{"timeout":30,"max_bytes":2000000},"archive":{"timeout":300}};
 const variants = [["release","nts"],["release","zts"],["debug","nts"],["debug","zts"]];
-const packs = {"apcu":["apcu"],"imagick":["imagick"],"mongodb":["mongodb"],"memcached":["igbinary","msgpack","memcached"],"swoole":["swoole"]};
+const packs = {"apcu":["apcu"],"imagick":["imagick"],"mongodb":["mongodb"],"memcached":["igbinary","msgpack","memcached"],"swoole":["swoole"],"amqp":["amqp"],"yaml":["yaml"],"ssh2":["ssh2"],"rdkafka":["rdkafka"],"redis":["igbinary","msgpack","redis"]};
 const origins = ["https://github.com/shivammathur/php-darwin/releases/download/extensions","https://artifacts.php-darwin.setup-php.com/extensions"];
 function supportsPack(name, version) {
   return Object.hasOwn(packs, name) && configuration.versions.includes(version) &&
@@ -458,6 +458,11 @@ function key(entry) {
 }
 function validateEntry(entry) {
   key(entry);
+  // Old archives keep their original URL. New packs can use a per-PHP release;
+  // manifests must never redirect downloads to arbitrary hosts or paths.
+  if (entry.release !== undefined && entry.release !== `extensions-${entry.php_version}`) {
+    throw new Error('Invalid extension archive release');
+  }
   if (entry.schema !== 1 || !hex.test(entry.sha256) || !hex.test(entry.inputs_sha256) ||
       !/^[0-9]{8}$/.test(entry.php_api) ||
       !Number.isInteger(entry.bytes) || entry.bytes < 1 || entry.bytes > buildConfig.extension_max_archive_bytes ||
@@ -465,6 +470,9 @@ function validateEntry(entry) {
       entry.minimum_macos < (platforms[entry.architecture].minimum_archive_macos ?? platforms[entry.architecture].minimum_macos) ||
       entry.file !== `${key(entry)}-${entry.sha256}.tar.zst`) throw new Error('Invalid extension cache metadata');
   return entry;
+}
+function archiveOrigins(entry) {
+  return entry.release ? origins.map(base => base.replace(/\/[^/]+$/, '/' + entry.release)) : origins;
 }
 async function download(name, destination, { sha256, bytes, bases = origins,
   fresh = false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
@@ -537,7 +545,7 @@ async function prefetch(directory, context, requested, options = {}) {
     let entry = select(manifest, name);
     console.log(`Downloading ${name} cache (${entry.bytes} bytes)`);
     try {
-      await download(entry.file, path.join(directory, entry.file), { ...options, sha256: entry.sha256, bytes: entry.bytes });
+      await download(entry.file, path.join(directory, entry.file), { bases: archiveOrigins(entry), ...options, sha256: entry.sha256, bytes: entry.bytes });
     } catch (error) {
       if (!error.retired) throw error;
       // Publication can retire the archive after this install read its manifest.
@@ -549,7 +557,7 @@ async function prefetch(directory, context, requested, options = {}) {
       const replacement = select(await refreshed, name);
       if (replacement.file === entry.file) throw error;
       entry = replacement;
-      await download(entry.file, path.join(directory, entry.file), { ...options, sha256: entry.sha256, bytes: entry.bytes });
+      await download(entry.file, path.join(directory, entry.file), { bases: archiveOrigins(entry), ...options, sha256: entry.sha256, bytes: entry.bytes });
     }
     await fsp.writeFile(path.join(directory, `${name}.json`), JSON.stringify(entry));
     try {

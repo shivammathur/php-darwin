@@ -12,6 +12,75 @@ const { copyRuntime, copyHeaders } = require('../../build/extension-pack.cjs');
 const { buildMatrix } = require('../../release/extension-batches.cjs');
 
 const context = { php_version: '8.4', build: 'release', thread_safety: 'nts', architecture: 'arm64' };
+test('partitioned archives use their PHP release on both origins while legacy URLs remain unchanged', async t => {
+  const {origins, archiveOrigins} = require('../../installer/install-extensions.cjs');
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'partitioned-packs-'));
+  t.after(() => fs.rmSync(directory, {recursive: true, force: true}));
+  const old = entry('imagick'), next = {...entry('redis'), release: 'extensions-8.4'};
+  assert.deepEqual(archiveOrigins(old), origins);
+  for (const release of ['extensions-8.5', '../elsewhere', 'https://example.invalid']) {
+    assert.throws(() => validateEntry({...next, release}), /Invalid extension archive release/);
+  }
+  const requests = [];
+  t.mock.method(globalThis, 'fetch', async url => {
+    requests.push(url);
+    if (url.endsWith('-manifest.json')) return Response.json({schema: 1, assets: [old, next]});
+    if (url.endsWith(old.file)) { assert.equal(url, `${origins[0]}/${old.file}`); return new Response('imagick'); }
+    if (url.startsWith(origins[0].replace(/\/extensions$/, '/extensions-8.4'))) return new Response('', {status: 404});
+    assert.equal(url, `${origins[1].replace(/\/extensions$/, '/extensions-8.4')}/${next.file}`);
+    return new Response('redis');
+  });
+  assert.deepEqual(await prefetch(directory, context, ['imagick', 'redis'], {
+    prepare: async () => {}, sleep: async () => {},
+  }), ['imagick', 'redis']);
+  assert.ok(requests.includes(`${origins[0]}/extensions-8.4-manifest.json`));
+  assert.equal(fs.readFileSync(path.join(directory, next.file), 'utf8'), 'redis');
+});
+test('publication uploads new archives to a PHP release and retains the central catalog and legacy entries', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'partitioned-publication-'));
+  t.after(() => fs.rmSync(directory, {recursive: true, force: true}));
+  for (const name of ['CF_R2_AWS_ACCESS_KEY_ID', 'CF_R2_AWS_SECRET_ACCESS_KEY', 'CF_R2_AWS_S3_ENDPOINT']) {
+    const previous = process.env[name]; process.env[name] = 'fixture';
+    t.after(() => { if (previous === undefined) delete process.env[name]; else process.env[name] = previous; });
+  }
+  const metadata = {...entry('redis'), release: 'extensions-8.4'}, legacy = entry('imagick');
+  fs.writeFileSync(path.join(directory, 'pack.json'), JSON.stringify(metadata));
+  fs.writeFileSync(path.join(directory, metadata.file), 'redis');
+  fs.writeFileSync(path.join(directory, 'validation.txt'), JSON.stringify({name: 'redis', sha256: metadata.sha256,
+    php_preserved: true, services_preserved: true}));
+  const origin = r2Fixture(), uploads = [], created = [];
+  t.mock.method(globalThis, 'fetch', async url => {
+    if (url.endsWith('/php-8.4-manifest.json')) return Response.json({schema: 1, php_version: '8.4', assets: [context], php_semver: '8.4.26'});
+    if (url.includes('api.github.com')) return new Response('', {status: url.endsWith('/extensions-8.4') ? 404 : 200});
+    return Response.json({schema: 1, assets: [legacy]});
+  });
+  await publish(directory, {run: async (program, args, options) => {
+    if (program === 'gh') {
+      if (args[0] === 'api') return JSON.stringify(args.includes('--paginate') ? [[]] : {id: 1});
+      if (args[1] === 'create') created.push(args[2]);
+      else uploads.push({release: args[2], name: path.basename(args[3]), bytes: fs.readFileSync(args[3])});
+      return '';
+    }
+    if (program === 'aws') {
+      if (args.includes('list-objects-v2')) return '{"Contents":[]}';
+      return origin.run(program, args, options);
+    }
+    assert.equal(program, 'curl');
+    const key = new URL(args.at(-1)).pathname.slice(1);
+    assert.ok(origin.objects.has(key), key);
+    fs.writeFileSync(args[args.indexOf('--output') + 1], origin.objects.get(key));
+    return '200';
+  }});
+  assert.deepEqual(created, ['extensions-8.4']);
+  assert.deepEqual(uploads.map(({release, name}) => [release, name]), [
+    ['extensions-8.4', metadata.file], ['extensions', 'extensions-8.4-manifest.json'], ['extensions', 'install-extensions.cjs'],
+  ]);
+  const published = JSON.parse(uploads[1].bytes);
+  assert.deepEqual(published.assets.find(e => e.name === 'imagick'), legacy);
+  assert.deepEqual(published.assets.find(e => e.name === 'redis'), metadata);
+  assert.ok(origin.objects.has('extensions-8.4/' + metadata.file));
+  assert.ok(!origin.objects.has('extensions/' + metadata.file));
+});
 test('Swoole planning covers all stable variants and leaves nightly packs available', async t => {
   const versions = require('../../../conf/extension-packs.json').versions;
   t.mock.method(console, 'log', () => {});
@@ -26,12 +95,12 @@ test('Swoole planning covers all stable variants and leaves nightly packs availa
   });
   const { selected } = await selectEntries({ versions, selectedPacks: Object.keys(packs),
     builds: ['release', 'debug'], modes: ['nts', 'zts'], force: false, resumeRuns: [] });
-  assert.equal(selected.length, 544);
+  assert.equal(selected.length, 1104);
   for (const version of versions) {
     const supported = !['8.6', '8.7'].includes(version);
     assert.equal(supportsPack('swoole', version), supported);
     assert.equal(selected.filter(item => item.php_version === version && item.name === 'swoole').length, supported ? 8 : 0);
-    assert.equal(selected.filter(item => item.php_version === version && item.name !== 'swoole').length, 32);
+    assert.equal(selected.filter(item => item.php_version === version && item.name !== 'swoole').length, 72);
     assert.equal(selected.filter(item => item.php_version === version && item.name === 'apcu').length, 8);
     if (!supported) assert.throws(() => key({ ...context, name: 'swoole', php_version: version }), /Unsupported PHP version/);
   }
@@ -350,7 +419,7 @@ test('dispatch passes only changed versions, retaining order and every build var
       assert.deepEqual(options.versions, ['8.4', '8.5', '8.6', '8.7']);
       assert.deepEqual(options.builds, ['debug', 'release']);
       assert.deepEqual(options.modes, ['nts', 'zts']);
-      assert.deepEqual(options.selectedPacks, ['apcu', 'imagick', 'mongodb', 'memcached', 'swoole']);
+      assert.deepEqual(options.selectedPacks, Object.keys(packs));
       assert.equal(options.force, false);
       assert.deepEqual(options.resumeRuns, []);
       return { selected: [{ php_version: '8.7' }, { php_version: '8.6' }, { php_version: '8.5' }, { php_version: '8.6' }] };

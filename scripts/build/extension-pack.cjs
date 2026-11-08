@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { command, digest, key, packs, inspectTree, packEnvironment, phpApi } = require('../installer/install-extensions.cjs');
+const { command, digest, key, packs, extensionFormula, inspectTree, packEnvironment, phpApi } = require('../installer/install-extensions.cjs');
 const { recipeInputs } = require('../lib/recipe-inputs.cjs');
 
 const configuration = require('../../conf/extension-packs.json');
@@ -71,7 +71,7 @@ function packageExtension({ name, php_version, build, thread_safety, architectur
   key({ name, php_version, build, thread_safety, architecture });
   output = path.resolve(output);
   const prefix = command('brew', ['--prefix']);
-  const references = packs[name].map(module => `${packageConfig.extension_tap}/${module}@${php_version}`);
+  const references = packs[name].map(module => `${packageConfig.extension_tap}/${extensionFormula(module)}@${php_version}`);
   const runtime = new Set();
   for (const reference of references) {
     for (const dependency of command('brew', ['deps', '--installed', '--formula', reference]).split('\n').filter(Boolean)) {
@@ -81,6 +81,7 @@ function packageExtension({ name, php_version, build, thread_safety, architectur
   if ([...runtime].some(formula => /(?:^|\/)php(?:@|$)/.test(formula))) throw new Error('Extension runtime must not include PHP');
   const info = runtime.size ? JSON.parse(command('brew', ['info', '--json=v2', '--formula', ...runtime])).formulae : [];
   const metadata = { schema: 1, name, php_version, build, thread_safety, architecture,
+    ...(configuration.partitioned_packs.includes(name) ? {release: `extensions-${php_version}`} : {}),
     php_api: phpApi(path.join(path.dirname(php), 'php-config')),
     php_semver: command(path.join(path.dirname(php), 'php-config'), ['--version']),
     ...(process.env.PHP_DARWIN_PHP_SRC_COMMIT ? { php_src_commit: process.env.PHP_DARWIN_PHP_SRC_COMMIT } : {}),
@@ -101,7 +102,7 @@ function packageExtension({ name, php_version, build, thread_safety, architectur
     for (const module of metadata.modules) {
       const source = path.join(extensionDirectory, `${module}.so`);
       fs.copyFileSync(source, path.join(stage, 'modules', `${module}.so`));
-      const moduleKeg = fs.realpathSync(path.join(prefix, 'opt', `${module}@${php_version}`));
+      const moduleKeg = fs.realpathSync(path.join(prefix, 'opt', `${extensionFormula(module)}@${php_version}`));
       if (metadata.headers?.includes(module)) copyHeaders(moduleKeg, module, php_version, stage);
       const licenseDir = path.join(stage, 'licenses', module);
       fs.mkdirSync(licenseDir, { recursive: true });

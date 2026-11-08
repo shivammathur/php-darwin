@@ -19,6 +19,12 @@ const packs = Object.fromEntries(Object.entries(configuration.packs).map(([name,
 const origins = [`https://github.com/${packageConfig.release_repository}/releases/download/${packageConfig.extension_release}`,
   `${packageConfig.artifact_mirror}/${packageConfig.extension_release}`];
 const hex = /^[a-f0-9]{64}$/;
+function extensionFormula(name) {
+  return extensions[name]?.formula || name;
+}
+function archiveOrigins(entry) {
+  return entry.release ? origins.map(base => base.replace(/\/[^/]+$/, '/' + entry.release)) : origins;
+}
 function supportsPack(name, version) {
   return Object.hasOwn(packs, name) && configuration.versions.includes(version) &&
     (configuration.pack_versions?.[name] || configuration.versions).includes(version);
@@ -53,7 +59,7 @@ const {pipeline} = require('node:stream/promises');
 const {Readable} = require('node:stream');
 const hex = /^[a-f0-9]{64}$/;
 ` + Object.entries(declarations).map(([name, value]) => `const ${name} = ${JSON.stringify(value)};`).join('\n') + '\n' +
-    [supportsPack, safePath, validateContext, key, validateEntry, download, prefetch, selectRequested].map(fn => fn.toString()).join('\n') + `
+    [supportsPack, safePath, validateContext, key, validateEntry, archiveOrigins, download, prefetch, selectRequested].map(fn => fn.toString()).join('\n') + `
 (async () => {
   const [directory, input, php_version, build, thread_safety, architecture] = process.argv.slice(2);
   const names = selectRequested(input);
@@ -88,6 +94,11 @@ function key(entry) {
 }
 function validateEntry(entry) {
   key(entry);
+  // Old archives keep their original URL. New packs can use a per-PHP release;
+  // manifests must never redirect downloads to arbitrary hosts or paths.
+  if (entry.release !== undefined && entry.release !== `extensions-${entry.php_version}`) {
+    throw new Error('Invalid extension archive release');
+  }
   if (entry.schema !== 1 || !hex.test(entry.sha256) || !hex.test(entry.inputs_sha256) ||
       !/^[0-9]{8}$/.test(entry.php_api) ||
       !Number.isInteger(entry.bytes) || entry.bytes < 1 || entry.bytes > buildConfig.extension_max_archive_bytes ||
@@ -167,7 +178,7 @@ async function prefetch(directory, context, requested, options = {}) {
     let entry = select(manifest, name);
     console.log(`Downloading ${name} cache (${entry.bytes} bytes)`);
     try {
-      await download(entry.file, path.join(directory, entry.file), { ...options, sha256: entry.sha256, bytes: entry.bytes });
+      await download(entry.file, path.join(directory, entry.file), { bases: archiveOrigins(entry), ...options, sha256: entry.sha256, bytes: entry.bytes });
     } catch (error) {
       if (!error.retired) throw error;
       // Publication can retire the archive after this install read its manifest.
@@ -179,7 +190,7 @@ async function prefetch(directory, context, requested, options = {}) {
       const replacement = select(await refreshed, name);
       if (replacement.file === entry.file) throw error;
       entry = replacement;
-      await download(entry.file, path.join(directory, entry.file), { ...options, sha256: entry.sha256, bytes: entry.bytes });
+      await download(entry.file, path.join(directory, entry.file), { bases: archiveOrigins(entry), ...options, sha256: entry.sha256, bytes: entry.bytes });
     }
     await fsp.writeFile(path.join(directory, `${name}.json`), JSON.stringify(entry));
     try {
@@ -323,11 +334,20 @@ async function activate(directory, base, scanDirectory, { installPack = installD
   const config = base.php_version + (base.build === 'debug' ? '-debug' : '') + (base.thread_safety === 'zts' ? '-zts' : '');
   if (scanDirectory !== `${prefix}/etc/php/${config}/conf.d`) throw new Error('Invalid optional extension configuration directory');
   const names = requestedPacks(directory);
-  const installed = await Promise.allSettled(names.map(async name => {
-    const entry = readEntry(directory, name);
-    validateBase(entry, base);
-    await installPack(directory, name);
-    return name;
+  // Packs sharing serializers also share module/header destinations. Serialize
+  // those transactions while continuing to install independent packs in parallel.
+  const pending = new Map();
+  const installed = await Promise.allSettled(names.map(name => {
+    const predecessors = [...new Set(packs[name].map(module => pending.get(module)).filter(Boolean))];
+    const installation = (async () => {
+      await Promise.allSettled(predecessors);
+      const entry = readEntry(directory, name);
+      validateBase(entry, base);
+      await installPack(directory, name);
+      return name;
+    })();
+    for (const module of packs[name]) pending.set(module, installation);
+    return installation;
   }));
   const enabled = [];
   // Enable after all independent installations finish, so PHP never reads a
@@ -423,7 +443,7 @@ function preparedMetadata(stage, entry) {
   if (!fs.lstatSync(stage).isDirectory()) throw new Error('Invalid extension staging directory');
   inspectTree(stage);
   const metadata = JSON.parse(fs.readFileSync(path.join(stage, 'metadata.json'), 'utf8'));
-  if (metadata.schema !== 1 || key(metadata) !== key(entry) || metadata.php_api !== entry.php_api ||
+  if (metadata.schema !== 1 || key(metadata) !== key(entry) || metadata.php_api !== entry.php_api || metadata.release !== entry.release ||
       metadata.inputs_sha256 !== entry.inputs_sha256 || JSON.stringify(metadata.modules) !== JSON.stringify(packs[entry.name])) {
     throw new Error('Extension archive metadata mismatch');
   }
@@ -567,7 +587,7 @@ function install(directory, name, { phpConfig = 'php-config', php = 'php' } = {}
     fs.rmSync(stage, { recursive: true, force: true });
   }
 }
-module.exports = { packs, supportsPack, extensions, extensionIni, standaloneSource, prefetchSource, origins, command, digest, safePath, key, validateContext, validateEntry, phpApi,
+module.exports = { packs, supportsPack, extensions, extensionFormula, extensionIni, standaloneSource, prefetchSource, origins, archiveOrigins, command, digest, safePath, key, validateContext, validateEntry, phpApi,
   selectRequested, requestedPacks, phpReleaseMatches, validateBase, activate, activateCached, configureModules, enableInstalled, download, prefetch, runtimeContext, inspectTree, packEnvironment, relocateResources, prepareArchive, movePrepared, install };
 if (require.main === module) (async () => {
   const [mode, directory, ...args] = process.argv.slice(2);

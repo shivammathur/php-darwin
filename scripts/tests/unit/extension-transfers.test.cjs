@@ -8,7 +8,7 @@ const { command, retryPolicy, httpError, readDiagnostic, transfers, githubJSON }
 const { digest } = require('../../installer/install-extensions.cjs');
 const { fixture: r2Fixture, info } = require('../helpers/r2-fixture.cjs');
 
-function fixture(t, failure) {
+function fixture(t, failure, release = 'extensions') {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-transfers-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const file = path.join(directory, 'pack.tar.zst');
@@ -36,8 +36,9 @@ function fixture(t, failure) {
       const url = new URL(args.at(-1)), name = path.basename(url.pathname);
       if (failure === 'edge-503') { failure = ''; return '503'; }
       if (cacheMissing && !url.search && cachedMissing.has(name)) return '404';
-      if (!cloudflare.has(`extensions/${name}`)) { cachedMissing.add(name); return '404'; }
-      fs.writeFileSync(args[args.indexOf('--output') + 1], failure === 'checksum' ? 'corrupt' : cloudflare.get(`extensions/${name}`));
+      assert.equal(url.pathname, `/${release}/${name}`);
+      if (!cloudflare.has(`${release}/${name}`)) { cachedMissing.add(name); return '404'; }
+      fs.writeFileSync(args[args.indexOf('--output') + 1], failure === 'checksum' ? 'corrupt' : cloudflare.get(`${release}/${name}`));
       return '200';
     }
     return '';
@@ -46,6 +47,20 @@ function fixture(t, failure) {
   const create = () => transfers({ directory, endpoint: 'https://test.invalid', env: { AWS_MAX_ATTEMPTS: '1' }, run, retry, cloudflareRetry: retry });
   return { file, calls, waits, github, cloudflare, create };
 }
+test('partitioned transfers upload, verify and resume within the selected PHP release', async t => {
+  const release = 'extensions-8.4', f = fixture(t, undefined, release), transfer = f.create();
+  await transfer.github(f.file, true, release);
+  await transfer.mirror(f.file, true, release);
+  const resumed = f.create();
+  await resumed.github(f.file, true, release);
+  await resumed.mirror(f.file, true, release);
+  assert.equal(resumed.report.github_reused, 1);
+  assert.equal(resumed.report.cloudflare_reused, 1);
+  assert.ok(f.calls.some(call => call.args.includes(`repos/shivammathur/php-darwin/releases/tags/${release}`)));
+  assert.ok(f.calls.some(call => call.args[0] === 'release' && call.args[1] === 'upload' && call.args[2] === release));
+  assert.ok(f.cloudflare.has(`${release}/pack.tar.zst`));
+  assert.ok(!f.cloudflare.has('extensions/pack.tar.zst'));
+});
 test('GitHub JSON reads retry truncated responses and stop after three malformed responses', async () => {
   for (const recover of [true, false]) {
     let calls = 0;

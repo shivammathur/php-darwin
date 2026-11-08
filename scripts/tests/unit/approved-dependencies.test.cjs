@@ -194,6 +194,9 @@ test('dependency roots cover every PHP variant, coverage extension and optional-
   for (const formula of ['jq', 'zstd', 'shivammathur/php/php@5.6-debug-zts', 'shivammathur/php/php@8.7',
     'shivammathur/extensions/xdebug@5.6', 'shivammathur/extensions/pcov@8.5',
     'shivammathur/extensions/igbinary@5.6', 'shivammathur/extensions/msgpack@8.7', 'shivammathur/extensions/imagick@8.5',
+    'shivammathur/extensions/phpredis@5.6', 'shivammathur/extensions/phpredis@8.7',
+    'shivammathur/extensions/amqp@5.6', 'shivammathur/extensions/rdkafka@8.7',
+    'shivammathur/extensions/yaml@7.0', 'shivammathur/extensions/ssh2@8.5',
     'shivammathur/extensions/swoole@5.6', 'shivammathur/extensions/swoole@8.5']) {
     assert.ok(items.includes(formula), formula);
   }

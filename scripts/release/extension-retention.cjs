@@ -18,34 +18,39 @@ function validateManifest(name, manifest) {
   return manifest;
 }
 
-function staleArchives(assets, objects, manifests, retained = []) {
+function staleArchives(assets, objects, manifests, retained = [], release) {
   const live = new Set(retained);
   for (const {name, manifest} of manifests) {
     for (const entry of validateManifest(name, manifest).assets) {
-      live.add(entry.file);
+      if (!release || (entry.release || 'extensions') === release) live.add(entry.file);
     }
   }
   return [...new Set([...assets.map(asset => asset.name), ...objects])]
     .filter(name => archivePattern.test(name) && !live.has(name)).sort();
 }
 
-function retention({env, endpoint, run = command, retry = retryPolicy(), fetcher = fetch}) {
+function retention({env, endpoint, release = 'extensions', run = command, retry = retryPolicy(), fetcher = fetch}) {
+  if (release !== 'extensions' && !configuration.versions.some(version => release === `extensions-${version}`)) {
+    throw new Error('Invalid extension retention release');
+  }
   const route = `repos/${packageConfig.release_repository}/releases`;
   const aws = args => run('aws', ['--endpoint-url', endpoint, 's3api', ...args,
     '--bucket', packageConfig.artifact_bucket, '--cli-connect-timeout', '5', '--cli-read-timeout', '30'], {env});
   const report = {github_deleted: 0, cloudflare_deleted: 0, warnings: []};
-  async function inventory() {
-    const release = await githubJSON(`${route}/tags/extensions`, {run, retry});
-    const assets = (await githubJSON(`${route}/${release.id}/assets?per_page=100`, {run, retry, paginate: true})).flat();
+  async function inventory(tag = release) {
+    const record = await githubJSON(`${route}/tags/${tag}`, {run, retry});
+    const assets = (await githubJSON(`${route}/${record.id}/assets?per_page=100`, {run, retry, paginate: true})).flat();
     const listing = await retry('List extension objects', async () =>
-      JSON.parse(await aws(['list-objects-v2', '--prefix', 'extensions/'])));
-    const objects = (listing.Contents || []).map(object => object.Key.replace(/^extensions\//, ''));
+      JSON.parse(await aws(['list-objects-v2', '--prefix', `${tag}/`])));
+    const objects = (listing.Contents || []).map(object => object.Key.slice(tag.length + 1));
     return {assets, objects};
   }
   async function prune(retained = [], version) {
     const {assets, objects} = await inventory();
-    const listed = new Map([[origins[0], new Set(assets.map(asset => asset.name))], [origins[1], new Set(objects)]]);
-    const names = [...new Set([...assets.map(asset => asset.name), ...objects])].filter(name =>
+    const central = release === 'extensions' ? {assets, objects} : await inventory('extensions');
+    version ||= release === 'extensions' ? undefined : release.slice('extensions-'.length);
+    const listed = new Map([[origins[0], new Set(central.assets.map(asset => asset.name))], [origins[1], new Set(central.objects)]]);
+    const names = [...new Set([...central.assets.map(asset => asset.name), ...central.objects])].filter(name =>
       manifestPattern.test(name) && (!version || manifestPattern.exec(name)[1] === version));
     const manifests = [];
     // Read both commit points before deleting anything. A partial publication
@@ -66,12 +71,12 @@ function retention({env, endpoint, run = command, retry = retryPolicy(), fetcher
       if (!found) throw new Error(`Cannot read existing manifest ${name}`);
     }
     const eligible = name => !version || archivePattern.exec(name)?.[2] === version;
-    const stale = staleArchives(assets.filter(asset => eligible(asset.name)), objects.filter(eligible), manifests, retained);
+    const stale = staleArchives(assets.filter(asset => eligible(asset.name)), objects.filter(eligible), manifests, retained, release);
     const byName = new Map(assets.map(asset => [asset.name, asset]));
     for (const name of stale) {
       // R2 deletion is idempotent. Keep the GitHub inventory as a retry marker
       // until the corresponding object has also been removed.
-      await retry(`Delete retired R2 object ${name}`, () => aws(['delete-object', '--key', `extensions/${name}`]));
+      await retry(`Delete retired R2 object ${name}`, () => aws(['delete-object', '--key', `${release}/${name}`]));
       if (objects.includes(name)) report.cloudflare_deleted++;
       const asset = byName.get(name);
       if (asset) {
@@ -87,8 +92,8 @@ function retention({env, endpoint, run = command, retry = retryPolicy(), fetcher
     catch (error) {
       report.warnings.push(error.message);
       console.warn(`Extension retention deferred: ${error.message}`);
-      const release = await githubJSON(`${route}/tags/extensions`, {run, retry});
-      assets = (await githubJSON(`${route}/${release.id}/assets?per_page=100`, {run, retry, paginate: true})).flat();
+      const record = await githubJSON(`${route}/tags/${release}`, {run, retry});
+      assets = (await githubJSON(`${route}/${record.id}/assets?per_page=100`, {run, retry, paginate: true})).flat();
     }
     const total = new Set([...assets.map(asset => asset.name), ...incoming]).size;
     if (total > 1000) throw new Error(`Extension release needs ${total} assets; cleanup must complete before uploading`);

@@ -59,7 +59,7 @@ function freshnessReason(entry, repositories, phpManifest, baselines = acceptedB
   try {
     validateEntry(entry);
     if (entry.minimum_macos < platforms[entry.architecture].minimum_macos) return 'macOS baseline changed';
-    if (entry.name === 'memcached' && JSON.stringify(entry.headers) !== JSON.stringify(['igbinary', 'msgpack'])) {
+    if (['memcached', 'redis'].includes(entry.name) && JSON.stringify(entry.headers) !== JSON.stringify(['igbinary', 'msgpack'])) {
       return 'missing serializer development headers';
     }
     if (!phpReleaseMatches(entry, phpManifest)) return 'PHP release changed';
@@ -242,43 +242,50 @@ async function publish(directory, { run = transferCommand, retry = retryPolicy()
   // packs before uploads, even when their earlier compatibility reports passed.
   await validatePublishedPHP(entries.map(({ entry }) => entry), retry);
   const repo = 'shivammathur/php-darwin';
-  const release = 'extensions';
+  const releases = [...new Set(['extensions', ...entries.map(({entry}) => entry.release || 'extensions')])];
   const env = { ...process.env, AWS_ACCESS_KEY_ID: process.env.CF_R2_AWS_ACCESS_KEY_ID,
     AWS_SECRET_ACCESS_KEY: process.env.CF_R2_AWS_SECRET_ACCESS_KEY, AWS_DEFAULT_REGION: 'auto',
     AWS_EC2_METADATA_DISABLED: 'true', AWS_MAX_ATTEMPTS: '1', AWS_REQUEST_CHECKSUM_CALCULATION: 'when_required',
     AWS_RESPONSE_CHECKSUM_VALIDATION: 'when_required' };
   if (!env.AWS_ACCESS_KEY_ID || !env.AWS_SECRET_ACCESS_KEY || !process.env.CF_R2_AWS_S3_ENDPOINT) throw new Error('Cloudflare credentials are required');
-  const response = await retry('Inspect extension release', async () => {
-    const result = await fetch(`https://api.github.com/repos/${repo}/releases/tags/${release}`, {
-      headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, 'X-GitHub-Api-Version': '2022-11-28' },
-      signal: AbortSignal.timeout(transferConfiguration.metadata.timeout * 1000),
+  for (const release of releases) {
+    const response = await retry('Inspect extension release', async () => {
+      const result = await fetch(`https://api.github.com/repos/${repo}/releases/tags/${release}`, {
+        headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, 'X-GitHub-Api-Version': '2022-11-28' },
+        signal: AbortSignal.timeout(transferConfiguration.metadata.timeout * 1000),
+      });
+      await result.body?.cancel();
+      if (!result.ok && result.status !== 404) throw httpError(result.status, 'Inspect extension release');
+      return result;
     });
-    await result.body?.cancel();
-    if (!result.ok && result.status !== 404) throw httpError(result.status, 'Inspect extension release');
-    return result;
-  });
-  if (response.status === 404 && entries.length) {
-    await retry('Create extension release', () => run('gh', ['release', 'create', release, '--repo', repo,
-      '--title', 'Optional PHP extension caches', '--notes', '', '--latest=false']));
-  } else if (!response.ok) throw new Error(`Cannot inspect extension release: HTTP ${response.status}`);
+    if (response.status === 404 && entries.length) {
+      await retry('Create extension release', () => run('gh', ['release', 'create', release, '--repo', repo,
+        '--title', release === 'extensions' ? 'Optional PHP extension caches' : `Optional PHP ${release.slice(11)} extension caches`, '--notes', '', '--latest=false']));
+    } else if (!response.ok) throw new Error(`Cannot inspect extension release: HTTP ${response.status}`);
+  }
   const staging = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP || '/tmp', 'extension-release-'));
   const transfer = transfers({ directory: staging, env, endpoint: process.env.CF_R2_AWS_S3_ENDPOINT, run, retry });
-  const cleanup = retention({ env, endpoint: process.env.CF_R2_AWS_S3_ENDPOINT, run, retry });
+  const cleanups = new Map(releases.map(release => [release,
+    retention({ env, endpoint: process.env.CF_R2_AWS_S3_ENDPOINT, release, run, retry })]));
   const incoming = entries.map(({ entry }) => entry.file);
   const publishedVersions = [], failedVersions = [];
   let failure;
   try {
-    if (entries.length) await cleanup.capacity([...incoming,
-      ...new Set(entries.map(({ entry }) => `extensions-${entry.php_version}-manifest.json`)), 'install-extensions.cjs']);
+    if (entries.length) for (const [release, cleanup] of cleanups) {
+      await cleanup.capacity([
+        ...entries.filter(({entry}) => (entry.release || 'extensions') === release).map(({entry}) => entry.file),
+        ...(release === 'extensions' ? [...new Set(entries.map(({entry}) => `extensions-${entry.php_version}-manifest.json`)), 'install-extensions.cjs'] : []),
+      ]);
+    }
     // Commit each PHP-version manifest only after every referenced archive is
     // uploaded and verified. A failure in another version must not
     // discard that progress. Permanent validation/authentication failures stop.
     for (const version of new Set(entries.map(({ entry }) => entry.php_version))) {
       try {
         const selected = entries.filter(({ entry }) => entry.php_version === version);
-        for (const { archive } of selected) {
-          await transfer.github(archive, true);
-          await transfer.mirror(archive, true);
+        for (const { archive, entry } of selected) {
+          await transfer.github(archive, true, entry.release);
+          await transfer.mirror(archive, true, entry.release);
         }
         const previous = await readManifest(version, retry);
         const merged = new Map(previous.assets.map(entry => [key(entry), entry]));
@@ -291,10 +298,13 @@ async function publish(directory, { run = transferCommand, retry = retryPolicy()
         await transfer.mirror(manifest, false);
         await transfer.github(manifest, false);
         publishedVersions.push(version);
-        try { await cleanup.prune(incoming, version); }
-        catch (error) {
-          cleanup.report.warnings.push(error.message);
-          console.warn(`Published PHP ${version}; retention will resume next time: ${error.message}`);
+        for (const release of new Set(['extensions', ...selected.map(({entry}) => entry.release || 'extensions')])) {
+          const cleanup = cleanups.get(release);
+          try { await cleanup.prune(incoming, version); }
+          catch (error) {
+            cleanup.report.warnings.push(error.message);
+            console.warn(`Published PHP ${version}; retention will resume next time: ${error.message}`);
+          }
         }
       } catch (error) {
         failedVersions.push({ php_version: version, error: error.message });
@@ -307,6 +317,7 @@ async function publish(directory, { run = transferCommand, retry = retryPolicy()
     await transfer.mirror(installer, false);
     await transfer.github(installer, false);
     if (!entries.length) {
+      const cleanup = cleanups.get('extensions');
       try { await cleanup.prune(); }
       catch (error) {
         cleanup.report.warnings.push(error.message);
@@ -315,7 +326,12 @@ async function publish(directory, { run = transferCommand, retry = retryPolicy()
     }
   } catch (error) { failure = error.message; throw error; }
   finally {
-    const report = { ...transfer.report, retention: cleanup.report, archives: entries.length, published_versions: publishedVersions,
+    const retained = [...cleanups.values()].reduce((sum, cleanup) => ({
+      github_deleted: sum.github_deleted + cleanup.report.github_deleted,
+      cloudflare_deleted: sum.cloudflare_deleted + cleanup.report.cloudflare_deleted,
+      warnings: [...sum.warnings, ...cleanup.report.warnings],
+    }), {github_deleted: 0, cloudflare_deleted: 0, warnings: []});
+    const report = { ...transfer.report, retention: retained, archives: entries.length, published_versions: publishedVersions,
       remaining_versions: [...new Set(entries.map(({ entry }) => entry.php_version))].filter(version => !publishedVersions.includes(version)),
       failed_versions: failedVersions, success: !failure, ...(failure ? { failure } : {}) };
     // Individual read records are logged above and retained in the artifact;

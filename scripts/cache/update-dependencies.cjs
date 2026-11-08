@@ -5,7 +5,7 @@ const { install, environment, brewSource, command, readBottle } = require('./sou
 const { ReleaseCache } = require('./source-bottle-releases.cjs');
 const { readLock, validatePlatform, ApprovedDependencies } = require('./approved-dependencies.cjs');
 const { portable } = require('./upstream-bottle-cache.cjs');
-const { supportsPack } = require('../installer/install-extensions.cjs');
+const { supportsPack, extensionFormula } = require('../installer/install-extensions.cjs');
 const recipes = require('./dependency-recipes.cjs');
 const {verifyOpenSslLinkage, verifyRuntimeLinkage} = require('./openssl-linkage.cjs');
 const {retireDependencies, pruneUnusedDependencies} = require('./retired-dependencies.cjs');
@@ -26,7 +26,7 @@ function roots() {
     const extensions = records(`cached-extensions/${php}`).map(([name]) => name);
     extensions.push(...Object.entries(packs.packs).filter(([name]) => supportsPack(name, php))
       .flatMap(([, modules]) => modules.map(extension => extension.name)));
-    for (const name of extensions) result.add(`${packages.extension_tap}/${name}@${php}`);
+    for (const name of extensions) result.add(`${packages.extension_tap}/${extensionFormula(name)}@${php}`);
   }
   return [...result].sort();
 }

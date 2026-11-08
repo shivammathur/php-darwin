@@ -15,6 +15,7 @@
     "8.6",
     "8.7"
   ],
+  "partitioned_packs": ["redis", "amqp", "yaml", "ssh2", "rdkafka"],
   "cached": [
     {
       "name": "xdebug"
@@ -71,10 +72,47 @@
       {
         "name": "swoole"
       }
+    ],
+    "amqp": [
+      {
+        "name": "amqp"
+      }
+    ],
+    "yaml": [
+      {
+        "name": "yaml"
+      }
+    ],
+    "ssh2": [
+      {
+        "name": "ssh2"
+      }
+    ],
+    "rdkafka": [
+      {
+        "name": "rdkafka"
+      }
+    ],
+    "redis": [
+      {
+        "name": "igbinary"
+      },
+      {
+        "name": "msgpack"
+      },
+      {
+        "name": "redis",
+        "formula": "phpredis",
+        "priority": 30
+      }
     ]
   },
   "headers": {
     "memcached": {
+      "igbinary": "igbinary.h",
+      "msgpack": "php_msgpack.h"
+    },
+    "redis": {
       "igbinary": "igbinary.h",
       "msgpack": "php_msgpack.h"
     }

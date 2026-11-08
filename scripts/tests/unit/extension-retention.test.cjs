@@ -11,6 +11,31 @@ function entry(hash, version = '8.5', arch = 'arm64') {
   value.file = `${key(value)}-${value.sha256}.tar.zst`; return value;
 }
 const manifest = (...assets) => ({schema: 1, assets});
+test('partitioned retention reads both central manifests and deletes only unreferenced assets in its own release', async () => {
+  const release = 'extensions-8.5', name = 'extensions-8.5-manifest.json', writes = [];
+  const old = {...entry('a'), release}, next = {...entry('b'), release}, orphan = {...entry('c'), release};
+  const legacy = entry('d');
+  const assets = [old, next, orphan].map((e, i) => ({name: e.file, id: i + 2}));
+  const run = async (program, args) => {
+    if (args.includes('DELETE') || args.includes('delete-object')) {writes.push([program, ...args]); return '';}
+    if (program === 'gh') {
+      if (args.includes('--paginate')) return JSON.stringify([args.at(-1).includes('/10/') ? assets : [{name, id: 99}, {name: legacy.file, id: 98}]]);
+      return JSON.stringify({id: args.at(-1).endsWith('/' + release) ? 10 : 11});
+    }
+    const tag = args[args.indexOf('--prefix') + 1];
+    return JSON.stringify({Contents: (tag === release + '/' ? assets : [{name}, {name: legacy.file}]).map(asset => ({Key: tag + asset.name}))});
+  };
+  const cleanup = retention({env: {}, endpoint: 'https://example.invalid', release, run,
+    fetcher: async url => {
+      assert.ok(origins.some(origin => url.startsWith(origin + '/' + name)));
+      return Response.json(manifest(legacy, url.startsWith(origins[0]) ? old : next));
+    }});
+  await cleanup.prune();
+  assert.equal(cleanup.report.github_deleted, 1);
+  assert.ok(writes[0].includes(release + '/' + orphan.file));
+  assert.equal(writes[1].at(-1), 'repos/shivammathur/php-darwin/releases/assets/4');
+  assert.ok(writes.every(call => !call.includes('extensions/' + legacy.file)));
+});
 
 function inventoryFixture({missingOrigin} = {}) {
   const old = entry('a'), next = entry('b'), orphan = entry('c');

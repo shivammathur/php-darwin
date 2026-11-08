@@ -18,15 +18,24 @@ function directory(t) {
 }
 test('raw extension selection respects disabling, versions, sources and serializer constraints', () => {
   assert.deepEqual(selectRequested('PHP-apcu, apcu, imagick'), ['apcu', 'imagick']);
-  assert.deepEqual(selectRequested(' PHP-imagick, mongodb, MEMCACHED, PHP_swoole, imagick, redis'), ['imagick', 'mongodb', 'memcached', 'swoole']);
+  assert.deepEqual(selectRequested(' PHP-imagick, mongodb, MEMCACHED, PHP_swoole, imagick, redis'), ['imagick', 'mongodb', 'memcached', 'swoole', 'redis']);
   assert.deepEqual(selectRequested('none,imagick,memcached'), ['imagick', 'memcached']);
-  for (const input of ['', 'none', 'redis', 'imagick-3.8.1', 'imagick-beta', 'imagick-user/repo@main', ':imagick',
+  for (const input of ['', 'none', 'grpc', 'imagick-3.8.1', 'imagick-beta', 'imagick-user/repo@main', ':imagick',
     'imagick,:imagick', 'imagick,:PHP-imagick', 'imagick,imagick-3.8.1', 'memcached,igbinary-3.2.16',
     'memcached,:msgpack', 'memcached,memcached@other', 'imagick; touch /tmp/unsafe',
     ':swoole', 'swoole,:swoole', 'swoole,swoole-6.2.3', 'swoole,swoole@source',
-    ':apcu', 'apcu,:apcu', 'apcu,apcu-5.1.28', 'apcu,apcu@source']) {
+    ':apcu', 'apcu,:apcu', 'apcu,apcu-5.1.28', 'apcu,apcu@source',
+    'redis,:msgpack', 'redis,igbinary-3.2.16', 'redis,:redis', 'redis,redis@source']) {
     assert.deepEqual(selectRequested(input), [], input);
   }
+});
+test('Redis uses the canonical Homebrew formula while keeping its PHP module name', () => {
+  const {extensionFormula, packs, extensions, extensionIni, standaloneSource} = require('../../installer/install-extensions.cjs');
+  assert.equal(extensionFormula('redis'), 'phpredis');
+  assert.equal(extensionFormula('ssh2'), 'ssh2');
+  assert.deepEqual(packs.redis, ['igbinary', 'msgpack', 'redis']);
+  assert.equal(extensionIni(extensions.redis), '30-redis.ini');
+  assert.ok(standaloneSource().includes('"formula":"phpredis"'));
 });
 test('base matching requires exact release, source and all variants before installation', () => {
   validateBase(entry('imagick'), context);
@@ -89,6 +98,32 @@ test('stale packs and invalid config paths never run an installer; one enabling 
   assert.deepEqual(await activate(root, context, '/opt/homebrew/etc/php/8.6/conf.d', options), ['memcached']);
   assert.deepEqual(calls, ['imagick', 'memcached']);
 });
+test('shared serializer transactions wait for each other without blocking independent packs or recovery', async t => {
+  for (const failure of [false, true]) {
+    const root = directory(t), names = ['memcached', 'redis', 'yaml'];
+    fs.writeFileSync(path.join(root, 'requested.txt'), names.join('\n'));
+    for (const name of names) fs.writeFileSync(path.join(root, `${name}.json`), JSON.stringify(entry(name)));
+    let release, firstFinished = false;
+    const started = [], finished = [];
+    const results = await activate(root, context, '/opt/homebrew/etc/php/8.6/conf.d', {
+      installPack: async (_, name) => {
+        started.push(name);
+        if (name === 'memcached') {
+          await new Promise(resolve => { release = resolve; });
+          firstFinished = true;
+          if (failure) throw new Error('First serializer transaction rolled back');
+        } else if (name === 'yaml') {
+          assert.deepEqual(started, ['memcached', 'yaml']);
+          release();
+        } else assert.equal(firstFinished, true, 'Redis must not race Memcached module/header writes');
+        finished.push(name);
+      },
+      enablePack: async () => assert.equal(finished.length, failure ? 2 : 3),
+    });
+    assert.deepEqual(results, failure ? ['redis', 'yaml'] : names);
+    assert.deepEqual(started, ['memcached', 'yaml', 'redis']);
+  }
+});
 test('downloads retry all transfer and verification errors on both origins, caps Retry-After and never promotes a partial file', async t => {
   const { download } = require('../../installer/install-extensions.cjs');
   const root = directory(t), file = path.join(root, 'pack');
@@ -136,7 +171,7 @@ for (const file of fs.readdirSync(${JSON.stringify(scan)}).filter(file => file.e
   for (const match of ini.matchAll(/^(?:zend_)?extension\\s*=\\s*"?([^"\\n]+)"?$/gm)) {
     const name = path.basename(match[1], '.so');
     if (loaded.includes(name)) throw new Error(name + ' already loaded');
-    if (name === 'memcached' && !['igbinary', 'msgpack'].every(module => loaded.includes(module))) throw new Error('Missing serializers');
+    if (['memcached', 'redis'].includes(name) && !['igbinary', 'msgpack'].every(module => loaded.includes(module))) throw new Error('Missing serializers');
     loaded.push(name);
   }
 }
@@ -192,14 +227,14 @@ test('configured priorities drive activation and remain available outside the ch
     assert.throws(() => extensionIni({ name: 'imagick', priority }), /Invalid extension INI/);
   }
 });
-for (const name of ['imagick', 'mongodb', 'memcached', 'swoole']) {
+for (const name of ['imagick', 'mongodb', 'memcached', 'swoole', 'redis', 'amqp', 'yaml', 'ssh2', 'rdkafka']) {
   test(`${name} uses tap INI filenames and survives repeated activation and individual tap replacements`, t => {
     const f = activationFixture(t, name);
     f.activate();
     const initial = f.snapshot();
-    assert.deepEqual(Object.keys(initial), [...f.modules.map(module => `${module === 'memcached' ? 30 : 20}-${module}.ini`), 'user.ini']);
+    assert.deepEqual(Object.keys(initial), [...f.modules.map(module => `${['memcached', 'redis'].includes(module) ? 30 : 20}-${module}.ini`), 'user.ini']);
     for (const module of f.modules) {
-      assert.equal(initial[`${module === 'memcached' ? 30 : 20}-${module}.ini`], `${marker}[${module}]\nextension="${module}.so"\n`);
+      assert.equal(initial[`${['memcached', 'redis'].includes(module) ? 30 : 20}-${module}.ini`], `${marker}[${module}]\nextension="${module}.so"\n`);
     }
     f.activate();
     assert.deepEqual(f.snapshot(), initial);
@@ -210,7 +245,7 @@ for (const name of ['imagick', 'mongodb', 'memcached', 'swoole']) {
       for (const file of fs.readdirSync(f.scan).filter(file => file.includes(module) && file.endsWith('.ini'))) {
         fs.rmSync(path.join(f.scan, file));
       }
-      fs.writeFileSync(path.join(f.scan, `${module === 'memcached' ? 30 : 20}-${module}.ini`),
+      fs.writeFileSync(path.join(f.scan, `${['memcached', 'redis'].includes(module) ? 30 : 20}-${module}.ini`),
         `[${module}]\nextension="/opt/homebrew/opt/${module}@8.6/${module}.so"\n`);
       command(f.php, ['-r', 'verify']);
     }
@@ -266,7 +301,7 @@ test('explicit cached extension requests use tap INIs without changing PHP-only 
   ] };
   const scan = '/opt/homebrew/etc/php/8.6/conf.d';
   const options = { enable: modules => configureModules(modules, f.scan, { php: f.php }) };
-  for (const input of ['', 'none', 'redis', ':xdebug,:pcov', 'xdebug,xdebug-3.5.0,pcov,:pcov', 'xdebug,xdebug@source']) {
+  for (const input of ['', 'none', 'grpc', ':xdebug,:pcov', 'xdebug,xdebug-3.5.0,pcov,:pcov', 'xdebug,xdebug@source']) {
     activateCached(base, input, scan, options);
     assert.deepEqual(f.snapshot(), { 'user.ini': '; retain user settings\n' }, input);
   }

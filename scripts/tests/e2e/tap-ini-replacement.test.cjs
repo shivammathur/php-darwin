@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { command, digest, extensions, extensionIni } = require('../../installer/install-extensions.cjs');
+const { command, digest, extensions, extensionIni, extensionFormula } = require('../../installer/install-extensions.cjs');
 const {install, extensionInputs} = require('../../cache/source-bottle-cache.cjs');
 const {ApprovedDependencies, readLock} = require('../../cache/approved-dependencies.cjs');
 const {ReleaseCache} = require('../../cache/source-bottle-releases.cjs');
@@ -11,7 +11,7 @@ const {buildGuard} = require('../../cache/dependency-build-guard.cjs');
 assert.equal(process.env.GITHUB_ACTIONS, 'true', 'This fixture replaces CI extension installations');
 const version = process.env.PHP_VERSION;
 assert.equal(version, '7.2');
-const names = ['igbinary', 'msgpack', 'apcu', 'imagick', 'memcached', 'mongodb', 'swoole', 'xdebug', 'pcov'];
+const names = ['igbinary', 'msgpack', 'apcu', 'imagick', 'memcached', 'mongodb', 'swoole', 'amqp', 'yaml', 'ssh2', 'rdkafka', 'redis', 'xdebug', 'pcov'];
 const php = command('which', ['php']);
 const original = digest(fs.readFileSync(fs.realpathSync(php)));
 const scan = path.join(command('brew', ['--prefix']), 'etc/php', version, 'conf.d');
@@ -46,7 +46,7 @@ async function replace() {
   const approvedDependencies = new ApprovedDependencies(lock);
   const preparedTargets = [];
   for (const name of names) {
-    const formula = `shivammathur/extensions/${name}@${version}`;
+    const formula = `shivammathur/extensions/${extensionFormula(name)}@${version}`;
     if (spawnSync('brew', ['list', '--versions', formula]).status === 0) {
       command('brew', ['uninstall', '--force', '--ignore-dependencies', formula], { stdio: ['ignore', 'pipe', 'inherit'] });
     }
