@@ -9,7 +9,8 @@ foreach ($names as $name) {
     switch ($name) {
         case 'redis':
             // Older phpredis releases create their serializer state on connect.
-            // A listening loopback socket is sufficient: these APIs send no commands.
+            // Feed a local RESP reply through GET to exercise the public read path.
+            // The legacy PHP 5 _unserialize helper leaks its temporary array.
             $server = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
             if (!$server) {
                 throw new Exception('Could not reserve the Redis test socket');
@@ -20,18 +21,27 @@ foreach ($names as $name) {
             if (!$redis->connect('127.0.0.1', $port, 0.2)) {
                 throw new Exception('Redis could not open the test connection');
             }
+            $peer = stream_socket_accept($server, 1);
+            if (!$peer) {
+                throw new Exception('Could not accept the Redis test connection');
+            }
             $value = array('cache' => 42, 'nested' => array('value' => 'roundtrip'));
             $serializers = array(Redis::SERIALIZER_PHP, Redis::SERIALIZER_IGBINARY);
             if (PHP_VERSION_ID >= 70000) {
                 $serializers[] = Redis::SERIALIZER_MSGPACK;
             }
             foreach ($serializers as $serializer) {
-                if (!$redis->setOption(Redis::OPT_SERIALIZER, $serializer) ||
-                    $redis->_unserialize($redis->_serialize($value)) !== $value) {
+                if (!$redis->setOption(Redis::OPT_SERIALIZER, $serializer)) {
+                    throw new Exception('Redis serializer selection failed');
+                }
+                $payload = $redis->_serialize($value);
+                $reply = '$' . strlen($payload) . "\r\n" . $payload . "\r\n";
+                if (fwrite($peer, $reply) !== strlen($reply) || $redis->get('php-darwin') !== $value) {
                     throw new Exception('Redis serializer roundtrip failed');
                 }
             }
             $redis->close();
+            fclose($peer);
             fclose($server);
             break;
         case 'yaml':
