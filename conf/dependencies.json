@@ -2074,6 +2074,86 @@
             "sha256": "369d3a03a92f93bac16dd14b0a0bdfdd89ca55acbd503a5df2e6bb5db090570a",
             "url": "https://ghcr.io/v2/homebrew/core/p7zip/blobs/sha256:369d3a03a92f93bac16dd14b0a0bdfdd89ca55acbd503a5df2e6bb5db090570a"
           }
+        },
+        "popt": {
+          "version": "1.19",
+          "bottle": {
+            "formula": "popt",
+            "version": "1.19",
+            "tag": "arm64_sequoia",
+            "sha256": "4ff5f0c8c34f510a7336b16f42a6e058d028ff2025e9b01093b294be84d90bb2",
+            "url": "https://ghcr.io/v2/homebrew/core/popt/blobs/sha256:4ff5f0c8c34f510a7336b16f42a6e058d028ff2025e9b01093b294be84d90bb2"
+          }
+        },
+        "rabbitmq-c": {
+          "version": "0.18.1",
+          "bottle": {
+            "formula": "rabbitmq-c",
+            "version": "0.18.1",
+            "tag": "arm64_sequoia",
+            "sha256": "2d24f97e779ca7e0d301a3c328f25ea7298f3623355208d744fb5f93d2b36aee",
+            "url": "https://ghcr.io/v2/homebrew/core/rabbitmq-c/blobs/sha256:2d24f97e779ca7e0d301a3c328f25ea7298f3623355208d744fb5f93d2b36aee"
+          }
+        },
+        "liblzf": {
+          "version": "3.6",
+          "bottle": {
+            "formula": "liblzf",
+            "version": "3.6",
+            "tag": "arm64_sequoia",
+            "sha256": "7c85befbd00a98a67ac1cc0b265f220bec476aef8f011b9fda2ee5aea9cd29b5",
+            "url": "https://ghcr.io/v2/homebrew/core/liblzf/blobs/sha256:7c85befbd00a98a67ac1cc0b265f220bec476aef8f011b9fda2ee5aea9cd29b5"
+          }
+        },
+        "lzlib": {
+          "version": "1.16",
+          "bottle": {
+            "formula": "lzlib",
+            "version": "1.16",
+            "tag": "arm64_sequoia",
+            "sha256": "0fdfdd31565885e19fbf88a2eb719871c29bd35f159debce604706fabb1ae292",
+            "url": "https://ghcr.io/v2/homebrew/core/lzlib/blobs/sha256:0fdfdd31565885e19fbf88a2eb719871c29bd35f159debce604706fabb1ae292"
+          }
+        },
+        "librdkafka": {
+          "version": "2.16.0_1",
+          "bottle": {
+            "formula": "librdkafka",
+            "version": "2.16.0_1",
+            "tag": "arm64_sequoia",
+            "sha256": "40adcbed915d53f85e575aceb2e43f2723835a5706de6bed51f068c930486cfc",
+            "url": "https://ghcr.io/v2/homebrew/core/librdkafka/blobs/sha256:40adcbed915d53f85e575aceb2e43f2723835a5706de6bed51f068c930486cfc"
+          }
+        },
+        "libyaml": {
+          "version": "0.2.5",
+          "bottle": {
+            "formula": "libyaml",
+            "version": "0.2.5",
+            "tag": "arm64_sequoia",
+            "sha256": "0ec9bf8082245c008803b42dcae3e6a0c8cd7a67aed589d9b6482b115c0a543b",
+            "url": "https://ghcr.io/v2/homebrew/core/libyaml/blobs/sha256:0ec9bf8082245c008803b42dcae3e6a0c8cd7a67aed589d9b6482b115c0a543b"
+          }
+        },
+        "gnu-getopt": {
+          "version": "2.42.4",
+          "bottle": {
+            "formula": "gnu-getopt",
+            "version": "2.42.4",
+            "tag": "arm64_sequoia",
+            "sha256": "a11448e84e277c582599f0b5edc94e1e4961c6c7fc958eb3074ab5c7b4834168",
+            "url": "https://ghcr.io/v2/homebrew/core/gnu-getopt/blobs/sha256:a11448e84e277c582599f0b5edc94e1e4961c6c7fc958eb3074ab5c7b4834168"
+          }
+        },
+        "xmlto": {
+          "version": "0.0.29",
+          "bottle": {
+            "formula": "xmlto",
+            "version": "0.0.29",
+            "tag": "arm64_sequoia",
+            "sha256": "2411a7fc2154cbd347d2aaa8ab9e176d66fee18b727568baa3b8eeb65f71fd5c",
+            "url": "https://ghcr.io/v2/homebrew/core/xmlto/blobs/sha256:2411a7fc2154cbd347d2aaa8ab9e176d66fee18b727568baa3b8eeb65f71fd5c"
+          }
         }
       }
     },
@@ -7016,6 +7096,331 @@
               "dependencies": []
             },
             "sha256": "1ac7973a9f5e700758d7eb634531013150bc7d3911f91633a61bf2e418391d20"
+          }
+        },
+        "gnu-getopt": {
+          "version": "2.42.4",
+          "source": {
+            "key": "php-darwin-source-v1-f63fda84bb2209c5dc0d2046a77f1b0a4a7895682ffbb8dfa92ab39bc1d8956f",
+            "inputs": {
+              "environment": {
+                "arch": "x86_64",
+                "macos": "15",
+                "prefix": "/usr/local",
+                "homebrew": "Homebrew 7",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "26.2",
+                "buildEnv": {
+                  "CC": "",
+                  "CXX": "",
+                  "CFLAGS": "",
+                  "CXXFLAGS": "",
+                  "CPPFLAGS": "",
+                  "LDFLAGS": "",
+                  "MACOSX_DEPLOYMENT_TARGET": "",
+                  "SDKROOT": "",
+                  "HOMEBREW_CC": "",
+                  "HOMEBREW_CXX": "",
+                  "HOMEBREW_ARCH": ""
+                }
+              },
+              "formula": "gnu-getopt",
+              "version": "2.42.4",
+              "recipe": "d9b560268245752a48eadf44af97038c7127ebe4514929a288d94adc0a6c76d8",
+              "dependencies": []
+            },
+            "sha256": "7e8a18064850753166b1208667f461068f9ed5345cb11f3f4083a6044c3b4947"
+          }
+        },
+        "xmlto": {
+          "version": "0.0.29",
+          "bottle": {
+            "formula": "xmlto",
+            "version": "0.0.29",
+            "tag": "sonoma",
+            "sha256": "7c97020bc7310a85ddba7461e891c63de136637d26ec7cff04dca86ec13d1055",
+            "url": "https://ghcr.io/v2/homebrew/core/xmlto/blobs/sha256:7c97020bc7310a85ddba7461e891c63de136637d26ec7cff04dca86ec13d1055"
+          }
+        },
+        "popt": {
+          "version": "1.19",
+          "bottle": {
+            "formula": "popt",
+            "version": "1.19",
+            "tag": "sonoma",
+            "sha256": "0eab78dae2d0e5dab0d54f51c43fa8fbbfd777628078c4318622ae9416f6dbcd",
+            "url": "https://ghcr.io/v2/homebrew/core/popt/blobs/sha256:0eab78dae2d0e5dab0d54f51c43fa8fbbfd777628078c4318622ae9416f6dbcd"
+          }
+        },
+        "rabbitmq-c": {
+          "version": "0.18.1",
+          "source": {
+            "key": "php-darwin-source-v1-02c938cccc371251b098bc7d3aba92499aeb651a4a6ef32ebe8f1a06c18831fc",
+            "inputs": {
+              "environment": {
+                "arch": "x86_64",
+                "macos": "15",
+                "prefix": "/usr/local",
+                "homebrew": "Homebrew 7",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "26.2",
+                "buildEnv": {
+                  "CC": "",
+                  "CXX": "",
+                  "CFLAGS": "",
+                  "CXXFLAGS": "",
+                  "CPPFLAGS": "",
+                  "LDFLAGS": "",
+                  "MACOSX_DEPLOYMENT_TARGET": "",
+                  "SDKROOT": "",
+                  "HOMEBREW_CC": "",
+                  "HOMEBREW_CXX": "",
+                  "HOMEBREW_ARCH": ""
+                }
+              },
+              "formula": "rabbitmq-c",
+              "version": "0.18.1",
+              "recipe": "401aa7c922fb0e2b7f1a468e7b5f016c1dcc0ddc0a1b0cde0569aa60c370fe44",
+              "pkg_config_path": "/usr/local/opt/openssl@4/lib/pkgconfig",
+              "openssl_build_environment": 1,
+              "dependencies": [
+                {
+                  "name": "ca-certificates",
+                  "version": "2026-11-05",
+                  "recipe": "5fe801a9e127cdd083e9f8879281228ed6cc2c680fbf62e001e292166927033f",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": []
+                },
+                {
+                  "name": "cmake",
+                  "version": "4.4.3",
+                  "recipe": "c368595b6f40e7a258276b7a719ec68cfa078a1dc13bd8ff2bee43455936f5f8",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": []
+                },
+                {
+                  "name": "openssl@4",
+                  "version": "4.1.0",
+                  "recipe": "af2abcf4c07a85eb2c873cde9c22122b2453a7a183965d8ba8fc9995294cd75f",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": [
+                    {
+                      "full_name": "ca-certificates",
+                      "version": "2026-11-05",
+                      "revision": 0,
+                      "bottle_rebuild": 0,
+                      "pkg_version": "2026-11-05",
+                      "declared_directly": true,
+                      "compatibility_version": 1
+                    }
+                  ]
+                },
+                {
+                  "name": "pkgconf",
+                  "version": "3.0.7",
+                  "recipe": "18650320e9599caed229bbd6dec72d42944df0e2cbe571c659e0ab2b59050b50",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": []
+                },
+                {
+                  "name": "popt",
+                  "version": "1.19",
+                  "recipe": "f744df91914edd93c8714533b55a1ba6f783fa5b89b2df51b359d307e80831a5",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": []
+                },
+                {
+                  "name": "xmlto",
+                  "version": "0.0.29",
+                  "recipe": "e97a829cca6c5986702ad3170eee13e681dfb6fec1cef8011338e65fb1548e38",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": [
+                    {
+                      "full_name": "docbook",
+                      "version": "5.2.1",
+                      "revision": 0,
+                      "bottle_rebuild": 1,
+                      "pkg_version": "5.2.1",
+                      "declared_directly": true,
+                      "compatibility_version": 1
+                    },
+                    {
+                      "full_name": "docbook-xsl",
+                      "version": "1.79.2",
+                      "revision": 1,
+                      "bottle_rebuild": 2,
+                      "pkg_version": "1.79.2_1",
+                      "declared_directly": true
+                    },
+                    {
+                      "full_name": "gnu-getopt",
+                      "version": "2.42.4",
+                      "revision": 0,
+                      "pkg_version": "2.42.4",
+                      "declared_directly": true,
+                      "compatibility_version": 1
+                    }
+                  ]
+                }
+              ]
+            },
+            "sha256": "cc0420b9841d360bce6d60a82327dfbf94b90e8b4fe246911731d778c876d758"
+          }
+        },
+        "liblzf": {
+          "version": "3.6",
+          "bottle": {
+            "formula": "liblzf",
+            "version": "3.6",
+            "tag": "sonoma",
+            "sha256": "9719e891f819df8bc4e846087b87ac0eb36ebaa9a9829d02ce8d9927f957786e",
+            "url": "https://ghcr.io/v2/homebrew/core/liblzf/blobs/sha256:9719e891f819df8bc4e846087b87ac0eb36ebaa9a9829d02ce8d9927f957786e"
+          }
+        },
+        "lzlib": {
+          "version": "1.16",
+          "bottle": {
+            "formula": "lzlib",
+            "version": "1.16",
+            "tag": "sonoma",
+            "sha256": "f96b5fbf7ea10ab92e0753625963e128d7ddde3aba3674a2755d4bd29d8bca53",
+            "url": "https://ghcr.io/v2/homebrew/core/lzlib/blobs/sha256:f96b5fbf7ea10ab92e0753625963e128d7ddde3aba3674a2755d4bd29d8bca53"
+          }
+        },
+        "librdkafka": {
+          "version": "2.16.0_1",
+          "source": {
+            "key": "php-darwin-source-v1-2792320631938e68f63c357bdc018b35f1ac68c7f073c944d62522fb0bd7c06b",
+            "inputs": {
+              "environment": {
+                "arch": "x86_64",
+                "macos": "15",
+                "prefix": "/usr/local",
+                "homebrew": "Homebrew 7",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
+                "buildEnv": {
+                  "CC": "",
+                  "CXX": "",
+                  "CFLAGS": "",
+                  "CXXFLAGS": "",
+                  "CPPFLAGS": "",
+                  "LDFLAGS": "",
+                  "MACOSX_DEPLOYMENT_TARGET": "",
+                  "SDKROOT": "",
+                  "HOMEBREW_CC": "",
+                  "HOMEBREW_CXX": "",
+                  "HOMEBREW_ARCH": ""
+                }
+              },
+              "formula": "librdkafka",
+              "version": "2.16.0_1",
+              "recipe": "56121e999f20cba0f1ac13c051af6626277f6067d7f171ae2add4438394b1f56",
+              "pkg_config_path": "/usr/local/opt/openssl@4/lib/pkgconfig",
+              "openssl_build_environment": 1,
+              "dependencies": [
+                {
+                  "name": "ca-certificates",
+                  "version": "2026-11-05",
+                  "recipe": "5fe801a9e127cdd083e9f8879281228ed6cc2c680fbf62e001e292166927033f",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": []
+                },
+                {
+                  "name": "lz4",
+                  "version": "1.11.0",
+                  "recipe": "277ba6c4a66bc5b36e726eded77465e075a6f3889627a131862289f9c1d22c08",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": []
+                },
+                {
+                  "name": "lzlib",
+                  "version": "1.16",
+                  "recipe": "a312f00df730c5529b18ba43e95268fa85f1149add21a6a1aa79760770b42e08",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": []
+                },
+                {
+                  "name": "openssl@4",
+                  "version": "4.1.0",
+                  "recipe": "af2abcf4c07a85eb2c873cde9c22122b2453a7a183965d8ba8fc9995294cd75f",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": [
+                    {
+                      "full_name": "ca-certificates",
+                      "version": "2026-11-05",
+                      "revision": 0,
+                      "bottle_rebuild": 0,
+                      "pkg_version": "2026-11-05",
+                      "declared_directly": true,
+                      "compatibility_version": 1
+                    }
+                  ]
+                },
+                {
+                  "name": "pkgconf",
+                  "version": "3.0.7",
+                  "recipe": "18650320e9599caed229bbd6dec72d42944df0e2cbe571c659e0ab2b59050b50",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": []
+                },
+                {
+                  "name": "xz",
+                  "version": "5.8.4",
+                  "recipe": "0a0ec0394575eadc853cdb509c8ababc01c8926b973bd76841a1f6f254e1ebdf",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": []
+                },
+                {
+                  "name": "zstd",
+                  "version": "1.5.7_1",
+                  "recipe": "9a9b0183896886e82b915af4db576f27d34d1cee7757d6c5beb0e1eb74c68e0d",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": [
+                    {
+                      "full_name": "lz4",
+                      "version": "1.11.0",
+                      "revision": 0,
+                      "pkg_version": "1.11.0",
+                      "declared_directly": true,
+                      "compatibility_version": 1
+                    },
+                    {
+                      "full_name": "xz",
+                      "version": "5.8.4",
+                      "revision": 0,
+                      "pkg_version": "5.8.4",
+                      "declared_directly": true,
+                      "compatibility_version": 1
+                    }
+                  ]
+                }
+              ]
+            },
+            "sha256": "ff0493755aa9d9c4ce3c8589aab8c06dd203ba19b434124c84a2b4d28d0ccf26"
+          }
+        },
+        "libyaml": {
+          "version": "0.2.5",
+          "bottle": {
+            "formula": "libyaml",
+            "version": "0.2.5",
+            "tag": "sonoma",
+            "sha256": "4d6e02ce3a82b60033bc7e55bef841dcfef0c05c051176d96accb50744136c6d",
+            "url": "https://ghcr.io/v2/homebrew/core/libyaml/blobs/sha256:4d6e02ce3a82b60033bc7e55bef841dcfef0c05c051176d96accb50744136c6d"
           }
         }
       }
@@ -13214,17 +13619,20 @@
     "krb5": "0ccdcb95308638e5d97507d9d9a40b5fada62dd8",
     "libevent": "0ccdcb95308638e5d97507d9d9a40b5fada62dd8",
     "libheif": "3967e17e863691884f182ccd356d55da9eb1acc6",
+    "liblzf": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "libnghttp2": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "libnghttp3": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "libngtcp2": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "libomp": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "libpng": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "libpq": "3967e17e863691884f182ccd356d55da9eb1acc6",
+    "librdkafka": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "libssh2": "0ccdcb95308638e5d97507d9d9a40b5fada62dd8",
     "libunistring": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "libvmaf": "0ccdcb95308638e5d97507d9d9a40b5fada62dd8",
     "libx11": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "libxpm": "3967e17e863691884f182ccd356d55da9eb1acc6",
+    "libyaml": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "libzip": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "lz4": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "net-snmp": "0ccdcb95308638e5d97507d9d9a40b5fada62dd8",
@@ -13232,6 +13640,7 @@
     "openssl@4": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "pcre2": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "python@3.14": "0ccdcb95308638e5d97507d9d9a40b5fada62dd8",
+    "rabbitmq-c": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "sqlite": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "xorgproto": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "zlib": "3967e17e863691884f182ccd356d55da9eb1acc6"
