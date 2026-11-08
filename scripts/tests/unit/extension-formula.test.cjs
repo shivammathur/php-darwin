@@ -23,6 +23,12 @@ const template = `class Extension
   def safe_phpize
     puts ENV["ac_cv_prog_cc_c23"] || "default"
   end
+  def extension; ARGV[1]; end
+  def inreplace(file, before, after)
+    text = File.read(file)
+    abort "Missing callback typedef" unless text.include?(before)
+    File.write(file, text.sub(before, after))
+  end
   def self.dependency; @dependencies.first; end
   def self.pcre2?; @dependencies.include?("pcre2"); end
 end
@@ -66,5 +72,26 @@ test('Swoole declares PCRE2 headers for supported PHP versions including debug b
     const output = execFileSync(ruby, [file, version, 'swoole'], { encoding: 'utf8', stdio: 'pipe' }).trim().split('\n');
     assert.equal(output.at(-1), ['5.6', '7.2'].includes(version) ? 'false' : 'true');
     assert.deepEqual(output.slice(0, 2), Array(2).fill('shivammathur/php/' + formula));
+  }
+});
+
+test('PHP 5.6 ZTS RdKafka callbacks keep their thread-context argument', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'rdkafka-zts-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const file = path.join(directory, 'abstract.rb');
+  const header = path.join(directory, 'php_rdkafka_priv.h');
+  const original = 'typedef void (*zend_object_free_obj_t)(zend_object *object);';
+  for (const version of ['5.6', '7.0']) {
+    for (const suffix of ['', '-debug', '-zts', '-debug-zts']) {
+      for (const extension of ['rdkafka', 'redis']) {
+        fs.writeFileSync(file, template);
+        fs.writeFileSync(header, original);
+        execFileSync(ruby, [patcher, file, `php@${version}${suffix}`, version + suffix, version]);
+        execFileSync(ruby, [file, version, extension], {cwd: directory});
+        assert.equal(fs.readFileSync(header, 'utf8'),
+          version === '5.6' && suffix.endsWith('-zts') && extension === 'rdkafka'
+            ? original.replace('*object);', '*object TSRMLS_DC);') : original);
+      }
+    }
   }
 });

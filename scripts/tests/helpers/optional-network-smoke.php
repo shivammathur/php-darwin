@@ -8,7 +8,18 @@ foreach ($names as $name) {
     }
     switch ($name) {
         case 'redis':
+            // Older phpredis releases create their serializer state on connect.
+            // A listening loopback socket is sufficient: these APIs send no commands.
+            $server = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
+            if (!$server) {
+                throw new Exception('Could not reserve the Redis test socket');
+            }
+            $address = stream_socket_get_name($server, false);
+            $port = (int) substr(strrchr($address, ':'), 1);
             $redis = new Redis();
+            if (!$redis->connect('127.0.0.1', $port, 0.2)) {
+                throw new Exception('Redis could not open the test connection');
+            }
             $value = array('cache' => 42, 'nested' => array('value' => 'roundtrip'));
             $serializers = array(Redis::SERIALIZER_PHP, Redis::SERIALIZER_IGBINARY);
             if (PHP_VERSION_ID >= 70000) {
@@ -20,6 +31,8 @@ foreach ($names as $name) {
                     throw new Exception('Redis serializer roundtrip failed');
                 }
             }
+            $redis->close();
+            fclose($server);
             break;
         case 'yaml':
             $value = array('number' => 42, 'text' => 'php-darwin', 'nested' => array(true, false, null));

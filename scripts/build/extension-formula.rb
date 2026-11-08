@@ -28,4 +28,18 @@ if version.start_with?('5.', '7.') && !source.include?('ENV["ac_cv_prog_cc_c23"]
   abort 'Missing safe_phpize method' unless source.match?(/^\s*def safe_phpize$/)
   source = source.sub(/^(\s*)def safe_phpize$/, "\\1def safe_phpize\n\\1  ENV[\"ac_cv_prog_cc_c23\"] = \"no\"")
 end
+if version == '5.6' && config_id.end_with?('-zts')
+  # RdKafka 4.x's PHP 5 callback typedef omits the thread context argument.
+  # Match the callback signature instead of suppressing Clang's type check.
+  abort 'Missing safe_phpize method' unless source.match?(/^\s*def safe_phpize$/)
+  patch = <<~RUBY
+    def safe_phpize
+      if extension == "rdkafka"
+        inreplace "php_rdkafka_priv.h",
+                  "typedef void (*zend_object_free_obj_t)(zend_object *object);",
+                  "typedef void (*zend_object_free_obj_t)(zend_object *object TSRMLS_DC);"
+      end
+  RUBY
+  source = source.sub(/^\s*def safe_phpize\n/, "\n#{patch}")
+end
 File.write(file, source)
