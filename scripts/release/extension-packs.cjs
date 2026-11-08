@@ -4,6 +4,7 @@ const { command, digest, key, validateEntry, origins, standaloneSource, supports
 const configuration = require('../../conf/extension-packs.json');
 const acceptedBaselines = require('../../conf/extension-cache-baselines.json');
 const platforms = require('../../conf/platforms.json');
+const transferConfiguration = require('../../conf/transfers.json');
 const { buildMatrix, reuseMatrix, testMatrix } = require('./extension-batches.cjs');
 const { retention } = require('./extension-retention.cjs');
 const { recipeCurrent } = require('../lib/recipe-inputs.cjs');
@@ -83,7 +84,8 @@ function unchanged(entry, repositories, phpManifest) {
 }
 async function readManifest(version, retry = retryPolicy()) {
   return retry(`Read PHP ${version} extension manifest`, async () => {
-    const response = await fetch(`${origins[0]}/extensions-${version}-manifest.json`, { signal: AbortSignal.timeout(15000) });
+    const response = await fetch(`${origins[0]}/extensions-${version}-manifest.json`,
+      { signal: AbortSignal.timeout(transferConfiguration.metadata.timeout * 1000), cache: 'no-store' });
     if (!response.ok) {
       await response.body?.cancel();
       if (response.status === 404) return { schema: 1, assets: [] };
@@ -98,7 +100,7 @@ async function readManifest(version, retry = retryPolicy()) {
 async function readPHPManifest(version, retry) {
   return retry(`Read published PHP ${version}`, async () => {
     const response = await fetch(`https://github.com/shivammathur/php-darwin/releases/download/php-${version}/php-${version}-manifest.json`,
-      { signal: AbortSignal.timeout(15000), cache: 'no-store' });
+      { signal: AbortSignal.timeout(transferConfiguration.metadata.timeout * 1000), cache: 'no-store' });
     if (!response.ok) {
       await response.body?.cancel();
       throw httpError(response.status, `Read published PHP ${version} manifest`);
@@ -249,7 +251,7 @@ async function publish(directory, { run = transferCommand, retry = retryPolicy()
   const response = await retry('Inspect extension release', async () => {
     const result = await fetch(`https://api.github.com/repos/${repo}/releases/tags/${release}`, {
       headers: { Authorization: `Bearer ${process.env.GH_TOKEN}`, 'X-GitHub-Api-Version': '2022-11-28' },
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(transferConfiguration.metadata.timeout * 1000),
     });
     await result.body?.cancel();
     if (!result.ok && result.status !== 404) throw httpError(result.status, 'Inspect extension release');
