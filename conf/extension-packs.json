@@ -102,8 +102,7 @@
       },
       {
         "name": "redis",
-        "formula": "phpredis",
-        "priority": 30
+        "formula": "phpredis"
       }
     ]
   },

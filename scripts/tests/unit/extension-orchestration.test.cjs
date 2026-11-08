@@ -34,7 +34,7 @@ test('Redis uses the canonical Homebrew formula while keeping its PHP module nam
   assert.equal(extensionFormula('redis'), 'phpredis');
   assert.equal(extensionFormula('ssh2'), 'ssh2');
   assert.deepEqual(packs.redis, ['igbinary', 'msgpack', 'redis']);
-  assert.equal(extensionIni(extensions.redis), '30-redis.ini');
+  assert.equal(extensionIni(extensions.redis), '20-redis.ini');
   assert.ok(standaloneSource().includes('"formula":"phpredis"'));
 });
 test('base matching requires exact release, source and all variants before installation', () => {
@@ -232,20 +232,18 @@ for (const name of ['imagick', 'mongodb', 'memcached', 'swoole', 'redis', 'amqp'
     const f = activationFixture(t, name);
     f.activate();
     const initial = f.snapshot();
-    assert.deepEqual(Object.keys(initial), [...f.modules.map(module => `${['memcached', 'redis'].includes(module) ? 30 : 20}-${module}.ini`), 'user.ini']);
+    assert.deepEqual(Object.keys(initial), [...f.modules.map(module => `${module === 'memcached' ? 30 : 20}-${module}.ini`), 'user.ini']);
     for (const module of f.modules) {
-      assert.equal(initial[`${['memcached', 'redis'].includes(module) ? 30 : 20}-${module}.ini`], `${marker}[${module}]\nextension="${module}.so"\n`);
+      assert.equal(initial[`${module === 'memcached' ? 30 : 20}-${module}.ini`], `${marker}[${module}]\nextension="${module}.so"\n`);
     }
     f.activate();
     assert.deepEqual(f.snapshot(), initial);
     const { command } = require('../../installer/install-extensions.cjs');
     for (const module of f.modules) {
-      // AbstractPhpExtension#write_config_file removes *<extension>*.ini and
-      // writes the numbered file with a quoted path under its opt prefix.
-      for (const file of fs.readdirSync(f.scan).filter(file => file.includes(module) && file.endsWith('.ini'))) {
-        fs.rmSync(path.join(f.scan, file));
-      }
-      fs.writeFileSync(path.join(f.scan, `${['memcached', 'redis'].includes(module) ? 30 : 20}-${module}.ini`),
+      // Pouring a Homebrew bottle copies its numbered INI without running
+      // write_config_file's source-build cleanup. Its filename must match ours
+      // or PHP will load the same module through two separate INIs.
+      fs.writeFileSync(path.join(f.scan, `${module === 'memcached' ? 30 : 20}-${module}.ini`),
         `[${module}]\nextension="/opt/homebrew/opt/${module}@8.6/${module}.so"\n`);
       command(f.php, ['-r', 'verify']);
     }
@@ -253,6 +251,16 @@ for (const name of ['imagick', 'mongodb', 'memcached', 'swoole', 'redis', 'amqp'
     assert.deepEqual(f.snapshot(), initial);
   });
 }
+test('Redis activation migrates the previous priority before a Homebrew bottle replacement', t => {
+  const { command } = require('../../installer/install-extensions.cjs');
+  const f = activationFixture(t, 'redis');
+  f.activate();
+  fs.renameSync(path.join(f.scan, '20-redis.ini'), path.join(f.scan, '30-redis.ini'));
+  f.activate();
+  assert.ok(!fs.existsSync(path.join(f.scan, '30-redis.ini')));
+  fs.writeFileSync(path.join(f.scan, '20-redis.ini'), '[redis]\nextension="/opt/homebrew/opt/phpredis@8.6/redis.so"\n');
+  command(f.php, ['-r', 'verify']);
+});
 test('activation migrates combined pack INIs and removes stale module INIs before probing PHP', t => {
   const f = activationFixture(t);
   fs.writeFileSync(f.legacy, marker + f.modules.map(module => `extension=${module}.so\n`).join(''));

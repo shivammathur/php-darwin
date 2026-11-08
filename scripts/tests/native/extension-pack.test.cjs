@@ -82,8 +82,10 @@ process.exit(result.error || result.stderr ? 1 : (result.status ?? 1));
   assert.deepEqual(fs.readdirSync(scan).sort(), entry.modules.map(module => extensionIni(extensions[module])).sort());
   // Reproduce the tap replacing modules independently, including serializers.
   for (const module of entry.modules) {
-    for (const file of fs.readdirSync(scan).filter(file => file.includes(module) && file.endsWith('.ini'))) fs.unlinkSync(path.join(scan, file));
-    fs.writeFileSync(path.join(scan, extensionIni(extensions[module])), `[${module}]\nextension="${extensionDirectory}/${module}.so"\n`);
+    // Bottles copy their INIs without the source formula's cleanup. Keep the
+    // tap filenames independent of our configuration to catch priority drift.
+    const tapIni = `${module === 'memcached' ? 30 : 20}-${module}.ini`;
+    fs.writeFileSync(path.join(scan, tapIni), `[${module}]\nextension="${extensionDirectory}/${module}.so"\n`);
     console.log(command(configuredPhp, [...settings, '-r', checks[name]], { env: { ...process.env, ...result.environment } }));
   }
   console.log('Tap-compatible INI replacement passed without PHP startup warnings');
