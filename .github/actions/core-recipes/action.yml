@@ -1,4 +1,4 @@
-name: Prepare a shallow core snapshot for installation tests
+name: Prepare pinned core recipes
 description: Preserve the original core tap and attach the approved shallow snapshot without compiling.
 runs:
   using: composite
@@ -11,20 +11,32 @@ runs:
       run: |
         env -u HOMEBREW_NO_INSTALL_FROM_API bash scripts/build/update-homebrew.sh
         test ! -e "$(brew --repository)/Library/Taps/homebrew/homebrew-core"
-    - name: Select the approved core snapshot
+    - name: Select the requested core snapshot
       id: core
       shell: bash
-      run: echo "commit=$("$PHP_DARWIN_NODE" scripts/cache/approved-dependencies.cjs core)" >> "$GITHUB_OUTPUT"
+      run: |
+        commit=${HOMEBREW_CORE_COMMIT:-$("$PHP_DARWIN_NODE" scripts/cache/approved-dependencies.cjs core)}
+        [[ "$commit" =~ ^[a-f0-9]{40}$ ]]
+        echo "commit=$commit" >> "$GITHUB_OUTPUT"
     - name: Check out core without history
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         repository: Homebrew/homebrew-core
         ref: ${{ steps.core.outputs.commit }}
-        path: homebrew-core-fixture
+        path: homebrew-core-recipes
         fetch-depth: 1
         persist-credentials: false
     - name: Attach the shallow snapshot
       shell: bash
       env:
         CORE_COMMIT: ${{ steps.core.outputs.commit }}
-      run: bash scripts/tests/helpers/core-tap-layout.sh fixture "$GITHUB_WORKSPACE/homebrew-core-fixture" "$CORE_COMMIT"
+      run: bash scripts/tests/helpers/core-tap-layout.sh fixture "$GITHUB_WORKSPACE/homebrew-core-recipes" "$CORE_COMMIT"
+    - name: Apply approved recipe overrides
+      shell: bash
+      env:
+        HOMEBREW_CORE_COMMIT: ${{ steps.core.outputs.commit }}
+      run: |
+        bash scripts/build/pin-core.sh
+        echo "HOMEBREW_CORE_COMMIT=$HOMEBREW_CORE_COMMIT" >> "$GITHUB_ENV"
+        echo 'HOMEBREW_NO_INSTALL_FROM_API=1' >> "$GITHUB_ENV"
+        echo "PHP_DARWIN_CORE_PREPARED=$HOMEBREW_CORE_COMMIT" >> "$GITHUB_ENV"

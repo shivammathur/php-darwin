@@ -5,14 +5,17 @@ const os = require('node:os');
 const path = require('node:path');
 const {spawnSync} = require('node:child_process');
 
-test('temporary native-test core snapshots remain shallow without brew tap, update, or unshallow', t => {
+for (const original of [false, true]) test(`temporary producer recipes preserve ${original ? 'existing' : 'absent'} core without full history`, t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'php-darwin-shallow-core-'));
   t.after(() => fs.rmSync(directory, {recursive: true, force: true}));
   const source = path.join(directory, 'source'), prefix = path.join(directory, 'brew');
   const fixture = path.join(directory, 'fixture'), bin = path.join(directory, 'bin');
   const core = path.join(prefix, 'Library/Taps/homebrew/homebrew-core');
-  fs.mkdirSync(source); fs.mkdirSync(bin); fs.mkdirSync(core, {recursive: true});
-  fs.writeFileSync(path.join(core, 'original'), 'original pinned core');
+  fs.mkdirSync(source); fs.mkdirSync(bin);
+  if (original) {
+    fs.mkdirSync(core, {recursive: true});
+    fs.writeFileSync(path.join(core, 'original'), 'original pinned core');
+  }
   const execute = (program, args, env) => {
     const result = spawnSync(program, args, {encoding: 'utf8', env: {...process.env, ...env}});
     assert.equal(result.status, 0, result.stdout + result.stderr);
@@ -36,7 +39,7 @@ esac
   const env = {PATH: bin + path.delimiter + process.env.PATH, GITHUB_ACTIONS: 'true',
     FIXTURE_PREFIX: prefix, FIXTURE_CORE: core, RUNNER_TEMP: directory,
     GITHUB_ENV: path.join(directory, 'env'), HOMEBREW_CORE_COMMIT: commit,
-    PHP_DARWIN_TEST_CORE_CHECKOUT: core};
+    PHP_DARWIN_CORE_CHECKOUT: core};
   const layout = path.join(__dirname, '../helpers/core-tap-layout.sh');
   execute('bash', [layout, 'prepare'], env);
   execute('bash', [layout, 'fixture', fixture, commit], env);
@@ -45,9 +48,25 @@ esac
   assert.equal(execute('git', ['-C', core, 'rev-list', '--count', 'HEAD']), '1');
   assert.equal(fs.readFileSync(path.join(core, 'recipe'), 'utf8'), 'approved');
   execute('bash', [layout, 'restore'], env);
-  assert.equal(fs.readFileSync(path.join(core, 'original'), 'utf8'), 'original pinned core');
+  assert.equal(fs.existsSync(core), original);
+  if (original) assert.equal(fs.readFileSync(path.join(core, 'original'), 'utf8'), 'original pinned core');
   assert.equal(fs.existsSync(path.join(core, '.git')), false);
   assert.equal(execute('git', ['-C', fixture, 'rev-parse', '--is-shallow-repository']), 'true');
+  assert.ok(fs.readFileSync(env.GITHUB_ENV, 'utf8').endsWith(`PHP_DARWIN_CORE_CHECKOUT=\nPHP_DARWIN_CORE_PREPARED=\nHOMEBREW_NO_INSTALL_FROM_API=${original ? '1' : ''}\n`));
+});
+
+test('pinning never creates a missing core tap implicitly', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'php-darwin-missing-core-'));
+  t.after(() => fs.rmSync(directory, {recursive: true, force: true}));
+  const bin = path.join(directory, 'bin'), core = path.join(directory, 'absent');
+  fs.mkdirSync(bin);
+  fs.writeFileSync(path.join(bin, 'brew'), '#!/bin/sh\n[ "$*" = "--repository homebrew/core" ] || exit 91\nprintf "%s\\n" "$FIXTURE_CORE"\n', {mode: 0o755});
+  const result = spawnSync('bash', [path.join(__dirname, '../../build/pin-core.sh')], {encoding: 'utf8',
+    env: {...process.env, PATH: `${bin}:${process.env.PATH}`, GITHUB_ACTIONS: 'true',
+      HOMEBREW_CORE_COMMIT: 'a'.repeat(40), PHP_DARWIN_CORE_CHECKOUT: '', FIXTURE_CORE: core}});
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /Prepare pinned recipes/);
+  assert.equal(fs.existsSync(core), false);
 });
 
 test('pinning discards modified runner formulae while retaining the local dirty-tree guard', t => {
@@ -83,7 +102,7 @@ test('pinning discards modified runner formulae while retaining the local dirty-
   assert.equal(fs.readFileSync(formula, 'utf8'), 'runner modification\n');
   const result = run('true');
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(fs.existsSync(updated), true, 'CI updates Homebrew before reading current recipes');
+  assert.equal(fs.existsSync(updated), false, 'pinning must not update Homebrew after recipes are attached');
   assert.equal(git(['rev-parse', 'HEAD']), pinned);
   assert.equal(fs.readFileSync(formula, 'utf8'), 'approved formula\n');
   assert.equal(git(['status', '--porcelain']), '');

@@ -36,6 +36,19 @@ test('selective updates retain the approved base and unrelated build tools on ev
   assert.equal(fs.readFileSync(path.join(repository, 'Formula/c/cmake.rb'), 'utf8'), 'old cmake\n');
   assert.equal(fs.readFileSync(path.join(repository, 'Formula/c/curl.rb'), 'utf8'), 'openssl 4 curl\n');
   assert.equal(fs.readFileSync(path.join(repository, 'Formula/lib/libpq.rb'), 'utf8'), 'openssl 4 libpq\n');
+  // Producers start from a single approved commit. Selective newer recipes
+  // must work without retrieving the history or advancing unrelated formulae.
+  const shallow = `${repository}-shallow`;
+  t.after(() => fs.rmSync(shallow, {recursive: true, force: true}));
+  execFileSync('git', ['clone', '--depth=1', `file://${repository}`, shallow], {stdio: 'pipe'});
+  apply(shallow, base, plan.recipe_commits);
+  const shallowGit = args => execFileSync('git', ['-C', shallow, ...args], {encoding: 'utf8'}).trim();
+  assert.equal(shallowGit(['rev-parse', 'HEAD']), base);
+  assert.equal(shallowGit(['rev-parse', '--is-shallow-repository']), 'true');
+  assert.equal(shallowGit(['rev-list', '--count', 'HEAD']), '1');
+  for (const file of Object.keys(files)) {
+    assert.equal(fs.readFileSync(path.join(shallow, file), 'utf8'), fs.readFileSync(path.join(repository, file), 'utf8'));
+  }
   assert.deepEqual(configured(base, {}, plan), plan.recipe_commits);
   assert.deepEqual(configured(latest, {}, plan), {});
   assert.deepEqual(updatePlan(plan, latest, '').recipe_commits, {});

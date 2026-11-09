@@ -52,7 +52,6 @@ permissions:
 env:
   HOMEBREW_DEVELOPER: '1'
   HOMEBREW_NO_AUTO_UPDATE: '1'
-  HOMEBREW_NO_INSTALL_FROM_API: '1'
   HOMEBREW_VERBOSE: '1'
   HOMEBREW_VERBOSE_USING_DOTS: '0'
 
@@ -111,20 +110,9 @@ jobs:
           printf 'http1.1\nmax-time = 600\nretry-max-time = 900\n' > "$RUNNER_TEMP/php-darwin-curlrc"
           echo "HOMEBREW_CURLRC=$RUNNER_TEMP/php-darwin-curlrc" >> "$GITHUB_ENV"
 
-      - name: Clean runner before building PHP
-        # test-bot purges the prefix into /tmp on disposable runners. Shared
-        # runners must retain their installed PHP, services and dependencies.
-        if: ${{ steps.early-checkpoint.outputs.hit != 'true' && runner.environment != 'self-hosted' }}
-        run: |
-          # Cleanup resolves formulae for the image's existing prefix links.
-          # Initialize the tap before that process caches an empty formula list.
-          . scripts/lib/retry.sh
-          php_darwin_retry brew tap --force homebrew/core
-          brew test-bot --only-cleanup-before
-
       - name: Pin Homebrew core before resolving dependencies
         if: ${{ steps.early-checkpoint.outputs.hit != 'true' }}
-        run: bash scripts/build/pin-core.sh
+        uses: ./.github/actions/core-recipes
 
       - name: Restore Homebrew build tools
         if: ${{ steps.early-checkpoint.outputs.hit != 'true' }}
@@ -237,6 +225,9 @@ jobs:
           compression-level: 0
           retention-days: 7
           overwrite: true
+      - name: Restore the runner's original core tap
+        if: always()
+        run: bash scripts/tests/helpers/core-tap-layout.sh restore
 
   test:
     name: Test PHP ${{ inputs.php-version }} packages on ${{ matrix.runner }}

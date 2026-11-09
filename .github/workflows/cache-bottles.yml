@@ -58,7 +58,6 @@ jobs:
         runner: [macos-15, macos-15-intel]
     env:
       HOMEBREW_NO_AUTO_UPDATE: '1'
-      HOMEBREW_NO_INSTALL_FROM_API: '1'
       HOMEBREW_VERBOSE: '1'
       HOMEBREW_VERBOSE_USING_DOTS: '0'
     steps:
@@ -72,12 +71,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: bash scripts/build/archive-tools.sh
       - name: Prepare current formula definitions without installing packages
+        uses: ./.github/actions/core-recipes
+      - name: Prepare PHP and extension formula definitions
         run: |
           bash scripts/build/cleanup-taps.sh
-          brew tap --force homebrew/core
-          export HOMEBREW_CORE_COMMIT
-          HOMEBREW_CORE_COMMIT=$("$PHP_DARWIN_NODE" scripts/cache/approved-dependencies.cjs core)
-          bash scripts/build/pin-core.sh
           for tap in shivammathur/php shivammathur/extensions; do
             brew tap "$tap"
             brew trust "$tap"
@@ -96,6 +93,9 @@ jobs:
             bottle-plan.json
           if-no-files-found: error
           retention-days: 7
+      - name: Restore the runner's original core tap
+        if: always()
+        run: bash scripts/tests/helpers/core-tap-layout.sh restore
 
   matrix:
     name: Deduplicate bottles into one job per dependency

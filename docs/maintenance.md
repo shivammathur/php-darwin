@@ -245,8 +245,13 @@ GitHub's 1,000-assets-per-release limit without deleting reusable builds.
 Ownership reads retry every error up to three attempts, then fail without
 deleting the existing claim. A network outage never authorizes a second builder.
 Healthy owners remain protected throughout the coordination deadline.
-CI repairs an inherited shallow core tap before pinning or running E2E installs,
-preserving its checked-out revision and keeping `brew update` usable.
+Installations and ordinary Homebrew commands use the API when core is absent.
+Dependency planning and cache producers still require the approved Ruby recipes:
+the shared `core-recipes` action preserves the runner's original core tap, updates
+Homebrew through the API, then attaches an `actions/checkout` snapshot with
+`fetch-depth: 1`. Recipe overrides fetch only their pinned commits. Every caller
+restores the original tap (or its absence) afterward; no job clones full core
+history or expands a shallow checkout. Tests never compile packages.
 
 Before Homebrew operations, self-hosted macOS jobs run a bounded process preflight.
 It only recovers an orphaned portable-Ruby Homebrew install/reinstall/upgrade owned

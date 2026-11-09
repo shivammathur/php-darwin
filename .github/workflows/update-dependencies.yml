@@ -122,7 +122,6 @@ jobs:
       HOMEBREW_CORE_COMMIT: ${{ needs.plan.outputs.approved-core }}
       UPSTREAM_CORE_COMMIT: ${{ needs.plan.outputs.upstream }}
       HOMEBREW_NO_AUTO_UPDATE: '1'
-      HOMEBREW_NO_INSTALL_FROM_API: '1'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -136,6 +135,9 @@ jobs:
           path: dependency-discovery-${{ matrix.arch }}.json
           if-no-files-found: error
           retention-days: 30
+      - name: Restore the runner's original core tap
+        if: always()
+        run: bash scripts/tests/helpers/core-tap-layout.sh restore
 
   recipes:
     needs: [plan, discover]
@@ -192,7 +194,6 @@ jobs:
       HOMEBREW_PHP_COMMIT: ${{ needs.plan.outputs.php }}
       HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.plan.outputs.extensions }}
       HOMEBREW_NO_AUTO_UPDATE: '1'
-      HOMEBREW_NO_INSTALL_FROM_API: '1'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -206,6 +207,9 @@ jobs:
           path: dependency-plan-${{ matrix.arch }}.json
           if-no-files-found: error
           retention-days: 30
+      - name: Restore the runner's original core tap
+        if: always()
+        run: bash scripts/tests/helpers/core-tap-layout.sh restore
 
   workers:
     needs: [plan, resolve]
@@ -262,7 +266,6 @@ jobs:
       HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.plan.outputs.extensions }}
       HOMEBREW_DEVELOPER: '1'
       HOMEBREW_NO_AUTO_UPDATE: '1'
-      HOMEBREW_NO_INSTALL_FROM_API: '1'
       HOMEBREW_NO_INSTALL_CLEANUP: '1'
       HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: '1'
       ARCH: ${{ matrix.arch }}
@@ -329,6 +332,9 @@ jobs:
           name: source-bottle-misses-dependencies-${{ matrix.arch }}
           path: ${{ runner.temp }}/SOURCE_BOTTLE_MISSES.jsonl
           retention-days: 7
+      - name: Restore the runner's original core tap
+        if: always()
+        run: bash scripts/tests/helpers/core-tap-layout.sh restore
 
   mirror:
     needs: prepare

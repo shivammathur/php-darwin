@@ -173,7 +173,6 @@ jobs:
       HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.plan.outputs.extensions-commit }}
       HOMEBREW_CORE_COMMIT: ${{ needs.plan.outputs.core-commit }}
       HOMEBREW_NO_AUTO_UPDATE: '1'
-      HOMEBREW_NO_INSTALL_FROM_API: '1'
       HOMEBREW_NO_INSTALL_CLEANUP: '1'
       HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: '1'
       HOMEBREW_VERBOSE: '1'
@@ -190,19 +189,8 @@ jobs:
         run: |
           echo "PHP_DARWIN_BOTTLE_MISSES=$RUNNER_TEMP/bottle-misses.jsonl" >> "$GITHUB_ENV"
           echo "PHP_DARWIN_SOURCE_BOTTLE_MISSES=$RUNNER_TEMP/source-bottle-misses.jsonl" >> "$GITHUB_ENV"
-      - name: Clean the disposable build runner
-        # test-bot assumes a disposable machine and leaves purged kegs in /tmp.
-        if: ${{ runner.environment != 'self-hosted' }}
-        run: |
-          # Cleanup resolves formulae for the image's existing prefix links.
-          # Initialize the tap before that process caches an empty formula list.
-          . scripts/lib/retry.sh
-          php_darwin_retry brew tap --force homebrew/core
-          brew test-bot --only-cleanup-before
       - name: Pin approved dependencies before restoring tools
-        run: |
-          bash scripts/build/pin-core.sh
-          echo "PHP_DARWIN_CORE_PREPARED=$HOMEBREW_CORE_COMMIT" >> "$GITHUB_ENV"
+        uses: ./.github/actions/core-recipes
       - name: Check the cleaned Homebrew environment
         run: bash scripts/build/check-homebrew.sh
       - name: Restore archive tools from the bottle cache
@@ -251,6 +239,9 @@ jobs:
           path: ${{ runner.temp }}/source-bottle-misses.jsonl
           if-no-files-found: ignore
           compression-level: 0
+      - name: Restore the runner's original core tap
+        if: always()
+        run: bash scripts/tests/helpers/core-tap-layout.sh restore
 
   compatibility:
     needs: [plan, build, reuse]

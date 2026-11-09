@@ -106,9 +106,15 @@ if(require.main===module) {
       const versions=Object.fromEntries(Object.entries(lock.platforms[platform.arch].packages).map(([name,value])=>[name,value.version]));
       const before=graph(Object.keys(versions),versions);
       const repository=command('brew',['--repository','homebrew/core']).trim();
-      command('git',['-C',repository,'fetch','--no-tags','origin',process.env.UPSTREAM_CORE_COMMIT]);
-      command('git',['-C',repository,'reset','--hard',process.env.UPSTREAM_CORE_COMMIT]);
-      const after=graph(roots(),{},versions);
+      command('git',['-C',repository,'fetch','--depth=1','--no-tags','origin',process.env.UPSTREAM_CORE_COMMIT]);
+      let after;
+      try {
+        command('git',['-C',repository,'reset','--hard',process.env.UPSTREAM_CORE_COMMIT]);
+        after=graph(roots(),{},versions);
+      } finally {
+        command('git',['-C',repository,'reset','--hard',process.env.HOMEBREW_CORE_COMMIT]);
+        recipes.apply(repository, process.env.HOMEBREW_CORE_COMMIT, recipes.configured(process.env.HOMEBREW_CORE_COMMIT));
+      }
       fs.writeFileSync(`dependency-discovery-${platform.arch}.json`,JSON.stringify({before,after},null,2)+'\n');
     } else if(mode==='select') {
       const inputs=JSON.parse(fs.readFileSync('dependency-inputs.json'));

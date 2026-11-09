@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Temporarily hide core while a native job tests the actual release installer.
+# Preserve the original tap during no-core installs or pinned recipe preparation.
 set -euo pipefail
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 . "$script_dir/../../lib/lib.sh"
@@ -32,7 +32,7 @@ case "${1:-}" in
     printf '%s\n' "$commit" > "$state.fixture"
     mkdir -p "${core%/*}"
     cp -R "$fixture" "$core"
-    printf 'PHP_DARWIN_TEST_CORE_CHECKOUT=%s\n' "$core" >> "${GITHUB_ENV:?}"
+    printf 'PHP_DARWIN_CORE_CHECKOUT=%s\n' "$core" >> "${GITHUB_ENV:?}"
     ;;
   restore)
     [ -f "$state" ] || exit 0
@@ -52,6 +52,10 @@ case "${1:-}" in
       fi
     fi
     rm -f "$state" "$state.fixture"
+    if [ -n "${GITHUB_ENV:-}" ]; then
+      printf 'PHP_DARWIN_CORE_CHECKOUT=\nPHP_DARWIN_CORE_PREPARED=\nHOMEBREW_NO_INSTALL_FROM_API=%s\n' \
+        "$(if [ -d "$core" ]; then printf 1; fi)" >> "$GITHUB_ENV"
+    fi
     [ "$unexpected" = false ] || php_darwin_die 'native installation unexpectedly created homebrew/core'
     ;;
   *) exit 2 ;;

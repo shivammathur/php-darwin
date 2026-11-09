@@ -60,6 +60,9 @@ See [maintenance](docs/maintenance.md) for detailed operations and troubleshooti
 
 - PHP and optional-extension workflows consume approved dependency bottles. They
   must never upgrade or compile build tools, even during a linked-library transition.
+- Use the API when core is absent. Producers resolve approved recipes through
+  the `core-recipes` action's temporary shallow snapshot and always restore the
+  original tap afterward; never tap core implicitly or fetch its full history.
 - Tap dependency declarations are fingerprinted separately from source versions
   and bottle hashes. Changed declarations trigger `update-dependencies.yml`;
   unchanged checks stay on Linux. Native Homebrew resolves the affected graph.

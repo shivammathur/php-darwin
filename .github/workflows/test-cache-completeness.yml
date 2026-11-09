@@ -45,7 +45,6 @@ jobs:
       HOMEBREW_PHP_COMMIT: ${{ needs.plan.outputs.php }}
       HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.plan.outputs.extensions }}
       HOMEBREW_NO_AUTO_UPDATE: '1'
-      HOMEBREW_NO_INSTALL_FROM_API: '1'
       HOMEBREW_NO_INSTALL_CLEANUP: '1'
       HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: '1'
       PHP_DARWIN_CACHE_ONLY: 'true'
@@ -55,8 +54,6 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/dependency-environment
-        with:
-          shallow-core: 'true'
       - name: Verify full dependency coverage and cold and warm installs without compiling
         run: '"$PHP_DARWIN_NODE" scripts/tests/native/cache-completeness.test.cjs'
       - uses: ./.github/actions/upload-artifacts
