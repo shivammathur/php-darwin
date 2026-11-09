@@ -121,6 +121,7 @@ jobs:
           ts: ${{ matrix.ts }}
           release-receipt: ${{ needs.repackage.outputs.receipt }}
           release-receipt-sha256: ${{ needs.repackage.outputs.receipt-sha256 }}
+          without-core: 'true'
           github-token: ${{ secrets.TOKEN || github.token }}
   publish:
     if: inputs.publish && github.ref == 'refs/heads/main'

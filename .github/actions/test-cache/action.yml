@@ -31,6 +31,9 @@ inputs:
   release-receipt-sha256:
     default: ''
     description: SHA256 of the staged release receipt
+  without-core:
+    default: 'false'
+    description: Verify installation without homebrew/core and restore its original layout
 runs:
   using: composite
   steps:
@@ -63,6 +66,11 @@ runs:
     - name: Check the cleaned Homebrew environment
       shell: bash
       run: bash scripts/build/check-homebrew.sh
+    - name: Hide core for release installation validation
+      id: core-layout
+      if: inputs.without-core == 'true'
+      shell: bash
+      run: bash scripts/tests/helpers/core-tap-layout.sh prepare
     - name: Download existing architecture caches
       if: inputs.release-receipt == ''
       uses: ./.github/actions/download-artifacts
@@ -245,6 +253,11 @@ runs:
         TS: zts
       shell: bash
       run: bash scripts/tests/native/install.test.sh reset
+
+    - name: Verify core stayed absent and restore the original layout
+      if: ${{ always() && steps.core-layout.outcome != 'skipped' && steps.core-layout.outcome != '' }}
+      shell: bash
+      run: bash scripts/tests/helpers/core-tap-layout.sh restore
 
     - name: Preserve installation rollback diagnostics
       if: ${{ failure() }}

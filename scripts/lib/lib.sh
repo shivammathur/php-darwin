@@ -17,12 +17,20 @@ php_darwin_die() {
 }
 
 php_darwin_configure_homebrew_environment() {
+  local repository
   export HOMEBREW_NO_AUTO_UPDATE=1
   export HOMEBREW_NO_AUTOREMOVE=1
   export HOMEBREW_NO_ENV_HINTS=1
   export HOMEBREW_NO_INSTALL_CLEANUP=1
   export HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1
   export HOMEBREW_NO_INSTALL_FROM_API=1
+  # Fallback Homebrew commands must not clone all of core on runners that
+  # resolve core formulae through the API. Existing pinned checkouts stay local.
+  repository=$(brew --repository 2>/dev/null) || return 0
+  if [[ "$repository" = /* ]] && [ -d "$repository/Library/Homebrew" ] && \
+    [ ! -d "$repository/Library/Taps/homebrew/homebrew-core" ]; then
+    unset HOMEBREW_NO_INSTALL_FROM_API
+  fi
 }
 
 php_darwin_tap_repository_path() {
