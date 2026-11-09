@@ -99,9 +99,27 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash scripts/build/archive-tools.sh
+      - name: Check whether the core-present fixture needs a checkout
+        id: core-fixture
+        if: matrix.core == 'present'
+        run: |
+          core="$(brew --repository)/Library/Taps/homebrew/homebrew-core"
+          if [ ! -e "$core" ]; then echo 'checkout=true' >> "$GITHUB_OUTPUT"; fi
+          echo "commit=$("$PHP_DARWIN_NODE" scripts/cache/approved-dependencies.cjs core)" >> "$GITHUB_OUTPUT"
+      - name: Shallow checkout of core for compatibility testing
+        if: steps.core-fixture.outputs.checkout == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: Homebrew/homebrew-core
+          ref: ${{ steps.core-fixture.outputs.commit }}
+          path: homebrew-core-fixture
+          fetch-depth: 1
+          persist-credentials: false
       - name: Prepare cold PHP installs on the CI runner
         run: bash scripts/tests/helpers/remove-preinstalled-php.sh
       - name: Verify published PHP and extensions with both Homebrew layouts
+        env:
+          PHP_DARWIN_CORE_FIXTURE: ${{ github.workspace }}/homebrew-core-fixture
         run: bash scripts/tests/e2e/core-tap.test.sh
       - uses: ./.github/actions/upload-artifacts
         if: always()

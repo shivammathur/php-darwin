@@ -35,7 +35,12 @@ trap 'exit 143' TERM
 if [ "$CORE_TAP_STATE" = absent ] && [ "$original" = true ]; then
   mv "$core" "$backup" || sudo -n mv "$core" "$backup"
 elif [ "$CORE_TAP_STATE" = present ] && [ "$original" = false ]; then
-  brew tap --force homebrew/core
+  fixture=${PHP_DARWIN_CORE_FIXTURE:?Missing shallow core fixture}
+  [ "$(git -C "$fixture" rev-parse --is-shallow-repository)" = true ] || \
+    php_darwin_die 'core fixture must use a shallow checkout'
+  mkdir -p "${core%/*}"
+  # Keep the checkout at its original path for actions/checkout post-job cleanup.
+  cp -R "$fixture" "$core"
 fi
 check_core() {
   if [ "$CORE_TAP_STATE" = absent ]; then
