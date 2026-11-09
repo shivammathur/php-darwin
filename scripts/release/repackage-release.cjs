@@ -177,12 +177,15 @@ async function verifyRemote(receipt, tag, {run, retry, store}) {
 }
 async function prune(assets, current, previous, receiptName, {run, retry}) {
   const retained = new Set([current, previous].flatMap(manifest => manifest.assets.flatMap(a => [a.download, a.download + '.sha256'])));
+  // An installer-only/no-change publication is still the same archive
+  // generation. Keep its already-retained predecessor on GitHub as well.
+  const changed = current.assets.some(a => !previous.assets.some(p => p.download === a.download));
   const archives = /^php_[0-9]+\.[0-9]+-(nts|zts)-(debug|release)\+darwin_(arm64|x86_64)\.[a-f0-9]{64}\.tar\.zst(\.sha256)?$/;
   const receipts = [...assets.values()].filter(a => receiptPattern.test(a.name))
     .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
   const keptReceipts = new Set([receiptName, ...receipts.slice(0, 10).map(a => a.name)]);
   for (const [name, asset] of assets) {
-    if (!(archives.test(name) && !retained.has(name)) && !(receiptPattern.test(name) && !keptReceipts.has(name))) continue;
+    if (!(changed && archives.test(name) && !retained.has(name)) && !(receiptPattern.test(name) && !keptReceipts.has(name))) continue;
     // Retain every historical immutable Cloudflare URL for older installers.
     // GitHub keeps the current and immediately previous archive generations.
     await retry(`Retire GitHub asset ${name}`, () => run('gh', ['api', '--method', 'DELETE',

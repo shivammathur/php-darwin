@@ -158,4 +158,6 @@ test('retention preserves both public generations and all Cloudflare history', a
   await prune(assets, f.manifest, previous, 'repackage-42-1.json', {retry: f.options.retry,
     run: async (program, args) => {assert.equal(program, 'gh'); assert.equal(args[2], 'DELETE'); removed.push(Number(args.at(-1).split('/').at(-1)));}});
   assert.deepEqual(removed, [assets.get(older).id, assets.get(older + '.sha256').id]);
+  await prune(assets, f.manifest, f.manifest, 'repackage-42-1.json', {retry: f.options.retry,
+    run: async () => {assert.fail('An unchanged archive generation must retain its earlier GitHub fallback');}});
 });
