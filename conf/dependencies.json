@@ -1141,26 +1141,6 @@
             "url": "https://ghcr.io/v2/homebrew/core/libpq/blobs/sha256:e4caec46b9de2c0015e898e47440f01e83ee9368a14952e473bc9dd2bf7a314b"
           }
         },
-        "util-macros": {
-          "version": "1.20.2",
-          "bottle": {
-            "formula": "util-macros",
-            "version": "1.20.2",
-            "tag": "all",
-            "sha256": "1667d87ebab1bae1e48e9ef068534059be1bc7398cea4a39de35cb850109bd79",
-            "url": "https://ghcr.io/v2/homebrew/core/util-macros/blobs/sha256:1667d87ebab1bae1e48e9ef068534059be1bc7398cea4a39de35cb850109bd79"
-          }
-        },
-        "xtrans": {
-          "version": "1.6.0",
-          "bottle": {
-            "formula": "xtrans",
-            "version": "1.6.0",
-            "tag": "all",
-            "sha256": "eac4f242f00e4216244a9da8f9470bd0bfd9af02ee9d305d4e5be8bc35aa5143",
-            "url": "https://ghcr.io/v2/homebrew/core/xtrans/blobs/sha256:eac4f242f00e4216244a9da8f9470bd0bfd9af02ee9d305d4e5be8bc35aa5143"
-          }
-        },
         "xorgproto": {
           "version": "2026.1",
           "bottle": {
@@ -2025,26 +2005,6 @@
             "url": "https://ghcr.io/v2/shivammathur/php/autoconf/2.69/blobs/sha256:96301e5356fdc3b29a198b42020b3eba440e646ba621d7e067937465b5f2769e"
           }
         },
-        "docbook": {
-          "version": "5.2.1",
-          "bottle": {
-            "formula": "docbook",
-            "version": "5.2.1",
-            "tag": "arm64_sonoma",
-            "sha256": "7b7417a524db49b20339879a597e192a07be149a2a9249245da83718f488c7ff",
-            "url": "https://ghcr.io/v2/homebrew/core/docbook/blobs/sha256:7b7417a524db49b20339879a597e192a07be149a2a9249245da83718f488c7ff"
-          }
-        },
-        "docbook-xsl": {
-          "version": "1.79.2_1",
-          "bottle": {
-            "formula": "docbook-xsl",
-            "version": "1.79.2_1",
-            "tag": "arm64_sonoma",
-            "sha256": "97d7b10fee85c4ad08218efa4b9527b40a412d1e6b439612a76c5eb9c3fe22cd",
-            "url": "https://ghcr.io/v2/homebrew/core/docbook-xsl/blobs/sha256:97d7b10fee85c4ad08218efa4b9527b40a412d1e6b439612a76c5eb9c3fe22cd"
-          }
-        },
         "automake": {
           "version": "1.18.1_1",
           "bottle": {
@@ -2063,16 +2023,6 @@
             "tag": "arm64_sequoia",
             "sha256": "7d05da26db392a008abe89706adcf8b089e08d3431535ac95a5c984ceda88153",
             "url": "https://ghcr.io/v2/homebrew/core/icu4c/79/blobs/sha256:7d05da26db392a008abe89706adcf8b089e08d3431535ac95a5c984ceda88153"
-          }
-        },
-        "p7zip": {
-          "version": "17.06",
-          "bottle": {
-            "formula": "p7zip",
-            "version": "17.06",
-            "tag": "arm64_sequoia",
-            "sha256": "369d3a03a92f93bac16dd14b0a0bdfdd89ca55acbd503a5df2e6bb5db090570a",
-            "url": "https://ghcr.io/v2/homebrew/core/p7zip/blobs/sha256:369d3a03a92f93bac16dd14b0a0bdfdd89ca55acbd503a5df2e6bb5db090570a"
           }
         },
         "popt": {
@@ -2133,26 +2083,6 @@
             "tag": "arm64_sequoia",
             "sha256": "0ec9bf8082245c008803b42dcae3e6a0c8cd7a67aed589d9b6482b115c0a543b",
             "url": "https://ghcr.io/v2/homebrew/core/libyaml/blobs/sha256:0ec9bf8082245c008803b42dcae3e6a0c8cd7a67aed589d9b6482b115c0a543b"
-          }
-        },
-        "gnu-getopt": {
-          "version": "2.42.4",
-          "bottle": {
-            "formula": "gnu-getopt",
-            "version": "2.42.4",
-            "tag": "arm64_sequoia",
-            "sha256": "a11448e84e277c582599f0b5edc94e1e4961c6c7fc958eb3074ab5c7b4834168",
-            "url": "https://ghcr.io/v2/homebrew/core/gnu-getopt/blobs/sha256:a11448e84e277c582599f0b5edc94e1e4961c6c7fc958eb3074ab5c7b4834168"
-          }
-        },
-        "xmlto": {
-          "version": "0.0.29",
-          "bottle": {
-            "formula": "xmlto",
-            "version": "0.0.29",
-            "tag": "arm64_sequoia",
-            "sha256": "2411a7fc2154cbd347d2aaa8ab9e176d66fee18b727568baa3b8eeb65f71fd5c",
-            "url": "https://ghcr.io/v2/homebrew/core/xmlto/blobs/sha256:2411a7fc2154cbd347d2aaa8ab9e176d66fee18b727568baa3b8eeb65f71fd5c"
           }
         }
       }
@@ -7428,7 +7358,7 @@
   },
   "tap_inputs": {
     "schema": 1,
-    "sha256": "581eb769e18962bb34813c2fa73207635413a9bad4252b3bebd44d0e4d4d5af4",
+    "sha256": "ad5940f3d198017ce378ae386b91991d7caa71de7b819a20204f3c3f0a0e42a4",
     "records": {
       "homebrew-php/Formula/autoconf@2.69.rb": "fd33eadb8f275a2d089c7d112bfb39d680cc838b3af2f61ab4fb35f09dbeff7d",
       "homebrew-php/Formula/bison@2.7.rb": "54902fa819dd1736bcca826196ee75b2608337b4b83e484829446961fd4e2669",
@@ -12769,10 +12699,10 @@
       "homebrew-php/Formula/php@8.6-debug.rb": "0e4ede942ebb453e08a94f125b133994a82030eb0f69a02d32ad6be3f3e35882",
       "homebrew-php/Formula/php@8.6-zts.rb": "1b7684a448009c94d49349d7def67b340a82e8693f4f5021c77747f51c36e3ae",
       "homebrew-php/Formula/php@8.6.rb": "1094eec441d416e83770737b8c30ede055d0413126e3b9e46d29f5e4025a42b0",
-      "homebrew-php/Formula/php@8.7-debug-zts.rb": "6a0c2bb38388fe2ec8271275cf2a5bab788c7b5124350120341a1c5311363ac0",
-      "homebrew-php/Formula/php@8.7-debug.rb": "d4d475027f9242609193a39181056433da061ea66ceedbc632421daf85f23664",
-      "homebrew-php/Formula/php@8.7-zts.rb": "b4d2d807d8e0e97ce28f3648d53385513c25664947347657f67c5f1b75121fe5",
-      "homebrew-php/Formula/php@8.7.rb": "b7c31fd6b20ed23eb9ff400aaae9d7053c14dfc64a8fb288e74fbd3184465454",
+      "homebrew-php/Formula/php@8.7-debug-zts.rb": "77f8e7de774f69c4de68bb60ab3051948ca60913013ae4a2a4db39d034dc7bc7",
+      "homebrew-php/Formula/php@8.7-debug.rb": "5101788c371622bf588cb810732758d83221684173604a0de672d8b176abb702",
+      "homebrew-php/Formula/php@8.7-zts.rb": "a05c6cc251c6e24e0072336e727cd37dd02352cdc7e3267e2a1c309ef7035588",
+      "homebrew-php/Formula/php@8.7.rb": "22b97d59d0d6195195868387e87d039df9515e7a44d95322cbf937605e2e17e2",
       "homebrew-extensions/Formula/amqp@5.6.rb": "4bbfc54cb9797357863a7e78e30d13d90da4b07e9e1d8428433dc920c5c94b29",
       "homebrew-extensions/Formula/amqp@7.0.rb": "8577b42a3f0d4c0295d510b14542a44108971a9dbf8b47900a86c8091fbfb28d",
       "homebrew-extensions/Formula/amqp@7.1.rb": "99f9190e4269b0ac8620fc4a813cf785548da6f86e587727234c21b4857be5f1",
