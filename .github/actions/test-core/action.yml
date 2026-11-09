@@ -1,5 +1,5 @@
-name: Prepare a shallow core snapshot for tests
-description: Update Homebrew before attaching a temporary shallow core checkout; retain the original tap for restoration.
+name: Prepare a shallow core snapshot for installation tests
+description: Preserve the original core tap and attach the approved shallow snapshot without compiling.
 runs:
   using: composite
   steps:
@@ -23,7 +23,7 @@ runs:
         path: homebrew-core-fixture
         fetch-depth: 1
         persist-credentials: false
-    - name: Attach the shallow snapshot for native tests
+    - name: Attach the shallow snapshot
       shell: bash
       env:
         CORE_COMMIT: ${{ steps.core.outputs.commit }}

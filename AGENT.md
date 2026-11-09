@@ -18,7 +18,7 @@ bash scripts/tests/run.sh
 actionlint
 ```
 
-`run.sh check` runs the build preflight; `unit` and `integration` select local
+`run.sh check` runs local syntax and configuration checks; `unit` and `integration` select local
 suites. Native cache and published-install checks run in GitHub Actions.
 
 Builds prefer Cloudflare for bottles; normal PHP installs prefer GitHub Releases
@@ -43,8 +43,6 @@ may report timings as workflow artifacts; source builds retain verbose configure
 | `cache-source-bottles.yml` | Mirror reusable bottles built from source |
 | `mirror.yml` | Mirror published PHP packages or refresh their installers |
 | `publish.yml` / `publish-extensions.yml` | Retry publication from validated artifacts without rebuilding |
-| `validate.yml` | Run local regression tests and artifact-transfer checks |
-| `test-source-cache.yml` | Test native source builds and cold/warm restoration |
 | `update-dependencies.yml` | Detect tap dependency changes, plan both architectures, verify cold/warm restores and approve the snapshot |
 | `prepare-dependency.yml` / `prepare-build-tool.yml` | Separate per-formula runtime-library and build-tool workers; independent workers run in parallel |
 | `test.yml` / `e2e.yml` | Validate build artifacts and published installations |
@@ -53,7 +51,8 @@ may report timings as workflow artifacts; source builds retain verbose configure
 
 The local suite requires Bash, Node.js 24+, Ruby 3.1+, Python 3, jq, Zstd, Git, curl, tar, zip and
 unzip. On macOS it uses Homebrew's installed portable Ruby when available.
-Native Homebrew and authenticated GitHub tests run separately in Actions.
+Workflow validation and simulated regression tests run locally. Actions tests
+only install prepared caches; they never compile packages or compiler probes.
 
 See [maintenance](docs/maintenance.md) for detailed operations and troubleshooting.
 
@@ -95,6 +94,6 @@ See [maintenance](docs/maintenance.md) for detailed operations and troubleshooti
   and `archive-policy.json` own platform, extension and packaging policy.
 - To refresh existing archives, use `mirror.yml` with `repackage=true`. Linux verifies
   input checksums and proves all runtime members byte-for-byte and attribute identical.
-  The regression suite gates repacking; both architectures test all variants and
+  Run local checks before dispatching; both architectures test all variants and
   supported optional packs before a version can publish. No PHP compilation
   is permitted in this path. Publication fails if the input release has changed.

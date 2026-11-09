@@ -246,9 +246,13 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
     }
     if (item.bottled && !(target && forceSource)) {
       const incomplete = item.missing_build_files?.length > 0;
-      if (incomplete) log(`Restoring incomplete ${item.full_name} bottle; missing: ${item.missing_build_files.join(', ')}`);
-      run('brew', incomplete ? ['reinstall', '--formula', '--verbose', '--force-bottle', item.full_name] :
-        ['install', '--formula', '--force-bottle', ...flags, item.full_name], { inherit: true });
+      if (incomplete) {
+        log(`Restoring incomplete ${item.full_name} bottle; missing: ${item.missing_build_files.join(', ')}`);
+        // Reinstall can resolve and build dependencies again. The complete
+        // dependency plan is already installed, so replace only this keg.
+        run('brew', ['uninstall', '--formula', '--force', '--ignore-dependencies', item.full_name], {inherit: true});
+      }
+      run('brew', ['install', '--formula', '--force-bottle', ...flags, item.full_name], { inherit: true });
       metric({ result: 'upstream-bottle' });
       continue;
     }
@@ -265,15 +269,17 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
     let missReason = 'not-cached';
     try {
       bottle = readBottle(directory, key);
-      if (!bottle) {
-        // Never use a partial/prefix match for compiled packages.
-        const restoredKey = await cache.restoreCache([directory], key, [], build);
-        if (restoredKey === key) bottle = readBottle(directory, key);
-        else if (cache.missReason) missReason = cache.missReason(key, build);
-      }
     } catch (error) {
-      missReason = 'cache-unavailable-or-invalid';
-      warn(`Source cache unavailable for ${item.full_name}: ${error.message}`);
+      warn(`Local bottle rejected for ${item.full_name}; restoring the published cache: ${error.message}`);
+    }
+    if (!bottle) {
+      // Transfers retry in the cache client. An exhausted download/validation
+      // error must propagate; only a confirmed absent key permits compilation.
+      const restoredKey = await cache.restoreCache([directory], key, [], build);
+      if (restoredKey === key) {
+        bottle = readBottle(directory, key);
+        if (!bottle) throw new Error(`Restored bottle is missing: ${item.full_name} (${key})`);
+      } else if (cache.missReason) missReason = cache.missReason(key, build);
     }
     if (bottle) {
       log(`Restoring source bottle: ${item.full_name} ${item.version}`);
@@ -287,21 +293,16 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
       continue;
     }
     const canBuild = sourceBuilds || (target && item.full_name === formula && extensionSource);
-    if (cacheOnly || !canBuild) {
+    if (cacheOnly || cache.readOnly || !canBuild) {
       throw new Error(`Required bottle is unavailable: ${item.full_name} ${item.version} (${key}); ${!canBuild ? `${platform.arch} is bottle-only; source compilation is disabled by conf/platforms.json for this target` : 'prepare its cache before installation'}`);
     }
     const buildMissing = async (waitedMs = 0) => {
       // Another PHP version may have produced this library while this job
       // waited for ownership. Recheck the exact key before compiling anything.
       if (cache.withBuildLock && !cache.readOnly) {
-        let cached;
-        try {
-          const restored = await cache.restoreCache([directory], key, [], build);
-          if (restored === key) cached = readBottle(directory, key);
-        } catch (error) {
-          missReason = 'cache-unavailable-or-invalid';
-          warn(`Source cache unavailable while owning ${item.full_name}: ${error.message}`);
-        }
+        const restored = await cache.restoreCache([directory], key, [], build);
+        const cached = restored === key ? readBottle(directory, key) : undefined;
+        if (restored === key && !cached) throw new Error(`Restored bottle is missing: ${item.full_name} (${key})`);
         if (cached) {
           run('brew', ['install', '--formula', ...flags, path.resolve(cached)], {
             inherit: true, env: { HOMEBREW_DEVELOPER: '1' },
@@ -345,17 +346,17 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
       const bottleMs = Date.now() - bottleStarted;
       result.built++;
       const uploadStarted = Date.now();
-      let saved = cache.readOnly ? undefined : true;
+      let saved = true;
       let saveError;
       try {
-        if (!cache.readOnly) await cache.saveCache([directory], key);
+        await cache.saveCache([directory], key);
       } catch (error) {
         saved = false;
-        saveError = error.message;
-        warn(`Could not save source bottle for ${item.full_name}: ${error.message}`);
+        saveError = error;
       }
       metric({ result: 'built', key, missReason, waitedMs, compileMs, bottleMs,
-        uploadMs: Date.now() - uploadStarted, saved, ...(saveError ? { saveError } : {}) });
+        uploadMs: Date.now() - uploadStarted, saved, ...(saveError ? { saveError: saveError.message } : {}) });
+      if (saveError) throw new Error(`Could not publish source bottle for ${item.full_name}: ${saveError.message}`, {cause: saveError});
     };
     if (cache.withBuildLock && !cache.readOnly) {
       log(`Acquiring source build ownership: ${item.full_name} (${key})`);

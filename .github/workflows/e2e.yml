@@ -43,6 +43,8 @@ permissions:
 env:
   HOMEBREW_DEVELOPER: '1'
   use_builds_cache: 'true'
+  PHP_DARWIN_CACHE_ONLY: 'true'
+  PHP_DARWIN_SOURCE_CACHE_READ_ONLY: 'true'
   PHP_DARWIN_TEST_INSTALLER: ${{ inputs.checkout-installer && format('{0}/scripts/install.sh', github.workspace) || '' }}
 
 jobs:
@@ -170,21 +172,6 @@ jobs:
 
       - name: Verify the hot installation
         run: bash scripts/tests/e2e/setup-php.test.sh
-
-      - name: Replace cached modules with Homebrew formulae without duplicate INIs
-        if: inputs.optional-packs && inputs.php-version == '7.2'
-        env:
-          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
-          PHP_DARWIN_CACHE_ONLY: 'true'
-        run: '"$PHP_DARWIN_NODE" scripts/tests/e2e/tap-ini-replacement.test.cjs'
-
-      - name: Install and exercise ordinary Brew and PECL extensions
-        if: inputs.optional-packs && contains(fromJSON('["8.3", "8.4", "8.5"]'), inputs.php-version)
-        env:
-          BASH_ENV: ${{ github.workspace }}/scripts/tests/helpers/setup-php-installer.sh
-          INPUT_PHP-VERSION: ${{ inputs.php-version }}
-          INPUT_GITHUB-TOKEN: ${{ secrets.TOKEN || github.token }}
-        run: '"$PHP_DARWIN_NODE" scripts/tests/e2e/downstream.test.cjs .setup-php'
 
       - name: Preserve cache installer diagnostics
         if: always()

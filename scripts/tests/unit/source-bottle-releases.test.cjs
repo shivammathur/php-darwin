@@ -831,7 +831,9 @@ test('legacy PHP and dependency keys restore across code edits without replacing
     const incompatible = {...updated, dependencies: [{name: 'libxml2', version: '2'}]};
     assert.equal(await f.cache.restoreCache([path.join(f.root, 'incompatible')], keyFor(incompatible), [], incompatible), undefined);
     f.state.assets[0].data[0] ^= 1;
-    assert.equal(await f.cache.restoreCache([path.join(f.root, 'corrupt')], key, [], updated), undefined);
+    f.state.delays.length = 0;
+    await assert.rejects(f.cache.restoreCache([path.join(f.root, 'corrupt')], key, [], updated), /checksum/);
+    assert.deepEqual(f.state.delays, [1000, 2000]);
   }
 });
 

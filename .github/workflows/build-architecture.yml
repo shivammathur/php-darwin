@@ -45,9 +45,6 @@ on:
       reuse-archives:
         default: true
         type: boolean
-      force-source:
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -157,14 +154,12 @@ jobs:
         uses: ./.github/actions/source-cache
         with:
           release: ${{ inputs.source-cache-release }}
-          force-source: ${{ inputs.force-source }}
 
       - name: Cache ${{ matrix.build }}/${{ matrix.ts }} coverage extensions
         if: ${{ steps.early-checkpoint.outputs.hit != 'true' }}
         uses: ./.github/actions/source-cache
         with:
           release: ${{ inputs.source-cache-release }}
-          force-source: ${{ inputs.force-source }}
           stage: extensions
 
       - name: Restore verified ${{ matrix.build }}/${{ matrix.ts }} archive checkpoint

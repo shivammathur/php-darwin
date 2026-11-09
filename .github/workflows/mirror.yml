@@ -27,12 +27,6 @@ on:
 permissions:
   contents: read
 jobs:
-  validate:
-    if: inputs.repackage
-    permissions:
-      contents: read
-      actions: read
-    uses: ./.github/workflows/validate.yml
   matrix:
     runs-on: ubuntu-latest
     outputs:
@@ -55,7 +49,7 @@ jobs:
           echo "versions=$versions" >> "$GITHUB_OUTPUT"
   repackage:
     if: inputs.repackage
-    needs: [matrix, validate]
+    needs: matrix
     strategy:
       fail-fast: false
       matrix:

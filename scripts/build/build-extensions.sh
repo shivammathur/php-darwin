@@ -3,6 +3,8 @@
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=scripts/lib/lib.sh
 . "$script_dir/../lib/lib.sh"
+[ -n "${PHP_DARWIN_SOURCE_CACHE_NODE:-}" ] && [ -n "${PHP_DARWIN_SOURCE_CACHE_ACTION:-}" ] || \
+  php_darwin_die 'Use the source-cache action to restore approved dependencies and cache missing extension bottles'
 php_darwin_configure_homebrew_environment
 export HOMEBREW_VERBOSE=1 HOMEBREW_VERBOSE_USING_DOTS=0
 
@@ -12,7 +14,6 @@ ts=${TS:?}
 source_commit=${HOMEBREW_EXTENSIONS_COMMIT:?}
 formula=$(php_darwin_formula "$version" "$build" "$ts") || exit 1
 config_id=$(php_darwin_config_id "$version" "$build" "$ts") || exit 1
-suffix=$(php_darwin_formula_suffix "$build" "$ts") || exit 1
 extension_tap=$(php_darwin_package_config extension_tap) || exit 1
 extension_repository=$(php_darwin_package_config extension_tap_repository) || exit 1
 brew_prefix=$(brew --prefix) || php_darwin_die 'could not resolve the Homebrew prefix'
@@ -148,22 +149,9 @@ for extension_reference in "${extension_references[@]}"; do
   fi
 done
 
-if [ -n "${PHP_DARWIN_SOURCE_CACHE_NODE:-}" ]; then
-  "$PHP_DARWIN_SOURCE_CACHE_NODE" "${PHP_DARWIN_SOURCE_CACHE_ACTION:?}" install-extensions \
-    "$extension_tap_path/Abstract/abstract-php-extension.rb" "$brew_prefix/opt/$formula" \
-    "${extension_references[@]}" || php_darwin_die "could not cache PHP $version extension bottles"
-elif [ "$(php_darwin_platform_value "$(php_darwin_normalize_arch "$(uname -m)")" source_builds)" != true ]; then
-  php_darwin_die 'This platform requires the bottle-only source-cache action; direct source fallback is disabled'
-elif [ -n "$suffix" ]; then
-  brew install --verbose --build-from-source --skip-link \
-    "${extension_references[@]}" || \
-    php_darwin_die "could not build cached PHP $version extensions"
-else
-  # Homebrew pours compatible bottles and builds only unavailable formulae.
-  brew install --verbose --skip-link \
-    "${extension_references[@]}" || \
-    php_darwin_die "could not install cached PHP $version extensions"
-fi
+"$PHP_DARWIN_SOURCE_CACHE_NODE" "$PHP_DARWIN_SOURCE_CACHE_ACTION" install-extensions \
+  "$extension_tap_path/Abstract/abstract-php-extension.rb" "$brew_prefix/opt/$formula" \
+  "${extension_references[@]}" || php_darwin_die "could not cache PHP $version extension bottles"
 
 extension_dir=$("$brew_prefix/opt/$formula/bin/php-config" --extension-dir) || \
   php_darwin_die 'could not resolve the PHP extension directory'

@@ -7,7 +7,7 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 [ "${GITHUB_ACTIONS:-}" = true ] || [ "${PHP_DARWIN_ALLOW_LOCAL_BUILD:-}" = true ] || \
   php_darwin_die 'build.sh may only clean Homebrew on an Actions runner (set PHP_DARWIN_ALLOW_LOCAL_BUILD=true to override)'
 
-stage=${1:-all}
+stage=${1:?Expected prepare, cleanup, snapshot-dependencies, finalize, package, verify, or reset}
 version=${PHP_VERSION:?}
 build=${BUILD:?}
 ts=${TS:?}
@@ -205,11 +205,6 @@ install_formula() {
   local semver_output
 
   [ -s "$before_manifest" ] || php_darwin_die 'the clean Homebrew snapshot is missing'
-  if [ "$stage" != finalize ]; then
-    [ "$(php_darwin_platform_value "$arch" source_builds)" = true ] || \
-      php_darwin_die "$arch requires the bottle-only source-cache action; direct source fallback is disabled"
-    brew install --verbose "$tap/$requested_formula" || php_darwin_die "could not install $requested_formula"
-  fi
   brew unlink "$formula" >/dev/null 2>&1 || true
   brew link --overwrite --force "$formula" || php_darwin_die "could not link $formula after building"
 
@@ -866,17 +861,9 @@ case "$stage" in
   prepare) prepare_homebrew ;;
   cleanup) clean_homebrew ;;
   snapshot-dependencies) snapshot_dependency_versions ;;
-  install|finalize) install_formula ;;
+  finalize) install_formula ;;
   package) package_cache ;;
   verify) verify_cache ;;
   reset) reset_homebrew ;;
-  all)
-    prepare_homebrew
-    clean_homebrew
-    install_formula
-    bash "$script_dir/build-extensions.sh"
-    package_cache
-    verify_cache
-    ;;
-  *) php_darwin_die 'usage: build.sh prepare|cleanup|snapshot-dependencies|install|finalize|package|verify|reset|all' ;;
+  *) php_darwin_die 'usage: build.sh prepare|cleanup|snapshot-dependencies|finalize|package|verify|reset' ;;
 esac

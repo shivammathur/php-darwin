@@ -37,6 +37,11 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Require cached binaries for installation tests
+      shell: bash
+      run: |
+        echo 'PHP_DARWIN_CACHE_ONLY=true' >> "$GITHUB_ENV"
+        echo 'PHP_DARWIN_SOURCE_CACHE_READ_ONLY=true' >> "$GITHUB_ENV"
     - uses: ./.github/actions/runner-preflight
     - uses: ./.github/actions/node-runtime
     - name: Restore missing archive tools
@@ -51,6 +56,8 @@ runs:
         RUNNER: ${{ inputs.runner }}
         EXPECTED_ARCH: ${{ inputs.arch }}
         PHP_VERSION: ${{ inputs.php-version }}
+        BUILDS: ${{ inputs.builds }}
+        THREAD_SAFETY: ${{ inputs.ts }}
       run: |
         arch=$(RUNNER="$RUNNER" GITHUB_OUTPUT='' bash scripts/tests/helpers/get-test-target.sh)
         source scripts/lib/lib.sh
@@ -60,6 +67,17 @@ runs:
         echo "arch=$arch" >> "$GITHUB_OUTPUT"
         echo "ARCH=$arch" >> "$GITHUB_ENV"
         echo "PHP_VERSION=$PHP_VERSION" >> "$GITHUB_ENV"
+        php_darwin_validate_version "$PHP_VERSION"
+        artifacts=
+        for build in $BUILDS; do
+          php_darwin_validate_build "$build"
+          for ts in $THREAD_SAFETY; do
+            php_darwin_validate_ts "$ts"
+            artifacts="${artifacts:+$artifacts|}php-$PHP_VERSION-$arch-$build-$ts-*"
+          done
+        done
+        test -n "$artifacts"
+        echo "artifacts=@($artifacts)" >> "$GITHUB_OUTPUT"
     - name: Remove unused Homebrew taps
       shell: bash
       run: bash scripts/build/cleanup-taps.sh
@@ -71,14 +89,14 @@ runs:
       if: inputs.without-core == 'true'
       shell: bash
       run: bash scripts/tests/helpers/core-tap-layout.sh prepare
-    - name: Download existing architecture caches
+    - name: Download only the variants selected for installation
       if: inputs.release-receipt == ''
       uses: ./.github/actions/download-artifacts
       with:
         github-token: ${{ inputs.github-token }}
         repository: ${{ inputs.repository }}
         run-id: ${{ inputs.run-id }}
-        pattern: php-${{ inputs.php-version }}-${{ steps.target.outputs.arch }}-*
+        pattern: ${{ steps.target.outputs.artifacts }}
         merge-multiple: 'true'
         path: ${{ runner.temp }}/php-darwin
     - name: Download only the selected release variant

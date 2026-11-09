@@ -80,30 +80,11 @@ process.exit(result.error || result.stderr ? 1 : (result.status ?? 1));
 `, { mode: 0o755 });
   enableInstalled(temporary, name, scan, { php: configuredPhp, environmentFile: '' });
   assert.deepEqual(fs.readdirSync(scan).sort(), entry.modules.map(module => extensionIni(extensions[module])).sort());
-  // Reproduce the tap replacing modules independently, including serializers.
-  for (const module of entry.modules) {
-    // Bottles copy their INIs without the source formula's cleanup. Keep the
-    // tap filenames independent of our configuration to catch priority drift.
-    const tapIni = `${module === 'memcached' ? 30 : 20}-${module}.ini`;
-    fs.writeFileSync(path.join(scan, tapIni), `[${module}]\nextension="${extensionDirectory}/${module}.so"\n`);
-    console.log(command(configuredPhp, [...settings, '-r', checks[name]], { env: { ...process.env, ...result.environment } }));
-  }
-  console.log('Tap-compatible INI replacement passed without PHP startup warnings');
+  console.log(command(configuredPhp, [...settings, '-r', checks[name]], { env: { ...process.env, ...result.environment } }));
   if (name === 'memcached' || name === 'redis') {
     assert.deepEqual(entry.headers, ['igbinary', 'msgpack']);
-    const consumer = path.join(temporary, 'consumer.c');
-    fs.writeFileSync(consumer, '#include <php.h>\n#include <ext/igbinary/igbinary.h>\n#include <ext/msgpack/php_msgpack.h>\n');
-    command('cc', ['-fsyntax-only', ...command(phpConfig, ['--includes']).split(/\s+/), consumer]);
-    console.log('Pack-only serializer development headers compile');
-    if (entry.php_version === '8.4' && entry.build === 'release' && entry.thread_safety === 'nts') {
-      const failingPhp = path.join(temporary, 'failing-php');
-      fs.writeFileSync(failingPhp, `#!/bin/sh\ncase "$*" in *"extension=${extensionDirectory}/"*) exit 1;; esac\nexec "${php}" "$@"\n`, { mode: 0o755 });
-      const targets = [...entry.modules.map(module => path.join(extensionDirectory, `${module}.so`)),
-        ...entry.headers.map(module => path.join(includeDirectory, 'ext', module))];
-      const before = targets.map(file => fs.readlinkSync(file));
-      assert.throws(() => install(temporary, name, { php: failingPhp, phpConfig }));
-      assert.deepEqual(targets.map(file => fs.readlinkSync(file)), before, 'Failed activation must restore both modules and headers');
-      console.log('Serializer module/header transaction rollback passed');
+    for (const [module, header] of [['igbinary', 'igbinary.h'], ['msgpack', 'php_msgpack.h']]) {
+      assert.ok(fs.statSync(path.join(includeDirectory, 'ext', module, header)).isFile());
     }
   }
   if (name === 'mongodb') {

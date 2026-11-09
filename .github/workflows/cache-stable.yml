@@ -33,16 +33,12 @@ on:
         required: false
         type: string
       source-cache-release:
-        description: Source bottle release (use an isolated release for cache tests)
+        description: Reusable source bottle release
         default: cache
         type: string
       reuse-archives:
         description: Reuse verified archive checkpoints with matching inputs
         default: true
-        type: boolean
-      force-source:
-        description: Build PHP from source even when an upstream bottle exists
-        default: false
         type: boolean
       force:
         description: Build even when the release already has these inputs
@@ -84,5 +80,4 @@ jobs:
       publish: ${{ inputs.publish }}
       source-cache-release: ${{ inputs.source-cache-release || 'cache' }}
       reuse-archives: ${{ inputs.reuse-archives }}
-      force-source: ${{ inputs.force-source || false }}
       force: ${{ inputs.force || false }}

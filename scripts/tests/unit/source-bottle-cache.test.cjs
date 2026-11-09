@@ -379,7 +379,10 @@ test('an incomplete ICU keg restores its upstream bottle without compiling healt
     missing_build_files: ['lib/pkgconfig/icu-uc.pc']}];
   f.args.prefetch = async () => {};
   assert.deepEqual(await install(f.args), {built: 0, restored: 0});
-  assert.deepEqual(f.events, [['reinstall', '--formula', '--verbose', '--force-bottle', 'icu4c@78']]);
+  assert.deepEqual(f.events, [
+    ['uninstall', '--formula', '--force', '--ignore-dependencies', 'icu4c@78'],
+    ['install', '--formula', '--force-bottle', '--verbose', '--ignore-dependencies', 'icu4c@78'],
+  ]);
   f.events.length = 0;
   f.args.query = () => [{full_name: 'icu4c@78', version: '78.3', installed: true, bottled: true, missing_build_files: []}];
   await install(f.args);
@@ -407,14 +410,25 @@ test('reuse libxml2 across PHP builds and rebuild both when libxml2 changes', as
   assert.deepEqual(await install(f.args), { built: 0, restored: 2 });
 });
 
-test('validation can build cache misses without creating production locks or publishing bottles', async t => {
+test('read-only consumers fail on misses and reuse prepared bottles without compiling or publishing', async t => {
   const f = fixture(t);
+  const save = f.args.cache.saveCache;
   f.args.cache.readOnly = true;
   f.args.cache.withBuildLock = () => assert.fail('Read-only validation must not create release locks');
   f.args.cache.saveCache = () => assert.fail('Read-only validation must not publish source bottles');
-  assert.deepEqual(await install(f.args), {built: 2, restored: 0});
+  await assert.rejects(install(f.args), /Required bottle is unavailable/);
+  assert.deepEqual(f.events, []);
   assert.equal(fs.readdirSync(f.store).length, 0);
+  // Seed this isolated simulated cache through its producer path.
+  f.args.cache.readOnly = false;
+  f.args.cache.saveCache = save;
+  delete f.args.cache.withBuildLock;
+  await install(f.args);
+  f.freshRunner();
+  f.args.cache.readOnly = true;
+  f.args.cache.saveCache = () => assert.fail('Read-only installation must not publish source bottles');
   assert.deepEqual(await install(f.args), {built: 0, restored: 2});
+  assert.ok(f.events.every(args => !args.includes('--build-bottle')));
 });
 
 test('approved dependencies survive compiler and recipe fingerprint changes without rebuilding', async t => {
@@ -491,23 +505,26 @@ test('dependencies stay dependency installs for source builds and restored bottl
   }
 });
 
-test('cache outages and concurrent saves do not discard successful source builds', async t => {
-  const f = fixture(t);
-  f.args.cache.restoreCache = async () => { throw new Error('cache unavailable'); };
-  f.args.cache.saveCache = async () => { throw new Error('another job saved this key'); };
-  assert.deepEqual(await install(f.args), { built: 2, restored: 0 });
-  assert.equal(f.warnings.length, 4);
+test('exhausted cache reads fail before compilation in consumers and producers, including after ownership', async t => {
+  for (const cacheOnly of [false, true]) for (const afterOwnership of [false, true]) {
+    const f = fixture(t);
+    let owned = false;
+    f.args.cache.restoreCache = async () => {
+      if (!afterOwnership || owned) throw new Error('cache download retries exhausted');
+    };
+    f.args.cache.withBuildLock = async (key, build) => {owned = true; return build(0);};
+    await assert.rejects(install({...f.args, cacheOnly}),
+      cacheOnly && afterOwnership ? /Required bottle is unavailable/ : /cache download retries exhausted/);
+    assert.deepEqual(f.events, []);
+    assert.equal(owned, afterOwnership && !cacheOnly);
+  }
 });
 
-test('invalid bottle data can rebuild while owned, but unavailable ownership never starts a build', async t => {
+test('exhausted bottle publication fails the producer before building its consumer', async t => {
   const f = fixture(t);
-  f.args.cache.restoreCache = async () => { throw new Error('invalid cached bottle'); };
-  f.args.cache.withBuildLock = async (key, build) => build(0);
-  assert.deepEqual(await install(f.args), { built: 2, restored: 0 });
-  f.freshRunner();
-  f.args.cache.withBuildLock = async () => { throw new Error('ownership unavailable'); };
-  await assert.rejects(install(f.args), /ownership unavailable/);
-  assert.equal(f.events.length, 0);
+  f.args.cache.saveCache = async () => {throw new Error('upload retries exhausted');};
+  await assert.rejects(install(f.args), /Could not publish source bottle for libxml2: upload retries exhausted/);
+  assert.deepEqual(f.events.filter(args => args.includes('--build-bottle')).map(args => args.at(-1)), ['libxml2']);
 });
 
 test('a library uploaded while waiting is restored instead of being compiled twice', async t => {
@@ -533,8 +550,8 @@ test('corrupt cached bottles are rejected before installation', async t => {
     fs.appendFileSync(path.join(f.store, key, metadata.file), 'corrupt');
   }
   f.freshRunner();
-  assert.deepEqual(await install(f.args), { built: 2, restored: 0 });
-  assert.equal(f.events.filter(args => args.at(-1).endsWith('.tar.gz')).length, 0);
+  await assert.rejects(install(f.args), /checksum mismatch/);
+  assert.deepEqual(f.events, []);
 });
 
 test('a failed bottle installation stops without attempting a source rebuild', async t => {

@@ -290,8 +290,8 @@ jobs:
         run: '"$PHP_DARWIN_NODE" scripts/cache/update-dependencies.cjs clean'
       - name: Check the cleaned Homebrew environment
         run: bash scripts/build/check-homebrew.sh
-      - name: Bootstrap the formula-input reader from its pinned upstream bottle
-        run: brew install --formula --force-bottle jq
+      - name: Restore archive tools from approved bottles
+        run: bash scripts/build/archive-tools.sh
       - name: Restore verified dependencies without source compilation
         run: '"$PHP_DARWIN_NODE" scripts/cache/update-dependencies.cjs prepare'
       - name: Prove cold and warm installs require no dependency compilation

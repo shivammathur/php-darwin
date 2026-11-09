@@ -37,16 +37,15 @@ and real Homebrew mutation out of these suites. Names use `*.test.sh` or
 protect behavior that is not already covered. Test output belongs in temporary
 directories or Actions artifacts, not checked-in benchmark reports.
 
-`test-source-cache.yml` exercises real library/consumer source builds, locking,
-configuration preservation and Xdebug/PCOV cold/warm reuse. Its release is
-isolated per run and removed by its cleanup job. `test.yml` validates all four
-variants from an existing build's artifacts. `e2e.yml` checks published downloads
-and unchanged setup-php on ARM and Intel. Routine Intel jobs use `macos-15-intel`;
-dedicated self-hosted coverage is a separate one-time check after installer
-changes are ready.
+Workflow validation and simulated regression tests run locally. CI follows four
+stages: prepare missing dependency bottles, cache PHP using those dependencies,
+cache optional extensions using cached PHP and dependencies, and test installation.
+Installation tests never compile packages or compiler probes. `test.yml` checks
+existing PHP archives, and `e2e.yml` checks published downloads through unchanged
+setup-php on ARM and Intel. Cache transfers retry within bounded limits and fail
+after exhaustion; a transfer failure must never be treated as a missing bottle.
 
 ```sh
-gh workflow run test-source-cache.yml -R shivammathur/php-darwin
 gh workflow run test.yml -R shivammathur/php-darwin \
   -f php-version=8.4 -f run-id=BUILD_RUN_ID -f runner=macos-15-intel
 gh workflow run e2e.yml -R shivammathur/php-darwin -f php-version=8.4
@@ -113,10 +112,10 @@ fetch and are mirrored afterward, one dependency per job. Retain current bottle
 downloads on persistent runners. Never substitute an older bottle for a new digest.
 
 ARM64 producers install upstream or verified cached bottles for PHP, normal NTS
-extensions, tools and dependencies. A missing bottle is an error; neither
-`force-source` nor a dependency worker can enable compilation of these packages.
+extensions, tools and dependencies. A missing bottle is an error; dependency
+workers also respect this policy.
 This policy is configured by `source_builds` in `conf/platforms.json`: `false`
-for ARM64 and `true` for Intel. Source-build fixtures select their runners from it.
+for ARM64 and `true` for Intel.
 `extension_source_builds` permits ARM64 `release/zts`, `debug/nts` and `debug/zts`
 extension targets to build on an exact-cache miss because their ABI differs from
 the upstream extension bottles. This exception never permits dependency builds
@@ -258,8 +257,8 @@ services, newer processes and ambiguous owners are left alone. Process identitie
 are checked again before TERM and KILL; termination has a 1.5-second grace period.
 Lock files and cached packages are never deleted. Unavailable inspection tools
 produce a diagnostic without adding a workflow failure. Hosted runners and local
-invocations skip this recovery. `test-runner-preflight.yml` exercises real process
-and lock recovery in private fixtures on both architectures without building PHP.
+invocations skip this recovery. Simulated local tests cover process ownership
+and recovery decisions without occupying CI runners.
 
 Normal PHP and extension cache jobs consume `conf/dependencies.json`. It pins
 Homebrew core and selects the exact dependency bottles for each architecture.
@@ -537,27 +536,18 @@ library fails installation rather than downgrading other Homebrew consumers.
 
 ### Workflow validation and runner maintenance
 
-`e2e.yml` pins the current setup-php implementation and, for PHP 8.3-8.5 with
-optional packs enabled, installs Brew YAML and PECL Redis with both cached
-serializer headers, covering the PECL CLI on 8.3 and setup-php's PECL source
-interface on 8.4+. It checks PHP binary preservation, install provenance and
-serialization roundtrips after cold and hot installs. `checkout-installer=true`
+`e2e.yml` pins the setup-php implementation and installs PHP and requested
+extensions from caches. It checks PHP binary preservation, install provenance,
+and module loading after cold and hot installs. `checkout-installer=true`
 tests candidate installer bytes against the published archives.
 
-All macOS workflows use explicit versioned runner labels. `test-homebrew.yml`
-checks published PHP 8.5 on `macos-26` and `macos-15-intel`. That weekly/manual smoke
-also checks `brew update`, outside every PHP publication's cold/hot install gate.
+All macOS workflows use explicit versioned runner labels.
 `brew config` and `brew doctor` run once after cleanup, before build/test work;
 per-variant checks retain receipts, linkage, relinking, FPM and preservation.
 The manual `test.yml` and normal architecture tests share the `test-cache` action,
 including runner recovery, architecture validation and rollback diagnostics.
 
-`validate.yml` and `test-runner-preflight.yml` run on main pushes and pull requests;
-use workflow_dispatch to validate an un-PR branch. `test-source-lock.yml` exercises
-live coordination once on Ubuntu. Isolated test releases remain drafts so
-repository release immutability cannot block temporary lock assets.
-Source-cache native tests have scoped path
-filters and still intentionally build isolated fixtures; do not dispatch that
-workflow for a no-build validation request. Use existing published/archive inputs
-for those requests. Timing and diagnostic upload failures do not block publication;
+Run syntax, workflow lint and local regression checks before pushing changes.
+CI tests consume existing cached binaries and fail if they cannot restore them.
+Timing and diagnostic upload failures do not block publication;
 required archives, compatibility evidence and approval snapshots remain gates.

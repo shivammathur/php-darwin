@@ -86,8 +86,8 @@ jobs:
         run: '"$PHP_DARWIN_NODE" scripts/cache/update-dependencies.cjs clean'
       - name: Check the cleaned Homebrew environment
         run: bash scripts/build/check-homebrew.sh
-      - name: Bootstrap the pinned formula reader
-        run: brew install --formula --force-bottle jq
+      - name: Restore archive tools from approved bottles
+        run: bash scripts/build/archive-tools.sh
       - name: Build only this formula and verify its published cache
         run: '"$PHP_DARWIN_NODE" scripts/cache/dependency-worker.cjs "$FORMULA"'
       - uses: ./.github/actions/upload-artifacts

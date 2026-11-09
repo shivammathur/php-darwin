@@ -22,7 +22,8 @@ function batch(entries, mode, { run = execute, output = 'builds/extensions', ind
     /^[a-f0-9]{40}$/.test(process.env.HOMEBREW_CORE_COMMIT || '');
   for (const variant of variants(entries)) {
     const env = { ...process.env, PHP_VERSION: variant.php_version, ARCH: variant.architecture,
-      BUILD: variant.build, TS: variant.thread_safety };
+      BUILD: variant.build, TS: variant.thread_safety,
+      ...(mode === 'test' ? {PHP_DARWIN_CACHE_ONLY: 'true', PHP_DARWIN_SOURCE_CACHE_READ_ONLY: 'true'} : {}) };
     // Preparation writes the nightly source commit for subsequent commands.
     // Each runtime gets its own environment; stable PHP must not inherit it.
     delete env.PHP_DARWIN_PHP_SRC_COMMIT;
@@ -62,7 +63,8 @@ function batch(entries, mode, { run = execute, output = 'builds/extensions', ind
           directory = matches[0].directory;
         }
         run(process.execPath, ['scripts/tests/native/extension-pack.test.cjs'], { ...env,
-          EXTENSION_PACK: entry.name, EXTENSION_PACK_OUTPUT: directory });
+          EXTENSION_PACK: entry.name, EXTENSION_PACK_OUTPUT: directory,
+          PHP_DARWIN_CACHE_ONLY: 'true', PHP_DARWIN_SOURCE_CACHE_READ_ONLY: 'true' });
         index.push(verifyArchive(directory, entry).entry);
       } catch (error) {
         console.error(error);

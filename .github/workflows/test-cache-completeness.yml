@@ -55,6 +55,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/dependency-environment
+        with:
+          shallow-core: 'true'
       - name: Verify full dependency coverage and cold and warm installs without compiling
         run: '"$PHP_DARWIN_NODE" scripts/tests/native/cache-completeness.test.cjs'
       - uses: ./.github/actions/upload-artifacts
@@ -71,6 +73,9 @@ jobs:
           name: bottle-misses-completeness-${{ matrix.arch }}
           path: ${{ runner.temp }}/BOTTLE_MISSES.jsonl
           if-no-files-found: ignore
+      - name: Restore the original core tap
+        if: always()
+        run: bash scripts/tests/helpers/core-tap-layout.sh restore
   runtime:
     if: inputs.scope != 'dependencies'
     name: Install every PHP series on ${{ matrix.runner }} with core tap ${{ matrix.core }}
@@ -83,6 +88,8 @@ jobs:
         core: [present, absent]
     env:
       CORE_TAP_STATE: ${{ matrix.core }}
+      PHP_DARWIN_CACHE_ONLY: 'true'
+      PHP_DARWIN_SOURCE_CACHE_READ_ONLY: 'true'
       PHP_VERSION: '8.5'
       HOMEBREW_NO_AUTO_UPDATE: '1'
       HOMEBREW_NO_AUTOREMOVE: '1'

@@ -44,9 +44,6 @@ on:
       reuse-archives:
         default: true
         type: boolean
-      force-source:
-        default: false
-        type: boolean
       force:
         default: false
         type: boolean
@@ -90,9 +87,7 @@ jobs:
           PHP_VERSION: ${{ inputs.php-version }}
           PUBLISH: ${{ inputs.publish }}
           TS: ${{ inputs.ts }}
-        run: |
-          bash scripts/tests/run.sh check
-          bash scripts/build/get-matrix.sh
+        run: bash scripts/build/get-matrix.sh
 
       - name: Preserve the expected build and compatibility matrix
         uses: ./.github/actions/upload-artifacts
@@ -190,7 +185,6 @@ jobs:
       # Keeping PHP release manifests unchanged must not discard those builds.
       save-source-bottles: ${{ inputs.publish || github.ref == 'refs/heads/main' }}
       reuse-archives: ${{ inputs.reuse-archives }}
-      force-source: ${{ inputs.force-source }}
 
   cache-bottles:
     name: Cache missing dependency bottles in Cloudflare

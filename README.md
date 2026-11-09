@@ -1,7 +1,6 @@
 # PHP Darwin
 
 [![Package cache](https://github.com/shivammathur/php-darwin/actions/workflows/cache-stable.yml/badge.svg)](https://github.com/shivammathur/php-darwin/actions/workflows/cache-stable.yml)
-[![Validation](https://github.com/shivammathur/php-darwin/actions/workflows/validate.yml/badge.svg)](https://github.com/shivammathur/php-darwin/actions/workflows/validate.yml)
 [![MIT license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Prebuilt Homebrew PHP packages for fast installation on macOS, used by

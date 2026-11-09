@@ -224,10 +224,10 @@ class ReleaseCache {
             if (response !== 200 || !await mirror.validFile(archive, mirrored.sha256)) {
               throw new Error(`Cloudflare source bottle rejected: ${mirrored.formula} (HTTP ${response})`);
             }
+            unpack(archive, directory, key);
             return response;
           });
           if (status === 200) {
-            unpack(archive, directory, key);
             console.log(`Cloudflare source bottle HIT: ${mirrored.formula} ${mirrored.version}`);
             return;
           }
@@ -244,8 +244,9 @@ class ReleaseCache {
         if (asset.digest && asset.digest !== `sha256:${sha256(fs.readFileSync(archive))}`) {
           throw new Error('Release source cache archive checksum mismatch');
         }
+        // Retry incomplete or invalid archive contents with the transfer too.
+        unpack(archive, directory, key);
       } });
-      unpack(archive, directory, key);
     } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
   }
 
@@ -294,8 +295,7 @@ class ReleaseCache {
           fs.writeFileSync(path.join(directory, 'metadata.json'), JSON.stringify({...metadata, key, inputs: previous}));
           readBottle(directory, key);
           return key;
-        } catch (error) { this.warn(`Ignoring incompatible source bottle ${candidate.id}: ${error.message}`); }
-        finally { fs.rmSync(temporary, {recursive: true, force: true}); }
+        } finally { fs.rmSync(temporary, {recursive: true, force: true}); }
       }
     }
   }
