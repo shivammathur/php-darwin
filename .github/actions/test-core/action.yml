@@ -1,0 +1,30 @@
+name: Prepare a shallow core snapshot for tests
+description: Update Homebrew before attaching a temporary shallow core checkout; retain the original tap for restoration.
+runs:
+  using: composite
+  steps:
+    - name: Preserve the runner's original core tap
+      shell: bash
+      run: bash scripts/tests/helpers/core-tap-layout.sh prepare
+    - name: Update Homebrew with API resolution and no core checkout
+      shell: bash
+      run: |
+        env -u HOMEBREW_NO_INSTALL_FROM_API bash scripts/build/update-homebrew.sh
+        test ! -e "$(brew --repository)/Library/Taps/homebrew/homebrew-core"
+    - name: Select the approved core snapshot
+      id: core
+      shell: bash
+      run: echo "commit=$("$PHP_DARWIN_NODE" scripts/cache/approved-dependencies.cjs core)" >> "$GITHUB_OUTPUT"
+    - name: Check out core without history
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        repository: Homebrew/homebrew-core
+        ref: ${{ steps.core.outputs.commit }}
+        path: homebrew-core-fixture
+        fetch-depth: 1
+        persist-credentials: false
+    - name: Attach the shallow snapshot for native tests
+      shell: bash
+      env:
+        CORE_COMMIT: ${{ steps.core.outputs.commit }}
+      run: bash scripts/tests/helpers/core-tap-layout.sh fixture "$GITHUB_WORKSPACE/homebrew-core-fixture" "$CORE_COMMIT"

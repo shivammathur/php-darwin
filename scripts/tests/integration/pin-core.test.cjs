@@ -5,6 +5,51 @@ const os = require('node:os');
 const path = require('node:path');
 const {spawnSync} = require('node:child_process');
 
+test('temporary native-test core snapshots remain shallow without brew tap, update, or unshallow', t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'php-darwin-shallow-core-'));
+  t.after(() => fs.rmSync(directory, {recursive: true, force: true}));
+  const source = path.join(directory, 'source'), prefix = path.join(directory, 'brew');
+  const fixture = path.join(directory, 'fixture'), bin = path.join(directory, 'bin');
+  const core = path.join(prefix, 'Library/Taps/homebrew/homebrew-core');
+  fs.mkdirSync(source); fs.mkdirSync(bin); fs.mkdirSync(core, {recursive: true});
+  fs.writeFileSync(path.join(core, 'original'), 'original pinned core');
+  const execute = (program, args, env) => {
+    const result = spawnSync(program, args, {encoding: 'utf8', env: {...process.env, ...env}});
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    return result.stdout.trim();
+  };
+  execute('git', ['-C', source, 'init', '-q']);
+  for (const value of ['old', 'approved']) {
+    fs.writeFileSync(path.join(source, 'recipe'), value);
+    execute('git', ['-C', source, 'add', '.']);
+    execute('git', ['-C', source, '-c', 'user.name=test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', value]);
+  }
+  const commit = execute('git', ['-C', source, 'rev-parse', 'HEAD']);
+  execute('git', ['clone', '--depth=1', 'file://' + source, fixture]);
+  fs.writeFileSync(path.join(bin, 'brew'), `#!/bin/sh
+case "$*" in
+  --prefix|--repository) printf '%s\\n' "$FIXTURE_PREFIX";;
+  '--repository homebrew/core') printf '%s\\n' "$FIXTURE_CORE";;
+  *) echo "Unexpected Homebrew operation: $*" >&2; exit 91;;
+esac
+`, {mode: 0o755});
+  const env = {PATH: bin + path.delimiter + process.env.PATH, GITHUB_ACTIONS: 'true',
+    FIXTURE_PREFIX: prefix, FIXTURE_CORE: core, RUNNER_TEMP: directory,
+    GITHUB_ENV: path.join(directory, 'env'), HOMEBREW_CORE_COMMIT: commit,
+    PHP_DARWIN_TEST_CORE_CHECKOUT: core};
+  const layout = path.join(__dirname, '../helpers/core-tap-layout.sh');
+  execute('bash', [layout, 'prepare'], env);
+  execute('bash', [layout, 'fixture', fixture, commit], env);
+  execute('bash', [path.join(__dirname, '../../build/pin-core.sh')], env);
+  assert.equal(execute('git', ['-C', core, 'rev-parse', '--is-shallow-repository']), 'true');
+  assert.equal(execute('git', ['-C', core, 'rev-list', '--count', 'HEAD']), '1');
+  assert.equal(fs.readFileSync(path.join(core, 'recipe'), 'utf8'), 'approved');
+  execute('bash', [layout, 'restore'], env);
+  assert.equal(fs.readFileSync(path.join(core, 'original'), 'utf8'), 'original pinned core');
+  assert.equal(fs.existsSync(path.join(core, '.git')), false);
+  assert.equal(execute('git', ['-C', fixture, 'rev-parse', '--is-shallow-repository']), 'true');
+});
+
 test('pinning discards modified runner formulae while retaining the local dirty-tree guard', t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'php-darwin-pin-core-'));
   t.after(() => fs.rmSync(directory, {recursive: true, force: true}));

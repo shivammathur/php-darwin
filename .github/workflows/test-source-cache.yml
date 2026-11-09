@@ -8,6 +8,7 @@ on:
     branches: ['**']
     paths:
       - .github/actions/source-cache/**
+      - .github/actions/test-core/**
       - .github/workflows/test-source-cache.yml
       - scripts/cache/source-bottle-*
       - scripts/cache/source-build-lock.cjs
@@ -27,6 +28,8 @@ on:
       - scripts/tests/native/approved-dependencies.test.cjs
       - scripts/tests/native/icu-reuse.test.sh
       - scripts/tests/helpers/published-installer.sh
+      - scripts/tests/helpers/core-tap-layout.sh
+      - scripts/build/pin-core.sh
       - conf/dependencies.json
       - conf/platforms.json
       - conf/package.json
@@ -103,6 +106,8 @@ jobs:
         uses: ./.github/actions/node-runtime
       - name: Remove unused Homebrew taps
         run: bash scripts/build/cleanup-taps.sh
+      - uses: ./.github/actions/test-core
+        id: core
 
       - name: Verify reused ICU development files and bottle recovery
         run: bash scripts/tests/native/icu-reuse.test.sh
@@ -178,6 +183,9 @@ jobs:
       - name: Remove source bottle fixtures
         if: ${{ always() }}
         run: bash scripts/tests/native/source-bottle-native.test.sh cleanup
+      - name: Restore the original core tap
+        if: ${{ always() && steps.core.outcome != 'skipped' && steps.core.outcome != '' }}
+        run: bash scripts/tests/helpers/core-tap-layout.sh restore
 
   extensions:
     needs: prepare
@@ -203,6 +211,8 @@ jobs:
         uses: ./.github/actions/node-runtime
       - name: Remove unused Homebrew taps
         run: bash scripts/build/cleanup-taps.sh
+      - uses: ./.github/actions/test-core
+        id: core
       - name: Install published PHP and prepare extension source
         run: bash scripts/tests/native/source-bottle-extensions.test.sh prepare
       - name: Build source extension bottles
@@ -248,6 +258,9 @@ jobs:
       - name: Restore the runner's dependency pins
         if: ${{ always() }}
         run: bash scripts/tests/native/source-bottle-extensions.test.sh cleanup
+      - name: Restore the original core tap
+        if: ${{ always() && steps.core.outcome != 'skipped' && steps.core.outcome != '' }}
+        run: bash scripts/tests/helpers/core-tap-layout.sh restore
 
   cleanup:
     name: Remove the isolated test release
