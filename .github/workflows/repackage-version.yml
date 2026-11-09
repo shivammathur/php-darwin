@@ -8,26 +8,50 @@ on:
       publish:
         type: boolean
         default: false
+      source-run-id:
+        type: string
+        default: ''
+      test-runners:
+        type: string
+        default: ''
       baseline:
         type: boolean
         default: false
 permissions:
   contents: write
   actions: read
+# Hold the publication lock from staging through validation so another publisher
+# cannot retire archives while native tests are reading them.
+concurrency:
+  group: php-darwin-release-publish-${{ inputs.php-version }}
+  cancel-in-progress: false
 jobs:
   repackage:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     outputs:
       platforms: ${{ steps.platforms.outputs.platforms }}
+      receipt: ${{ steps.stage.outputs.receipt }}
+      receipt-sha256: ${{ steps.stage.outputs.receipt-sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - id: platforms
+        env:
+          TEST_RUNNERS: ${{ inputs.test-runners }}
         run: |
-          echo "platforms=$(jq -c '[to_entries[] | .key as $arch | .value.test_runners[] | {arch:$arch, runner:.}]' conf/platforms.json)" >> "$GITHUB_OUTPUT"
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const platforms = require('./conf/platforms.json');
+          const requested = process.env.TEST_RUNNERS ? process.env.TEST_RUNNERS.split(' ') : [];
+          const matrix = Object.entries(platforms).flatMap(([arch, platform]) => platform.test_runners
+            .filter(runner => !requested.length || requested.includes(runner)).map(runner => ({arch, runner})));
+          if (!matrix.length || requested.some(runner => !matrix.some(item => item.runner === runner))) throw new Error('Invalid test runner selection');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `platforms=${JSON.stringify(matrix)}\n`);
+          NODE
       - name: Repackage verified published archives without compiling PHP
+        if: inputs.source-run-id == ''
         env:
           PHP_VERSION: ${{ inputs.php-version }}
           MIGRATE_BASELINE: ${{ inputs.baseline }}
@@ -35,41 +59,55 @@ jobs:
           args=()
           if [ "$MIGRATE_BASELINE" = true ]; then args+=(--baseline); fi
           python3 scripts/release/repackage-installer.py "$PHP_VERSION" builds "${args[@]}"
-      - uses: ./.github/actions/upload-artifacts
+      - name: Recover already repackaged archives on Linux only
+        if: inputs.source-run-id != ''
+        uses: ./.github/actions/download-artifacts
         with:
-          name: php-${{ inputs.php-version }}-arm64-packaged
-          path: builds/arm64
-          compression-level: 0
-      - uses: ./.github/actions/upload-artifacts
-        with:
-          name: php-${{ inputs.php-version }}-x86_64-packaged
-          path: builds/x86_64
-          compression-level: 0
-      - uses: ./.github/actions/upload-artifacts
+          pattern: php-${{ inputs.php-version }}-*-packaged
+          path: builds
+          run-id: ${{ inputs.source-run-id }}
+          github-token: ${{ secrets.TOKEN || github.token }}
+      - name: Recover byte-preservation evidence
+        if: inputs.source-run-id != ''
+        uses: ./.github/actions/download-artifacts
         with:
           name: repackage-evidence-${{ inputs.php-version }}
           path: evidence
+          run-id: ${{ inputs.source-run-id }}
+          github-token: ${{ secrets.TOKEN || github.token }}
+      - name: Stage immutable archives on Releases without changing public installers
+        id: stage
+        env:
+          PHP_VERSION: ${{ inputs.php-version }}
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+          SOURCE_RUN_ID: ${{ inputs.source-run-id }}
+          TEST_RUNNERS: ${{ inputs.test-runners }}
+          CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
+          CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
+          CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
+        run: node scripts/release/repackage-release.cjs stage "$PHP_VERSION" builds evidence
+
   test:
     needs: repackage
     strategy:
       fail-fast: false
       matrix:
         platform: ${{ fromJSON(needs.repackage.outputs.platforms) }}
+        build: [release, debug]
+        ts: [nts, zts]
     runs-on: ${{ matrix.platform.runner }}
+    name: Test ${{ matrix.platform.arch }} ${{ matrix.build }}/${{ matrix.ts }} on ${{ matrix.platform.runner }}
+    env:
+      PHP_DARWIN_PREFER_MIRROR: ${{ contains(matrix.platform.runner, '26') && 'true' || 'false' }}
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/node-runtime
-      - name: Restore missing archive tools
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: bash scripts/build/archive-tools.sh
       - name: Request every supported optional pack and warm installation checks
         run: |
           {
-            echo "PHP_DARWIN_EXTENSIONS=$(jq -r '.packs | keys | join(",")' conf/extension-packs.json)"
+            echo "PHP_DARWIN_EXTENSIONS=$(python3 -c 'import json; print(",".join(json.load(open("conf/extension-packs.json"))["packs"]))')"
             echo 'PHP_DARWIN_REQUIRE_PACKS=true'
             echo 'PHP_DARWIN_TEST_WARM=true'
             echo 'PHP_DARWIN_TEST_PREVIOUS_INSTALLER=true'
@@ -79,40 +117,27 @@ jobs:
           php-version: ${{ inputs.php-version }}
           arch: ${{ matrix.platform.arch }}
           runner: ${{ matrix.platform.runner }}
+          builds: ${{ matrix.build }}
+          ts: ${{ matrix.ts }}
+          release-receipt: ${{ needs.repackage.outputs.receipt }}
+          release-receipt-sha256: ${{ needs.repackage.outputs.receipt-sha256 }}
           github-token: ${{ secrets.TOKEN || github.token }}
   publish:
     if: inputs.publish && github.ref == 'refs/heads/main'
     needs: [repackage, test]
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    concurrency:
-      group: php-darwin-release-publish-${{ inputs.php-version }}
-      cancel-in-progress: false
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/download-artifacts
-        with:
-          pattern: php-${{ inputs.php-version }}-*-packaged
-          path: builds
-          github-token: ${{ secrets.TOKEN || github.token }}
-      - uses: ./.github/actions/download-artifacts
-        with:
-          name: repackage-evidence-${{ inputs.php-version }}
-          path: evidence
-          github-token: ${{ secrets.TOKEN || github.token }}
-      - name: Verify the source release is still current and publish to both origins
+      - name: Activate tested archives without transferring them again
         env:
           GH_TOKEN: ${{ secrets.TOKEN || github.token }}
           PHP_VERSION: ${{ inputs.php-version }}
-          PHP_DARWIN_MIRROR_REQUIRED: 'true'
+          REPACKAGE_RECEIPT: ${{ needs.repackage.outputs.receipt }}
+          REPACKAGE_RECEIPT_SHA256: ${{ needs.repackage.outputs.receipt-sha256 }}
           CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
           CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
           CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
-        run: |
-          mkdir current
-          repository=$(jq -r .release_repository conf/package.json)
-          gh release download "php-$PHP_VERSION" --repo "$repository" --pattern "php-$PHP_VERSION-manifest.json" --dir current
-          cmp "current/php-$PHP_VERSION-manifest.json" "evidence/php-$PHP_VERSION-manifest.json"
-          bash scripts/release/publish.sh builds
+        run: node scripts/release/repackage-release.cjs commit "$PHP_VERSION" "$REPACKAGE_RECEIPT" "$REPACKAGE_RECEIPT_SHA256"

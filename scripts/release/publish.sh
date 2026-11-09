@@ -7,6 +7,8 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 . "$script_dir/../lib/retry.sh"
 
 builds_dir=${1:?}
+publish_mode=${2:-all}
+case "$publish_mode" in all|prepare) ;; *) php_darwin_die 'invalid publication mode' ;; esac
 expected_version=${PHP_VERSION:-}
 source_commit=${HOMEBREW_PHP_COMMIT:-}
 extension_source_commit=${HOMEBREW_EXTENSIONS_COMMIT:-}
@@ -249,6 +251,13 @@ bash "$script_dir/../installer/validate-install.sh" >/dev/null || \
   php_darwin_die 'standalone installer validation failed before publish'
 PHP_DARWIN_RELEASE_MANIFEST="$manifest" bash "$script_dir/../installer/generate-install.sh" "$installer" >/dev/null || \
   php_darwin_die 'could not generate the release-specific standalone installer'
+
+if [ "$publish_mode" = prepare ]; then
+  prepared_dir=${3:?prepared release directory required}
+  [ ! -e "$prepared_dir" ] && [ ! -L "$prepared_dir" ] || php_darwin_die 'prepared release directory already exists'
+  mv "$staging" "$prepared_dir" || php_darwin_die 'could not preserve the validated release files'
+  exit 0
+fi
 
 if php_darwin_retry gh release view "$tag" --repo "$release_repository" --json assets > "$release_assets_json" 2>/dev/null; then
   release_exists=true

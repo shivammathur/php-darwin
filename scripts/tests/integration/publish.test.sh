@@ -120,6 +120,14 @@ export GH_MANIFEST=$gh_manifest
 export GH_INSTALLER=$gh_installer
 : > "$gh_log"
 HOMEBREW_EXTENSIONS_COMMIT="$extension_source_commit" PHP_VERSION="$version" PATH="$fake_bin:$PATH" \
+  bash "$script_dir/../../release/publish.sh" "$builds_dir" prepare "$work_dir/prepared-release" >/dev/null || \
+  php_darwin_die 'prepare-only publication validation failed'
+[ ! -s "$gh_log" ] || php_darwin_die 'prepare-only publication made a GitHub request'
+[ -f "$work_dir/prepared-release/install.sh" ] && [ -f "$work_dir/prepared-release/php-$version-manifest.json" ] || \
+  php_darwin_die 'prepare-only publication omitted release commit files'
+[ "$(find "$work_dir/prepared-release" -name '*.tar.zst' | wc -l | tr -d ' ')" -eq 8 ] || \
+  php_darwin_die 'prepare-only publication omitted immutable archive files'
+HOMEBREW_EXTENSIONS_COMMIT="$extension_source_commit" PHP_VERSION="$version" PATH="$fake_bin:$PATH" \
   bash "$script_dir/../../release/publish.sh" "$builds_dir" >/dev/null || \
   php_darwin_die 'publish fixture validation failed'
 jq -e 'all(.assets[]; .build_inputs.schema == 1 and (.build_inputs.source_records | length) == 1)' "$gh_manifest" >/dev/null || \

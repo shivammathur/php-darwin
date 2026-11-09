@@ -16,6 +16,14 @@ on:
         description: Also update the GitHub release installers after verifying R2
         default: false
         type: boolean
+      source-run-id:
+        description: Recover already repackaged archives from this run instead of recompressing
+        default: ''
+        type: string
+      test-runners:
+        description: Recovery only; retest these space-separated versioned runners and reuse prior successful checks
+        default: ''
+        type: string
 permissions:
   contents: read
 jobs:
@@ -59,6 +67,8 @@ jobs:
     with:
       php-version: ${{ matrix.php-version }}
       publish: ${{ inputs.publish-installers }}
+      source-run-id: ${{ inputs.source-run-id }}
+      test-runners: ${{ inputs.test-runners }}
     secrets: inherit
   mirror:
     if: ${{ !inputs.repackage }}

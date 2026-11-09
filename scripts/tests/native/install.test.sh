@@ -120,7 +120,8 @@ prepare_homebrew() {
 }
 
 install_cache() {
-  bash "$script_dir/../../installer/install-package.sh" "$version" "$build" "$ts" "$archive" || \
+  local installer=${PHP_DARWIN_TEST_RELEASE_INSTALLER:-$script_dir/../../installer/install-package.sh}
+  bash "$installer" "$version" "$build" "$ts" "$archive" || \
     php_darwin_die 'cache installation failed'
   if [ "${PHP_DARWIN_TEST_PREVIOUS_INSTALLER:-false}" = true ] && [ "$build/$ts" = release/nts ]; then
     # Existing clients may retain the previous installer while the release

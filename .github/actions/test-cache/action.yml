@@ -25,6 +25,12 @@ inputs:
   github-token:
     default: ${{ github.token }}
     description: Token for reading the source run
+  release-receipt:
+    default: ''
+    description: Small staged release receipt; downloads exactly one variant from Releases
+  release-receipt-sha256:
+    default: ''
+    description: SHA256 of the staged release receipt
 runs:
   using: composite
   steps:
@@ -58,6 +64,7 @@ runs:
       shell: bash
       run: bash scripts/build/check-homebrew.sh
     - name: Download existing architecture caches
+      if: inputs.release-receipt == ''
       uses: ./.github/actions/download-artifacts
       with:
         github-token: ${{ inputs.github-token }}
@@ -66,6 +73,15 @@ runs:
         pattern: php-${{ inputs.php-version }}-${{ steps.target.outputs.arch }}-*
         merge-multiple: 'true'
         path: ${{ runner.temp }}/php-darwin
+    - name: Download only the selected release variant
+      if: inputs.release-receipt != ''
+      shell: bash
+      env:
+        REPACKAGE_RECEIPT: ${{ inputs.release-receipt }}
+        REPACKAGE_RECEIPT_SHA256: ${{ inputs.release-receipt-sha256 }}
+        BUILD: ${{ inputs.builds }}
+        TS: ${{ inputs.ts }}
+      run: bash scripts/tests/helpers/fetch-release-variant.sh
     - name: Prepare release/NTS Homebrew formula source
       id: prepare-release-nts
       if: ${{ contains(inputs.builds, 'release') && contains(inputs.ts, 'nts') }}
@@ -235,7 +251,7 @@ runs:
       continue-on-error: true
       uses: ./.github/actions/upload-artifacts
       with:
-        name: install-recovery-${{ inputs.php-version }}-${{ inputs.runner }}
+        name: install-recovery-${{ inputs.php-version }}-${{ inputs.runner }}-${{ inputs.builds }}-${{ inputs.ts }}
         path: |
           ${{ runner.temp }}/php-darwin-install.*/rollback.log
           ${{ runner.temp }}/php-darwin-install.*/php-command-links.json

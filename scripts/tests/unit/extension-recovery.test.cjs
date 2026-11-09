@@ -53,7 +53,7 @@ test('partial reruns retain passing jobs from earlier attempts and respect newer
   const jobs = [[{ name: 'imagick', conclusion: 'success' }, { name: 'mongodb', conclusion: 'failure' }],
     [{ name: 'mongodb', conclusion: 'success' }], [{ name: 'imagick', conclusion: 'failure' }]];
   const run = (_program, args) => {
-    const match = /\/attempts\/([1-3])\/jobs\?per_page=100$/.exec(args.at(-1));
+    const match = /\/attempts\/([1-3])\/jobs\?per_page=25$/.exec(args.at(-1));
     assert.ok(match, 'Jobs must come from a specific attempt');
     return JSON.stringify([{ jobs: jobs[Number(match[1]) - 1] }]);
   };
