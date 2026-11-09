@@ -51,6 +51,10 @@ assert.equal(removed.stdout, '[false,false]', 'The downstream fixture must remov
 fs.rmSync(`/tmp/php${version}_extensions`, {force: true});
 Object.assign(process.env, { INPUT_EXTENSIONS: 'memcached, yaml, redis-6.3.0', 'INPUT_COVERAGE': 'none',
   'INPUT_TOOLS': 'none', 'INPUT_INI-FILE': 'production', fail_fast: 'true',
+  // setup-php may reinstall PHP before processing extensions. Keep its cache
+  // request to memcached so that this step actually tests Brew YAML and PECL
+  // Redis instead of restoring the YAML pack we deliberately removed above.
+  PHP_DARWIN_EXTENSIONS: 'memcached',
   REDIS_CONFIGURE_OPTS: '--enable-redis-igbinary=yes --enable-redis-msgpack=yes' });
 assert.equal(runSetupPhp(process.argv[2]), 0, 'setup-php downstream installation failed');
 assert.equal(digest(fs.readFileSync(fs.realpathSync(php))), original, 'Extension installation must not replace cached PHP');
