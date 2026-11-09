@@ -46,6 +46,9 @@ const removed = spawnSync(php, ['-r', "echo json_encode([extension_loaded('yaml'
 assert.equal(removed.status, 0, removed.stderr);
 assert.equal(removed.stderr, '', 'Removing fixture extensions must not leave PHP startup warnings');
 assert.equal(removed.stdout, '[false,false]', 'The downstream fixture must remove YAML and Redis before testing fresh installations');
+// Stock setup-php memoizes loaded extensions between invocations in /tmp.
+// Invalidate that list after removing modules so the replacement uses Brew.
+fs.rmSync(`/tmp/php${version}_extensions`, {force: true});
 Object.assign(process.env, { INPUT_EXTENSIONS: 'memcached, yaml, redis-6.3.0', 'INPUT_COVERAGE': 'none',
   'INPUT_TOOLS': 'none', 'INPUT_INI-FILE': 'production', fail_fast: 'true',
   REDIS_CONFIGURE_OPTS: '--enable-redis-igbinary=yes --enable-redis-msgpack=yes' });
