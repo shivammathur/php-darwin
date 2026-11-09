@@ -55,3 +55,21 @@ test('the setup-php hook selects candidate installer bytes and preserves failure
   assert.equal(cacheOnly.status,7);
   assert.ok(!cacheOnly.stdout.includes('unexpected PHP rebuild'));
 });
+
+test('the downstream fixture restricts the explicit cache argument without changing setup-php extension inputs', t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'php-downstream-hook-'));
+  t.after(() => fs.rmSync(root, {recursive: true, force: true}));
+  const candidate = path.join(root, 'candidate.sh');
+  fs.writeFileSync(candidate, 'printf "cache=<%s> input=<%s> archive=<%s>\\n" "$5" "$INPUT_EXTENSIONS" "$4"\n');
+  const env = {...process.env, BASH_ENV: path.resolve(__dirname, '../helpers/setup-php-installer.sh'),
+    repo: 'php-darwin', RUNNER_TEMP: root, PHP_DARWIN_TEST_INSTALLER: candidate,
+    INPUT_EXTENSIONS: 'memcached, yaml, redis-6.3.0'};
+  for (const cached of [undefined, 'memcached', '']) {
+    fs.rmSync(path.join(root, 'php-darwin-setup-install.log'), {force: true});
+    const patch = cached === undefined ? {} : {PHP_DARWIN_TEST_EXTENSIONS: cached};
+    const result = require('node:child_process').spawnSync('bash', ['-c',
+      'bash /tmp/install.sh 8.5 release nts "" "$INPUT_EXTENSIONS"'], {encoding: 'utf8', env: {...env, ...patch}});
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, `cache=<${cached === undefined ? env.INPUT_EXTENSIONS : cached}> input=<${env.INPUT_EXTENSIONS}> archive=<>\n`);
+  }
+});

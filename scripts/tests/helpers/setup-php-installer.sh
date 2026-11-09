@@ -13,6 +13,13 @@ bash() {
     shift
     set -- "$PHP_DARWIN_TEST_INSTALLER" "$@"
   fi
+  # Downstream tests exercise Brew/PECL replacements after the cache install.
+  # setup-php passes its extension list as argument five, overriding the normal
+  # environment default. Restrict only this fixture's cache request, leaving
+  # setup-php's own extension inputs and extension processing unchanged.
+  if [ "${PHP_DARWIN_TEST_EXTENSIONS+x}" = x ]; then
+    set -- "$1" "$2" "$3" "$4" "${5:-}" "$PHP_DARWIN_TEST_EXTENSIONS"
+  fi
   install_log="${RUNNER_TEMP:?}/php-darwin-setup-install.log"
   if command bash "$@" >> "$install_log" 2>&1; then status=0; else status=$?; fi
   cat "$install_log"
