@@ -1,11 +1,18 @@
 name: Verify complete caches and core tap compatibility
 on:
   workflow_dispatch:
+    inputs:
+      scope:
+        description: Select dependency restoration, published PHP installs, or both
+        type: choice
+        options: [all, dependencies, runtime]
+        default: all
 permissions:
   contents: read
   actions: read
 jobs:
   plan:
+    if: inputs.scope != 'runtime'
     runs-on: ubuntu-latest
     outputs:
       core: ${{ steps.core.outputs.commit }}
@@ -58,7 +65,14 @@ jobs:
             cache-coverage-*.json
             dependency-verification-*.json
           if-no-files-found: ignore
+      - uses: ./.github/actions/upload-artifacts
+        if: always()
+        with:
+          name: bottle-misses-completeness-${{ matrix.arch }}
+          path: ${{ runner.temp }}/BOTTLE_MISSES.jsonl
+          if-no-files-found: ignore
   runtime:
+    if: inputs.scope != 'dependencies'
     name: Install every PHP series on ${{ matrix.runner }} with core tap ${{ matrix.core }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90

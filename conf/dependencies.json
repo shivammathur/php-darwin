@@ -1465,9 +1465,9 @@
           "bottle": {
             "formula": "gcc",
             "version": "16.2.0",
-            "tag": "arm64_sonoma",
-            "sha256": "2a23accb457b670c90e18d36bfbcfb212c7d0292a300881436a45630d64ed608",
-            "url": "https://ghcr.io/v2/homebrew/core/gcc/blobs/sha256:2a23accb457b670c90e18d36bfbcfb212c7d0292a300881436a45630d64ed608"
+            "tag": "arm64_sequoia",
+            "sha256": "8c57a4e5c65c93b90b280e3e761833f946b5a7d186f2067d239af44b71c5a577",
+            "url": "https://ghcr.io/v2/homebrew/core/gcc/blobs/sha256:8c57a4e5c65c93b90b280e3e761833f946b5a7d186f2067d239af44b71c5a577"
           }
         },
         "capstone": {
