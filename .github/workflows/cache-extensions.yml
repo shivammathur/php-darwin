@@ -309,8 +309,9 @@ jobs:
       (needs.reuse.result == 'success' || needs.reuse.result == 'skipped') &&
       (needs.compatibility.result == 'success' || needs.compatibility.result == 'skipped') &&
       github.ref == 'refs/heads/main' && inputs.publish
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    uses: ./.github/workflows/publish-extension-batches.yml
+    with:
+      keys: ${{ needs.plan.outputs.keys }}
     permissions:
       contents: write
       actions: read
@@ -318,47 +319,8 @@ jobs:
       group: extension-cache-publish
       cancel-in-progress: false
       queue: max
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/download-artifacts
-        if: needs.plan.outputs.selected-count != '0'
-        with:
-          pattern: extension-@(built|reused)-*
-          path: builds/extensions
-          merge-multiple: 'true'
-      - name: Check the exact tested publication set
-        if: needs.plan.outputs.selected-count != '0'
-        env:
-          EXTENSION_RECOVERY_KEYS: ${{ needs.plan.outputs.keys }}
-        run: node scripts/release/extension-recovery.cjs verify builds/extensions
-      - name: Publish archives, then commit the version manifests
-        env:
-          EXTENSION_PUBLISH_REPORT: ${{ runner.temp }}/extension-publication.json
-          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
-          CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
-          CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
-          CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
-        run: |
-          mkdir -p builds/extensions
-          node scripts/release/extension-packs.cjs publish builds/extensions
-      - name: Preserve publication diagnostics
-        if: always()
-        continue-on-error: true
-        uses: ./.github/actions/upload-artifacts
-        with:
-          overwrite: true
-          name: publication-report-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/extension-publication.json
-          if-no-files-found: ignore
-      - name: Explain publication recovery
-        if: failure()
-        env:
-          SOURCE_RUN: ${{ github.run_id }}
-        run: |
-          {
-            echo 'Builds and compatibility tests already passed. Rerun only failed jobs to resume publication.'
-            echo 'To use a newer publisher without rebuilding, run:'
-            echo "\`gh workflow run publish-extensions.yml -R shivammathur/php-darwin -f run-id=$SOURCE_RUN\`"
-          } >> "$GITHUB_STEP_SUMMARY"
+    secrets:
+      TOKEN: ${{ secrets.TOKEN }}
+      CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
+      CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
+      CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}

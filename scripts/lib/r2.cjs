@@ -76,10 +76,11 @@ function r2({ endpoint, env, run, retry }) {
     // PutObject avoids implicit multipart uploads and their separate commit.
     if (expected.bytes > 5 * 1024 ** 3) throw new Error(`R2 single upload exceeds 5 GiB: ${key}`);
     let attempted = false;
+    let etag;
     const cacheControl = immutable ? 'public, max-age=31536000, immutable' : 'no-cache, max-age=0, must-revalidate';
     await retry(`Publish R2 ${key}`, async () => {
       const existing = await head(key);
-      if (await matches(key, expected, existing)) return;
+      if (await matches(key, expected, existing)) { etag = existing.ETag; return; }
       attempted = true;
       const result = await api('put-object', key, ['--body', file, '--content-length', String(expected.bytes),
         '--content-md5', expected.contentMD5, '--metadata', JSON.stringify({ sha256: expected.sha256 }),
@@ -88,9 +89,10 @@ function r2({ endpoint, env, run, retry }) {
       const stored = await head(key);
       if (!stored || stored.ContentLength !== expected.bytes || stored.ETag !== result.ETag ||
           stored.Metadata?.sha256 !== expected.sha256) throw new Error(`R2 upload did not commit verified bytes: ${key}`);
+      etag = stored.ETag;
     });
     console.log(`Verified R2 origin: ${key}; ${expected.bytes} bytes, SHA256 ${expected.sha256}${attempted ? ' (uploaded)' : ' (reused)'}`);
-    return { ...expected, uploaded: attempted };
+    return { ...expected, uploaded: attempted, etag };
   }
   return { head, restore, ensure };
 }

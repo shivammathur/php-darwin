@@ -1,0 +1,165 @@
+name: Publish extension archive batches
+
+on:
+  workflow_call:
+    inputs:
+      keys:
+        description: Exact archive keys selected by the successful build and compatibility jobs
+        required: true
+        type: string
+    secrets:
+      TOKEN:
+        required: false
+      CF_R2_AWS_ACCESS_KEY_ID:
+        required: true
+      CF_R2_AWS_SECRET_ACCESS_KEY:
+        required: true
+      CF_R2_AWS_S3_ENDPOINT:
+        required: true
+
+permissions:
+  contents: write
+  actions: read
+
+# The caller holds extension-cache-publish for this entire workflow. Cleanup
+# must not run in another publication while these immutable uploads are pending.
+env:
+  GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+  CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
+  CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
+  CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
+
+jobs:
+  prepare:
+    name: Prepare extension publication
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      count: ${{ steps.plan.outputs.count }}
+      plan-id: ${{ steps.plan.outputs.plan-id }}
+      source-run: ${{ steps.plan.outputs.source-run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: mkdir -p builds/extensions
+      - uses: ./.github/actions/download-artifacts
+        if: inputs.keys != '[]'
+        with:
+          pattern: extension-@(built|reused)-*
+          path: builds/extensions
+      - name: Check the exact tested selection and prepare release capacity
+        id: plan
+        env:
+          EXTENSION_RECOVERY_KEYS: ${{ inputs.keys }}
+          EXTENSION_PUBLISH_REPORT: ${{ runner.temp }}/extension-publication.json
+        run: node scripts/release/extension-publication.cjs prepare builds/extensions extension-publication-plan.json
+      - uses: ./.github/actions/upload-artifacts
+        with:
+          overwrite: true
+          name: extension-publication-plan
+          path: extension-publication-plan.json
+          if-no-files-found: error
+      - name: Preserve preparation diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifacts
+        with:
+          overwrite: true
+          name: publication-report-${{ github.run_id }}-${{ github.run_attempt }}-prepare
+          path: ${{ runner.temp }}/extension-publication.json
+          if-no-files-found: ignore
+
+  upload:
+    needs: prepare
+    if: needs.prepare.outputs.count != '0'
+    name: Upload extensions for ${{ matrix.id }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    env:
+      PUBLICATION_PLAN_ID: ${{ needs.prepare.outputs.plan-id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/download-artifacts
+        with:
+          name: extension-publication-plan
+          path: publication
+      - uses: ./.github/actions/download-artifacts
+        with:
+          artifact-ids: ${{ matrix.artifact_ids }}
+          run-id: ${{ needs.prepare.outputs.source-run }}
+          github-token: ${{ secrets.TOKEN || github.token }}
+          path: builds/extensions
+      - name: Upload and verify this variant's immutable archives
+        env:
+          PUBLICATION_SHARD: ${{ matrix.id }}
+          EXTENSION_PUBLISH_REPORT: ${{ runner.temp }}/extension-publication.json
+        run: |
+          mkdir -p receipts
+          node scripts/release/extension-publication.cjs upload builds/extensions \
+            publication/extension-publication-plan.json "$PUBLICATION_SHARD" "receipts/$PUBLICATION_SHARD.json"
+      - name: Record successful archive delivery
+        uses: ./.github/actions/upload-artifacts
+        with:
+          overwrite: true
+          name: extension-upload-${{ needs.prepare.outputs.plan-id }}-${{ matrix.id }}
+          path: receipts/${{ matrix.id }}.json
+          if-no-files-found: error
+      - name: Preserve upload diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifacts
+        with:
+          overwrite: true
+          name: publication-report-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.id }}
+          path: ${{ runner.temp }}/extension-publication.json
+          if-no-files-found: ignore
+
+  commit:
+    needs: [prepare, upload]
+    if: >-
+      always() && !cancelled() && needs.prepare.result == 'success' &&
+      (needs.upload.result == 'success' || needs.upload.result == 'skipped')
+    name: Commit extension manifests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PUBLICATION_PLAN_ID: ${{ needs.prepare.outputs.plan-id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/download-artifacts
+        with:
+          name: extension-publication-plan
+          path: publication
+      - run: mkdir -p receipts
+      - uses: ./.github/actions/download-artifacts
+        if: needs.prepare.outputs.count != '0'
+        with:
+          pattern: extension-upload-${{ needs.prepare.outputs.plan-id }}-*
+          path: receipts
+          merge-multiple: 'true'
+      - name: Commit manifests after every planned upload succeeds
+        env:
+          EXTENSION_PUBLISH_REPORT: ${{ runner.temp }}/extension-publication.json
+        run: node scripts/release/extension-publication.cjs commit publication/extension-publication-plan.json receipts
+      - name: Preserve publication diagnostics
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/upload-artifacts
+        with:
+          overwrite: true
+          name: publication-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/extension-publication.json
+          if-no-files-found: ignore
+      - name: Explain publication recovery
+        if: failure()
+        run: echo 'Rerun failed jobs to resume publication. Successful upload receipts and immutable archives are reused.' >> "$GITHUB_STEP_SUMMARY"
