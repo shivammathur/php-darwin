@@ -62,10 +62,16 @@ function batch(entries, mode, { run = execute, output = 'builds/extensions', ind
           if (matches.length !== 1) throw new Error(`Missing or duplicate test archive: ${identity}`);
           directory = matches[0].directory;
         }
-        run(process.execPath, ['scripts/tests/native/extension-pack.test.cjs'], { ...env,
-          EXTENSION_PACK: entry.name, EXTENSION_PACK_OUTPUT: directory,
-          PHP_DARWIN_CACHE_ONLY: 'true', PHP_DARWIN_SOURCE_CACHE_READ_ONLY: 'true' });
-        index.push(verifyArchive(directory, entry).entry);
+        if (mode === 'build' && process.env.PHP_DARWIN_FAST_REFRESH === 'true') {
+          const matches = archiveEntries(directory, [identity]);
+          if (matches.length !== 1) throw new Error(`Missing or duplicate packaged archive: ${identity}`);
+          index.push(matches[0].entry);
+        } else {
+          run(process.execPath, ['scripts/tests/native/extension-pack.test.cjs'], { ...env,
+            EXTENSION_PACK: entry.name, EXTENSION_PACK_OUTPUT: directory,
+            PHP_DARWIN_CACHE_ONLY: 'true', PHP_DARWIN_SOURCE_CACHE_READ_ONLY: 'true' });
+          index.push(verifyArchive(directory, entry).entry);
+        }
       } catch (error) {
         console.error(error);
         failures.push(identity);

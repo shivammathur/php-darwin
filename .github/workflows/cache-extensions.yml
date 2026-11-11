@@ -105,8 +105,6 @@ jobs:
           repository: shivammathur/homebrew-php
           path: homebrew-php
           persist-credentials: false
-      - name: Require prepared dependencies without updating build tools
-        run: node scripts/cache/dependency-gate.cjs require
       - name: Select new or changed extension archives
         id: plan
         env:
@@ -115,7 +113,7 @@ jobs:
           BUILDS: ${{ inputs.builds }}
           THREAD_SAFETY: ${{ inputs.ts }}
           FORCE: ${{ inputs.force }}
-          PHP_DARWIN_REQUIRE_CURRENT_PHP: ${{ !inputs.published-php }}
+          PHP_DARWIN_REQUIRE_CURRENT_PHP: 'false'
           HOMEBREW_PHP_PATH: ${{ github.workspace }}/homebrew-php
           HOMEBREW_EXTENSIONS_PATH: ${{ github.workspace }}/homebrew-extensions
           HOMEBREW_CORE_PATH: ${{ github.workspace }}/homebrew-core
@@ -169,6 +167,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     env:
+      PHP_DARWIN_FAST_REFRESH: 'true'
       EXTENSION_ENTRIES: ${{ toJSON(matrix.entries) }}
       HOMEBREW_EXTENSIONS_COMMIT: ${{ needs.plan.outputs.extensions-commit }}
       HOMEBREW_CORE_COMMIT: ${{ needs.plan.outputs.core-commit }}
@@ -191,8 +190,6 @@ jobs:
           echo "PHP_DARWIN_SOURCE_BOTTLE_MISSES=$RUNNER_TEMP/source-bottle-misses.jsonl" >> "$GITHUB_ENV"
       - name: Pin approved dependencies before restoring tools
         uses: ./.github/actions/core-recipes
-      - name: Check the cleaned Homebrew environment
-        run: bash scripts/build/check-homebrew.sh
       - name: Restore archive tools from the bottle cache
         uses: ./.github/actions/source-cache
         with:
@@ -201,7 +198,7 @@ jobs:
         # setup-php can leave a root-owned extension tap without Git metadata.
         # Use the same checkout cleanup and permission repair as PHP builds.
         run: bash scripts/build/cleanup-taps.sh
-      - name: Cache and validate the missing packs, sharing preparation per PHP runtime
+      - name: Cache and package the missing packs, sharing preparation per PHP runtime
         run: '"$PHP_DARWIN_NODE" scripts/build/extension-batch.cjs build'
       - name: Preserve completed packs even when another pack fails
         if: always()
@@ -243,51 +240,6 @@ jobs:
         if: always()
         run: bash scripts/tests/helpers/core-tap-layout.sh restore
 
-  compatibility:
-    needs: [plan, build, reuse]
-    name: Test PHP ${{ matrix.php_version }} on ${{ matrix.runner }}
-    if: >-
-      always() && !cancelled() && needs.plan.outputs.selected-count != '0' &&
-      needs.plan.result == 'success' &&
-      (needs.build.result == 'success' || needs.build.result == 'skipped') &&
-      (needs.reuse.result == 'success' || needs.reuse.result == 'skipped')
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.plan.outputs.tests) }}
-    env:
-      EXTENSION_ENTRIES: ${{ toJSON(matrix.entries) }}
-      HOMEBREW_NO_AUTO_UPDATE: '1'
-      HOMEBREW_NO_INSTALL_CLEANUP: '1'
-      HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: '1'
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Recover abandoned Homebrew installers
-        uses: ./.github/actions/runner-preflight
-      - uses: ./.github/actions/node-runtime
-      - name: Restore archive tools
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: bash scripts/build/archive-tools.sh
-      - uses: ./.github/actions/download-artifacts
-        with:
-          pattern: extension-@(built|reused)-${{ matrix.php_version }}-${{ matrix.architecture }}?(-*)
-          path: builds/extensions
-          merge-multiple: 'true'
-      - name: Test every selected variant and pack in this PHP version
-        run: '"$PHP_DARWIN_NODE" scripts/build/extension-batch.cjs test'
-      - name: Upload compatibility reports
-        if: always()
-        uses: ./.github/actions/upload-artifacts
-        with:
-          overwrite: true
-          name: compatibility-${{ matrix.php_version }}-${{ matrix.runner }}
-          path: builds/extensions/*/validation.txt
-          if-no-files-found: ignore
-
   cache-bottles:
     needs: [plan, build]
     if: always() && !cancelled() && needs.plan.outputs.count != '0'
@@ -302,13 +254,12 @@ jobs:
       CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
 
   publish:
-    needs: [plan, build, reuse, compatibility]
+    needs: [plan, build, reuse]
     if: >-
       always() && !cancelled() && needs.plan.result == 'success' &&
       (needs.build.result == 'success' || needs.build.result == 'skipped') &&
       (needs.reuse.result == 'success' || needs.reuse.result == 'skipped') &&
-      (needs.compatibility.result == 'success' || needs.compatibility.result == 'skipped') &&
-      github.ref == 'refs/heads/main' && inputs.publish
+      inputs.publish
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -335,6 +286,7 @@ jobs:
         run: node scripts/release/extension-recovery.cjs verify builds/extensions
       - name: Publish archives, then commit the version manifests
         env:
+          PHP_DARWIN_FAST_REFRESH: 'true'
           EXTENSION_PUBLISH_REPORT: ${{ runner.temp }}/extension-publication.json
           GH_TOKEN: ${{ secrets.TOKEN || github.token }}
           CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}

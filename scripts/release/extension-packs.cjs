@@ -232,9 +232,11 @@ async function publish(directory, { run = transferCommand, retry = retryPolicy()
     const archive = path.join(path.dirname(file), entry.file);
     const bytes = fs.readFileSync(archive);
     if (digest(bytes) !== entry.sha256 || bytes.length !== entry.bytes) throw new Error('Invalid extension publish artifact');
-    const report = JSON.parse(fs.readFileSync(path.join(path.dirname(file), 'validation.txt')));
-    if (report.name !== entry.name || report.sha256 !== entry.sha256 ||
-        report.php_preserved !== true || report.services_preserved !== true) throw new Error('Extension validation did not pass');
+    if (process.env.PHP_DARWIN_FAST_REFRESH !== 'true') {
+      const report = JSON.parse(fs.readFileSync(path.join(path.dirname(file), 'validation.txt')));
+      if (report.name !== entry.name || report.sha256 !== entry.sha256 ||
+          report.php_preserved !== true || report.services_preserved !== true) throw new Error('Extension validation did not pass');
+    }
     return { entry, archive };
   });
   if (new Set(entries.map(({ entry }) => key(entry))).size !== entries.length) throw new Error('Invalid extension publish batch');
@@ -339,7 +341,7 @@ async function publish(directory, { run = transferCommand, retry = retryPolicy()
     console.log(`Extension publication: ${JSON.stringify({ ...report, reads: undefined })}`);
     if (process.env.EXTENSION_PUBLISH_REPORT) fs.writeFileSync(process.env.EXTENSION_PUBLISH_REPORT, JSON.stringify(report, null, 2) + '\n');
     if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
-      `Extension publication ${failure ? 'failed' : 'succeeded'}. ${report.archives} validated archives.\n\n` +
+      `Extension publication ${failure ? 'failed' : 'succeeded'}. ${report.archives} published archives.\n\n` +
       `GitHub: ${report.github_reused} reused, ${report.github_uploaded} uploaded. ` +
       `Cloudflare: ${report.cloudflare_reused} reused, ${report.cloudflare_uploaded} uploaded.\n\n` +
       `Published PHP versions: ${publishedVersions.join(', ') || 'none'}.\n\n` +

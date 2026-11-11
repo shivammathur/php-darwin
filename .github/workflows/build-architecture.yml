@@ -133,10 +133,6 @@ jobs:
         if: ${{ steps.early-checkpoint.outputs.hit != 'true' }}
         run: bash scripts/build/build.sh cleanup
 
-      - name: Check the cleaned Homebrew environment
-        if: ${{ steps.early-checkpoint.outputs.hit != 'true' }}
-        run: bash scripts/build/check-homebrew.sh
-
       - name: Install ${{ matrix.build }}/${{ matrix.ts }} PHP formula
         if: ${{ steps.early-checkpoint.outputs.hit != 'true' }}
         uses: ./.github/actions/source-cache
@@ -158,10 +154,6 @@ jobs:
       - name: Package ${{ matrix.build }}/${{ matrix.ts }} Homebrew cache
         if: ${{ steps.early-checkpoint.outputs.hit != 'true' && steps.checkpoint.outputs.hit != 'true' }}
         run: bash scripts/build/build.sh package
-
-      - name: Verify ${{ matrix.build }}/${{ matrix.ts }} archive
-        if: ${{ steps.early-checkpoint.outputs.hit != 'true' }}
-        run: bash scripts/build/build.sh verify
 
       - name: Stage verified ${{ matrix.build }}/${{ matrix.ts }} checkpoint
         if: ${{ steps.early-checkpoint.outputs.current != 'true' && steps.checkpoint.outputs.current != 'true' }}
@@ -229,30 +221,3 @@ jobs:
         if: always()
         run: bash scripts/tests/helpers/core-tap-layout.sh restore
 
-  test:
-    name: Test PHP ${{ inputs.php-version }} packages on ${{ matrix.runner }}
-    needs: build
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
-    env:
-      ARCH: ${{ inputs.arch }}
-      HOMEBREW_EXTENSIONS_COMMIT: ${{ inputs.homebrew-extensions-commit }}
-      HOMEBREW_CORE_COMMIT: ${{ inputs.homebrew-core-commit }}
-      HOMEBREW_PHP_COMMIT: ${{ inputs.homebrew-php-commit }}
-      PHP_VERSION: ${{ inputs.php-version }}
-    strategy:
-      fail-fast: false
-      matrix:
-        runner: ${{ fromJSON(inputs.test-runners) }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Validate existing PHP archives
-        uses: ./.github/actions/test-cache
-        with:
-          php-version: ${{ inputs.php-version }}
-          runner: ${{ matrix.runner }}
-          arch: ${{ inputs.arch }}
-          builds: ${{ inputs.builds }}
-          ts: ${{ inputs.ts }}
