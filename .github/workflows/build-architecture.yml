@@ -1,4 +1,4 @@
-name: Build and test one PHP cache architecture
+name: Build and package one PHP cache architecture
 
 on:
   workflow_call:

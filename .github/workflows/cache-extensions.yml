@@ -40,7 +40,7 @@ on:
         default: false
         type: boolean
       publish:
-        description: Publish verified optional archives
+        description: Publish packaged optional archives
         default: true
         type: boolean
       published-php:
@@ -279,7 +279,7 @@ jobs:
           pattern: extension-@(built|reused)-*
           path: builds/extensions
           merge-multiple: 'true'
-      - name: Check the exact tested publication set
+      - name: Check the complete publication set
         if: needs.plan.outputs.selected-count != '0'
         env:
           EXTENSION_RECOVERY_KEYS: ${{ needs.plan.outputs.keys }}
@@ -310,7 +310,5 @@ jobs:
           SOURCE_RUN: ${{ github.run_id }}
         run: |
           {
-            echo 'Builds and compatibility tests already passed. Rerun only failed jobs to resume publication.'
-            echo 'To use a newer publisher without rebuilding, run:'
-            echo "\`gh workflow run publish-extensions.yml -R shivammathur/php-darwin -f run-id=$SOURCE_RUN\`"
+            echo 'Packages are already built. Rerun only the failed publish job to resume publication.'
           } >> "$GITHUB_STEP_SUMMARY"

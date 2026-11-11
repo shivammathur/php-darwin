@@ -341,7 +341,7 @@ async function publish(directory, { run = transferCommand, retry = retryPolicy()
     console.log(`Extension publication: ${JSON.stringify({ ...report, reads: undefined })}`);
     if (process.env.EXTENSION_PUBLISH_REPORT) fs.writeFileSync(process.env.EXTENSION_PUBLISH_REPORT, JSON.stringify(report, null, 2) + '\n');
     if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
-      `Extension publication ${failure ? 'failed' : 'succeeded'}. ${report.archives} published archives.\n\n` +
+      `Extension publication ${failure ? 'failed' : 'succeeded'}. ${report.archives} packaged archives.\n\n` +
       `GitHub: ${report.github_reused} reused, ${report.github_uploaded} uploaded. ` +
       `Cloudflare: ${report.cloudflare_reused} reused, ${report.cloudflare_uploaded} uploaded.\n\n` +
       `Published PHP versions: ${publishedVersions.join(', ') || 'none'}.\n\n` +
