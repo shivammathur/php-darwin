@@ -10,6 +10,10 @@ on:
     - cron: '37 */6 * * *'
   workflow_dispatch:
     inputs:
+      fast:
+        description: Refresh directly and defer dependency freshness checks and native tests
+        default: false
+        type: boolean
       php-versions:
         description: Space-separated PHP versions (empty selects all configured versions)
         type: string
@@ -37,39 +41,51 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Select the published PHP version and refresh mode
+        id: followup
+        env:
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+        run: node scripts/release/extension-followup.cjs
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        if: steps.followup.outputs.ready == 'true' && steps.followup.outputs.fast != 'true'
         with:
           repository: shivammathur/homebrew-php
           path: homebrew-php
           persist-credentials: false
       - name: Select the approved dependency snapshot
+        if: steps.followup.outputs.ready == 'true' && steps.followup.outputs.fast != 'true'
         id: dependencies
         run: echo "core=$(node scripts/cache/approved-dependencies.cjs core)" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.followup.outputs.ready == 'true' && steps.followup.outputs.fast != 'true'
         with:
           repository: shivammathur/homebrew-extensions
           path: homebrew-extensions
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.followup.outputs.ready == 'true' && steps.followup.outputs.fast != 'true'
         with:
           repository: Homebrew/homebrew-core
           ref: ${{ steps.dependencies.outputs.core }}
           path: homebrew-core
           persist-credentials: false
       - name: Apply approved dependency recipe updates
+        if: steps.followup.outputs.ready == 'true' && steps.followup.outputs.fast != 'true'
         run: node scripts/cache/dependency-recipes.cjs apply homebrew-core
       - name: Prepare changed dependencies before extension dispatch
+        if: steps.followup.outputs.ready == 'true' && steps.followup.outputs.fast != 'true'
         id: ready
         env:
           GH_TOKEN: ${{ secrets.TOKEN || github.token }}
         run: node scripts/cache/dependency-gate.cjs dispatch
       - name: Dispatch only changed PHP versions after the prerequisite succeeds
-        if: steps.ready.outputs.ready == 'true'
+        if: steps.followup.outputs.ready == 'true' && (steps.followup.outputs.fast == 'true' || steps.ready.outputs.ready == 'true')
         env:
           GH_TOKEN: ${{ secrets.TOKEN || github.token }}
-          PHP_VERSIONS: ${{ inputs.php-versions }}
+          PHP_VERSIONS: ${{ steps.followup.outputs.php-versions }}
+          PHP_DARWIN_FAST_REFRESH: ${{ steps.followup.outputs.fast }}
           AFTER_RUN: ${{ inputs.after-run }}
-          PHP_DARWIN_REQUIRE_CURRENT_PHP: 'true'
+          PHP_DARWIN_REQUIRE_CURRENT_PHP: ${{ steps.followup.outputs.fast != 'true' }}
           HOMEBREW_PHP_PATH: ${{ github.workspace }}/homebrew-php
           HOMEBREW_EXTENSIONS_PATH: ${{ github.workspace }}/homebrew-extensions
           HOMEBREW_CORE_PATH: ${{ github.workspace }}/homebrew-core

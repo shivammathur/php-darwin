@@ -4,6 +4,10 @@ run-name: Cache optional PHP extensions ${{ inputs.php-versions || '8.4' }}
 on:
   workflow_dispatch:
     inputs:
+      fast:
+        description: Refresh and publish directly; defer dependency freshness checks and native tests
+        default: false
+        type: boolean
       php-versions:
         description: PHP minor version (one version per cache run)
         default: '8.4'
@@ -40,7 +44,7 @@ on:
         default: false
         type: boolean
       publish:
-        description: Publish verified optional archives
+        description: Publish packaged optional archives
         default: true
         type: boolean
       published-php:
@@ -54,6 +58,9 @@ on:
 permissions:
   contents: read
   actions: read
+
+env:
+  PHP_DARWIN_FAST_REFRESH: ${{ inputs.fast }}
 
 concurrency:
   # Each PHP version builds independently. Publication has its own lock so
@@ -106,6 +113,7 @@ jobs:
           path: homebrew-php
           persist-credentials: false
       - name: Require prepared dependencies without updating build tools
+        if: ${{ !inputs.fast }}
         run: node scripts/cache/dependency-gate.cjs require
       - name: Select new or changed extension archives
         id: plan
@@ -114,8 +122,8 @@ jobs:
           EXTENSION_PACKS: ${{ inputs.extensions }}
           BUILDS: ${{ inputs.builds }}
           THREAD_SAFETY: ${{ inputs.ts }}
-          FORCE: ${{ inputs.force }}
-          PHP_DARWIN_REQUIRE_CURRENT_PHP: ${{ !inputs.published-php }}
+          FORCE: ${{ inputs.fast || inputs.force }}
+          PHP_DARWIN_REQUIRE_CURRENT_PHP: ${{ !inputs.fast && !inputs.published-php }}
           HOMEBREW_PHP_PATH: ${{ github.workspace }}/homebrew-php
           HOMEBREW_EXTENSIONS_PATH: ${{ github.workspace }}/homebrew-extensions
           HOMEBREW_CORE_PATH: ${{ github.workspace }}/homebrew-core
@@ -192,6 +200,7 @@ jobs:
       - name: Pin approved dependencies before restoring tools
         uses: ./.github/actions/core-recipes
       - name: Check the cleaned Homebrew environment
+        if: ${{ !inputs.fast }}
         run: bash scripts/build/check-homebrew.sh
       - name: Restore archive tools from the bottle cache
         uses: ./.github/actions/source-cache
@@ -201,7 +210,7 @@ jobs:
         # setup-php can leave a root-owned extension tap without Git metadata.
         # Use the same checkout cleanup and permission repair as PHP builds.
         run: bash scripts/build/cleanup-taps.sh
-      - name: Cache and validate the missing packs, sharing preparation per PHP runtime
+      - name: Cache and package the missing packs, sharing preparation per PHP runtime
         run: '"$PHP_DARWIN_NODE" scripts/build/extension-batch.cjs build'
       - name: Preserve completed packs even when another pack fails
         if: always()
@@ -247,7 +256,7 @@ jobs:
     needs: [plan, build, reuse]
     name: Test PHP ${{ matrix.php_version }} on ${{ matrix.runner }}
     if: >-
-      always() && !cancelled() && needs.plan.outputs.selected-count != '0' &&
+      always() && !cancelled() && !inputs.fast && needs.plan.outputs.selected-count != '0' &&
       needs.plan.result == 'success' &&
       (needs.build.result == 'success' || needs.build.result == 'skipped') &&
       (needs.reuse.result == 'success' || needs.reuse.result == 'skipped')
@@ -307,10 +316,12 @@ jobs:
       always() && !cancelled() && needs.plan.result == 'success' &&
       (needs.build.result == 'success' || needs.build.result == 'skipped') &&
       (needs.reuse.result == 'success' || needs.reuse.result == 'skipped') &&
-      (needs.compatibility.result == 'success' || needs.compatibility.result == 'skipped') &&
+      (needs.compatibility.result == 'success' || (needs.compatibility.result == 'skipped' && (inputs.fast || needs.plan.outputs.selected-count == '0'))) &&
       github.ref == 'refs/heads/main' && inputs.publish
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    uses: ./.github/workflows/publish-extension-batches.yml
+    with:
+      fast: ${{ inputs.fast }}
+      keys: ${{ needs.plan.outputs.keys }}
     permissions:
       contents: write
       actions: read
@@ -318,47 +329,8 @@ jobs:
       group: extension-cache-publish
       cancel-in-progress: false
       queue: max
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/download-artifacts
-        if: needs.plan.outputs.selected-count != '0'
-        with:
-          pattern: extension-@(built|reused)-*
-          path: builds/extensions
-          merge-multiple: 'true'
-      - name: Check the exact tested publication set
-        if: needs.plan.outputs.selected-count != '0'
-        env:
-          EXTENSION_RECOVERY_KEYS: ${{ needs.plan.outputs.keys }}
-        run: node scripts/release/extension-recovery.cjs verify builds/extensions
-      - name: Publish archives, then commit the version manifests
-        env:
-          EXTENSION_PUBLISH_REPORT: ${{ runner.temp }}/extension-publication.json
-          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
-          CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
-          CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
-          CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
-        run: |
-          mkdir -p builds/extensions
-          node scripts/release/extension-packs.cjs publish builds/extensions
-      - name: Preserve publication diagnostics
-        if: always()
-        continue-on-error: true
-        uses: ./.github/actions/upload-artifacts
-        with:
-          overwrite: true
-          name: publication-report-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/extension-publication.json
-          if-no-files-found: ignore
-      - name: Explain publication recovery
-        if: failure()
-        env:
-          SOURCE_RUN: ${{ github.run_id }}
-        run: |
-          {
-            echo 'Builds and compatibility tests already passed. Rerun only failed jobs to resume publication.'
-            echo 'To use a newer publisher without rebuilding, run:'
-            echo "\`gh workflow run publish-extensions.yml -R shivammathur/php-darwin -f run-id=$SOURCE_RUN\`"
-          } >> "$GITHUB_STEP_SUMMARY"
+    secrets:
+      TOKEN: ${{ secrets.TOKEN }}
+      CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
+      CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
+      CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}

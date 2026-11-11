@@ -6,6 +6,10 @@ on:
       TOKEN:
         required: false
     inputs:
+      fast:
+        description: Refresh and publish directly; defer dependency freshness checks and native tests
+        default: false
+        type: boolean
       php-version:
         required: true
         type: string
@@ -99,7 +103,7 @@ jobs:
       - name: Preserve Node before Homebrew cleanup
         uses: ./.github/actions/node-runtime
 
-      - name: Restore a verified package from an earlier attempt of this run
+      - name: Restore a packaged cache from an earlier attempt of this run
         if: ${{ github.run_attempt > 1 }}
         id: early-checkpoint
         run: '"$PHP_DARWIN_NODE" scripts/cache/archive-checkpoint.cjs early'
@@ -134,7 +138,7 @@ jobs:
         run: bash scripts/build/build.sh cleanup
 
       - name: Check the cleaned Homebrew environment
-        if: ${{ steps.early-checkpoint.outputs.hit != 'true' }}
+        if: ${{ !inputs.fast && steps.early-checkpoint.outputs.hit != 'true' }}
         run: bash scripts/build/check-homebrew.sh
 
       - name: Install ${{ matrix.build }}/${{ matrix.ts }} PHP formula
@@ -150,7 +154,7 @@ jobs:
           release: ${{ inputs.source-cache-release }}
           stage: extensions
 
-      - name: Restore verified ${{ matrix.build }}/${{ matrix.ts }} archive checkpoint
+      - name: Restore packaged ${{ matrix.build }}/${{ matrix.ts }} archive checkpoint
         if: ${{ steps.early-checkpoint.outputs.hit != 'true' }}
         id: checkpoint
         run: '"$PHP_DARWIN_NODE" scripts/cache/archive-checkpoint.cjs restore'
@@ -160,15 +164,15 @@ jobs:
         run: bash scripts/build/build.sh package
 
       - name: Verify ${{ matrix.build }}/${{ matrix.ts }} archive
-        if: ${{ steps.early-checkpoint.outputs.hit != 'true' }}
+        if: ${{ !inputs.fast && steps.early-checkpoint.outputs.hit != 'true' }}
         run: bash scripts/build/build.sh verify
 
-      - name: Stage verified ${{ matrix.build }}/${{ matrix.ts }} checkpoint
+      - name: Stage packaged ${{ matrix.build }}/${{ matrix.ts }} checkpoint
         if: ${{ steps.early-checkpoint.outputs.current != 'true' && steps.checkpoint.outputs.current != 'true' }}
         id: stage
         run: '"$PHP_DARWIN_NODE" scripts/cache/archive-checkpoint.cjs stage'
 
-      - name: Upload verified ${{ matrix.build }}/${{ matrix.ts }} checkpoint
+      - name: Upload packaged ${{ matrix.build }}/${{ matrix.ts }} checkpoint
         if: ${{ steps.early-checkpoint.outputs.current != 'true' && steps.checkpoint.outputs.current != 'true' }}
         uses: ./.github/actions/upload-artifacts
         with:
@@ -232,6 +236,7 @@ jobs:
   test:
     name: Test PHP ${{ inputs.php-version }} packages on ${{ matrix.runner }}
     needs: build
+    if: ${{ !inputs.fast }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     env:

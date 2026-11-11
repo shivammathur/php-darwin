@@ -62,10 +62,15 @@ function batch(entries, mode, { run = execute, output = 'builds/extensions', ind
           if (matches.length !== 1) throw new Error(`Missing or duplicate test archive: ${identity}`);
           directory = matches[0].directory;
         }
-        run(process.execPath, ['scripts/tests/native/extension-pack.test.cjs'], { ...env,
-          EXTENSION_PACK: entry.name, EXTENSION_PACK_OUTPUT: directory,
-          PHP_DARWIN_CACHE_ONLY: 'true', PHP_DARWIN_SOURCE_CACHE_READ_ONLY: 'true' });
-        index.push(verifyArchive(directory, entry).entry);
+        const fast = mode === 'build' && process.env.PHP_DARWIN_FAST_REFRESH === 'true';
+        if (!fast) {
+          run(process.execPath, ['scripts/tests/native/extension-pack.test.cjs'], { ...env,
+            EXTENSION_PACK: entry.name, EXTENSION_PACK_OUTPUT: directory,
+            PHP_DARWIN_CACHE_ONLY: 'true', PHP_DARWIN_SOURCE_CACHE_READ_ONLY: 'true' });
+        }
+        // Fast refresh records packaged bytes without inventing native evidence.
+        // Explicit test mode always runs the native suite, regardless of the flag.
+        index.push(verifyArchive(directory, entry, {requireValidation: !fast}).entry);
       } catch (error) {
         console.error(error);
         failures.push(identity);

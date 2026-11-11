@@ -4,12 +4,16 @@ run-name: Publish PHP ${{ inputs.php-version }} cache from run ${{ inputs.run-id
 on:
   workflow_dispatch:
     inputs:
+      fast:
+        description: Publish packaged artifacts directly and defer native tests
+        default: false
+        type: boolean
       php-version:
         description: PHP minor version
         required: true
         type: string
       run-id:
-        description: Workflow run containing validated architecture artifacts
+        description: Source run ID; fast mode also accepts space-separated runs with complementary variants
         required: true
         type: string
 
@@ -32,6 +36,7 @@ jobs:
           persist-credentials: false
 
       - name: Validate source build and compatibility tests
+        if: ${{ !inputs.fast }}
         id: source
         env:
           GH_TOKEN: ${{ secrets.TOKEN || github.token }}
@@ -40,6 +45,7 @@ jobs:
         run: bash scripts/release/validate-publish-run.sh "$RUN_ID"
 
       - name: Download validated architecture caches
+        if: ${{ !inputs.fast }}
         uses: ./.github/actions/download-artifacts
         timeout-minutes: 10
         with:
@@ -48,6 +54,14 @@ jobs:
           path: builds
           repository: ${{ github.repository }}
           run-id: ${{ inputs.run-id }}
+
+      - name: Download completed packages for direct publication
+        if: inputs.fast
+        env:
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+          PHP_VERSION: ${{ inputs.php-version }}
+          RUN_IDS: ${{ inputs.run-id }}
+        run: node scripts/release/php-recovery.cjs download-fast builds
 
       - name: Restore already-published architectures outside the recovered matrix
         env:

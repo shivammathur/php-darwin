@@ -93,9 +93,10 @@ printf 'variant-matrix=%s\n' "$variant_matrix" >> "${GITHUB_OUTPUT:?}" || php_da
 
 if [ -n "${PHP_DARWIN_BUILD_PLAN:-}" ]; then
   jq -n --arg version "$php_version" --arg revision "${GITHUB_SHA:?}" \
+    --argjson fast "${PHP_DARWIN_FAST_REFRESH:-false}" --argjson publish "$publish" \
     --slurpfile architectures "$build_entries_file" --slurpfile variants "$variant_entries_file" \
     --slurpfile tests "$test_entries_file" '
-    {schema:1,php_version:$version,revision:$revision,
+    {schema:1,php_version:$version,revision:$revision,fast:$fast,publish:$publish,
      builds:[$architectures[] as $a | $variants[] | {arch:$a.arch,build:.build,ts:.ts}],
      tests:[$tests[] | {arch,runner}]}
   ' > "$PHP_DARWIN_BUILD_PLAN" || exit 1

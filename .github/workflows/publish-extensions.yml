@@ -3,6 +3,10 @@ run-name: Publish extension caches (source ${{ inputs.run-id || 'installer only'
 on:
   workflow_dispatch:
     inputs:
+      fast:
+        description: Publish packaged archives directly and defer native tests
+        default: false
+        type: boolean
       run-id:
         description: Completed extension build or recovery run with verified archives and compatibility
         required: false
@@ -14,6 +18,8 @@ on:
 permissions:
   contents: write
   actions: read
+env:
+  PHP_DARWIN_FAST_REFRESH: ${{ inputs.fast }}
 jobs:
   publish:
     if: github.ref == 'refs/heads/main'
@@ -27,7 +33,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Validate source builds and compatibility tests
+      - name: Check source builds and required compatibility results
         env:
           GH_TOKEN: ${{ secrets.TOKEN || github.token }}
           SOURCE_RUN: ${{ inputs.run-id }}
@@ -46,7 +52,7 @@ jobs:
           run-id: ${{ inputs.run-id }}
           pattern: extension-@(imagick-*|mongodb-*|memcached-*|swoole-*|built-*|reused-*)
           path: builds/extensions
-      - name: Publish the existing verified archives
+      - name: Publish the existing packaged archives
         env:
           EXTENSION_PUBLISH_REPORT: ${{ runner.temp }}/extension-publication.json
           GH_TOKEN: ${{ secrets.TOKEN || github.token }}

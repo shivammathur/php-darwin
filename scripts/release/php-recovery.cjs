@@ -71,7 +71,42 @@ async function inspect(id, version, {read = githubJSON, jobsFor = workflowJobs, 
   return validate(source, jobs, artifacts, plan, version, repo);
 }
 module.exports = {validate, inspect};
-if (require.main === module) inspect(process.argv[2], process.env.PHP_VERSION).then(artifacts => {
+async function downloadFast(directory) {
+  const ids = (process.env.RUN_IDS || '').trim().split(/\s+/);
+  const version = process.env.PHP_VERSION;
+  if (!ids.length || ids.some(id => !/^[1-9][0-9]*$/.test(id)) || new Set(ids).size !== ids.length ||
+      !require('../../conf/extension-packs.json').versions.includes(version)) throw new Error('Invalid fast publication inputs');
+  const selected = new Map();
+  for (const id of ids) {
+    const route = `repos/shivammathur/php-darwin/actions/runs/${id}`;
+    const source = await githubJSON(route);
+    // Explicit fast recovery can combine partial producer runs, including the
+    // trusted fast-refresh branch. It does not claim their native tests passed.
+    if (source.status !== 'completed' || source.head_repository?.full_name !== 'shivammathur/php-darwin' ||
+        !['.github/workflows/cache-stable.yml', '.github/workflows/cache-nightly.yml'].includes(source.path)) {
+      throw new Error('Untrusted or unfinished PHP source run');
+    }
+    const artifacts = (await githubJSON(`${route}/artifacts?per_page=100`, {paginate: true})).flatMap(page => page.artifacts);
+    const prefix = `php-${version}-`;
+    const archives = artifacts.filter(artifact => !artifact.expired && artifact.name.startsWith(prefix) &&
+      /^(arm64|x86_64)-(debug|release)-(nts|zts)-[a-f0-9]{64}$/.test(artifact.name.slice(prefix.length)));
+    if (!archives.length) throw new Error(`No packaged PHP ${version} artifacts in run ${id}`);
+    for (const artifact of archives) {
+      if (!/^sha256:[a-f0-9]{64}$/.test(artifact.digest || '')) throw new Error('Missing artifact digest');
+      if (selected.has(artifact.name)) continue;
+      selected.set(artifact.name, artifact);
+    }
+  }
+  for (const artifact of selected.values()) {
+    downloadArtifact({artifact_id: artifact.id, artifact_digest: artifact.digest}, path.join(directory, artifact.name));
+  }
+  // publish.sh still requires a complete, consistent matrix and exact archive
+  // checksums. Overlapping variants from different checkpoints fail closed.
+  console.log(`Downloaded ${selected.size} packaged caches; native testing deferred`);
+}
+if (require.main === module && process.argv[2] === 'download-fast') {
+  downloadFast(process.argv[3]).catch(error => {console.error(error); process.exitCode = 1;});
+} else if (require.main === module) inspect(process.argv[2], process.env.PHP_VERSION).then(artifacts => {
   if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, `artifact-ids=${artifacts.map(item => item.id).join(',')}\n`);
   console.log(`Validated source workflow and ${artifacts.length} tested archive artifacts`);
 }).catch(error => {console.error(error); process.exitCode = 1;});

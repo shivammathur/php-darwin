@@ -4,6 +4,10 @@ run-name: Cache nightly PHP ${{ inputs.php-version || '8.6' }}
 on:
   workflow_dispatch:
     inputs:
+      fast:
+        description: Refresh and publish directly; defer dependency freshness checks and native tests
+        default: false
+        type: boolean
       php-version:
         description: PHP minor version
         default: '8.6'
@@ -39,7 +43,7 @@ on:
         default: true
         type: boolean
       publish:
-        description: Publish validated caches to the PHP release
+        description: Publish packaged caches to the PHP release
         default: true
         required: false
         type: boolean
@@ -50,7 +54,7 @@ on:
         type: boolean
 
 concurrency:
-  group: cache-nightly-${{ inputs.php-version || '8.6' }}
+  group: cache-nightly-${{ inputs.php-version || '8.6' }}-${{ inputs.architectures }}-${{ inputs.builds }}-${{ inputs.ts }}
   cancel-in-progress: false
 
 permissions:
@@ -62,13 +66,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
-      architectures: ${{ steps.freshness.outputs.architectures }}
-      build: ${{ steps.freshness.outputs.build }}
+      architectures: ${{ inputs.fast && 'arm64 x86_64' || steps.freshness.outputs.architectures }}
+      build: ${{ inputs.fast && 'true' || steps.freshness.outputs.build }}
       # Keep the checked snapshots unless completing the published architecture set.
       # Use checked inputs when overriding the gate's architecture selection.
       homebrew-extensions-commit: ${{ inputs.homebrew-extensions-commit || (inputs.architectures == '' || inputs.architectures == steps.freshness.outputs.architectures) && steps.freshness.outputs.homebrew-extensions-commit || steps.extensions-tap.outputs.commit }}
       homebrew-php-commit: ${{ inputs.homebrew-php-commit || (inputs.architectures == '' || inputs.architectures == steps.freshness.outputs.architectures) && steps.freshness.outputs.homebrew-php-commit || steps.php-tap.outputs.commit }}
-      php-version: ${{ steps.freshness.outputs.php-version }}
+      php-version: ${{ inputs.fast && inputs.php-version || steps.freshness.outputs.php-version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -93,10 +97,12 @@ jobs:
           persist-credentials: false
 
       - name: Select approved dependency recipes
+        if: ${{ !inputs.fast }}
         id: core
         run: bash scripts/build/source-commit.sh core
 
       - name: Check out Homebrew core for dependency freshness
+        if: ${{ !inputs.fast }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Homebrew/homebrew-core
@@ -105,9 +111,11 @@ jobs:
           persist-credentials: false
 
       - name: Apply approved dependency recipe updates
+        if: ${{ !inputs.fast }}
         run: node scripts/cache/dependency-recipes.cjs apply homebrew-core
 
       - name: Compare nightly sources with the published manifest
+        if: ${{ !inputs.fast }}
         id: freshness
         env:
           FORCE: ${{ inputs.force || false }}
@@ -132,6 +140,7 @@ jobs:
       CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
       CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
     with:
+      fast: ${{ inputs.fast }}
       channel: nightly
       php-version: ${{ needs.freshness.outputs.php-version }}
       builds: ${{ inputs.builds || 'debug release' }}

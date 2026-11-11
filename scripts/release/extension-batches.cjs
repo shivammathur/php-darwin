@@ -44,7 +44,7 @@ function archiveEntries(root, identities) {
       [{ entry: validateEntry(JSON.parse(fs.readFileSync(file))), directory: root }] : [];
   });
 }
-function verifyArchive(directory, expected) {
+function verifyArchive(directory, expected, {requireValidation = true} = {}) {
   const matches = archiveEntries(directory, [key(expected)]).filter(item => key(item.entry) === key(expected));
   if (matches.length !== 1) throw new Error(`Missing or duplicate archive: ${key(expected)}`);
   const { entry, directory: folder } = matches[0];
@@ -53,9 +53,11 @@ function verifyArchive(directory, expected) {
   }
   const archive = path.join(folder, entry.file), bytes = fs.readFileSync(archive);
   if (digest(bytes) !== entry.sha256 || bytes.length !== entry.bytes) throw new Error(`Invalid archive bytes: ${key(entry)}`);
-  const report = JSON.parse(fs.readFileSync(path.join(folder, 'validation.txt')));
-  if (report.name !== entry.name || report.sha256 !== entry.sha256 ||
-      report.php_preserved !== true || report.services_preserved !== true) throw new Error(`Invalid native report: ${key(entry)}`);
+  if (requireValidation) {
+    const report = JSON.parse(fs.readFileSync(path.join(folder, 'validation.txt')));
+    if (report.name !== entry.name || report.sha256 !== entry.sha256 ||
+        report.php_preserved !== true || report.services_preserved !== true) throw new Error(`Invalid native report: ${key(entry)}`);
+  }
   return { entry, directory: folder };
 }
 function downloadArtifact(artifact, directory, { run = spawnSync,
@@ -87,7 +89,7 @@ function downloadArtifact(artifact, directory, { run = spawnSync,
   command('unzip', ['-q', zip, '-d', directory]);
   fs.rmSync(zip);
 }
-function reuse(entries, output, { download = downloadArtifact } = {}) {
+function reuse(entries, output, { download = downloadArtifact, requireValidation = true } = {}) {
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-reuse-'));
   const downloaded = new Map();
   const index = [];
@@ -99,10 +101,12 @@ function reuse(entries, output, { download = downloadArtifact } = {}) {
         download(expected, folder);
         downloaded.set(id, folder);
       }
-      const { entry, directory } = verifyArchive(downloaded.get(id), expected);
+      const { entry, directory } = verifyArchive(downloaded.get(id), expected, {requireValidation});
       const destination = path.join(output, `extension-${key(entry)}`);
       fs.mkdirSync(destination, { recursive: true });
-      for (const name of [entry.file, `${key(entry)}.json`, 'validation.txt']) fs.copyFileSync(path.join(directory, name), path.join(destination, name));
+      for (const name of [entry.file, `${key(entry)}.json`, ...(fs.existsSync(path.join(directory, 'validation.txt')) ? ['validation.txt'] : [])]) {
+        fs.copyFileSync(path.join(directory, name), path.join(destination, name));
+      }
       index.push(entry);
       console.log(`Reused ${key(entry)} from run ${expected.source_run}, artifact ${id}; SHA256 ${entry.sha256}`);
     }
@@ -113,7 +117,8 @@ module.exports = { buildMatrix, reuseMatrix, testMatrix, variants, archiveEntrie
 if (require.main === module) {
   try {
     if (process.argv[2] !== 'reuse') throw new Error('Usage: extension-batches.cjs reuse');
-    const index = reuse(JSON.parse(process.env.EXTENSION_ENTRIES), 'builds/extensions');
+    const index = reuse(JSON.parse(process.env.EXTENSION_ENTRIES), 'builds/extensions',
+      {requireValidation: process.env.PHP_DARWIN_FAST_REFRESH !== 'true'});
     fs.mkdirSync('builds/index', { recursive: true });
     fs.writeFileSync('builds/index/entries.json', JSON.stringify(index));
   } catch (error) { console.error(error); process.exitCode = 1; }

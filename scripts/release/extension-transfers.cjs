@@ -193,6 +193,7 @@ function transfers({ directory, env, endpoint, run = command, retry = retryPolic
       await cloudflareRetry(`Public Cloudflare ${name}`, () =>
         read(file, releaseOrigin(1, release), { fresh: ++attempt > 1 || !immutable || result.uploaded, resume: immutable }));
       report[result.uploaded ? 'cloudflare_uploaded' : 'cloudflare_reused']++;
+      return result;
     } catch (error) {
       throw new Error(`Cloudflare publication failed: ${name}; ${error.message}`, { cause: error });
     } finally { fs.rmSync(path.join(directory, `verify-${name}.partial`), { force: true }); }

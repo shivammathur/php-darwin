@@ -4,6 +4,10 @@ run-name: Cache stable PHP ${{ inputs.php-version }}
 on:
   workflow_dispatch:
     inputs:
+      fast:
+        description: Refresh and publish directly; defer dependency freshness checks and native tests
+        default: false
+        type: boolean
       php-version:
         description: PHP minor version
         default: '8.5'
@@ -45,7 +49,7 @@ on:
         default: false
         type: boolean
       publish:
-        description: Publish validated caches to the PHP release
+        description: Publish packaged caches to the PHP release
         default: true
         required: false
         type: boolean
@@ -70,6 +74,7 @@ jobs:
       CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
       CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
     with:
+      fast: ${{ inputs.fast }}
       channel: stable
       php-version: ${{ inputs.php-version }}
       builds: ${{ inputs.builds || 'debug release' }}

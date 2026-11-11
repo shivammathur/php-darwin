@@ -77,6 +77,60 @@ inputs before dispatching work. Package metadata records normalized recipe
 inputs; new bottles for unrelated platforms do not invalidate existing caches.
 An older manifest without dependency provenance requires a controlled refresh.
 
+### Normal and fast refresh
+
+`cache-stable.yml`, `cache-nightly.yml` and `cache-extensions.yml` default to
+`fast=false`: check dependency freshness, build/install from prepared bottles,
+save caches, package, run native compatibility tests, then publish. PHP also
+runs the existing setup-php smoke check after publication.
+
+Set `fast=true` to force the selected refresh, skip dependency freshness checks,
+Homebrew diagnostics and native test jobs, and publish directly after packaging.
+This mode still consumes approved dependency bottles, preserves archive checksums
+and PHP/extension matching, and never compiles build tools. It does not start
+setup-php tests automatically or create passing native reports. Matching source
+bottles and archive checkpoints remain reusable; `reuse-archives=false` requests
+fresh PHP packaging. `force=true` alone retains the normal dependency and test gates.
+
+```sh
+gh workflow run cache-nightly.yml -R shivammathur/php-darwin --ref main \
+  -f php-version=8.6 -f fast=true
+gh workflow run cache-nightly.yml -R shivammathur/php-darwin --ref main \
+  -f php-version=8.7 -f fast=true
+```
+
+After successful PHP publication, `update-extensions.yml` selects only that PHP
+version and carries its fast setting into the extension run. A freshness no-op
+or `publish=false` run does not dispatch extensions. Scheduled checks still cover
+all configured versions. For a separate extension refresh, dispatch
+`cache-extensions.yml` with `php-versions=8.6` and `fast=true` after PHP is published.
+
+Optional extension publication prepares the exact selection once, uploads in up
+to eight parallel jobs grouped by PHP runtime variant, then commits the manifests
+after every upload succeeds. The publication lock spans all three stages. Failed
+upload jobs can be retried using the successful upload receipts and remote objects.
+
+Run the deferred checks separately when ready:
+
+```sh
+# PHP artifact checks, repeated for the desired ARM/Intel compatibility runners:
+gh workflow run test.yml -R shivammathur/php-darwin --ref main \
+  -f php-version=8.6 -f run-id=BUILD_RUN_ID -f runner=macos-15
+# Published PHP and supported optional packs through setup-php, cold and warm:
+gh workflow run e2e.yml -R shivammathur/php-darwin --ref main \
+  -f php-version=8.6 -f optional-packs=true
+```
+
+Wait for the optional packs to publish before the second command. This tests the
+setup-php release/NTS consumer path on both architectures; it does not certify
+debug/ZTS optional packs. Retry failed publication jobs without rebuilding.
+`publish.yml` and `publish-extensions.yml` also accept `fast=true` for direct
+publication of existing packages. Fast PHP publication accepts space-separated
+completed source run IDs with complementary variants (for example, six original
+variants plus two supplemental ARM variants). The combined set must have no
+conflicting variants and must match the same PHP and tap sources. Default manual
+publication still requires the original native compatibility evidence.
+
 `conf/php-cache-baselines.json` acknowledges the October 2026 private security
 publications against the current public tap recipes. Each entry is bound to the
 published PHP version, original recipe commit, aggregate source hash, and individual
