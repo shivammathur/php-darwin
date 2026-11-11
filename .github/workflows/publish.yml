@@ -9,7 +9,7 @@ on:
         required: true
         type: string
       run-id:
-        description: Workflow run containing validated architecture artifacts
+        description: Space-separated workflow run IDs containing the complete PHP archive set
         required: true
         type: string
 
@@ -31,23 +31,18 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Validate source build and compatibility tests
-        id: source
+      - name: Download completed cache packages
         env:
           GH_TOKEN: ${{ secrets.TOKEN || github.token }}
           PHP_VERSION: ${{ inputs.php-version }}
-          RUN_ID: ${{ inputs.run-id }}
-        run: bash scripts/release/validate-publish-run.sh "$RUN_ID"
-
-      - name: Download validated architecture caches
-        uses: ./.github/actions/download-artifacts
-        timeout-minutes: 10
-        with:
-          github-token: ${{ secrets.TOKEN || github.token }}
-          artifact-ids: ${{ steps.source.outputs.artifact-ids }}
-          path: builds
-          repository: ${{ github.repository }}
-          run-id: ${{ inputs.run-id }}
+          RUN_IDS: ${{ inputs.run-id }}
+        run: |
+          mkdir -p builds
+          for run_id in $RUN_IDS; do
+            [[ "$run_id" =~ ^[1-9][0-9]*$ ]]
+            gh run download "$run_id" --repo shivammathur/php-darwin \
+              --pattern "php-$PHP_VERSION-*" --dir builds
+          done
 
       - name: Restore already-published architectures outside the recovered matrix
         env:

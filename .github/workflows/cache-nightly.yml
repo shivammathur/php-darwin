@@ -50,7 +50,7 @@ on:
         type: boolean
 
 concurrency:
-  group: cache-nightly-${{ inputs.php-version || '8.6' }}
+  group: cache-nightly-${{ inputs.php-version || '8.6' }}-${{ inputs.architectures || 'all' }}-${{ inputs.builds || 'all' }}-${{ inputs.ts || 'all' }}
   cancel-in-progress: false
 
 permissions:

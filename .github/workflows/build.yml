@@ -141,12 +141,12 @@ jobs:
       source-cache-release: ${{ inputs.source-cache-release }}
       # Trusted staging runs must prepare reusable bottles before publication.
       # Keeping PHP release manifests unchanged must not discard those builds.
-      save-source-bottles: ${{ inputs.publish || github.ref == 'refs/heads/main' }}
+      save-source-bottles: true
       reuse-archives: ${{ inputs.reuse-archives }}
 
   cache-bottles:
     name: Cache missing dependency bottles in Cloudflare
-    if: ${{ always() && !cancelled() && (inputs.publish || github.ref == 'refs/heads/main') && needs.matrix.outputs.build-required == 'true' }}
+    if: ${{ always() && !cancelled() && needs.matrix.outputs.build-required == 'true' }}
     needs: [matrix, architecture]
     uses: ./.github/workflows/cache-bottles.yml
     permissions:
