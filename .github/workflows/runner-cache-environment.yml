@@ -1,0 +1,22 @@
+name: Inspect cache runner environment
+on:
+  push:
+    branches: [fix/fast-cache-refresh]
+    paths: [.github/workflows/runner-cache-environment.yml]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: [self-hosted, fast-cache-repair]
+    timeout-minutes: 5
+    steps:
+      - name: Locate Homebrew and active runner processes
+        shell: bash
+        run: |
+          printf 'PATH=%s\n' "$PATH"
+          uname -m
+          for brew in /opt/homebrew/bin/brew /opt/homebrew/Homebrew/bin/brew /usr/local/bin/brew /usr/local/Homebrew/bin/brew; do
+            if [ -e "$brew" ] || [ -L "$brew" ]; then ls -l "$brew"; fi
+          done
+          ls -ld /opt/homebrew /opt/homebrew/bin /opt/homebrew/.git /opt/homebrew/Library /usr/local/bin 2>/dev/null || true
+          pgrep -fl 'Runner.Worker|Runner.Listener' || true
