@@ -9,6 +9,8 @@ fs.appendFileSync(process.env.GITHUB_ENV, `PHP_DARWIN_NODE=${process.execPath}\n
 // curl before its approved replacement is restored. Bootstrap every download,
 // including Homebrew's own transfers, with the independent macOS curl.
 if (process.platform === 'darwin') {
+  const prefix = process.arch === 'arm64' ? '/opt/homebrew' : '/usr/local';
+  fs.appendFileSync(process.env.GITHUB_PATH, `${prefix}/bin\n${prefix}/sbin\n`);
   const bin = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP, 'php-darwin-tools-'));
   fs.symlinkSync('/usr/bin/curl', path.join(bin, 'curl'));
   fs.appendFileSync(process.env.GITHUB_PATH, `${bin}\n`);
