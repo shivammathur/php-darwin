@@ -47,6 +47,9 @@ jobs:
   plan:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
     outputs:
       required: ${{ steps.change.outputs.required }}
       automatic: ${{ steps.change.outputs.automatic }}
@@ -59,25 +62,36 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+      - name: Refresh stale queued automatic runs before planning
+        id: current
+        env:
+          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+          AUTOMATIC: ${{ github.event_name != 'workflow_dispatch' || inputs.automatic }}
+        run: node scripts/cache/dependency-gate.cjs refresh
       - name: Pin PHP formula roots
+        if: steps.current.outputs.current == 'true'
         id: php
         run: bash scripts/build/source-commit.sh
       - name: Pin extension formula roots
+        if: steps.current.outputs.current == 'true'
         id: extensions
         run: bash scripts/build/source-commit.sh extensions
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        if: steps.current.outputs.current == 'true'
         with:
           repository: shivammathur/homebrew-php
           ref: ${{ steps.php.outputs.commit }}
           path: homebrew-php
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        if: steps.current.outputs.current == 'true'
         with:
           repository: shivammathur/homebrew-extensions
           ref: ${{ steps.extensions.outputs.commit }}
           path: homebrew-extensions
           persist-credentials: false
       - name: Detect changed dependency declarations and bottle identities
+        if: steps.current.outputs.current == 'true'
         id: change
         env:
           AUTOMATIC: ${{ github.event_name != 'workflow_dispatch' || inputs.automatic }}
