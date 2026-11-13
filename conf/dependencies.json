@@ -1663,13 +1663,13 @@
           }
         },
         "little-cms2": {
-          "version": "2.19.1",
+          "version": "2.20",
           "bottle": {
             "formula": "little-cms2",
-            "version": "2.19.1",
-            "tag": "arm64_sonoma",
-            "sha256": "823125475a9f5bfd1f2ddda2910143aa47c018c4cd6c55867b7461553d1719e1",
-            "url": "https://ghcr.io/v2/homebrew/core/little-cms2/blobs/sha256:823125475a9f5bfd1f2ddda2910143aa47c018c4cd6c55867b7461553d1719e1"
+            "version": "2.20",
+            "tag": "arm64_sequoia",
+            "sha256": "e04ebf2fc43c8ea39680a2255da8b6a7060ee38e5e1f159c8182c6344dd4c679",
+            "url": "https://ghcr.io/v2/homebrew/core/little-cms2/blobs/sha256:e04ebf2fc43c8ea39680a2255da8b6a7060ee38e5e1f159c8182c6344dd4c679"
           }
         },
         "imagemagick": {
@@ -2030,26 +2030,6 @@
             "tag": "arm64_sequoia",
             "sha256": "0ec9bf8082245c008803b42dcae3e6a0c8cd7a67aed589d9b6482b115c0a543b",
             "url": "https://ghcr.io/v2/homebrew/core/libyaml/blobs/sha256:0ec9bf8082245c008803b42dcae3e6a0c8cd7a67aed589d9b6482b115c0a543b"
-          }
-        },
-        "docbook": {
-          "version": "5.2.1",
-          "bottle": {
-            "formula": "docbook",
-            "version": "5.2.1",
-            "tag": "arm64_sequoia",
-            "sha256": "7b7417a524db49b20339879a597e192a07be149a2a9249245da83718f488c7ff",
-            "url": "https://ghcr.io/v2/homebrew/core/docbook/blobs/sha256:7b7417a524db49b20339879a597e192a07be149a2a9249245da83718f488c7ff"
-          }
-        },
-        "docbook-xsl": {
-          "version": "1.79.2_1",
-          "bottle": {
-            "formula": "docbook-xsl",
-            "version": "1.79.2_1",
-            "tag": "arm64_sequoia",
-            "sha256": "97d7b10fee85c4ad08218efa4b9527b40a412d1e6b439612a76c5eb9c3fe22cd",
-            "url": "https://ghcr.io/v2/homebrew/core/docbook-xsl/blobs/sha256:97d7b10fee85c4ad08218efa4b9527b40a412d1e6b439612a76c5eb9c3fe22cd"
           }
         }
       }
@@ -5890,17 +5870,17 @@
           }
         },
         "little-cms2": {
-          "version": "2.19.1",
+          "version": "2.20",
           "source": {
-            "key": "php-darwin-source-v1-8c18b81064e8b3d6c93ccc2a67da4e78e038450f6bf26afa60173639d4439f20",
+            "key": "php-darwin-source-v1-09e0201eee1d9ab16f74b1766550e8832b0281a9da4aa7b385762527088f4b66",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
                 "macos": "15",
                 "prefix": "/usr/local",
                 "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "26.2",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
                 "buildEnv": {
                   "CC": "",
                   "CXX": "",
@@ -5916,8 +5896,8 @@
                 }
               },
               "formula": "little-cms2",
-              "version": "2.19.1",
-              "recipe": "5a4ac59fbb695249d3b02b489be7de8c0328cff999483ea3ec970c8c2761f72b",
+              "version": "2.20",
+              "recipe": "97ef99af989632d5ea985c57b28a3f6cb31f9789824556964bcde63142ba0198",
               "dependencies": [
                 {
                   "name": "giflib",
@@ -5929,16 +5909,16 @@
                 },
                 {
                   "name": "jpeg-turbo",
-                  "version": "3.2.0",
-                  "recipe": "860c0c90f8c2d0541de067218452d57f555dd4da5b5dc49151f13b563229ab24",
+                  "version": "3.2.1",
+                  "recipe": "a9839e669928c7ee0666c10f85e11d2c55f60986c58ff0c835845863f71af11b",
                   "options": [],
                   "compiler": "clang",
                   "runtime_dependencies": []
                 },
                 {
                   "name": "libpng",
-                  "version": "1.6.58",
-                  "recipe": "89fd1883941fadd654b00ff71eaebbff6a64d30c9b1a178113d382f188550dd3",
+                  "version": "1.6.59",
+                  "recipe": "3ef2e9c5f499c302dc8e9f1f76980732ad850618a00606fbfac2522080632b37",
                   "options": [],
                   "compiler": "clang",
                   "runtime_dependencies": []
@@ -5952,9 +5932,9 @@
                   "runtime_dependencies": [
                     {
                       "full_name": "jpeg-turbo",
-                      "version": "3.2.0",
+                      "version": "3.2.1",
                       "revision": 0,
-                      "pkg_version": "3.2.0",
+                      "pkg_version": "3.2.1",
                       "declared_directly": true,
                       "compatibility_version": 1
                     },
@@ -5968,9 +5948,9 @@
                     },
                     {
                       "full_name": "libpng",
-                      "version": "1.6.58",
+                      "version": "1.6.59",
                       "revision": 0,
-                      "pkg_version": "1.6.58",
+                      "pkg_version": "1.6.59",
                       "declared_directly": false,
                       "compatibility_version": 1
                     },
@@ -5992,10 +5972,11 @@
                     },
                     {
                       "full_name": "lz4",
-                      "version": "1.10.0",
+                      "version": "1.11.1",
                       "revision": 0,
-                      "pkg_version": "1.10.0",
-                      "declared_directly": false
+                      "pkg_version": "1.11.1",
+                      "declared_directly": false,
+                      "compatibility_version": 1
                     },
                     {
                       "full_name": "zstd",
@@ -6010,8 +5991,8 @@
                 },
                 {
                   "name": "lz4",
-                  "version": "1.10.0",
-                  "recipe": "b97c8de8ab96ee1eaf88cefbbb0eaad45e900fc626e4fbc254f56ba76d040dfe",
+                  "version": "1.11.1",
+                  "recipe": "7f2c22723df560284fc7e643892b61fc4e8f15859fada61c4e20ca4aac9f0ef4",
                   "options": [],
                   "compiler": "clang",
                   "runtime_dependencies": []
@@ -6033,17 +6014,17 @@
                     },
                     {
                       "full_name": "jpeg-turbo",
-                      "version": "3.2.0",
+                      "version": "3.2.1",
                       "revision": 0,
-                      "pkg_version": "3.2.0",
+                      "pkg_version": "3.2.1",
                       "declared_directly": true,
                       "compatibility_version": 1
                     },
                     {
                       "full_name": "libpng",
-                      "version": "1.6.58",
+                      "version": "1.6.59",
                       "revision": 0,
-                      "pkg_version": "1.6.58",
+                      "pkg_version": "1.6.59",
                       "declared_directly": true,
                       "compatibility_version": 1
                     }
@@ -6066,10 +6047,11 @@
                   "runtime_dependencies": [
                     {
                       "full_name": "lz4",
-                      "version": "1.10.0",
+                      "version": "1.11.1",
                       "revision": 0,
-                      "pkg_version": "1.10.0",
-                      "declared_directly": true
+                      "pkg_version": "1.11.1",
+                      "declared_directly": true,
+                      "compatibility_version": 1
                     },
                     {
                       "full_name": "xz",
@@ -6083,7 +6065,7 @@
                 }
               ]
             },
-            "sha256": "9877cc05afeaae74b5ee4a591b7442183e772473693371a67f6bf54128887c85"
+            "sha256": "e54e1ebd8924874548ae1939d9429d4c0887226e188bb122355754f5a37384a1"
           }
         },
         "imagemagick": {
@@ -7325,7 +7307,7 @@
   },
   "tap_inputs": {
     "schema": 1,
-    "sha256": "480bc0800e2fc111cb70166d8a72ea2236f1abec7e4b9f056b0fc9f51962b0cd",
+    "sha256": "d4a700a33cca3982c5812b1fa372abfb828ffc1efa8dd6a33c37917f62f39fe6",
     "records": {
       "homebrew-php/Formula/autoconf@2.69.rb": "fd33eadb8f275a2d089c7d112bfb39d680cc838b3af2f61ab4fb35f09dbeff7d",
       "homebrew-php/Formula/bison@2.7.rb": "54902fa819dd1736bcca826196ee75b2608337b4b83e484829446961fd4e2669",
@@ -12683,7 +12665,7 @@
       "homebrew-extensions/Formula/amqp@8.4.rb": "190ebcdf97b4182e527248af3e6d23b333b134aaaef4ac75837367d4ac3c467b",
       "homebrew-extensions/Formula/amqp@8.5.rb": "36cac1982f06a3d2e466d4bbdadd65d077c2dd50711d764addf2467f174351dc",
       "homebrew-extensions/Formula/amqp@8.6.rb": "21b82fddc0361b2882fdc601e344acb2af815684fb2107ae3ca9b316d2335514",
-      "homebrew-extensions/Formula/amqp@8.7.rb": "01f969323a5393392017eb37f1fedbed4e7096cca69fea5e9fcba110e8a12df3",
+      "homebrew-extensions/Formula/amqp@8.7.rb": "12d634c74f7ed8cac5dcc3769f722d4e9ce11a303f4a45c2ecbec36eceb50bde",
       "homebrew-extensions/Formula/apcu@5.6.rb": "236ace99905a12b454cbf789b3290c91ed524551ef0ecc9fe271c1f0dc1ab48c",
       "homebrew-extensions/Formula/apcu@7.0.rb": "401311253b4474a78b0c9eab4fa335d546206ba3059acc9380b22130b12d9806",
       "homebrew-extensions/Formula/apcu@7.1.rb": "76b114e42b8165a564dbf149d13ace8fc4798312af68f0db7d15a950d9b93acd",
@@ -12710,7 +12692,7 @@
       "homebrew-extensions/Formula/ast@8.4.rb": "30b90daccc3bdc32c5180f8cb544977819e1589a5092eadc0b88c735307bb454",
       "homebrew-extensions/Formula/ast@8.5.rb": "49c8fe3f987295742549694d5d9f675f48f842a58427603de2a89041745aa7a4",
       "homebrew-extensions/Formula/ast@8.6.rb": "0c19e1048ffb121c488cbd922942c9f89044b941865ea10ee6b1d6bf89337804",
-      "homebrew-extensions/Formula/ast@8.7.rb": "3e366886b986bbad6ba1f73340ebbbdf3f86cf0c2f6f8118a89b92798c05e7c5",
+      "homebrew-extensions/Formula/ast@8.7.rb": "712505a92d8914be8340741d9a384192f3ccd13af113ce84e66171aba6c749e1",
       "homebrew-extensions/Formula/brotli@5.6.rb": "f1682ca95c645a8158b7279f5285f6aa526bada8be6182de2434401ab100188e",
       "homebrew-extensions/Formula/brotli@7.0.rb": "40b776aa54dd524aae02045d0183d989ca0445e37a1a74ba4fc2bf99a895f067",
       "homebrew-extensions/Formula/brotli@7.1.rb": "9462662f650ae91480e36c586fb290605a28a4a2d6ac159898055ad080e164b3",
@@ -12724,7 +12706,7 @@
       "homebrew-extensions/Formula/brotli@8.4.rb": "f0e2317e1ff07eb2643539d71fb2aa1ae6febd6c4334f799be95e40db19c78af",
       "homebrew-extensions/Formula/brotli@8.5.rb": "2ebe0e0d51d9a52f705db92909c79fba0754d4fb1fc739aeb40ad609c9246e44",
       "homebrew-extensions/Formula/brotli@8.6.rb": "d168e20eddd495f61b0bc59087174739e9aced24b2397b634bca223f80605471",
-      "homebrew-extensions/Formula/brotli@8.7.rb": "b0210f4457288622d5a8b1193b304ce2a18723b101dd5a28b40995edc9293c4c",
+      "homebrew-extensions/Formula/brotli@8.7.rb": "c76c9362ea36af3492e13ea231f1f473ee7376472a5838c4600b3f27ddf77cf7",
       "homebrew-extensions/Formula/couchbase@5.6.rb": "86335251882a0f25e0e341cfd991e8e609b8d7b9a13e75265aa49a36ba0ccbee",
       "homebrew-extensions/Formula/couchbase@7.0.rb": "194a42ab7e3cf4e15631b88468a6fb168609c3355fed4cb8c6ee07e7c14518f4",
       "homebrew-extensions/Formula/couchbase@7.1.rb": "1b5c7bad288959e7b4af15ccb10f3fc7b99bb44138b13f34838b27feba4c3390",
@@ -12738,7 +12720,7 @@
       "homebrew-extensions/Formula/couchbase@8.4.rb": "6a5ea3acae208d52bb670a3c718ec9142fac2dd61c3eca8e6c94dced89f4256e",
       "homebrew-extensions/Formula/couchbase@8.5.rb": "b8aa83aaf855ce0e786c054ac1d645733f719be6fd2e5ad62b4dc30baff004cd",
       "homebrew-extensions/Formula/couchbase@8.6.rb": "dc040d332c5d81764860aa44aa0a952e280a1eac22fdbb26cb577095179b7c32",
-      "homebrew-extensions/Formula/couchbase@8.7.rb": "ebe69c29aa0d8f669db6167acb1e24987c59cf101433ac1cc2b337c1e2a50ef8",
+      "homebrew-extensions/Formula/couchbase@8.7.rb": "9ac919a26f1a4726e28557bf29cfca709cee467e2dd1320766a4cc0e4561d392",
       "homebrew-extensions/Formula/decimal@7.0.rb": "2fe9dde1922354af08513bc1efcb182b6520dfac1ae719eccc137fc5e9b38180",
       "homebrew-extensions/Formula/decimal@7.1.rb": "af1618599e10bd3d6d121a055cfc209de53828fe71749027949ea3cf7f76869a",
       "homebrew-extensions/Formula/decimal@7.2.rb": "7ad1d9fd74daef7e29d96d93ca6fba62c34e580fcd2f1ad2c209cd4ddd1c3d44",
@@ -12764,7 +12746,7 @@
       "homebrew-extensions/Formula/ds@8.4.rb": "3bc6f47598d96e88aca5e8b550d05845ef7dd66598acfd10c7f2bfaffcabfd8e",
       "homebrew-extensions/Formula/ds@8.5.rb": "de37df8b787c9e04111ea64f44589479ace37523edb7ef7f5ede8b948ba5d553",
       "homebrew-extensions/Formula/ds@8.6.rb": "1a8c7875796d24e949d38abc70561f8ce9cd129cba3b397dece8a941f54d9d97",
-      "homebrew-extensions/Formula/ds@8.7.rb": "d9a13c112a8504472a0a965edaee0aaeecf935b0cf7f47650994e47c04e52003",
+      "homebrew-extensions/Formula/ds@8.7.rb": "868e12d5c7ee1ef4f1c4084cb36d975f62fdf4f4f27b6e394770b3a9a815c1b8",
       "homebrew-extensions/Formula/event@5.6.rb": "874faf952d435502576abfe6ed4567a179ff8b0bf81e7b48140640a962b384e0",
       "homebrew-extensions/Formula/event@7.0.rb": "800e56ecb3aa89aa4507d85690fd63af1c957e089bbac51a425c24207973b782",
       "homebrew-extensions/Formula/event@7.1.rb": "fe9761eab3e51559d326a9e88f2739f19186567bc7eb22b074303b4de2493ba2",
@@ -12790,7 +12772,7 @@
       "homebrew-extensions/Formula/excimer@8.4.rb": "658e9f24881e4826044846ed7a2a00f72b0ed867c49b0739c4ed02c7bb295caa",
       "homebrew-extensions/Formula/excimer@8.5.rb": "78a3c5068eec923d250358919f46047f85f380738024c572519118b1ef806d31",
       "homebrew-extensions/Formula/excimer@8.6.rb": "7ac76901e9491b2d4f3641a7201aa225258b83011ff1a3696a20e3e56a768604",
-      "homebrew-extensions/Formula/excimer@8.7.rb": "28405c4325307cb1e85510498214b8904fa5e7c06ce781fa585c04695d2bc8c0",
+      "homebrew-extensions/Formula/excimer@8.7.rb": "4397d649d0e763abe25e6af9fe883452edd226985250bd4b3fb99eaafe2f93da",
       "homebrew-extensions/Formula/expect@5.6.rb": "17d1d46faa73d72b43c48942a61946ec764e731cea017a29d73d6f80d82556aa",
       "homebrew-extensions/Formula/expect@7.0.rb": "33a600a498f8aa6f7eda9355e6d8dfd3463a56d085a6521f748408b009d4ee65",
       "homebrew-extensions/Formula/expect@7.1.rb": "7b323aa061ca91fd23bc94bef6a49d90089f629593dc237ba5d195dfdad88f0e",
@@ -12804,7 +12786,7 @@
       "homebrew-extensions/Formula/expect@8.4.rb": "b713234963d5687940fae5469ad3e777ade46556b6ff65b5f6c2b1827b2e8bf0",
       "homebrew-extensions/Formula/expect@8.5.rb": "5839951f40334c6244ceaf5ede174389cee225076b9aada4119fab330a294d51",
       "homebrew-extensions/Formula/expect@8.6.rb": "33de410652f8687299508dd3065b15fe55b646e1f6eb01fc70488a3c2a702ea5",
-      "homebrew-extensions/Formula/expect@8.7.rb": "b881d11d7b0668f671864a5f84134d16b0a6e0a194be85921141ff6a2a9ccf12",
+      "homebrew-extensions/Formula/expect@8.7.rb": "9f80f1a456bd452778d5c5ef5e78d24fc9ac8e1ac1b8a84d886eda20661658b2",
       "homebrew-extensions/Formula/firebird-client.rb": "6e6f7111277b44a987d548a9f152996eac0fb6d8b88690253a530814a49e1aa9",
       "homebrew-extensions/Formula/firebird-client@3.rb": "676b078b35992452f3ca87d685650e2bc844b80082aac3db353ef64a435aec07",
       "homebrew-extensions/Formula/gearman@5.6.rb": "df10206f42c52a26d214f92fa95082763644c3e52faa89c81a2ca4d3e6009f06",
@@ -12820,7 +12802,7 @@
       "homebrew-extensions/Formula/gearman@8.4.rb": "74d7e4ee48d9c8156427619f450acc45a2e45e175b219e0be798e95d47a5a633",
       "homebrew-extensions/Formula/gearman@8.5.rb": "6189a9bb2a601b2e8f163afc84037f354387f645ec2846cc5b1afe9b9931d2d3",
       "homebrew-extensions/Formula/gearman@8.6.rb": "9dc520188ea9f820bf5deab980870fbfe81bf4796640a1f2698c68f8ded156ea",
-      "homebrew-extensions/Formula/gearman@8.7.rb": "12626452162ceec79dade7bc2cec800e6faea2904d27a3ef59b321621e5dce6f",
+      "homebrew-extensions/Formula/gearman@8.7.rb": "8449b52d64090f907f7a68382f8d5295a359d401c2bfdcbaa9fa3a0510b859e1",
       "homebrew-extensions/Formula/geos@5.6.rb": "1bc6d083be86125798b0ddedff6f179d99dfc1b298ddb12592ead1bca2b58952",
       "homebrew-extensions/Formula/geos@7.0.rb": "24d98957e1851bb9292ed55600fed2db900d6a596e5a551fa0ba2bd847cff841",
       "homebrew-extensions/Formula/geos@7.1.rb": "2c712d58e988768d7184c5d941d78db43842ab13c18e2c5c6ac32e4762785bd6",
@@ -12848,7 +12830,7 @@
       "homebrew-extensions/Formula/gmagick@8.4.rb": "3c65591925c9f8d91415c6d0282fc647e4c657d80c6a7f524558c0fb30d04296",
       "homebrew-extensions/Formula/gmagick@8.5.rb": "1e5dd44dfdb9c91d4430e2e0a7fe6d863a108136d51e8015aa8a76c78843f016",
       "homebrew-extensions/Formula/gmagick@8.6.rb": "1fc30ea6424485e6f60a132914a39d9eabd3accf56525d745184fc12d7304e91",
-      "homebrew-extensions/Formula/gmagick@8.7.rb": "703a9c85284360be92fb2a989a968c7b4e5aa6e7ebae5ee2d6ca8c255b550e78",
+      "homebrew-extensions/Formula/gmagick@8.7.rb": "cccc9e64498c82c32c145c697917cb07c346ababda25869cd991cf2f796585e4",
       "homebrew-extensions/Formula/gnupg@5.6.rb": "cb57adb64a0be1a8bf7f07e9b98323dcbee6ac015354d87295fb3316ea0030b1",
       "homebrew-extensions/Formula/gnupg@7.0.rb": "c3b83c68b14593427456cb86df621cf2f817269a5b90b3217de0aa5b6a9395c4",
       "homebrew-extensions/Formula/gnupg@7.1.rb": "c2bf71d000860a4b39d4b6e56be37f0eeaf674a2efa67005cd14542e529709b4",
@@ -12862,7 +12844,7 @@
       "homebrew-extensions/Formula/gnupg@8.4.rb": "c822bb856eb994d0ae6d819f57ca8dcaa1bb61b7ad02f8e85cb665153a9de56d",
       "homebrew-extensions/Formula/gnupg@8.5.rb": "02beb768b9e09d564fde05c0c1667c2a0fbee2d2af8f283b0f9f6c32b8e34a44",
       "homebrew-extensions/Formula/gnupg@8.6.rb": "beb173d12f95531d3054ee77753418000f14ade6fd75fa08a1cc1a7af6be94b3",
-      "homebrew-extensions/Formula/gnupg@8.7.rb": "eae788e08520c878a8a34d43d82181f59b04b469ee84dc57be7d63f9b0ffcf15",
+      "homebrew-extensions/Formula/gnupg@8.7.rb": "bc0338938362451b0702a085b0da704f7efbc22bc79b3e6df3a3f68dee7477c8",
       "homebrew-extensions/Formula/grpc@5.6.rb": "ec08acba3ef1446f0cfd49e1e96190c262ef6f967fbf3dd521434062231e52fb",
       "homebrew-extensions/Formula/grpc@7.0.rb": "08c425e0f99da31388b5d436760f2c8c7ab7ea9e7e7b5bda853ea6753a8428c0",
       "homebrew-extensions/Formula/grpc@7.1.rb": "8d43f17a72d2173f762136a9db01dd6f5deb53ddd00719d637b7b862350f0fc2",
@@ -12876,7 +12858,7 @@
       "homebrew-extensions/Formula/grpc@8.4.rb": "7f11aa62b077dbcc8f0fb260d55401b6b90334fc5de4efecf5bb37c939f99ff2",
       "homebrew-extensions/Formula/grpc@8.5.rb": "043b6841cd74cfa310136acfd9e68837ccb1bbbdee39a9d4e31455a37b24b8b1",
       "homebrew-extensions/Formula/grpc@8.6.rb": "546854a3d95792500cc1573422f88612662ed1e13dce55a300b9e37be5fcaf01",
-      "homebrew-extensions/Formula/grpc@8.7.rb": "f13460546ab7af94f3bac290a9e89b56281aeff0ee6a0d74ac4d4f89f4ee8895",
+      "homebrew-extensions/Formula/grpc@8.7.rb": "f6c4f02a1c2800e7585e0172a9de18f83591e4c99209e5a936ebeeccbd61c71b",
       "homebrew-extensions/Formula/igbinary@5.6.rb": "62c921116980f97bf87f94a677290cd25342742724202c426f169ee2c339b198",
       "homebrew-extensions/Formula/igbinary@7.0.rb": "8bcb2767e2fc232a12197a1614e02fcc0f33a66dae4c275b244ee572e237be13",
       "homebrew-extensions/Formula/igbinary@7.1.rb": "3bdfc619299a99f03f1768cfa4fe890bb159d1d83b8dadcfbf7bb477a6676a1f",
@@ -12890,7 +12872,7 @@
       "homebrew-extensions/Formula/igbinary@8.4.rb": "08c46d0ac4ee13ca367fb89bb27713381c3798b1f93e6dbb6e4814042c799f68",
       "homebrew-extensions/Formula/igbinary@8.5.rb": "b939a5866526361a84a2b0fbf7c158356eba9e2632b10c7fde69e0ba34617af2",
       "homebrew-extensions/Formula/igbinary@8.6.rb": "f7d262cb4b41c70d4c818d05c38b0042e0d18da5d2b2790c88483d4504b6d6a3",
-      "homebrew-extensions/Formula/igbinary@8.7.rb": "2cd2d14476561f2093b6332ac28ac40d2a610c27714763bd06cc90c7b7130665",
+      "homebrew-extensions/Formula/igbinary@8.7.rb": "d5f7e4509bbbaf97d0311730a645b0d697abb30764c38934fbba376b271eff6f",
       "homebrew-extensions/Formula/imagick@5.6.rb": "826ced46e15b25cb9ea514121d5399c22e6ccb000abcf8dadc423a7c193fdc8e",
       "homebrew-extensions/Formula/imagick@7.0.rb": "f130622076a0917a6946664174256970a4a44f628979010fa94f6d67f950dcb6",
       "homebrew-extensions/Formula/imagick@7.1.rb": "35ffe6e159e71637be489fc194f98b9058abd96001a98f99966b77f721c496e2",
@@ -12904,7 +12886,7 @@
       "homebrew-extensions/Formula/imagick@8.4.rb": "3f75340d4919ed3b833c9e90cce0c945e9549f03ab944759dca5dbf11c60eeef",
       "homebrew-extensions/Formula/imagick@8.5.rb": "46aa8a46787e2b10776f1a4c103a3ac756fc810d5a1f923706c9462802e35009",
       "homebrew-extensions/Formula/imagick@8.6.rb": "4358714cbfc6da1c37c4aab3dbdef9db093e03d34113418d6b307f8e10220a52",
-      "homebrew-extensions/Formula/imagick@8.7.rb": "46f28ce12da0b1d6504419abc6ae010840631545993f90bc63c58a06d238759e",
+      "homebrew-extensions/Formula/imagick@8.7.rb": "45f2d6fdc4c043f10685ef38f44c06f4f0631846afb3be6cdb0091ea6679fd4a",
       "homebrew-extensions/Formula/imap-uw.rb": "e2842f5f0f36947502ac52aa96f22aa06bebbab7aa26896889cdca4bfc7d051b",
       "homebrew-extensions/Formula/imap@5.6.rb": "a622b26a900784193f771f41dd94441232d9123fbffadc3873c89e5e08c567e9",
       "homebrew-extensions/Formula/imap@7.0.rb": "55a9d6ab6a2acedb2962cfa070b671d444b7d9eb40fce3892418fa03de9e425a",
@@ -12919,7 +12901,7 @@
       "homebrew-extensions/Formula/imap@8.4.rb": "50075bc8463a479f583de285de2b1ca9077928038e60b253c6a92c73c4519637",
       "homebrew-extensions/Formula/imap@8.5.rb": "5dced8f71b112b69d9f174feaa5c431c488d7659e3439a49b8afd30a6848d4b8",
       "homebrew-extensions/Formula/imap@8.6.rb": "b57946d22e11d38075a660f874590c160b6fa8c3cd4c1de15d69b5e503dae90a",
-      "homebrew-extensions/Formula/imap@8.7.rb": "c1a4ad5013cfac30998066db6f9a15428faf3c4473a61694e0a3f6fbf36397d4",
+      "homebrew-extensions/Formula/imap@8.7.rb": "4c4a7669ac88cf2cb63ed95f0d61efbd67c4a88a8ec2b017638bd8519e50a535",
       "homebrew-extensions/Formula/interbase@5.6.rb": "0aaf206528cacef4a8538bf58169551006e98b5ac9b176839100ddcdc53765e2",
       "homebrew-extensions/Formula/interbase@7.0.rb": "15d60bfee1f071a6c3c8d2af79658ef0b2c1a24a285eecf25045145104f2526f",
       "homebrew-extensions/Formula/interbase@7.1.rb": "b944892930f867899c112fc3bd88d7c07c3bbb1ba00066cbd854e6c6d8e2f2ee",
@@ -12962,7 +12944,7 @@
       "homebrew-extensions/Formula/mailparse@8.4.rb": "104523cb9cbd2b3ac4005a24029b9cb112542498973c98ab6196361b054e3f25",
       "homebrew-extensions/Formula/mailparse@8.5.rb": "5df60166cc7b79ec9be38cb64d4ec073a3b8af1599a08d84ac41d0fc6eefbeda",
       "homebrew-extensions/Formula/mailparse@8.6.rb": "a10f16eb85bb3da9fc6f10b26a6f314ae5f57ffe0e4268957e3a0bbe6fbbb15f",
-      "homebrew-extensions/Formula/mailparse@8.7.rb": "0c9caac57ab24b6fc7b75ff890f9a0ed2d9f9eb3fa60eb33de65b747e1598c60",
+      "homebrew-extensions/Formula/mailparse@8.7.rb": "9fe3544318301b528eaf317df1f99aab4ba42cec06da9fa369fe220224eac482",
       "homebrew-extensions/Formula/maxminddb@7.2.rb": "57c54b6e6c6092bb9cd6d52864298ecf788a3f9f839b717bc6c37815197f7fed",
       "homebrew-extensions/Formula/maxminddb@7.3.rb": "22cb767f5a891c90e645f0285dc46cfc20e5254f70c903f8f4c4fd60e43309c2",
       "homebrew-extensions/Formula/maxminddb@7.4.rb": "083d5c024ef156afc9d609c370eb8c2fd8f48830ea674d04c271f781f66802f0",
@@ -12987,7 +12969,7 @@
       "homebrew-extensions/Formula/mcrypt@8.4.rb": "00948dd7987e16fb91ffbd3472e7e4adbf4b080224a6b39c861ee69da3941f1a",
       "homebrew-extensions/Formula/mcrypt@8.5.rb": "b39d26df148a262dc957d44041b4e07bd3c2baea6f45f280f43171d5cac61874",
       "homebrew-extensions/Formula/mcrypt@8.6.rb": "69118587e323edaeac3482df1c6ff5b568506ee7065bf8e21b518f7cca886570",
-      "homebrew-extensions/Formula/mcrypt@8.7.rb": "432939ac5251cab4dde549ac8b90a1beec8901165299fe709ddcf6148aded19b",
+      "homebrew-extensions/Formula/mcrypt@8.7.rb": "942f01349839c1a6f8f1f9276baea75d15d5661704b2bcbe97c9ca98e3e42cdf",
       "homebrew-extensions/Formula/memcache@5.6.rb": "817ae30a0429a982750312c10cfb9b290e33df12ea60c63d1d161571e1b5711f",
       "homebrew-extensions/Formula/memcache@7.0.rb": "61be806abefaad6e9634c2bd9cc41fc71b3a59a021218a976570d217b883c370",
       "homebrew-extensions/Formula/memcache@7.1.rb": "4c880b0e5c3dcb5d5702ccf6d30c90b31f620f2654233d32bca1d250b16e82f7",
@@ -13034,7 +13016,7 @@
       "homebrew-extensions/Formula/mongodb@8.4.rb": "45b865b71d7eebd6627f7b0e81dcf684ac8572bc958f1c0af56e5c486e2e20da",
       "homebrew-extensions/Formula/mongodb@8.5.rb": "dc55704bd1827737f45bb1c08532af183285f45c542123c32c6c90aa15ce60eb",
       "homebrew-extensions/Formula/mongodb@8.6.rb": "cd2aadeea75c6b01acbf2e64efc07e2431db3075b1a5206019e7dd115cc3cfec",
-      "homebrew-extensions/Formula/mongodb@8.7.rb": "b53bcd15dd17e8eb23e3ec5c9b8bd5add87a9c919c3d1e973e59550246eb7ef6",
+      "homebrew-extensions/Formula/mongodb@8.7.rb": "fc6a8657de8ed64740842e18fb5d407230fd0f3c04234b402758a80a84ef7f37",
       "homebrew-extensions/Formula/msgpack@5.6.rb": "cf95071d4c2766a0c75b03b214ccdf04dc3c0d386e9bf68a4002e05b5a25995e",
       "homebrew-extensions/Formula/msgpack@7.0.rb": "5bc6ddf381501a558f04456bb916a36e4edf262e7181cd5b928c44584fa184ab",
       "homebrew-extensions/Formula/msgpack@7.1.rb": "06167da264438e2ca4566a12a15f87b5abc10569dcbdfeb1c939b843719ace3f",
@@ -13056,7 +13038,7 @@
       "homebrew-extensions/Formula/newrelic@8.3.rb": "ac9de91ae13c25258de013756416c159a914a8967be995eeb0b4f3776c08f06e",
       "homebrew-extensions/Formula/newrelic@8.4.rb": "4ac6222cb74905de28ea566053db2d1a68a7b3b0ca47fba7f7c73011b5df4bae",
       "homebrew-extensions/Formula/newrelic@8.6.rb": "81314e960f8b1379d7cf5d0489e8a719a8d070550334200d202cee67bcff8e96",
-      "homebrew-extensions/Formula/newrelic@8.7.rb": "3201f2b45bba6e13d716aaa7d3d20c058eef61dd9049eac827752ebee9035c7d",
+      "homebrew-extensions/Formula/newrelic@8.7.rb": "286a92560fff714585f01bb5b29894d76ef176d972a3e7d312aa9616f891b20c",
       "homebrew-extensions/Formula/oauth@5.6.rb": "6aceaa26bb83da12293c150220039e72916f6d3bbbd1992754b0f583f1095fa1",
       "homebrew-extensions/Formula/oauth@7.0.rb": "0d28bbcf5845d1cb938c5e7fb391247a8d6d6a9d34e51a1badf76c33eca561ca",
       "homebrew-extensions/Formula/oauth@7.1.rb": "6c220a95718d4b34e4dbe27ea79ccf97e8455b79bf4ec6d6974b6d052c9696d9",
@@ -13078,7 +13060,7 @@
       "homebrew-extensions/Formula/opentelemetry@8.4.rb": "2865615e4f722086745a7342c1416b58b0992e2d2c34e6696375c437b3539600",
       "homebrew-extensions/Formula/opentelemetry@8.5.rb": "a61b3c3d8da994ac26f488e16f72d424be520e00163f9ad7e6e4fea1ecdbd72f",
       "homebrew-extensions/Formula/opentelemetry@8.6.rb": "b388a1ddec9f4c9d1214b2f1c5995216bfbebbccdfe8169be3f8209ebaf4ff90",
-      "homebrew-extensions/Formula/opentelemetry@8.7.rb": "5ff6ef3759c03e70ab8f673f322170dc60a35982edf29ddba49dc430d5df7a78",
+      "homebrew-extensions/Formula/opentelemetry@8.7.rb": "1f90e5ae32d1164f6ee00a3abd8307740ec64c8de067e80415b7d2e6011f3f74",
       "homebrew-extensions/Formula/pcov@7.1.rb": "0b80735bdffbf82763863276e35ebd57b51b4afa907743ac4a48d59df630d464",
       "homebrew-extensions/Formula/pcov@7.2.rb": "a507c8edc4fba8aa4d7f656ad819b26eeadac75405519942026fcf2a9d3b8296",
       "homebrew-extensions/Formula/pcov@7.3.rb": "84af9465e68033f281a0e52050bfa5769878c67caa6a14b03f725dd7bad04075",
@@ -13104,7 +13086,7 @@
       "homebrew-extensions/Formula/pdo_firebird@8.4.rb": "8af2a15a2611d0c49f172a0d1e90807debaea2d999821b1b9580254773d65f99",
       "homebrew-extensions/Formula/pdo_firebird@8.5.rb": "2aaea47fcbaf9768fcfe3a8f71787f7fd673520f9dff55f79877e56e949b921d",
       "homebrew-extensions/Formula/pdo_firebird@8.6.rb": "576e996d8c59b3153d17c5e7e094beadde4e851d556aa54586533929ace3be08",
-      "homebrew-extensions/Formula/pdo_firebird@8.7.rb": "3ae1f129ac3647a11fa0ee2db5f9b515adcf02e840fa57019ba0180be5160684",
+      "homebrew-extensions/Formula/pdo_firebird@8.7.rb": "d1cd26bb4664ca880e184a2ed2f53bdc1a26eb366595216bc15cea30c72f21fe",
       "homebrew-extensions/Formula/pdo_sqlsrv@7.0.rb": "efa98f8cca89bc2b55927a968e25d79c418880bd563d14a20d4c17b6cbe1b0f8",
       "homebrew-extensions/Formula/pdo_sqlsrv@7.1.rb": "a21f5eae65ada65867843a6b90d286b63b185ee1dd9c99c377a676956df67a83",
       "homebrew-extensions/Formula/pdo_sqlsrv@7.2.rb": "ef72047dcef1f398d71c97c519645c8052d1e866ef94c10423d61b141b7dc745",
@@ -13192,7 +13174,7 @@
       "homebrew-extensions/Formula/protobuf@8.4.rb": "48dfb513f3fed88f54d6a789fc12c71a7b6793e9465bfbc1e33ed8509951c632",
       "homebrew-extensions/Formula/protobuf@8.5.rb": "a7dcdaa97bd47fe15c21501ab678190c67bc2ba230ae8c790fb37a54b16324ac",
       "homebrew-extensions/Formula/protobuf@8.6.rb": "859df2806d87c42c6510bc8e7fdc5ddd7dd6916ad7be1bea3b647d3bab777326",
-      "homebrew-extensions/Formula/protobuf@8.7.rb": "2a87cd23441f545c86ff833249fc4435f969c846c40daeb30865c97bdcb83a77",
+      "homebrew-extensions/Formula/protobuf@8.7.rb": "65c11c6b39145c29de867d4006af69976f11c02cda3228d88a4460c05f0f14fc",
       "homebrew-extensions/Formula/psr@5.6.rb": "2f3535059145f407ec192d5d9c33d10ed63c55f6916d3e50214adf7c11c64d0f",
       "homebrew-extensions/Formula/psr@7.0.rb": "c7fe18c003a3208305159072871442562e961425edbe2042e7dfefb11e312ea5",
       "homebrew-extensions/Formula/psr@7.1.rb": "32f753ecce37072f34b40b1555c90949d0876b7335e820d8cc4ed2f033b06745",
@@ -13206,7 +13188,7 @@
       "homebrew-extensions/Formula/psr@8.4.rb": "2fc2a60116d68962d9ad6896f80518e456de1e10cd90a076313e26a08ffb2257",
       "homebrew-extensions/Formula/psr@8.5.rb": "22e7a7708241b4377be3a03d5eeb595bdecd3b024ad678c471a99eb403a8ca76",
       "homebrew-extensions/Formula/psr@8.6.rb": "95793728bf67890b5d780d415a367450f0d292273136730fa6b1c41cf1cfa4fa",
-      "homebrew-extensions/Formula/psr@8.7.rb": "31c644d055bf397878b65af3a7ebab49083857d331f4530386c7e665c366129d",
+      "homebrew-extensions/Formula/psr@8.7.rb": "ceb77a3c57aaf1b44562a7063b64855df9b4bc8efcdc970135c7309e43dc7aef",
       "homebrew-extensions/Formula/raphf@5.6.rb": "f9010cbd9cad35e39d2e1d258671e0b2cfed34c11d4541102f3b93412091fe36",
       "homebrew-extensions/Formula/raphf@7.0.rb": "e26821b575eac2a1e2c4b3509925fa5571a097615f731ba42766288104345fbc",
       "homebrew-extensions/Formula/raphf@7.1.rb": "aefbe11086994d718fdc7b33871ac62f23ce410f78b373587b6297ae010067d3",
@@ -13220,7 +13202,7 @@
       "homebrew-extensions/Formula/raphf@8.4.rb": "64df910364e909506190869cebc3239ff720d0d300188afb9450c20b08d71b45",
       "homebrew-extensions/Formula/raphf@8.5.rb": "65a4f4296ca3b78adc1febf32d37c812bd5ffb6bb52de026a50f2a4e331d79ee",
       "homebrew-extensions/Formula/raphf@8.6.rb": "eeeccb98e8c6ffed4a26c328c0ac837cab49b3a067d80aa9804a8272f4fc2c58",
-      "homebrew-extensions/Formula/raphf@8.7.rb": "66ff34d0f2adda8d0a2a41ef39f7a463e9464b5a0146ea692dd71bee24596e20",
+      "homebrew-extensions/Formula/raphf@8.7.rb": "27287ca86162aa356af5bae09c22227f8852103f53c8661e48fa7a46346e337b",
       "homebrew-extensions/Formula/rdkafka@5.6.rb": "42afed34d59cdd36d7131db92da819351febdbbe33011df4b28005fa00b61291",
       "homebrew-extensions/Formula/rdkafka@7.0.rb": "41fe7bf970f6582c5abc3ea7baa8e451623fb2cda0b07b008dd56516c34456f8",
       "homebrew-extensions/Formula/rdkafka@7.1.rb": "6b31d80fb3aa23d92a455b05e124dc8f2cdc3b332f4e6ede729e377a6f7fb410",
@@ -13261,7 +13243,7 @@
       "homebrew-extensions/Formula/seaslog@8.4.rb": "2560827486cf89a0d94e3bf32dcd399797a471de8914074d5641310151117d77",
       "homebrew-extensions/Formula/seaslog@8.5.rb": "86b5fcb20ef48e5bf9a37a9875ac107c6da25e0a009a1a89135d876af009e9c3",
       "homebrew-extensions/Formula/seaslog@8.6.rb": "7ac8a09aca29bbe15051fab611b3368a6b7deb67068d273895590f460060e1bd",
-      "homebrew-extensions/Formula/seaslog@8.7.rb": "4151a3f51fdaa02880ffc28e71ea4f53ae26999e70d50a2638de084b87b5b99f",
+      "homebrew-extensions/Formula/seaslog@8.7.rb": "1fcb2c2977d2b4e46b75b37588732dce87630fa484335aa5ca6c86c15fda8cf4",
       "homebrew-extensions/Formula/snmp@5.6.rb": "11cf9c04b65c88e0e3ccd456647c1d2c9c7942359bccc330426955615859d559",
       "homebrew-extensions/Formula/snmp@7.0.rb": "d196ea106df4379534909e75a245af2101eeb453f859d30b6c56795801a67aad",
       "homebrew-extensions/Formula/snmp@7.1.rb": "7a5bba70730e92d3a9603b7c87637862d3f9a160e67e01542cb73572545697a9",
@@ -13285,7 +13267,7 @@
       "homebrew-extensions/Formula/spx@8.4.rb": "5119d54adad6aa16a7f6f044f2224438abdf6e15ddcca97e00bcd3002734abfa",
       "homebrew-extensions/Formula/spx@8.5.rb": "e6f1f1b79981a27b213c7cc41dec51edd082aae59ff3f3a2534c41f88a2eb027",
       "homebrew-extensions/Formula/spx@8.6.rb": "44d80a65df7919fef254ac057b4e44cb014c7959a084fd99d617c6f95ee3cf25",
-      "homebrew-extensions/Formula/spx@8.7.rb": "beb10516ca46037ea13a06c33fde14ae33fa0557938dfa723d9ebb1925319d79",
+      "homebrew-extensions/Formula/spx@8.7.rb": "e7af0b733a4210b1373ce99fb1dd79262a229e44824e4fbdacc30e986a205e22",
       "homebrew-extensions/Formula/sqlsrv@7.0.rb": "d8d8afa3937b768fbef23645e8d0dbb740651aa2cf3db22dfdab8771b6486dc8",
       "homebrew-extensions/Formula/sqlsrv@7.1.rb": "c62181f9c2d094c86c468af0f77c57b498fe08a1291ca52169e2e5d68413ba6f",
       "homebrew-extensions/Formula/sqlsrv@7.2.rb": "e962af49d7192c66482a72e0d0439bb21ced7decc2d7069eddbfac5ca260f5fb",
@@ -13298,7 +13280,7 @@
       "homebrew-extensions/Formula/sqlsrv@8.4.rb": "d782b3aaf0fcca31851a865859c48d416d54fa4f20d6cb593eb8020c9f9ba16f",
       "homebrew-extensions/Formula/sqlsrv@8.5.rb": "acec30dd2964220eca9d3d96b48348b33f28b5cad4f3c7238d5dbefd45a97eec",
       "homebrew-extensions/Formula/sqlsrv@8.6.rb": "393d7411544ca38836f34f8176b485f71dd2ebe638ec8f52de28ab429ed093bb",
-      "homebrew-extensions/Formula/sqlsrv@8.7.rb": "bf085f5d1a5c93a1939dbda0cef848eee5de9290e99b7e2a7c692ef8be509102",
+      "homebrew-extensions/Formula/sqlsrv@8.7.rb": "1973a73c93438551d98493047abb6d43bc88654afee592ea0d61337f7a6d3567",
       "homebrew-extensions/Formula/ssh2@5.6.rb": "6effb1efc33f2084a85c6a0908c6d2f4f2fb9c4f727718d283aef465bd25675c",
       "homebrew-extensions/Formula/ssh2@7.0.rb": "6824b572e903c21a0ae0e5893f8c6c254f4c41908f527abcd54fcade3fb67170",
       "homebrew-extensions/Formula/ssh2@7.1.rb": "a6ce4d8865411abf135779296fd0ed87dab38febef5ffdc72990dc003e08338d",
@@ -13372,7 +13354,7 @@
       "homebrew-extensions/Formula/uuid@8.4.rb": "320ce8a4a8c33ee4f3c613d8118618644f18b808699f3bf321a093825fd4ebd6",
       "homebrew-extensions/Formula/uuid@8.5.rb": "1f1f45be1f0bcc86fe3d26d1d0c934329bbd2acacf9f4589d579a98a3d42c0c5",
       "homebrew-extensions/Formula/uuid@8.6.rb": "f52a9753e3957e14884ca54380f9d78cd7a370b838810d00cdf3050aaaf6bf08",
-      "homebrew-extensions/Formula/uuid@8.7.rb": "ead709be71028083186d0704bfb683058afa485686d20553949c24867d5193c0",
+      "homebrew-extensions/Formula/uuid@8.7.rb": "3f3de7efe41f6a5fc2da7e494b067f158e70d47bf026b857c2864bdb9b9fbd60",
       "homebrew-extensions/Formula/v8js@7.0.rb": "7a88c6d272cf75cfe497f2abe33ec1349bb8c631d3737ca5330c4bfbfbacd097",
       "homebrew-extensions/Formula/v8js@7.1.rb": "8b9d6ebf19fabb90ac288efe2232e9adef7e7451e2720ca37109857811b9ee3b",
       "homebrew-extensions/Formula/v8js@7.2.rb": "103cffe2643267ea0fb785d8cb07988183089f50bd063c1880fc1db9bbf93e6b",
@@ -13398,7 +13380,7 @@
       "homebrew-extensions/Formula/vips@8.4.rb": "d514293690f1fa23f5d768ce5b35ca87007e682408ab3709abe183142acf9e20",
       "homebrew-extensions/Formula/vips@8.5.rb": "41c24c5706fe069d044ddf7db376c904c032ad5122535f95b6019be2eed457e4",
       "homebrew-extensions/Formula/vips@8.6.rb": "bd14a293d82e0a42e5f89251cb46b1fc45c9a837c63b776f439513790c62b2c8",
-      "homebrew-extensions/Formula/vips@8.7.rb": "aaadea08132db797b22c9f38932fffa8507034f90c5f25610745146e51952539",
+      "homebrew-extensions/Formula/vips@8.7.rb": "b0287483fb3408739254fe566671e1c8271f695464af68b08b857b86fc7bd14d",
       "homebrew-extensions/Formula/vld@5.6.rb": "a75c618398ace07b59b5e9d10570ac3d75d1878cc1c0c9333b2849ab456d42cc",
       "homebrew-extensions/Formula/vld@7.0.rb": "02100a23cfcb3d2d4a19f348ed27c9e3eab9c0fe9adcf371250fdcf1eceea1f7",
       "homebrew-extensions/Formula/vld@7.1.rb": "e067e347678c5e14946e2f01446083d2b37907bce45cdb492464abfe59ea01c5",
@@ -13467,7 +13449,7 @@
       "homebrew-extensions/Formula/yaml@8.4.rb": "b8408904461ee44463eaf627aa6b1c5c55c143fb2b5db7f2b164a0e77c71bcc4",
       "homebrew-extensions/Formula/yaml@8.5.rb": "212700ce8be10e0f6ec017a1d9b6f2d1bf46702d6f9f482659af795fa19c170a",
       "homebrew-extensions/Formula/yaml@8.6.rb": "1c9fa0d5a535b6decfa0b3d8891f85391d50a22b5a7b51538f1cff71ffb4307a",
-      "homebrew-extensions/Formula/yaml@8.7.rb": "23c8e7271995bb434a806e327aa76fc3fb56f9e4456e6ae278409aea1a662f91",
+      "homebrew-extensions/Formula/yaml@8.7.rb": "25ba23a633988b135abf478c7d90ea5472f6dcd8439fec96e0773b1793adc7bf",
       "homebrew-extensions/Formula/zmq@5.6.rb": "75e94d17d39263486c42b432cca30c8b800ed609393729a83e7c5d9367115b7a",
       "homebrew-extensions/Formula/zmq@7.0.rb": "1059c99f14c3d629b8ada077b1ca692b2b645fb35abca6198b0e01361ab0804a",
       "homebrew-extensions/Formula/zmq@7.1.rb": "e14ab0437d8304e400759b404359e88ec93b4e1113e246a9f0f8b38a3c6a961c",
@@ -13531,6 +13513,7 @@
     "libxpm": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "libyaml": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "libzip": "3967e17e863691884f182ccd356d55da9eb1acc6",
+    "little-cms2": "93a821cfb9eb6a66ce39d4d55c91a0a189e7bf04",
     "lz4": "dd6e54abecf3241795c49082ca071e041e9dbf47",
     "net-snmp": "0ccdcb95308638e5d97507d9d9a40b5fada62dd8",
     "openldap": "3967e17e863691884f182ccd356d55da9eb1acc6",
