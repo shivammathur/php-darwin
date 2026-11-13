@@ -104,7 +104,7 @@ async function verifyRemoteEntries(plan, receipts, {run = command, retry = retry
   if (failure) throw failure.reason;
 }
 
-async function prepare(directory, output) {
+async function prepare(directory, output, {run = command, retry = retryPolicy()} = {}) {
   const sourceRun = process.env.SOURCE_RUN || process.env.GITHUB_RUN_ID;
   if (!/^[1-9][0-9]*$/.test(sourceRun || '')) throw new Error('Invalid publication source run');
   const keys = JSON.parse(process.env.EXTENSION_RECOVERY_KEYS);
@@ -112,13 +112,17 @@ async function prepare(directory, output) {
   if (keys.length) verifySelection(directory, keys);
   else if (publicationEntries(directory).length) throw new Error('Unexpected archives in installer-only publication');
   const artifacts = keys.length ? (await githubJSON(`repos/${repository}/actions/runs/${sourceRun}/artifacts?per_page=100`,
-    {paginate: true})).flatMap(page => page.artifacts).filter(artifact => !artifact.expired) : [];
-  const records = await publish(directory, {stage: 'prepare'});
+    {run, retry, paginate: true})).flatMap(page => page.artifacts)
+    .filter(artifact => !artifact.expired && /^extension-(built|reused)-/.test(artifact.name)) : [];
+  const records = await publish(directory, {stage: 'prepare', run, retry});
   const groups = new Map();
   for (const {entry, metadata} of records) {
-    // The prepare download keeps the original artifact directories. Upload
-    // workers fetch their exact immutable IDs rather than the entire matrix.
-    const artifactName = path.relative(directory, metadata).split(path.sep)[0];
+    // download-artifact flattens a single match even with merge-multiple=false.
+    // Only that unambiguous producer may own a pack directly under directory;
+    // multiple downloads retain the outer artifact-name directory.
+    const parts = path.relative(directory, metadata).split(path.sep);
+    const flattened = parts.length === 2 && parts[0] === `extension-${key(entry)}`;
+    const artifactName = flattened && artifacts.length === 1 ? artifacts[0].name : parts[0];
     const matches = artifacts.filter(artifact => artifact.name === artifactName);
     if (matches.length !== 1 || !Number.isSafeInteger(matches[0].id) || matches[0].id < 1) {
       throw new Error(`Missing or ambiguous source artifact: ${artifactName}`);
