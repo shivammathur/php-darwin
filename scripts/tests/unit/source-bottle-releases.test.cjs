@@ -853,3 +853,20 @@ test('legacy nightly PHP requires an identical source recipe and new keys distin
   assert.notEqual(keyFor(next), keyFor(inputs));
   assert.equal(await f.cache.restoreCache([path.join(f.root, 'next')], keyFor(next), [], next), undefined);
 });
+
+test('nightly extensions reject source-less and different-commit caches with the same PHP API', async t => {
+  const f = fixture(t, 'cache', true);
+  const old = f.bottle('1.0.12_2', {formula: 'shivammathur/extensions/pcov@8.7',
+    context: {build: 'debug', ts: 'zts', php: {version: '8.7.0-dev', api: {ZEND_MODULE_API_NO: '20260925'}}}});
+  await f.cache.saveCache([old.directory], old.key);
+  const inputs = {...old.inputs, context: {...old.inputs.context,
+    php: {...old.inputs.context.php, source_commit: 'a'.repeat(40)}}};
+  const destination = path.join(f.root, 'nightly');
+  assert.equal(await f.cache.restoreCache([destination], keyFor(inputs), [], inputs), undefined);
+  const current = f.bottle(old.inputs.version, inputs);
+  await f.cache.saveCache([current.directory], current.key);
+  assert.equal(await f.cache.restoreCache([destination], current.key, [], inputs), current.key);
+  assert.ok(readBottle(destination, current.key));
+  const next = {...inputs, context: {...inputs.context, php: {...inputs.context.php, source_commit: 'b'.repeat(40)}}};
+  assert.equal(await f.cache.restoreCache([path.join(f.root, 'next')], keyFor(next), [], next), undefined);
+});

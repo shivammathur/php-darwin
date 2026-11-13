@@ -149,6 +149,17 @@ for extension_reference in "${extension_references[@]}"; do
   fi
 done
 
+if [ "$(php_darwin_version_channel "$version")" = nightly ]; then
+  # Nightly PHP can change its extension ABI without bumping the API number.
+  # Coverage builds need the same exact source identity as optional packs.
+  php_tap_path=$(brew --repository "$(php_darwin_package_config tap)") || \
+    php_darwin_die 'could not resolve the pinned PHP tap'
+  PHP_DARWIN_PHP_SRC_COMMIT=$(HOMEBREW_PHP_PATH="$php_tap_path" \
+    bash "$script_dir/php-src-commit.sh" "$version") || \
+    php_darwin_die 'could not resolve the nightly PHP source commit'
+  export PHP_DARWIN_PHP_SRC_COMMIT
+fi
+
 "$PHP_DARWIN_SOURCE_CACHE_NODE" "$PHP_DARWIN_SOURCE_CACHE_ACTION" install-extensions \
   "$extension_tap_path/Abstract/abstract-php-extension.rb" "$brew_prefix/opt/$formula" \
   "${extension_references[@]}" || php_darwin_die "could not cache PHP $version extension bottles"
