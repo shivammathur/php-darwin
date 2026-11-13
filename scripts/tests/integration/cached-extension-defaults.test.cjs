@@ -21,15 +21,21 @@ function fixture(t, files = {'php.ini': '; package defaults\n'}, config = '8.7')
     fs.writeFileSync(target, content);
   }
   const archive = path.join(root, 'cache.tar');
-  const tar = spawnSync('tar', ['-cf', archive, '-C', source, ...paths], {encoding: 'utf8'});
-  assert.equal(tar.status, 0, tar.stderr);
   const extensions = ['pcov', 'xdebug'].map(name => ({name, type: name === 'pcov' ? 'extension' : 'zend_extension',
     path: `lib/php/pecl/20260925/${name}.so`}));
   for (const extension of extensions) {
     const file = path.join(prefix, extension.path);
     fs.mkdirSync(path.dirname(file), {recursive: true});
-    fs.writeFileSync(file, 'installed extension fixture');
+    fs.writeFileSync(file, 'broken previous extension');
+    const packaged = path.join(source, extension.path);
+    fs.mkdirSync(path.dirname(packaged), {recursive: true});
+    fs.writeFileSync(packaged, 'packaged extension fixture');
   }
+  const repack = () => {
+    const tar = spawnSync('tar', ['-cf', archive, '-C', source, ...paths, ...extensions.map(e => e.path)], {encoding: 'utf8'});
+    assert.equal(tar.status, 0, tar.stderr);
+  };
+  repack();
   const metadata = path.join(root, 'cache.json');
   fs.writeFileSync(metadata, JSON.stringify({state_paths: paths, extensions}));
   const php = path.join(root, 'php');
@@ -49,13 +55,19 @@ if (!args.includes('-n')) {
   }
 }
 if (args.includes('-d')) ini += '\\n' + args[args.indexOf('-d') + 1];
+if (args.includes('-n') && args.includes('-d')) {
+  const module = args[args.indexOf('-d') + 1].split('=').slice(1).join('=');
+  if (fs.readFileSync(module, 'utf8') !== 'packaged extension fixture') {
+    console.error('Module does not load'); process.exit(139);
+  }
+}
 const expression = args[args.indexOf('-r') + 1];
 const name = expression.match(/extension_loaded\\('([^']+)'\\)/)[1];
 const loaded = ini.split('\\n').some(line => /^(zend_)?extension\\s*=/.test(line.trim()) && line.includes(name + '.so'));
 process.exit(expression.includes('!extension_loaded') ? (loaded ? 0 : 1) : (loaded ? 1 : 0));
 `, {mode: 0o755});
   const log = path.join(root, 'calls.jsonl');
-  return {root, prefix, runnerConfig, log, extensions,
+  return {root, prefix, source, repack, runnerConfig, log, extensions,
     run: () => spawnSync('bash', ['scripts/tests/helpers/check-cached-extensions.sh', archive, metadata, php, prefix, config], {
       encoding: 'utf8', env: {...process.env, RUNNER_TEMP: root, CALL_LOG: log,
         PHPRC: path.join(runnerConfig, 'php.ini'), PHP_INI_SCAN_DIR: path.join(runnerConfig, 'conf.d')}
@@ -102,10 +114,31 @@ test('rejects an archive without php.ini instead of falling back to runner defau
   assert.ok(!fs.existsSync(f.log));
 });
 
-test('still rejects missing cached extension binaries', t => {
+test('missing or broken previously installed modules cannot block validation of the new archive', t => {
   const f = fixture(t);
   fs.unlinkSync(path.join(f.prefix, f.extensions[0].path));
+  fs.unlinkSync(path.join(f.prefix, f.extensions[1].path));
+  fs.symlinkSync('/missing/old/xdebug.so', path.join(f.prefix, f.extensions[1].path));
+  const result = f.run();
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(fs.readlinkSync(path.join(f.prefix, f.extensions[1].path)), '/missing/old/xdebug.so');
+  assert.ok(!fs.existsSync(path.join(f.prefix, f.extensions[0].path)));
+});
+
+test('still rejects a broken module in the new archive', t => {
+  const f = fixture(t);
+  fs.writeFileSync(path.join(f.source, f.extensions[0].path), 'broken new extension');
+  f.repack();
   const result = f.run();
   assert.equal(result.status, 1, result.stderr);
-  assert.match(result.stderr, /archive did not install cached pcov/);
+  assert.match(result.stderr, /cached pcov failed its explicit load test/);
+});
+
+test('rejects an empty module in the new archive', t => {
+  const f = fixture(t);
+  fs.writeFileSync(path.join(f.source, f.extensions[0].path), '');
+  f.repack();
+  const result = f.run();
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /archive is missing cached pcov/);
 });
