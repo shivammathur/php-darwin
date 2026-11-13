@@ -253,7 +253,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Validate existing PHP archives
+      - name: Validate packaged PHP archives
         uses: ./.github/actions/test-cache
         with:
           php-version: ${{ inputs.php-version }}
