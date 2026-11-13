@@ -1069,76 +1069,23 @@
           }
         },
         "krb5": {
-          "version": "1.22.2_2",
-          "source": {
-            "key": "php-darwin-source-v1-8f5727e98d84e92a3506096c1920ecdc14644cb1864f304b9c42482d208a35cd",
-            "inputs": {
-              "environment": {
-                "arch": "arm64",
-                "macos": "14",
-                "prefix": "/opt/homebrew",
-                "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 15.0.0 (clang-1500.3.9.4)\nTarget: arm64-apple-darwin23.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_15.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "14.5",
-                "buildEnv": {
-                  "CC": "",
-                  "CXX": "",
-                  "CFLAGS": "",
-                  "CXXFLAGS": "",
-                  "CPPFLAGS": "",
-                  "LDFLAGS": "",
-                  "MACOSX_DEPLOYMENT_TARGET": "",
-                  "SDKROOT": "",
-                  "HOMEBREW_CC": "",
-                  "HOMEBREW_CXX": "",
-                  "HOMEBREW_ARCH": ""
-                }
-              },
-              "formula": "krb5",
-              "version": "1.22.2_2",
-              "recipe": "0e5cf64b7f59edd0dbd2dd21e81a74a1d6f8507b80d5bba7f896f83dd9322b66",
-              "pkg_config_path": "/opt/homebrew/opt/openssl@4/lib/pkgconfig",
-              "openssl_build_environment": 1,
-              "dependencies": [
-                {
-                  "name": "ca-certificates",
-                  "version": "2026-09-25",
-                  "recipe": "29dcf220f07f8a390c81706851a000a835ede393492582a1ab967fea58fc222c",
-                  "options": [],
-                  "compiler": "clang",
-                  "runtime_dependencies": []
-                },
-                {
-                  "name": "openssl@4",
-                  "version": "4.0.3",
-                  "recipe": "00ac3638979ef33b14ab3503f969601b50e3f169be4ff1a5e8371fdeaef13f59",
-                  "options": [],
-                  "compiler": "clang",
-                  "runtime_dependencies": [
-                    {
-                      "full_name": "ca-certificates",
-                      "version": "2026-09-25",
-                      "revision": 0,
-                      "bottle_rebuild": 0,
-                      "pkg_version": "2026-09-25",
-                      "declared_directly": true,
-                      "compatibility_version": 1
-                    }
-                  ]
-                }
-              ]
-            },
-            "sha256": "36dfaea4d780f53f57802b481c4e3ecae5fd5eaa4e2a4aebe7a0da49e46cdfc1"
+          "version": "1.22.3",
+          "bottle": {
+            "formula": "krb5",
+            "version": "1.22.3",
+            "tag": "arm64_sequoia",
+            "sha256": "465873b2f5bb5751fc01e086648cb54fc30a4b975e3bc00e393e00e763931015",
+            "url": "https://ghcr.io/v2/homebrew/core/krb5/blobs/sha256:465873b2f5bb5751fc01e086648cb54fc30a4b975e3bc00e393e00e763931015"
           }
         },
         "libpq": {
-          "version": "18.6_2",
+          "version": "18.7",
           "bottle": {
             "formula": "libpq",
-            "version": "18.6_2",
+            "version": "18.7",
             "tag": "arm64_sequoia",
-            "sha256": "e4caec46b9de2c0015e898e47440f01e83ee9368a14952e473bc9dd2bf7a314b",
-            "url": "https://ghcr.io/v2/homebrew/core/libpq/blobs/sha256:e4caec46b9de2c0015e898e47440f01e83ee9368a14952e473bc9dd2bf7a314b"
+            "sha256": "e190ea8b809095c2b780b0762ecb3116c4e6c43a7a743fa9913559ee811b0137",
+            "url": "https://ghcr.io/v2/homebrew/core/libpq/blobs/sha256:e190ea8b809095c2b780b0762ecb3116c4e6c43a7a743fa9913559ee811b0137"
           }
         },
         "xorgproto": {
@@ -2083,6 +2030,26 @@
             "tag": "arm64_sequoia",
             "sha256": "0ec9bf8082245c008803b42dcae3e6a0c8cd7a67aed589d9b6482b115c0a543b",
             "url": "https://ghcr.io/v2/homebrew/core/libyaml/blobs/sha256:0ec9bf8082245c008803b42dcae3e6a0c8cd7a67aed589d9b6482b115c0a543b"
+          }
+        },
+        "docbook": {
+          "version": "5.2.1",
+          "bottle": {
+            "formula": "docbook",
+            "version": "5.2.1",
+            "tag": "arm64_sequoia",
+            "sha256": "7b7417a524db49b20339879a597e192a07be149a2a9249245da83718f488c7ff",
+            "url": "https://ghcr.io/v2/homebrew/core/docbook/blobs/sha256:7b7417a524db49b20339879a597e192a07be149a2a9249245da83718f488c7ff"
+          }
+        },
+        "docbook-xsl": {
+          "version": "1.79.2_1",
+          "bottle": {
+            "formula": "docbook-xsl",
+            "version": "1.79.2_1",
+            "tag": "arm64_sequoia",
+            "sha256": "97d7b10fee85c4ad08218efa4b9527b40a412d1e6b439612a76c5eb9c3fe22cd",
+            "url": "https://ghcr.io/v2/homebrew/core/docbook-xsl/blobs/sha256:97d7b10fee85c4ad08218efa4b9527b40a412d1e6b439612a76c5eb9c3fe22cd"
           }
         }
       }
@@ -4410,17 +4377,17 @@
           }
         },
         "krb5": {
-          "version": "1.22.2_2",
+          "version": "1.22.3",
           "source": {
-            "key": "php-darwin-source-v1-45057569e1258a2dd82e5f11c08d7f8e91b1eefcbf7096015d8024cbfa8a6f86",
+            "key": "php-darwin-source-v1-fd73761f80ad17e883aa844e5dd78697fdfe326523b5c51d1a1429277474b0f7",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
                 "macos": "15",
                 "prefix": "/usr/local",
                 "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "26.2",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
                 "buildEnv": {
                   "CC": "",
                   "CXX": "",
@@ -4436,32 +4403,32 @@
                 }
               },
               "formula": "krb5",
-              "version": "1.22.2_2",
-              "recipe": "0e5cf64b7f59edd0dbd2dd21e81a74a1d6f8507b80d5bba7f896f83dd9322b66",
+              "version": "1.22.3",
+              "recipe": "1851d96351e9b76997b31d2a6c1290c4b53fd9c54c2bc189200033a55e6a73ea",
               "pkg_config_path": "/usr/local/opt/openssl@4/lib/pkgconfig",
               "openssl_build_environment": 1,
               "dependencies": [
                 {
                   "name": "ca-certificates",
-                  "version": "2026-09-25",
-                  "recipe": "29dcf220f07f8a390c81706851a000a835ede393492582a1ab967fea58fc222c",
+                  "version": "2026-11-05",
+                  "recipe": "5fe801a9e127cdd083e9f8879281228ed6cc2c680fbf62e001e292166927033f",
                   "options": [],
                   "compiler": "clang",
                   "runtime_dependencies": []
                 },
                 {
                   "name": "openssl@4",
-                  "version": "4.0.3",
-                  "recipe": "00ac3638979ef33b14ab3503f969601b50e3f169be4ff1a5e8371fdeaef13f59",
+                  "version": "4.1.0",
+                  "recipe": "af2abcf4c07a85eb2c873cde9c22122b2453a7a183965d8ba8fc9995294cd75f",
                   "options": [],
                   "compiler": "clang",
                   "runtime_dependencies": [
                     {
                       "full_name": "ca-certificates",
-                      "version": "2026-09-25",
+                      "version": "2026-11-05",
                       "revision": 0,
                       "bottle_rebuild": 0,
-                      "pkg_version": "2026-09-25",
+                      "pkg_version": "2026-11-05",
                       "declared_directly": true,
                       "compatibility_version": 1
                     }
@@ -4469,13 +4436,13 @@
                 }
               ]
             },
-            "sha256": "5839971bdba582a8945f50712755c6d7c1ce958ccee327a9b77f8027a4720184"
+            "sha256": "eac83f81a0e1712d835c01fcc28c57b0a19f25b77ca2a20c421d7a946c62e0e6"
           }
         },
         "libpq": {
-          "version": "18.6_2",
+          "version": "18.7",
           "source": {
-            "key": "php-darwin-source-v1-e9a625e11fddfb0e6278fceff5cb179c9a841ed6cad57b46659908e4ecf6b6f3",
+            "key": "php-darwin-source-v1-4e4623fae64fc34bbfa4bdd47d8eafab758464da29e2bd6fb2359ae5796fdb77",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
@@ -4499,8 +4466,8 @@
                 }
               },
               "formula": "libpq",
-              "version": "18.6_2",
-              "recipe": "2f104f300a84c26ec6fa77a4398b654b9643da25724ed9dba35a862efc694167",
+              "version": "18.7",
+              "recipe": "572025a789e3f678e71330005a95bdcb30d100abe67f04e91f31f4c0890ea71c",
               "pkg_config_path": "/usr/local/opt/openssl@4/lib/pkgconfig:/usr/local/opt/icu4c@79/lib/pkgconfig",
               "openssl_build_environment": 1,
               "dependencies": [
@@ -4548,8 +4515,8 @@
                 },
                 {
                   "name": "krb5",
-                  "version": "1.22.2_2",
-                  "recipe": "dc3dd4e507c10cfc4b3db8ad18d79a26dda5cf1d67d227ce7b9067c54ab26e56",
+                  "version": "1.22.3",
+                  "recipe": "0f895ba7d89167cc40463eb1a29f51f5a0183a0f3c1dc70ef5ccbc637500e35c",
                   "options": [],
                   "compiler": "clang",
                   "runtime_dependencies": [
@@ -4608,7 +4575,7 @@
                 }
               ]
             },
-            "sha256": "64ee63ddb095de3fc025253187e25b09f798f6b7a60dc7e1f87b8013e088b353"
+            "sha256": "dec99f4bc69d7c8518b57cab17745bf0ef6e12a52f0c7c581b3f2118c90fd614"
           }
         },
         "util-macros": {
@@ -7358,7 +7325,7 @@
   },
   "tap_inputs": {
     "schema": 1,
-    "sha256": "2679fdf900ab28d71c62b989dbc7e172c2a08331e33b3bf2d196d2841ec62d45",
+    "sha256": "480bc0800e2fc111cb70166d8a72ea2236f1abec7e4b9f056b0fc9f51962b0cd",
     "records": {
       "homebrew-php/Formula/autoconf@2.69.rb": "fd33eadb8f275a2d089c7d112bfb39d680cc838b3af2f61ab4fb35f09dbeff7d",
       "homebrew-php/Formula/bison@2.7.rb": "54902fa819dd1736bcca826196ee75b2608337b4b83e484829446961fd4e2669",
@@ -12695,14 +12662,14 @@
       "homebrew-php/Formula/php@8.4-debug.rb": "b6717fbe0f946eab1f2ffd125c586967433cc358306dd368934958b0ee44b74a",
       "homebrew-php/Formula/php@8.4-zts.rb": "5c043a84175d73476fbfd6bae0e5e3d6fee6fe391e4b521eed4e7584182b014a",
       "homebrew-php/Formula/php@8.4.rb": "4c8b3eafabbc69764a7efa8c2174a69a198282631adfca37a9a4f680ed6529d0",
-      "homebrew-php/Formula/php@8.6-debug-zts.rb": "e1c59bd79929906ca6e65cb963b4efb1e92e92baffed7b24beceeaa55eca6788",
-      "homebrew-php/Formula/php@8.6-debug.rb": "727ab9d23d44d391ad152f814ea2ddfbb191eef0a9e509f467980c661d74a6ca",
-      "homebrew-php/Formula/php@8.6-zts.rb": "6df84c0c86510d40d799d8e8ce16ccb7eb388f0a90e4be01a714a93c33e637a4",
-      "homebrew-php/Formula/php@8.6.rb": "f93ded1d4c7fad57e5d755396c399afb21e07800adc85da97a14a7d41e94c52b",
-      "homebrew-php/Formula/php@8.7-debug-zts.rb": "494a701eb323a0f2208333888ceab38338b0481491c8deaa838b82d96c2639d2",
-      "homebrew-php/Formula/php@8.7-debug.rb": "1d4f624e1a31b95d91926d29b0f2eec41218ca4c5a1dfc36d12b196e293e68f2",
-      "homebrew-php/Formula/php@8.7-zts.rb": "d9e8098808c37fcc85458092cb38e0d35c7a37f789bd0307cb5b68c16a87ddc7",
-      "homebrew-php/Formula/php@8.7.rb": "57b55915f1cb4c6e9be5c218e912435fc9c9b6454a09c66dd008a83aa461e429",
+      "homebrew-php/Formula/php@8.6-debug-zts.rb": "6be72ecea601f20c984880f991c3aa3d24bd73fc143765f1e72a76b73038760b",
+      "homebrew-php/Formula/php@8.6-debug.rb": "2e76e54f6efb25318c07031e25da900dcaba266bc956045e7fd055d664a54610",
+      "homebrew-php/Formula/php@8.6-zts.rb": "332c37ce17192eb25a0a94e9b3e7008ce461f8f21758c223f2e20b0c152645ab",
+      "homebrew-php/Formula/php@8.6.rb": "a77c9ad7d9e7a9da8a100302ad18eb962dc996bf3efba4448602f2b5c15ddcd8",
+      "homebrew-php/Formula/php@8.7-debug-zts.rb": "3e021d6cae21a2008ce1702ec03f397d13d8af5c79239d0b8980014bc21eb60d",
+      "homebrew-php/Formula/php@8.7-debug.rb": "b733c38e7e0a48fd27551d717aed6a74422cd2500c61572183a5dfa9bef1df38",
+      "homebrew-php/Formula/php@8.7-zts.rb": "b630f4d2d872f0e28fcb48be1c2d997c55a6d609cc9e5fc1c76ac815827b0432",
+      "homebrew-php/Formula/php@8.7.rb": "2d71f45f26aab471c5d19f50be87a6b5c40643f69afc0d528ab4f72208b9b71d",
       "homebrew-extensions/Formula/amqp@5.6.rb": "4bbfc54cb9797357863a7e78e30d13d90da4b07e9e1d8428433dc920c5c94b29",
       "homebrew-extensions/Formula/amqp@7.0.rb": "8577b42a3f0d4c0295d510b14542a44108971a9dbf8b47900a86c8091fbfb28d",
       "homebrew-extensions/Formula/amqp@7.1.rb": "99f9190e4269b0ac8620fc4a813cf785548da6f86e587727234c21b4857be5f1",
@@ -13546,7 +13513,7 @@
     "icu4c@79": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "imagemagick": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "jpeg-turbo": "3967e17e863691884f182ccd356d55da9eb1acc6",
-    "krb5": "0ccdcb95308638e5d97507d9d9a40b5fada62dd8",
+    "krb5": "afdee9d9ff7929af272d36ff5887e24f83b751d8",
     "libevent": "0ccdcb95308638e5d97507d9d9a40b5fada62dd8",
     "libheif": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "liblzf": "3967e17e863691884f182ccd356d55da9eb1acc6",
@@ -13555,7 +13522,7 @@
     "libngtcp2": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "libomp": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "libpng": "3967e17e863691884f182ccd356d55da9eb1acc6",
-    "libpq": "3967e17e863691884f182ccd356d55da9eb1acc6",
+    "libpq": "afdee9d9ff7929af272d36ff5887e24f83b751d8",
     "librdkafka": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "libssh2": "0ccdcb95308638e5d97507d9d9a40b5fada62dd8",
     "libunistring": "3967e17e863691884f182ccd356d55da9eb1acc6",
