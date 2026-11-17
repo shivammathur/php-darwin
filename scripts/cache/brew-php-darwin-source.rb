@@ -19,7 +19,14 @@ when "tool-dependencies"
   require "formula_installer"
   require "pkg_version"
   require "json"
-  formula = Formulary.factory(Pathname.new(ARGV.fetch(0)))
+  # Newer Homebrew restricts factory to names; bottle paths have an explicit
+  # loader. Retain the old entry point only for Homebrew without that API.
+  bottle = Pathname.new(ARGV.fetch(0))
+  formula = if Formulary.respond_to?(:from_bottle)
+    Formulary.from_bottle(bottle)
+  else
+    Formulary.factory(bottle)
+  end
   raise "Archive-tool formula identity differs" unless
     formula.name == ARGV.fetch(1) && formula.pkg_version.to_s == ARGV.fetch(2)
 
