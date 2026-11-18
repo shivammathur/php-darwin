@@ -205,6 +205,12 @@ jq -e '
   php_darwin_die 'versioned PEAR path is invalid'
 [ "$(php_darwin_pear_path 8.4 'php@8.4-debug-zts')" = 'share/pear@8.4-debug-zts' ] || \
   php_darwin_die 'versioned variant PEAR path is invalid'
+[ "$(php_darwin_pear_path 8.5 'php@8.5')" = 'share/pear@8.5' ] || \
+  php_darwin_die 'PHP 8.5 release PEAR path is invalid'
+for formula in php@8.5-debug php@8.5-zts php@8.5-debug-zts; do
+  [ "$(php_darwin_pear_path 8.5 "$formula")" = 'share/pear' ] || \
+    php_darwin_die 'PHP 8.5 variant PEAR path is invalid'
+done
 [ "$(php_darwin_config_id 8.5 debug zts)" = '8.5-debug-zts' ] || \
   php_darwin_die 'variant configuration id is invalid'
 [ "$(php_darwin_metadata_path 'php_8.5-nts-release+darwin_arm64.tar.zst')" = \
