@@ -25,6 +25,8 @@ class Dependency < Struct.new(:name, :kind)
     (bottle_os_version || "macOS 15").delete_prefix("macOS ").to_i >= 15
   end
   def to_formula; Formulary.factory(name); end
+  def dup_with_formula_name(formula); self.class.new(formula.name, kind); end
+  def self.merge_repeats(deps); deps.uniq(&:name); end
   def self.expand(formula, &block)
     formula.deps.flat_map do |dep|
       decision = block.call(formula, dep)
@@ -33,7 +35,9 @@ class Dependency < Struct.new(:name, :kind)
     end.uniq(&:name)
   end
 end
-class FixtureFormula < Struct.new(:name, :deps)
+class FixtureFormula < Struct.new(:name, :declared_deps)
+  # Match Homebrew: host-provided libraries disappear before expand is called.
+  def deps; declared_deps.reject { |dep| dep.uses_from_macos? && dep.use_macos_install? }; end
   def full_name; name; end
   def pkg_version; "1.0"; end
   def prefix; Pathname.new(ENV.fetch("FIXTURE_ROOT"))/name; end
@@ -150,4 +154,73 @@ raise "Lost installed expat" if installed.from_macos?(formula, expat)
     const result = spawnSync('brew', ['ruby', '--', script], {encoding: 'utf8',
       env: {...process.env, HOMEBREW_NO_AUTO_UPDATE: '1', HOMEBREW_NO_ANALYTICS: '1'}});
     assert.equal(result.status, 0, result.stderr);
+  });
+
+test('native Homebrew resolves the complete declared graph after host-filtered queries',
+  {skip: process.platform !== 'darwin'}, t => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'source-bottle-native-graph-'));
+    t.after(() => fs.rmSync(root, {recursive: true, force: true}));
+    const script = path.join(root, 'graph.rb');
+    const declarations = {
+      'runtime-consumer': 'depends_on "runtime-python"',
+      'runtime-python': 'uses_from_macos "expat", since: :sequoia\n  depends_on "openssl@4"\n  depends_on "runtime-build-tool" => :build\n  depends_on "runtime-optional" => :optional',
+      expat: 'depends_on "runtime-leaf"',
+      'openssl@4': 'depends_on "runtime-leaf"',
+      'runtime-leaf': '',
+      'runtime-build-tool': '',
+      'runtime-cycle-a': 'depends_on "runtime-cycle-b"',
+      'runtime-cycle-b': 'depends_on "runtime-cycle-a"\n  depends_on "runtime-leaf"',
+      'runtime-merged': 'depends_on "runtime-alias"\n  depends_on "runtime-leaf" => :build',
+    };
+    for (const [name, deps] of Object.entries(declarations)) {
+      const className = name.split('-').map(part => part[0].toUpperCase() + part.slice(1)).join('').replace('@', 'AT');
+      fs.writeFileSync(path.join(root, `${name}.rb`), `class ${className} < Formula
+  url "https://example.com/${name}-1.0.tar.gz"
+  sha256 "${'a'.repeat(64)}"
+  ${deps}
+end
+`);
+    }
+    fs.writeFileSync(script, `require "formulary"
+require "formula_installer"
+Homebrew::SimulateSystem.with(os: :sequoia, arch: ARGV.shift.to_sym) do
+  fixtures = Dir[${JSON.stringify(path.join(root, '*.rb'))}].reject { |file| file.end_with?("/graph.rb") }.to_h do |file|
+    name = File.basename(file, ".rb")
+    [name, Formulary.from_contents(name, Pathname.new(file), File.read(file))]
+  end
+  fixtures["runtime-alias"] = fixtures.fetch("runtime-leaf")
+  Formulary.define_singleton_method(:factory) { |name, *args, **kwargs| fixtures.fetch(name) }
+  require ${JSON.stringify(path.resolve('scripts/cache/source-bottle-runtime.rb'))}
+  # Preserve Homebrew semantics for diamonds, aliases, cycles and merged tags.
+  runtime = SourceBottleRuntime.new
+  %w[runtime-cycle-a runtime-merged].each do |name|
+    expected = Dependency.expand(fixtures.fetch(name)) { |_, _| nil }
+    actual = runtime.expand(fixtures.fetch(name)) { |_, _| nil }
+    raise "Traversal differs for #{name}" unless actual == expected
+  end
+  # Formula#deps and Dependency.expand prune expat for this newer host before
+  # the old bottle's platform can be considered. Exercise both first, as the
+  # installer and other graph queries do, without changing the formula object.
+  python = fixtures.fetch("runtime-python")
+  raise "Fixture did not reproduce host filtering" if python.deps.any? { |dep| dep.name == "expat" }
+  raise "Fixture declaration disappeared" unless python.declared_deps.any? { |dep| dep.name == "expat" }
+  Dependency.expand(fixtures.fetch("runtime-consumer"), cache_key: "host-filtered") do |_, dep|
+    Dependable::PRUNE if dep.build? || dep.optional?
+  end
+  load ${JSON.stringify(path.resolve('scripts/cache/source-bottle-info.rb'))}
+end
+`);
+    for (const arch of ['arm', 'intel']) for (const mode of ['graph', 'seed', 'plan']) for (const macos of ['14', '15']) {
+      const approved = {'runtime-consumer': '1.0', 'runtime-python': {version: '1.0', macos}};
+      const result = spawnSync('brew', ['ruby', '--', script, arch, mode, '["runtime-consumer"]', 'false', JSON.stringify(approved)], {
+        encoding: 'utf8', env: {...process.env,
+          HOMEBREW_NO_AUTO_UPDATE: '1', HOMEBREW_NO_ANALYTICS: '1', HOMEBREW_NO_INSTALL_FROM_API: '1'},
+      });
+      assert.equal(result.status, 0, result.stderr);
+      const records = JSON.parse(result.stdout), python = records.find(item => item.name === 'runtime-python');
+      assert.deepEqual(records.map(item => item.name), ['runtime-leaf', ...(macos === '14' ? ['expat'] : []), 'openssl@4', 'runtime-python', 'runtime-consumer']);
+      assert.deepEqual(python.runtime_formulae, [...(macos === '14' ? ['expat'] : []), 'openssl@4', 'runtime-leaf']);
+      if (mode === 'graph') assert.deepEqual(python.runtime_dependencies.map(dep => dep.name),
+        [...(macos === '14' ? ['expat'] : []), 'openssl@4']);
+    }
   });

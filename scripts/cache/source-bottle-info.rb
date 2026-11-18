@@ -35,7 +35,7 @@ def missing_build_files(formula)
 end
 
 def source_dependencies(formula, planning:, force_source: false, runtime_only: false, ignore_installed: false)
-  Dependency.expand(formula) do |dependent, dep|
+  PHP_DARWIN_BOTTLE_RUNTIME.expand(formula) do |dependent, dep|
     next Dependable::PRUNE if dep.optional? || (dep.test? && !dep.build?) ||
                              PHP_DARWIN_BOTTLE_RUNTIME.from_macos?(dependent, dep)
 
@@ -111,7 +111,7 @@ records = resolved.map do |formula|
     record[:installed_source_sha256] = identity.read.strip if identity.file?
   end
   if mode == "graph"
-    active = formula.deps.reject do |dep|
+    active = formula.declared_deps.reject do |dep|
       dep.optional? || (dep.test? && !dep.build?) || PHP_DARWIN_BOTTLE_RUNTIME.from_macos?(formula, dep)
     end
     record[:runtime_dependencies] = active.reject(&:build?).map do |dep|

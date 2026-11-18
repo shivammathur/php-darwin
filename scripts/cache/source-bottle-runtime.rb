@@ -13,6 +13,30 @@ class SourceBottleRuntime
     (entry.is_a?(Hash) ? entry.fetch("version") : entry) == formula.pkg_version.to_s
   end
 
+  # Formula#deps already removes uses_from_macos dependencies for the host.
+  # Dependency.expand also calls it recursively, so supplying declared_deps
+  # only at the root still loses older bottles' transitive runtime libraries.
+  # Traverse declarations at every level, retaining Homebrew's dependency
+  # ordering, canonical names and merged tags without modifying its formulae.
+  def expand(formula, ancestors = [], &filter)
+    return [] if ancestors.include?(formula.full_name)
+
+    ancestors = ancestors + [formula.full_name]
+    dependencies = formula.declared_deps.flat_map do |dependency|
+      next [] if dependency.name == formula.name
+
+      action = filter.call(formula, dependency)
+      next [] if action == Dependable::PRUNE
+      next [dependency] if action == Dependable::KEEP_BUT_PRUNE_RECURSIVE_DEPS
+
+      child = dependency.to_formula
+      next [] if ancestors.include?(child.full_name)
+
+      expand(child, ancestors, &filter) + [dependency.dup_with_formula_name(child)]
+    end
+    Dependency.merge_repeats(dependencies)
+  end
+
   def from_macos?(formula, dependency)
     return false unless dependency.uses_from_macos?
 
