@@ -5,7 +5,7 @@ php_darwin_read_config() {
   case "$1" in
     package.json) cat <<'PHP_DARWIN_CONFIG'
 {
-  "current_version": "8.5",
+  "current_version": "8.6",
   "release_repository": "shivammathur/php-darwin",
   "artifact_mirror": "https://artifacts.php-darwin.setup-php.com"
 }
@@ -42,7 +42,7 @@ stable 8.2
 stable 8.3
 stable 8.4
 stable 8.5
-nightly 8.6
+stable 8.6
 nightly 8.7
 PHP_DARWIN_CONFIG
       ;;

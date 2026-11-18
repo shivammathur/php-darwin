@@ -56,13 +56,13 @@ current_version=$(php_darwin_package_config current_version)
 php_darwin_validate_channel "$current_version" stable
 php_darwin_validate_channel 5.6 stable
 php_darwin_validate_channel 8.5 stable
-php_darwin_validate_channel 8.6 nightly
+php_darwin_validate_channel 8.6 stable
 php_darwin_validate_channel 8.7 nightly
-php_darwin_validate_php_semver 8.6 8.6.0beta2 || \
+php_darwin_validate_php_semver 8.7 8.7.0beta2 || \
   php_darwin_die 'nightly prerelease PHP version validation failed'
-php_darwin_validate_php_semver 8.6 8.6.0RC1 || \
+php_darwin_validate_php_semver 8.7 8.7.0RC1 || \
   php_darwin_die 'nightly release-candidate PHP version validation failed'
-if php_darwin_validate_php_semver 8.6 8.6.beta2; then
+if php_darwin_validate_php_semver 8.7 8.7.beta2; then
   php_darwin_die 'malformed nightly prerelease PHP version was accepted'
 fi
 [ "$(php_darwin_formula "$current_version" debug zts "$current_version")" = php-debug-zts ] || \
@@ -200,7 +200,7 @@ jq -e '
   $'xdebug\tzend_extension pcov\textension ' ] || \
   php_darwin_die 'PHP 8.5 cached extension types are invalid'
 
-[ "$(php_darwin_pear_path 8.5 php)" = 'share/pear' ] || php_darwin_die 'current PEAR path is invalid'
+[ "$(php_darwin_pear_path 8.6 php)" = 'share/pear' ] || php_darwin_die 'current PEAR path is invalid'
 [ "$(php_darwin_pear_path 8.4 'php@8.4')" = 'share/pear@8.4' ] || \
   php_darwin_die 'versioned PEAR path is invalid'
 [ "$(php_darwin_pear_path 8.4 'php@8.4-debug-zts')" = 'share/pear@8.4-debug-zts' ] || \
@@ -209,8 +209,8 @@ jq -e '
   php_darwin_die 'variant configuration id is invalid'
 [ "$(php_darwin_metadata_path 'php_8.5-nts-release+darwin_arm64.tar.zst')" = \
   'var/php-darwin/php_8.5-nts-release+darwin_arm64.json' ] || php_darwin_die 'embedded metadata path is invalid'
-current_postinstall_paths=$(php_darwin_postinstall_paths 8.5 php | tr '\n' ' ')
-[ "$current_postinstall_paths" = 'etc/php/8.5/pear.conf ' ] || \
+current_postinstall_paths=$(php_darwin_postinstall_paths 8.6 php | tr '\n' ' ')
+[ "$current_postinstall_paths" = 'etc/php/8.6/pear.conf ' ] || \
   php_darwin_die 'current post-install paths are invalid'
 versioned_postinstall_paths=$(php_darwin_postinstall_paths 8.4 'php@8.4' | tr '\n' ' ')
 [ "$versioned_postinstall_paths" = \
