@@ -155,7 +155,8 @@ jq -e --argjson versions "$configured_versions" '
   (.compression_level | type == "number" and . >= 1 and . <= 22 and . == floor) and
   .compression_level == 19 and .compression_long == 27 and
   (.max_archive_bytes | keys | sort) == $versions and
-  all(.max_archive_bytes[]; . == 180000000)
+  all(.max_archive_bytes | to_entries[];
+    .value == (if (.key | split(".") | map(tonumber)) < [8,4] then 185000000 else 180000000 end))
 ' "$script_dir/../../../conf/build.json" >/dev/null || php_darwin_die 'invalid build configuration'
 jq -e '
   keys == ["artifact_bucket", "artifact_mirror", "current_version", "extension_release", "extension_tap", "extension_tap_branch", "extension_tap_repository",

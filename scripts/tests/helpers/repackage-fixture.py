@@ -13,6 +13,8 @@ import sys
 sys.dont_write_bytecode = True
 
 ROOT = Path(__file__).resolve().parents[3]
+VERSION = json.loads((ROOT / 'conf/package.json').read_text())['current_version']
+SEMVER = VERSION + '.0'
 spec = importlib.util.spec_from_file_location('repack', ROOT / 'scripts/release/repackage-installer.py')
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
@@ -39,29 +41,29 @@ with tempfile.TemporaryDirectory() as temporary:
     run('git', '-C', str(tap), 'update-ref', 'refs/remotes/origin/main', commit)
     if branch == 'php-darwin-staged':
         run('git', '-C', str(tap), 'config', 'php-darwin.private-snapshot', commit)
-    source_hash = run('bash', str(ROOT / 'scripts/lib/source-hash.sh'), '8.5', env={**os.environ, 'HOMEBREW_PHP_PATH': str(tap)})
-    archive_name = 'php_8.5-nts-release+darwin_arm64.tar.zst'
+    source_hash = run('bash', str(ROOT / 'scripts/lib/source-hash.sh'), VERSION, env={**os.environ, 'HOMEBREW_PHP_PATH': str(tap)})
+    archive_name = f'php_{VERSION}-nts-release+darwin_arm64.tar.zst'
     metadata = json.loads((ROOT / 'templates/cache-metadata.json').read_text())
     metadata.update(archive=archive_name, architecture='arm64', brew_prefix='/opt/homebrew', build='release', formula='php',
                     formula_sha256='a' * 64, homebrew_php_commit=commit, extensions_source_hash='b'*64, homebrew_extensions_commit='c'*40,
-                    minimum_macos=14, macos_version='14.0', platform_key='arm64_sonoma', requested_formula='php@8.5',
-                    php_version='8.5', php_semver='8.5.12', php_src_commit='', source_hash=source_hash, tap_snapshot='var/php-darwin/homebrew-php',
+                    minimum_macos=14, macos_version='14.0', platform_key='arm64_sonoma', requested_formula=f'php@{VERSION}',
+                    php_version=VERSION, php_semver=SEMVER, php_src_commit='', source_hash=source_hash, tap_snapshot='var/php-darwin/homebrew-php',
                     thread_safety='nts', pear_path='share/pear', pecl_extension='20250925',
-                    packages=[{'name':'php','opt_target':'../Cellar/php/8.5.12','keg_only':False}],
-                    links=[{'path':'bin/php','target':'../Cellar/php/8.5.12/bin/php'}], state_paths=['etc/php/8.5/pear.conf'],tap_formulae=['php'])
+                    packages=[{'name':'php','opt_target':f'../Cellar/php/{SEMVER}','keg_only':False}],
+                    links=[{'path':'bin/php','target':f'../Cellar/php/{SEMVER}/bin/php'}], state_paths=[f'etc/php/{VERSION}/pear.conf'],tap_formulae=['php'])
     def write(name, data):
         file = tree / name
         file.parent.mkdir(parents=True, exist_ok=True)
         file.write_text(data)
     write('var/php-darwin/' + archive_name.replace('.tar.zst','.json'), json.dumps(metadata, indent=2)+'\n')
-    write('Cellar/php/8.5.12/INSTALL_RECEIPT.json', json.dumps({'runtime_dependencies':[]}))
-    write('Cellar/php/8.5.12/bin/php', 'unchanged payload\n')
-    (tree/'Cellar/php/8.5.12/bin/php').chmod(0o755)
-    long_name = 'Cellar/php/8.5.12/share/php/pear/doc/Structures_Graph/docs/tutorials/Structures_Graph/Structures_Graph.pkg'
+    write(f'Cellar/php/{SEMVER}/INSTALL_RECEIPT.json', json.dumps({'runtime_dependencies':[]}))
+    write(f'Cellar/php/{SEMVER}/bin/php', 'unchanged payload\n')
+    (tree/f'Cellar/php/{SEMVER}/bin/php').chmod(0o755)
+    long_name = f'Cellar/php/{SEMVER}/share/php/pear/doc/Structures_Graph/docs/tutorials/Structures_Graph/Structures_Graph.pkg'
     write(long_name, 'long USTAR path without extended headers\n')
-    write('etc/php/8.5/pear.conf', '/opt/homebrew/share/pear\n')
+    write(f'etc/php/{VERSION}/pear.conf', '/opt/homebrew/share/pear\n')
     (tree/'bin').mkdir()
-    (tree/'bin/php').symlink_to('../Cellar/php/8.5.12/bin/php')
+    (tree/'bin/php').symlink_to(f'../Cellar/php/{SEMVER}/bin/php')
     tar = root / 'fixture.tar'
     with tarfile.open(tar, 'w') as stream:
         for file in sorted(tree.rglob('*')):
@@ -74,8 +76,8 @@ with tempfile.TemporaryDirectory() as temporary:
             if name == long_name: info.mtime = int(info.mtime)
             with open(file, 'rb') if info.isfile() else nullcontext() as body:
                 stream.addfile(info, body)
-        info = tarfile.TarInfo('Cellar/php/8.5.12/bin/php-hardlink')
-        info.type, info.linkname = tarfile.LNKTYPE, 'Cellar/php/8.5.12/bin/php'
+        info = tarfile.TarInfo(f'Cellar/php/{SEMVER}/bin/php-hardlink')
+        info.type, info.linkname = tarfile.LNKTYPE, f'Cellar/php/{SEMVER}/bin/php'
         stream.addfile(info)
     archive = root / archive_name
     run('zstd', '-q', '-f', str(tar), '-o', str(archive))
@@ -102,8 +104,8 @@ with tempfile.TemporaryDirectory() as temporary:
         return {member.name:module.record(member, body.read() if body else None) for member,body in module.members(file)}
     before, after = inventory(archive), inventory(root/'out'/archive_name)
     assert after[long_name] == before[long_name] and after[long_name]['pax_headers'] == {}
-    assert after['Cellar/php/8.5.12/bin/php']['mode'] == 0o755
-    assert after['Cellar/php/8.5.12/bin/php-hardlink']['type'] == tarfile.LNKTYPE.hex()
+    assert after[f'Cellar/php/{SEMVER}/bin/php']['mode'] == 0o755
+    assert after[f'Cellar/php/{SEMVER}/bin/php-hardlink']['type'] == tarfile.LNKTYPE.hex()
     # Verify the gate rejects content, permission, link, ownership, timestamp,
     # extended-attribute and member-set changes rather than only tar corruption.
     excluded = ('var/php-darwin/'+archive_name.replace('.tar.zst','.json'), module.CONTROLLER)
