@@ -31,7 +31,7 @@ async function prepare(formula) {
   if (runtime.openssl_major && !opensslLinks) throw new Error(`Missing expected OpenSSL ${runtime.openssl_major} linkage`);
   command('brew', ['linkage', '--test', formula], {inherit: true});
   if (formula.startsWith('python@')) command(path.join(runtime.prefix, 'bin', formula.replace('@', '')), ['-c',
-    `import ssl, sqlite3, ctypes, decimal; assert ssl.OPENSSL_VERSION.startswith('OpenSSL ${runtime.openssl_major}.'); print(ssl.OPENSSL_VERSION)`], {inherit: true});
+    `import ssl, sqlite3, ctypes, decimal, pyexpat; assert pyexpat.ParserCreate().Parse("<root/>", True); assert ssl.OPENSSL_VERSION.startswith('OpenSSL ${runtime.openssl_major}.'); print(ssl.OPENSSL_VERSION)`], {inherit: true});
   if (formula === 'httpd') command(path.join(runtime.prefix, 'bin/httpd'), ['-t'], {inherit: true});
   const sources = [];
   for (const name of fs.existsSync(cacheRoot) ? fs.readdirSync(cacheRoot) : []) {

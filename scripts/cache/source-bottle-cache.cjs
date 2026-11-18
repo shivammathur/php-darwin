@@ -150,7 +150,7 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
   // dependencies, PHP itself and cache-only consumers must still use bottles.
   const extensionSource = !dependencyRoots && formula.startsWith(`${extensionTap}/`) &&
     policy.extension_source_builds?.includes(extensionVariant);
-  const approved = approvedDependencies?.versions(platform) || {};
+  const approved = approvedDependencies?.versions(platform, {includePlatforms: true}) || {};
   const resolved = query(dependencyRoots ? 'seed' : 'plan', requested,
     dependencyRoots ? requested.some(name => name.includes('/')) : forceSource, approved);
   if (!Array.isArray(preparedTargets) || preparedTargets.some(name =>

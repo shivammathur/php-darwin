@@ -72,7 +72,7 @@ async function prepare() {
   await install({ formula: 'jq', dependencyRoots: requested, cache, cacheRoot, approvedDependencies: approved,
     run: buildGuard() });
   const packageRoots = new Set(requested.filter(name => name.includes('/')));
-  const plan = JSON.parse(brewSource('info', ['seed', JSON.stringify(requested), 'true', JSON.stringify(approved?.versions(platform) || {})]))
+  const plan = JSON.parse(brewSource('info', ['seed', JSON.stringify(requested), 'true', JSON.stringify(approved?.versions(platform, {includePlatforms: true}) || {})]))
     .filter(item => !packageRoots.has(item.full_name) && !(item.requested && item.full_name.includes('/')));
   const cached = fs.existsSync(cacheRoot) ? fs.readdirSync(cacheRoot).flatMap(name => {
     const metadata = path.join(cacheRoot, name, 'metadata.json');
@@ -156,7 +156,7 @@ async function verify() {
     for (const name of names.filter(name => /^python@\d+\.\d+$/.test(name))) {
       const prefix = command('brew', ['--prefix', name]).trim();
       command(path.join(prefix, 'bin', name.replace('@', '')), ['-c',
-        `import ssl, urllib.request; assert ssl.OPENSSL_VERSION.startswith('OpenSSL ${major}.'); print(ssl.OPENSSL_VERSION)`], {inherit: true});
+        `import ssl, urllib.request, pyexpat; assert pyexpat.ParserCreate().Parse("<root/>", True); assert ssl.OPENSSL_VERSION.startswith('OpenSSL ${major}.'); print(ssl.OPENSSL_VERSION)`], {inherit: true});
     }
     if (names.includes('llvm')) {
       const prefix = command('brew', ['--prefix', 'llvm']).trim();

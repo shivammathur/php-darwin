@@ -5,6 +5,7 @@ require "formula_installer"
 require "json"
 require "pkg_version"
 require_relative "bottle-runtime-version"
+require_relative "source-bottle-runtime"
 
 PHP_DARWIN_FORMULA_POLICY = JSON.parse(File.read(File.expand_path("../../conf/formula-policy.json", __dir__))).freeze
 
@@ -15,6 +16,7 @@ force_source = ARGV[2] == "true"
 approved_bottles = JSON.parse(ARGV[3] || "{}")
 bottle_baseline = ARGV[4] && JSON.parse(ARGV[4])
 raise "Invalid source bottle mode" unless %w[plan seed graph inputs archive].include?(mode)
+PHP_DARWIN_BOTTLE_RUNTIME = SourceBottleRuntime.new(approved_bottles, installed: mode == "archive")
 
 def current_installation?(formula)
   # Homebrew requires the current formula version, even if an older keg is
@@ -32,17 +34,16 @@ def missing_build_files(formula)
   end
 end
 
-def source_dependencies(formula, planning:, force_source: false, runtime_only: false, ignore_installed: false,
-                        approved_bottles: {})
+def source_dependencies(formula, planning:, force_source: false, runtime_only: false, ignore_installed: false)
   Dependency.expand(formula) do |dependent, dep|
     next Dependable::PRUNE if dep.optional? || (dep.test? && !dep.build?) ||
-                             (dep.uses_from_macos? && dep.use_macos_install?)
+                             PHP_DARWIN_BOTTLE_RUNTIME.from_macos?(dependent, dep)
 
     if dep.build?
       next Dependable::PRUNE if runtime_only
       building = if planning
         (ignore_installed || !current_installation?(dependent)) &&
-          approved_bottles[dependent.full_name] != dependent.pkg_version.to_s &&
+          !PHP_DARWIN_BOTTLE_RUNTIME.approved?(dependent) &&
           ((dependent == formula && force_source) || !FormulaInstaller.new(dependent).pour_bottle?)
       else
         # Inputs describe a source build of this formula. Its dependencies are
@@ -81,7 +82,7 @@ resolved = formulae.map { |name| Formulary.factory(name) }
 requested_names = resolved.map(&:full_name)
 if %w[plan seed graph].include?(mode)
   resolved = resolved.flat_map do |formula|
-    source_dependencies(formula, planning: true, force_source:, ignore_installed: %w[seed graph].include?(mode), approved_bottles:)
+    source_dependencies(formula, planning: true, force_source:, ignore_installed: %w[seed graph].include?(mode))
       .map(&:to_formula) + [formula]
   end.uniq(&:full_name)
 end
@@ -111,13 +112,13 @@ records = resolved.map do |formula|
   end
   if mode == "graph"
     active = formula.deps.reject do |dep|
-      dep.optional? || (dep.test? && !dep.build?) || (dep.uses_from_macos? && dep.use_macos_install?)
+      dep.optional? || (dep.test? && !dep.build?) || PHP_DARWIN_BOTTLE_RUNTIME.from_macos?(formula, dep)
     end
     record[:runtime_dependencies] = active.reject(&:build?).map do |dep|
       value = dep.to_formula
       {name: value.full_name, version: value.pkg_version.to_s}
     end.sort_by { |dep| dep[:name] }
-    record[:required_formulae] = source_dependencies(formula, planning: true, ignore_installed: true, approved_bottles:)
+    record[:required_formulae] = source_dependencies(formula, planning: true, ignore_installed: true)
       .map { |dep| dep.to_formula.full_name }.uniq.sort
     record[:required_dependencies] = active.map { |dep| dep.to_formula.full_name }
       .select { |name| record[:required_formulae].include?(name) }.uniq.sort

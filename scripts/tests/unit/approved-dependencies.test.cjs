@@ -26,6 +26,10 @@ test('baseline promotion retains verified older source bottles but rejects newer
   assert.equal(validatePlatform(platform, 'arm64'), platform);
   const approved = new ApprovedDependencies({platforms: {arm64: platform}});
   assert.deepEqual(approved.versions({arch: 'arm64', macos: '15', prefix: '/opt/homebrew'}), {fixture: '1.0'});
+  const environment = {arch: 'arm64', macos: '15', prefix: '/opt/homebrew'};
+  assert.deepEqual(approved.versions(environment, {includePlatforms: true}), {fixture: {version: '1.0', macos: '14'}});
+  const rebuilding = new ApprovedDependencies({platforms: {arm64: platform}}, {updates: ['fixture']});
+  assert.deepEqual(rebuilding.versions(environment, {includePlatforms: true}), {});
   assert.throws(() => approved.versions({arch: 'arm64', macos: '14', prefix: '/opt/homebrew'}), /Runner cannot/);
   for (const change of [{macos: '26'}, {macos: 'invalid'}, {arch: 'x86_64'}, {prefix: '/usr/local'}]) {
     const invalid = structuredClone(platform);

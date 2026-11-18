@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const {readLock} = require('./approved-dependencies.cjs');
+const {readLock,bottleVersions} = require('./approved-dependencies.cjs');
 const {changed} = require('./dependency-inputs.cjs');
 const recipes = require('./dependency-recipes.cjs');
 const {roots} = require('./update-dependencies.cjs');
@@ -104,7 +104,7 @@ if(require.main===module) {
     if(mode==='discover') {
       native();const platform=environment();
       const versions=Object.fromEntries(Object.entries(lock.platforms[platform.arch].packages).map(([name,value])=>[name,value.version]));
-      const before=graph(Object.keys(versions),versions);
+      const before=graph(Object.keys(versions),bottleVersions(lock.platforms[platform.arch].packages,true));
       const repository=command('brew',['--repository','homebrew/core']).trim();
       command('git',['-C',repository,'fetch','--depth=1','--no-tags','origin',process.env.UPSTREAM_CORE_COMMIT]);
       let after;
@@ -134,7 +134,7 @@ if(require.main===module) {
       // Invalidating a source bottle exposes its build dependencies. Resolve to
       // a fixed point before scheduling, rather than discovering new work on a runner.
       for(let i=0;i<=Object.keys(previous).length+100;i++) {
-        const approved=Object.fromEntries(Object.entries(previous).filter(([name])=>!plan.updates.includes(name)).map(([name,e])=>[name,e.version]));
+        const approved=bottleVersions(Object.fromEntries(Object.entries(previous).filter(([name])=>!plan.updates.includes(name))),true);
         resolved=graph([...new Set([...roots(), ...explicit])],approved);
         for (const name of bottleOnly) if (!resolved.find(item => item.full_name === name)?.bottled) throw new Error(`No compatible upstream bottle for ${name}`);
         const next=resolvePlan(resolved,previous,plan.updates);

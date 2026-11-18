@@ -63,6 +63,14 @@ function protectedSourceKeys(file = defaultFile) {
     })));
 }
 
+// Resolution must use a retained source bottle's OS, not the newer runner,
+// when deciding which declared libraries macOS supplies. Version-only callers
+// still compare plain package versions (for example upstream bottle freshness).
+function bottleVersions(packages, includePlatforms = false) {
+  return Object.fromEntries(Object.entries(packages).map(([name, entry]) => [name,
+    includePlatforms && entry.source ? {version: entry.version, macos: entry.source.inputs.environment.macos} : entry.version]));
+}
+
 class ApprovedDependencies {
   constructor(lock, { download = upstream.transfer, retry = retryPolicy({ attempts: 3, budget: 8, delay: 1000 }),
     updates = [], bottleUpdates = [], allowNewBottles = false,
@@ -76,15 +84,15 @@ class ApprovedDependencies {
     this.recordInstalled = recordInstalled;
   }
 
-  versions(environment) {
+  versions(environment, {includePlatforms = false} = {}) {
     this.platform = validatePlatform(this.lock.platforms?.[environment.arch], environment.arch);
     if (environment.prefix !== this.platform.prefix || Number(environment.macos) < this.platform.macos) {
       throw new Error('Runner cannot use the approved dependency platform');
     }
     // Explicit rebuilds still need their build dependencies when the formula
     // version is unchanged; only actual restores may prune those tools.
-    return Object.fromEntries(Object.entries(this.platform.packages)
-      .filter(([name]) => !this.updates.has(name)).map(([name, entry]) => [name, entry.version]));
+    return bottleVersions(Object.fromEntries(Object.entries(this.platform.packages)
+      .filter(([name]) => !this.updates.has(name))), includePlatforms);
   }
 
   validatePlan(plan, environment, { targets = [] } = {}) {
@@ -198,7 +206,7 @@ class ApprovedDependencies {
   }
 }
 
-module.exports = { readLock, validatePlatform, protectedSourceKeys, ApprovedDependencies, defaultFile };
+module.exports = { bottleVersions, readLock, validatePlatform, protectedSourceKeys, ApprovedDependencies, defaultFile };
 if (require.main === module) {
   try {
     const lock = readLock(process.argv[3]);

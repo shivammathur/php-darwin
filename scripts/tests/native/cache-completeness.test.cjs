@@ -10,7 +10,7 @@ assert.equal(process.env.GITHUB_ACTIONS, 'true');
 assert.equal(process.env.PHP_DARWIN_CACHE_ONLY, 'true');
 const lock = readLock(), platform = environment(), approved = new ApprovedDependencies(lock);
 const requested = roots();
-const graph = JSON.parse(brewSource('info', ['seed', JSON.stringify(requested), 'true', JSON.stringify(approved.versions(platform))]));
+const graph = JSON.parse(brewSource('info', ['seed', JSON.stringify(requested), 'true', JSON.stringify(approved.versions(platform, {includePlatforms: true}))]));
 const targets = [...new Set([...requested, ...graph.filter(item => item.requested).map(item => item.full_name)])].filter(name => name.includes('/'));
 approved.validatePlan(graph, platform, {targets});
 const dependencies = graph.filter(item => !targets.includes(item.full_name));
