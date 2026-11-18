@@ -2031,16 +2031,6 @@
             "sha256": "0ec9bf8082245c008803b42dcae3e6a0c8cd7a67aed589d9b6482b115c0a543b",
             "url": "https://ghcr.io/v2/homebrew/core/libyaml/blobs/sha256:0ec9bf8082245c008803b42dcae3e6a0c8cd7a67aed589d9b6482b115c0a543b"
           }
-        },
-        "p7zip": {
-          "version": "17.06",
-          "bottle": {
-            "formula": "p7zip",
-            "version": "17.06",
-            "tag": "arm64_sequoia",
-            "sha256": "369d3a03a92f93bac16dd14b0a0bdfdd89ca55acbd503a5df2e6bb5db090570a",
-            "url": "https://ghcr.io/v2/homebrew/core/p7zip/blobs/sha256:369d3a03a92f93bac16dd14b0a0bdfdd89ca55acbd503a5df2e6bb5db090570a"
-          }
         }
       }
     },
@@ -7497,7 +7487,7 @@
   },
   "tap_inputs": {
     "schema": 1,
-    "sha256": "f29fdaeb36e60ba1a4e181b0589c46ad765f2c3ec6e984a050069771a07c46d4",
+    "sha256": "040288d2d86c91c2f7dd0d84be70ddce5d98ff53ac6a57508b4ff785662e1fbd",
     "records": {
       "homebrew-php/Formula/autoconf@2.69.rb": "fd33eadb8f275a2d089c7d112bfb39d680cc838b3af2f61ab4fb35f09dbeff7d",
       "homebrew-php/Formula/bison@2.7.rb": "54902fa819dd1736bcca826196ee75b2608337b4b83e484829446961fd4e2669",
@@ -13135,8 +13125,8 @@
       "homebrew-extensions/Formula/mailparse@8.5.rb": "5df60166cc7b79ec9be38cb64d4ec073a3b8af1599a08d84ac41d0fc6eefbeda",
       "homebrew-extensions/Formula/mailparse@8.6.rb": "a10f16eb85bb3da9fc6f10b26a6f314ae5f57ffe0e4268957e3a0bbe6fbbb15f",
       "homebrew-extensions/Formula/mailparse@8.7.rb": "9fe3544318301b528eaf317df1f99aab4ba42cec06da9fa369fe220224eac482",
-      "homebrew-extensions/Formula/maxminddb@7.2.rb": "57c54b6e6c6092bb9cd6d52864298ecf788a3f9f839b717bc6c37815197f7fed",
-      "homebrew-extensions/Formula/maxminddb@7.3.rb": "22cb767f5a891c90e645f0285dc46cfc20e5254f70c903f8f4c4fd60e43309c2",
+      "homebrew-extensions/Formula/maxminddb@7.2.rb": "7256e57deeb61c8164047dfa15853e640d8eaf8d1999a552c4ed2a6563973e47",
+      "homebrew-extensions/Formula/maxminddb@7.3.rb": "b1cf1a9420fb547014fbb0a64b8fcd0ca2ce69b546e902c86350d91d2539e014",
       "homebrew-extensions/Formula/maxminddb@7.4.rb": "083d5c024ef156afc9d609c370eb8c2fd8f48830ea674d04c271f781f66802f0",
       "homebrew-extensions/Formula/maxminddb@8.0.rb": "5348e9549f560faf233ed883990e017ff57c3aa4bff51772428e2a3825d77fc4",
       "homebrew-extensions/Formula/maxminddb@8.1.rb": "175d2a8c6236f8c9d3a2bec0ee550650b9f71306f984231ce009c9b00fe3d7c9",
