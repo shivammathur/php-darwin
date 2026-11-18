@@ -87,13 +87,13 @@
           }
         },
         "aspell": {
-          "version": "0.60.8.2",
+          "version": "0.60.8.3_1",
           "bottle": {
             "formula": "aspell",
-            "version": "0.60.8.2",
-            "tag": "arm64_sonoma",
-            "sha256": "59b57e67fc77ef33808fe1f09068374e26bedf89d6ac1401c6c3d4ebf944b617",
-            "url": "https://ghcr.io/v2/homebrew/core/aspell/blobs/sha256:59b57e67fc77ef33808fe1f09068374e26bedf89d6ac1401c6c3d4ebf944b617"
+            "version": "0.60.8.3_1",
+            "tag": "arm64_sequoia",
+            "sha256": "9c1f28c2289199cba0259868d64a72cf10d6d972f34fdf713a7451e1113beda9",
+            "url": "https://ghcr.io/v2/homebrew/core/aspell/blobs/sha256:9c1f28c2289199cba0259868d64a72cf10d6d972f34fdf713a7451e1113beda9"
           }
         },
         "brotli": {
@@ -898,13 +898,13 @@
           }
         },
         "dav1d": {
-          "version": "1.5.4",
+          "version": "1.5.5",
           "bottle": {
             "formula": "dav1d",
-            "version": "1.5.4",
-            "tag": "arm64_sonoma",
-            "sha256": "0ac81e374a2bf69706ddef7f8ea18ca7188eb51eb31689a4198a6d257a69af2c",
-            "url": "https://ghcr.io/v2/homebrew/core/dav1d/blobs/sha256:0ac81e374a2bf69706ddef7f8ea18ca7188eb51eb31689a4198a6d257a69af2c"
+            "version": "1.5.5",
+            "tag": "arm64_sequoia",
+            "sha256": "fb6c682102acf636d05f80ce535e9dbc3963d3940051c27fb1c51dd526b4a125",
+            "url": "https://ghcr.io/v2/homebrew/core/dav1d/blobs/sha256:fb6c682102acf636d05f80ce535e9dbc3963d3940051c27fb1c51dd526b4a125"
           }
         },
         "libavif": {
@@ -1219,13 +1219,13 @@
           }
         },
         "libffi": {
-          "version": "3.8.0",
+          "version": "3.8.1",
           "bottle": {
             "formula": "libffi",
-            "version": "3.8.0",
-            "tag": "arm64_sonoma",
-            "sha256": "a489eb46a45019e29156e0d9595dd986e6a39b6eb8d3b42130b30bc350734151",
-            "url": "https://ghcr.io/v2/homebrew/core/libffi/blobs/sha256:a489eb46a45019e29156e0d9595dd986e6a39b6eb8d3b42130b30bc350734151"
+            "version": "3.8.1",
+            "tag": "arm64_sequoia",
+            "sha256": "b8c2e7ea5bddf49536a5394b3fc880ad8731177dbd3f7333081ba587e5634a7a",
+            "url": "https://ghcr.io/v2/homebrew/core/libffi/blobs/sha256:b8c2e7ea5bddf49536a5394b3fc880ad8731177dbd3f7333081ba587e5634a7a"
           }
         },
         "httpd": {
@@ -1673,23 +1673,23 @@
           }
         },
         "imagemagick": {
-          "version": "7.1.2-35",
+          "version": "7.1.2-36",
           "bottle": {
             "formula": "imagemagick",
-            "version": "7.1.2-35",
+            "version": "7.1.2-36",
             "tag": "arm64_sequoia",
-            "sha256": "f5af931caf3b04d984c0135c13df3370d5642ecf4b373a722916b94b6867bf7b",
-            "url": "https://ghcr.io/v2/homebrew/core/imagemagick/blobs/sha256:f5af931caf3b04d984c0135c13df3370d5642ecf4b373a722916b94b6867bf7b"
+            "sha256": "b6b37af7bc80eb1151abf44903daa73fd802dc6d0854aad3e08292b5a64d8c29",
+            "url": "https://ghcr.io/v2/homebrew/core/imagemagick/blobs/sha256:b6b37af7bc80eb1151abf44903daa73fd802dc6d0854aad3e08292b5a64d8c29"
           }
         },
         "libomp": {
-          "version": "23.1.5",
+          "version": "23.1.6",
           "bottle": {
             "formula": "libomp",
-            "version": "23.1.5",
+            "version": "23.1.6",
             "tag": "arm64_sequoia",
-            "sha256": "2d0ef3890bcb061641c46bc3e52addc7d85627977a4dcd94938ccbd29774b9f0",
-            "url": "https://ghcr.io/v2/homebrew/core/libomp/blobs/sha256:2d0ef3890bcb061641c46bc3e52addc7d85627977a4dcd94938ccbd29774b9f0"
+            "sha256": "d8d154f796a93a5fdca8470e254b402b29d6a66bbaf25bdc5e74ccd05ce09ffd",
+            "url": "https://ghcr.io/v2/homebrew/core/libomp/blobs/sha256:d8d154f796a93a5fdca8470e254b402b29d6a66bbaf25bdc5e74ccd05ce09ffd"
           }
         },
         "libevent": {
@@ -2030,6 +2030,16 @@
             "tag": "arm64_sequoia",
             "sha256": "0ec9bf8082245c008803b42dcae3e6a0c8cd7a67aed589d9b6482b115c0a543b",
             "url": "https://ghcr.io/v2/homebrew/core/libyaml/blobs/sha256:0ec9bf8082245c008803b42dcae3e6a0c8cd7a67aed589d9b6482b115c0a543b"
+          }
+        },
+        "p7zip": {
+          "version": "17.06",
+          "bottle": {
+            "formula": "p7zip",
+            "version": "17.06",
+            "tag": "arm64_sequoia",
+            "sha256": "369d3a03a92f93bac16dd14b0a0bdfdd89ca55acbd503a5df2e6bb5db090570a",
+            "url": "https://ghcr.io/v2/homebrew/core/p7zip/blobs/sha256:369d3a03a92f93bac16dd14b0a0bdfdd89ca55acbd503a5df2e6bb5db090570a"
           }
         }
       }
@@ -2497,13 +2507,37 @@
           }
         },
         "aspell": {
-          "version": "0.60.8.2",
-          "bottle": {
-            "formula": "aspell",
-            "version": "0.60.8.2",
-            "tag": "sonoma",
-            "sha256": "d67764dd08b363fcb93aaf020abb592a42f7c21756f657d041107e5f2c103ad5",
-            "url": "https://ghcr.io/v2/homebrew/core/aspell/blobs/sha256:d67764dd08b363fcb93aaf020abb592a42f7c21756f657d041107e5f2c103ad5"
+          "version": "0.60.8.3_1",
+          "source": {
+            "key": "php-darwin-source-v1-1d49eb7a63ea24f29a15ccb2873a0fd3e6e7bf8701ac65881e6677c022e516d1",
+            "inputs": {
+              "environment": {
+                "arch": "x86_64",
+                "macos": "15",
+                "prefix": "/usr/local",
+                "homebrew": "Homebrew 7",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "26.2",
+                "buildEnv": {
+                  "CC": "",
+                  "CXX": "",
+                  "CFLAGS": "",
+                  "CXXFLAGS": "",
+                  "CPPFLAGS": "",
+                  "LDFLAGS": "",
+                  "MACOSX_DEPLOYMENT_TARGET": "",
+                  "SDKROOT": "",
+                  "HOMEBREW_CC": "",
+                  "HOMEBREW_CXX": "",
+                  "HOMEBREW_ARCH": ""
+                }
+              },
+              "formula": "aspell",
+              "version": "0.60.8.3_1",
+              "recipe": "2d648e649beca46248e7afeeb50f59789939c85c4c43a12100e8b8bb1e886662",
+              "dependencies": []
+            },
+            "sha256": "2bc2e2947ab061a49237fa0a683244aec71a35669bec42ecdf68d671b39a1d9f"
           }
         },
         "cmake": {
@@ -3934,13 +3968,145 @@
           }
         },
         "dav1d": {
-          "version": "1.5.4",
-          "bottle": {
-            "formula": "dav1d",
-            "version": "1.5.4",
-            "tag": "sonoma",
-            "sha256": "c6bf6ecc82c9ede74528fbf82ddf4b9c83bf6eb7c74dcf5e5a56a25b4cb918d5",
-            "url": "https://ghcr.io/v2/homebrew/core/dav1d/blobs/sha256:c6bf6ecc82c9ede74528fbf82ddf4b9c83bf6eb7c74dcf5e5a56a25b4cb918d5"
+          "version": "1.5.5",
+          "source": {
+            "key": "php-darwin-source-v1-708f5541819452a915af230fcabaeb67a181cdadd646e314fb5ee8df3bbea3f2",
+            "inputs": {
+              "environment": {
+                "arch": "x86_64",
+                "macos": "15",
+                "prefix": "/usr/local",
+                "homebrew": "Homebrew 7",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
+                "buildEnv": {
+                  "CC": "",
+                  "CXX": "",
+                  "CFLAGS": "",
+                  "CXXFLAGS": "",
+                  "CPPFLAGS": "",
+                  "LDFLAGS": "",
+                  "MACOSX_DEPLOYMENT_TARGET": "",
+                  "SDKROOT": "",
+                  "HOMEBREW_CC": "",
+                  "HOMEBREW_CXX": "",
+                  "HOMEBREW_ARCH": ""
+                }
+              },
+              "formula": "dav1d",
+              "version": "1.5.5",
+              "recipe": "37332dd5100b9111594ab400604e1facfc4baaae3bf871034bc4ec4f75efe02e",
+              "dependencies": [
+                {
+                  "name": "meson",
+                  "version": "1.12.1",
+                  "recipe": "164474f808daa0637ba95f3007f858a3f3279f4b2cbcb696ea6127556360cc66",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": [
+                    {
+                      "full_name": "ninja",
+                      "version": "1.13.2",
+                      "revision": 0,
+                      "pkg_version": "1.13.2",
+                      "declared_directly": true,
+                      "compatibility_version": 1
+                    },
+                    {
+                      "full_name": "ca-certificates",
+                      "version": "2026-11-05",
+                      "revision": 0,
+                      "bottle_rebuild": 0,
+                      "pkg_version": "2026-11-05",
+                      "declared_directly": false,
+                      "compatibility_version": 1
+                    },
+                    {
+                      "full_name": "mpdecimal",
+                      "version": "4.0.1",
+                      "revision": 0,
+                      "pkg_version": "4.0.1",
+                      "declared_directly": false,
+                      "compatibility_version": 1
+                    },
+                    {
+                      "full_name": "openssl@4",
+                      "version": "4.1.0",
+                      "revision": 0,
+                      "pkg_version": "4.1.0",
+                      "declared_directly": false,
+                      "compatibility_version": 1
+                    },
+                    {
+                      "full_name": "readline",
+                      "version": "8.3.6",
+                      "revision": 0,
+                      "pkg_version": "8.3.6",
+                      "declared_directly": false,
+                      "compatibility_version": 1
+                    },
+                    {
+                      "full_name": "sqlite",
+                      "version": "3.54.1",
+                      "revision": 0,
+                      "pkg_version": "3.54.1",
+                      "declared_directly": false,
+                      "compatibility_version": 1
+                    },
+                    {
+                      "full_name": "xz",
+                      "version": "5.8.4",
+                      "revision": 0,
+                      "pkg_version": "5.8.4",
+                      "declared_directly": false,
+                      "compatibility_version": 1
+                    },
+                    {
+                      "full_name": "lz4",
+                      "version": "1.11.1",
+                      "revision": 0,
+                      "pkg_version": "1.11.1",
+                      "declared_directly": false,
+                      "compatibility_version": 1
+                    },
+                    {
+                      "full_name": "zstd",
+                      "version": "1.5.7",
+                      "revision": 1,
+                      "bottle_rebuild": 0,
+                      "pkg_version": "1.5.7_1",
+                      "declared_directly": false,
+                      "compatibility_version": 1
+                    },
+                    {
+                      "full_name": "python@3.14",
+                      "version": "3.14.8",
+                      "revision": 1,
+                      "pkg_version": "3.14.8_1",
+                      "declared_directly": true,
+                      "compatibility_version": 1
+                    }
+                  ]
+                },
+                {
+                  "name": "nasm",
+                  "version": "3.02",
+                  "recipe": "d1f2d66816a80385334e26977d9720504018f3d5b53d56bf98ce868877241599",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": []
+                },
+                {
+                  "name": "ninja",
+                  "version": "1.13.2",
+                  "recipe": "6e5309e103ab11da01bd45b1886813e4beb60ad068260e9c7c8a42acfb8aa720",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": []
+                }
+              ]
+            },
+            "sha256": "499d03d644eaf357bb7ec13c0f48d326e34ac60cb46151edbd69343edaeaae26"
           }
         },
         "libavif": {
@@ -5187,13 +5353,37 @@
           }
         },
         "libffi": {
-          "version": "3.8.0",
-          "bottle": {
-            "formula": "libffi",
-            "version": "3.8.0",
-            "tag": "sonoma",
-            "sha256": "0673ee23d31fd844c4da1fecc4d2de4e62c2da97f9253667eb7bdc0f7f0dc55e",
-            "url": "https://ghcr.io/v2/homebrew/core/libffi/blobs/sha256:0673ee23d31fd844c4da1fecc4d2de4e62c2da97f9253667eb7bdc0f7f0dc55e"
+          "version": "3.8.1",
+          "source": {
+            "key": "php-darwin-source-v1-23be1cc47466c9fe4f719e3d4381accf61534f8eaf8f0b1c4f44111be064b737",
+            "inputs": {
+              "environment": {
+                "arch": "x86_64",
+                "macos": "15",
+                "prefix": "/usr/local",
+                "homebrew": "Homebrew 7",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "26.2",
+                "buildEnv": {
+                  "CC": "",
+                  "CXX": "",
+                  "CFLAGS": "",
+                  "CXXFLAGS": "",
+                  "CPPFLAGS": "",
+                  "LDFLAGS": "",
+                  "MACOSX_DEPLOYMENT_TARGET": "",
+                  "SDKROOT": "",
+                  "HOMEBREW_CC": "",
+                  "HOMEBREW_CXX": "",
+                  "HOMEBREW_ARCH": ""
+                }
+              },
+              "formula": "libffi",
+              "version": "3.8.1",
+              "recipe": "7268a050f7b9a44c09b32942203ba38c5f42eccf2e46fe1baad6f8b735919179",
+              "dependencies": []
+            },
+            "sha256": "380ec62af24101ff60575b95e7d9da61023977eb54f82688060da656b6cfcd43"
           }
         },
         "isl": {
@@ -6069,17 +6259,17 @@
           }
         },
         "imagemagick": {
-          "version": "7.1.2-35",
+          "version": "7.1.2-36",
           "source": {
-            "key": "php-darwin-source-v1-c1cbe481febcb7f3b6057278f6d0108a1338351e8937d5ddbe62f3a4675fa54d",
+            "key": "php-darwin-source-v1-617c9573efabd42d6a669230b608fab4c0e3acee50afd7b48f25db5a26059803",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
                 "macos": "15",
                 "prefix": "/usr/local",
                 "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "15.5",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.6.4.2)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "26.2",
                 "buildEnv": {
                   "CC": "",
                   "CXX": "",
@@ -6095,8 +6285,8 @@
                 }
               },
               "formula": "imagemagick",
-              "version": "7.1.2-35",
-              "recipe": "70a19ce21f628b07656fa1f1aad3d01d70e54e5ce1c3960fed64a67021302551",
+              "version": "7.1.2-36",
+              "recipe": "6c5c7eb2b47247373bf36246145928ec025b279f890cb11dac1602fc4b19a796",
               "dependencies": [
                 {
                   "name": "aom",
@@ -6245,9 +6435,9 @@
                     },
                     {
                       "full_name": "lz4",
-                      "version": "1.11.0",
+                      "version": "1.11.1",
                       "revision": 0,
-                      "pkg_version": "1.11.0",
+                      "pkg_version": "1.11.1",
                       "declared_directly": false,
                       "compatibility_version": 1
                     },
@@ -6335,9 +6525,9 @@
                     },
                     {
                       "full_name": "lz4",
-                      "version": "1.11.0",
+                      "version": "1.11.1",
                       "revision": 0,
-                      "pkg_version": "1.11.0",
+                      "pkg_version": "1.11.1",
                       "declared_directly": false,
                       "compatibility_version": 1
                     },
@@ -6380,8 +6570,8 @@
                 },
                 {
                   "name": "little-cms2",
-                  "version": "2.19.1",
-                  "recipe": "7af482e897b7d6703f41e8595684e59eb2d7799f55055101add65d7301bc569b",
+                  "version": "2.20",
+                  "recipe": "cae38ed90fbf0bb4eef129bc0ae28582f208fd5f094414ff07754a3c4dcaeb47",
                   "options": [],
                   "compiler": "clang",
                   "runtime_dependencies": [
@@ -6427,9 +6617,9 @@
                     },
                     {
                       "full_name": "lz4",
-                      "version": "1.11.0",
+                      "version": "1.11.1",
                       "revision": 0,
-                      "pkg_version": "1.11.0",
+                      "pkg_version": "1.11.1",
                       "declared_directly": false,
                       "compatibility_version": 1
                     },
@@ -6454,8 +6644,8 @@
                 },
                 {
                   "name": "lz4",
-                  "version": "1.11.0",
-                  "recipe": "277ba6c4a66bc5b36e726eded77465e075a6f3889627a131862289f9c1d22c08",
+                  "version": "1.11.1",
+                  "recipe": "7f2c22723df560284fc7e643892b61fc4e8f15859fada61c4e20ca4aac9f0ef4",
                   "options": [],
                   "compiler": "clang",
                   "runtime_dependencies": []
@@ -6542,9 +6732,9 @@
                   "runtime_dependencies": [
                     {
                       "full_name": "lz4",
-                      "version": "1.11.0",
+                      "version": "1.11.1",
                       "revision": 0,
-                      "pkg_version": "1.11.0",
+                      "pkg_version": "1.11.1",
                       "declared_directly": true,
                       "compatibility_version": 1
                     },
@@ -6560,13 +6750,13 @@
                 }
               ]
             },
-            "sha256": "f39d631e63f268f05ba4fabc3d6272e6d5d2bf58abeca187d791716d101164f7"
+            "sha256": "058017d12bdf13fda18a9d324803fe1dac7ff1589bcee57ea56cbed85b1dcd91"
           }
         },
         "libomp": {
-          "version": "23.1.5",
+          "version": "23.1.6",
           "source": {
-            "key": "php-darwin-source-v1-82701039745e5f89a09cf91fa5bf3683f51bef43748b617bfb15d8d068f3e3ba",
+            "key": "php-darwin-source-v1-45c8628ea0eb0dd16885f729fb6cc9b8678d35c9c34c0a7bcfc15bb30fa8758d",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
@@ -6590,8 +6780,8 @@
                 }
               },
               "formula": "libomp",
-              "version": "23.1.5",
-              "recipe": "8ad7c1f999d20f6077e4327890e4f1568967a73939cc4097946e3d7f54c9ae86",
+              "version": "23.1.6",
+              "recipe": "a9a535989be4be1bdf8032cf4034dfb57b2ca7de76d4ca22ca5f871b0c7b61e5",
               "dependencies": [
                 {
                   "name": "cmake",
@@ -6603,7 +6793,7 @@
                 }
               ]
             },
-            "sha256": "4af410c3cec4d653bdfb0e154a8c00d45f802044b22b94ecf4a89ac334cc618d"
+            "sha256": "122dbf6ea37a517b0181587ff7c1c8996cd382dd6b228162c709b647293ab47d"
           }
         },
         "libevent": {
@@ -7307,7 +7497,7 @@
   },
   "tap_inputs": {
     "schema": 1,
-    "sha256": "08e449dd8b6d68b1bd022bca093c22f811e4bc6820e297eedbb6bb474c8e2d7c",
+    "sha256": "f29fdaeb36e60ba1a4e181b0589c46ad765f2c3ec6e984a050069771a07c46d4",
     "records": {
       "homebrew-php/Formula/autoconf@2.69.rb": "fd33eadb8f275a2d089c7d112bfb39d680cc838b3af2f61ab4fb35f09dbeff7d",
       "homebrew-php/Formula/bison@2.7.rb": "54902fa819dd1736bcca826196ee75b2608337b4b83e484829446961fd4e2669",
@@ -7367,7 +7557,7 @@
       "homebrew-php/Formula/php@8.7-debug.rb": "2cb74f79bc9c071f04349d89e4817aec2d4589301cb814b56640c892d7ba5092",
       "homebrew-php/Formula/php@8.7-zts.rb": "2cb74f79bc9c071f04349d89e4817aec2d4589301cb814b56640c892d7ba5092",
       "homebrew-php/Formula/php@8.7.rb": "2cb74f79bc9c071f04349d89e4817aec2d4589301cb814b56640c892d7ba5092",
-      "homebrew-extensions/Abstract/abstract-php-extension.rb": "c862138da276d75719d0fb26066580582896fc25bdcd0ae9def5810ae335419f",
+      "homebrew-extensions/Abstract/abstract-php-extension.rb": "7401a6d228e8d69ca625140a2636251a35c538236beeb00cc8fe57f97b49e373",
       "homebrew-extensions/Formula/amqp@5.6.rb": "20493890926f1c9957b9065648d6b1dedaee27abd45f245fecaea560b34de035",
       "homebrew-extensions/Formula/amqp@7.0.rb": "20493890926f1c9957b9065648d6b1dedaee27abd45f245fecaea560b34de035",
       "homebrew-extensions/Formula/amqp@7.1.rb": "20493890926f1c9957b9065648d6b1dedaee27abd45f245fecaea560b34de035",
@@ -10485,8 +10675,8 @@
           ]
         }
       },
-      "c862138da276d75719d0fb26066580582896fc25bdcd0ae9def5810ae335419f": {
-        "sha256": "c862138da276d75719d0fb26066580582896fc25bdcd0ae9def5810ae335419f",
+      "7401a6d228e8d69ca625140a2636251a35c538236beeb00cc8fe57f97b49e373": {
+        "sha256": "7401a6d228e8d69ca625140a2636251a35c538236beeb00cc8fe57f97b49e373",
         "formulae": []
       },
       "20493890926f1c9957b9065648d6b1dedaee27abd45f245fecaea560b34de035": {
@@ -13031,12 +13221,12 @@
       "homebrew-extensions/Formula/msgpack@8.5.rb": "2a277929d5895534a48c4a3e609abb284d23b485386e46aeb83d6f933f1a72ab",
       "homebrew-extensions/Formula/msgpack@8.6.rb": "7b3ad359ee635417cb00706f31309a0a2e92709d462a93f8d415353c1351f897",
       "homebrew-extensions/Formula/msgpack@8.7.rb": "fa76d754edba34bf3152c83952bc62411b1fa4f32c1c5e1f987fdd5af5574c29",
-      "homebrew-extensions/Formula/newrelic@7.4.rb": "8a3e7d6c3489f9b135034d34187e981a250744103a4d681b3885b5eb4a148efe",
-      "homebrew-extensions/Formula/newrelic@8.0.rb": "355791790ecc9a1bde07e3a21ea3e8c5cbf0ba5e40a082828b3ac95e4cba44fd",
-      "homebrew-extensions/Formula/newrelic@8.1.rb": "c1a2d8b6f6c4a809ed65063d11e7e9788bea53fe1d825b3083e6b71f2a903bf3",
-      "homebrew-extensions/Formula/newrelic@8.2.rb": "1ede78d3462e03afca638a417b59896e2f952622db992715f2409f6f4a0bd96e",
-      "homebrew-extensions/Formula/newrelic@8.3.rb": "ac9de91ae13c25258de013756416c159a914a8967be995eeb0b4f3776c08f06e",
-      "homebrew-extensions/Formula/newrelic@8.4.rb": "4ac6222cb74905de28ea566053db2d1a68a7b3b0ca47fba7f7c73011b5df4bae",
+      "homebrew-extensions/Formula/newrelic@7.4.rb": "78fd1a9c485deeed7b38cfc6d12ab9a33abf8b42c15d6e029903b3e6ff87d0b4",
+      "homebrew-extensions/Formula/newrelic@8.0.rb": "fc180db65c801c7406ae216f98c0a1406c7f5580b77d4b15621dc14fdbd88495",
+      "homebrew-extensions/Formula/newrelic@8.1.rb": "83c7cf4a38550933057b683d2b975d3dc93b32c867ebbdf05d366c8d8d3f1acc",
+      "homebrew-extensions/Formula/newrelic@8.2.rb": "866995301c39cc6dbca74dd6ebe312117214a26b6a441edd824f730369e9a10d",
+      "homebrew-extensions/Formula/newrelic@8.3.rb": "3f99d0d34f3f4f8475e7fb7730357689f70d7a60d88d704f294f475a12a43dc1",
+      "homebrew-extensions/Formula/newrelic@8.4.rb": "0f0713141c63149d9fc7e76feada49c411c0ff5eddf7d8ac3c2078685479afa2",
       "homebrew-extensions/Formula/newrelic@8.6.rb": "81314e960f8b1379d7cf5d0489e8a719a8d070550334200d202cee67bcff8e96",
       "homebrew-extensions/Formula/newrelic@8.7.rb": "286a92560fff714585f01bb5b29894d76ef176d972a3e7d312aa9616f891b20c",
       "homebrew-extensions/Formula/oauth@5.6.rb": "6aceaa26bb83da12293c150220039e72916f6d3bbbd1992754b0f583f1095fa1",
@@ -13282,19 +13472,19 @@
       "homebrew-extensions/Formula/sqlsrv@8.6.rb": "393d7411544ca38836f34f8176b485f71dd2ebe638ec8f52de28ab429ed093bb",
       "homebrew-extensions/Formula/sqlsrv@8.7.rb": "1973a73c93438551d98493047abb6d43bc88654afee592ea0d61337f7a6d3567",
       "homebrew-extensions/Formula/ssh2@5.6.rb": "6effb1efc33f2084a85c6a0908c6d2f4f2fb9c4f727718d283aef465bd25675c",
-      "homebrew-extensions/Formula/ssh2@7.0.rb": "6824b572e903c21a0ae0e5893f8c6c254f4c41908f527abcd54fcade3fb67170",
-      "homebrew-extensions/Formula/ssh2@7.1.rb": "a6ce4d8865411abf135779296fd0ed87dab38febef5ffdc72990dc003e08338d",
-      "homebrew-extensions/Formula/ssh2@7.2.rb": "327e2e142800bf53ee25f83f81ee4cb73e260ebe32ebddb387cd7fa31d556bcf",
-      "homebrew-extensions/Formula/ssh2@7.3.rb": "18fb48bfb52bff8f2635f059802df765245565f72ff85e7414ce449e48ebc275",
-      "homebrew-extensions/Formula/ssh2@7.4.rb": "76df92a11b2df765045cb635fc172d719c63bcfad5c6975425a46fea870dca0d",
-      "homebrew-extensions/Formula/ssh2@8.0.rb": "1df60618b58ef8d48a85d87b06a8ae76f0152cabdad5e400e5eedf56291e9493",
-      "homebrew-extensions/Formula/ssh2@8.1.rb": "31f0ebc0905264a597c3211d8d8c8a28ebacf47e076a84a5ed5c3a9207ac863c",
-      "homebrew-extensions/Formula/ssh2@8.2.rb": "b3f634d902bda875e6c7dcd465bb458bd9ad7782de769077ec6c78fabe7641e6",
-      "homebrew-extensions/Formula/ssh2@8.3.rb": "904ef098dc2879727dc94d28b4325bed7d07cadee8386efa7512e24e5f5709be",
-      "homebrew-extensions/Formula/ssh2@8.4.rb": "6749c54b3885d3b31492cad6013bc5d2cab294b7b882da97ee4dbde703cba47c",
-      "homebrew-extensions/Formula/ssh2@8.5.rb": "a1f9abdb937a2dcca53201ba355d20c05621e1ccefb42502155dd47014eaedab",
-      "homebrew-extensions/Formula/ssh2@8.6.rb": "d6623db4dde183dd5d6aad98eea6a682a24d642e4650554a0b138b880f71edae",
-      "homebrew-extensions/Formula/ssh2@8.7.rb": "7c279ceda103238b55d04a593cbbf68d9057a9d3807b0c1dda0c967fe1dcdab4",
+      "homebrew-extensions/Formula/ssh2@7.0.rb": "1a36434c02b3b09b8a0414a1369090794c3015badd102d0143fd7a029372606c",
+      "homebrew-extensions/Formula/ssh2@7.1.rb": "e7345038bcebdc7e5ccfb0fdb0b6106dad7d988067e7c86603187a7d0600dcb3",
+      "homebrew-extensions/Formula/ssh2@7.2.rb": "72a24f38c3d656e7d5eb54cb0f516aeeace49b9203a76fe1e1024ef68d183f64",
+      "homebrew-extensions/Formula/ssh2@7.3.rb": "5d35c6d1b565dad1745e82eaad3a4af7f9a05ead43cdf794f98f20e77feb8857",
+      "homebrew-extensions/Formula/ssh2@7.4.rb": "f06aa8abdd54248353201c4639fe89f342fa1a043b75f7f687714ea91d169599",
+      "homebrew-extensions/Formula/ssh2@8.0.rb": "3fddb1e508c5561608b28923f0f9c64ae296781bd37cf0270c7c20c4956f31cd",
+      "homebrew-extensions/Formula/ssh2@8.1.rb": "279b204ffef6edac7bfa71802d9726fe23c74e7fe19791e518aaffef6788729d",
+      "homebrew-extensions/Formula/ssh2@8.2.rb": "9a6e2c8b4f6f18b41e6d0a7feb64148a5f934a5f69fe9418804f931dfbdbc6c6",
+      "homebrew-extensions/Formula/ssh2@8.3.rb": "8eb66960931eec47402978a105cb9f830605064cb203f3bb682ac6b1ce6ffc6e",
+      "homebrew-extensions/Formula/ssh2@8.4.rb": "1a8a751ed5d05981536d6491945279814da32261b778517b6f7a4f0aded89d0e",
+      "homebrew-extensions/Formula/ssh2@8.5.rb": "dc8ec1162dbfda40a6d4a6c0306923df08f731f938ff3a5d3b43cc76ec537b3c",
+      "homebrew-extensions/Formula/ssh2@8.6.rb": "4349ee611b06fa2eb39adbc35a4a77056efa7269a5e556cbb08a16e7d3fe8149",
+      "homebrew-extensions/Formula/ssh2@8.7.rb": "19b98f44fe05069836fc0ff75ccb55fed5c8cc329c076e827cce9dfc6f6bbfbc",
       "homebrew-extensions/Formula/swoole@5.6.rb": "346747a9bb390a4cef7eefc39c6a28f2cb8097b41cd494ed8d809c70daa99d9e",
       "homebrew-extensions/Formula/swoole@7.0.rb": "f274e1a20c73e634e2689090c59f274d35db37188dc0756f371e27adaaf66e96",
       "homebrew-extensions/Formula/swoole@7.1.rb": "1e55be6723c81f11e6fecd081111dea1dcaf4e7d6e57b59125d2949bf193d7fc",
@@ -13303,10 +13493,10 @@
       "homebrew-extensions/Formula/swoole@7.4.rb": "efbeba1aeef9ad26f85d58e6abd1baa09eda37c737934123393addef4d13a352",
       "homebrew-extensions/Formula/swoole@8.0.rb": "da7ab2acf0f72fb7dd4507fa66a6cb2edf3368c117e80c2a84f3825014b818aa",
       "homebrew-extensions/Formula/swoole@8.1.rb": "e86e491341a4096bc72946b42909a8f78aa470ed208bd7deb62709c6a8986626",
-      "homebrew-extensions/Formula/swoole@8.2.rb": "e09e015d393a04dc468bb8203b2554e4fe286fc698f530be927e81ad568b0772",
-      "homebrew-extensions/Formula/swoole@8.3.rb": "ac0e3d06ca226d2e3f6986cdaa263c20adc81e1cdfe6bfa46145108a54a1777a",
-      "homebrew-extensions/Formula/swoole@8.4.rb": "d8e8b15ef406d873ebcbec6f643828b488b06f42e8f91f59a82077c663e7974c",
-      "homebrew-extensions/Formula/swoole@8.5.rb": "0a0523119c0c1b2a70cca1bc66df7bc530238117de92b23d5e75cd1e2c85435d",
+      "homebrew-extensions/Formula/swoole@8.2.rb": "55dd027aae1cc2a1be52ab231d1ee4e85c21656c5c0cb6889559436aac04582e",
+      "homebrew-extensions/Formula/swoole@8.3.rb": "f7f036ed0cc7dd776030d76eff5af9ea0b35a7e862ece88261d76e04dba81abf",
+      "homebrew-extensions/Formula/swoole@8.4.rb": "a0d86b68a51ed9143156de49e4c62aa6292c0dc3cf829732b3644208ae803204",
+      "homebrew-extensions/Formula/swoole@8.5.rb": "c2beb72d7d24f616d68a787c59ed62dd6a7f7420c58ee72c1dfd092aacbb34c0",
       "homebrew-extensions/Formula/swow@8.0.rb": "2dcaa458da6b2905964d11e8d0a1214d857f4062ab56e7440072f50f622c6d1d",
       "homebrew-extensions/Formula/swow@8.1.rb": "600494749533e58d0b367825f0684280e4ae41adef4b61fc7e101d1f1a668564",
       "homebrew-extensions/Formula/swow@8.2.rb": "39aa36d7cade1ac812062c48dd19069580a67061dd091c87f953f3b5be633f4d",
@@ -13482,27 +13672,30 @@
   "recipe_commits": {
     "aom": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "apr-util": "3967e17e863691884f182ccd356d55da9eb1acc6",
+    "aspell": "a7cf3525d7e200e264d58611d597effd11abf0aa",
     "automake": "4b4d37d200c36c4d311ee2c22385a67dd6c13a83",
     "brotli": "62b56d1ba43fd195950eded4820ad56f94f1a515",
     "c-ares": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "ca-certificates": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "curl": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "cyrus-sasl": "0ccdcb95308638e5d97507d9d9a40b5fada62dd8",
+    "dav1d": "a7cf3525d7e200e264d58611d597effd11abf0aa",
     "freetds": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "freetype": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "httpd": "0ccdcb95308638e5d97507d9d9a40b5fada62dd8",
     "icu4c@78": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "icu4c@79": "3967e17e863691884f182ccd356d55da9eb1acc6",
-    "imagemagick": "3967e17e863691884f182ccd356d55da9eb1acc6",
+    "imagemagick": "a7cf3525d7e200e264d58611d597effd11abf0aa",
     "jpeg-turbo": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "krb5": "afdee9d9ff7929af272d36ff5887e24f83b751d8",
     "libevent": "0ccdcb95308638e5d97507d9d9a40b5fada62dd8",
+    "libffi": "a7cf3525d7e200e264d58611d597effd11abf0aa",
     "libheif": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "liblzf": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "libnghttp2": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "libnghttp3": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "libngtcp2": "3967e17e863691884f182ccd356d55da9eb1acc6",
-    "libomp": "3967e17e863691884f182ccd356d55da9eb1acc6",
+    "libomp": "a7cf3525d7e200e264d58611d597effd11abf0aa",
     "libpng": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "libpq": "afdee9d9ff7929af272d36ff5887e24f83b751d8",
     "librdkafka": "3967e17e863691884f182ccd356d55da9eb1acc6",
