@@ -230,11 +230,15 @@ function phpReleaseMatches(entry, base) {
       (base.php_version && base.php_version !== entry.php_version)) return false;
   const [major, minor] = entry.php_version.split('.').map(Number);
   const [stableMajor, stableMinor] = packageConfig.current_version.split('.').map(Number);
+  const approvedApi = configuration.stable_source_commits?.[entry.php_version]?.[entry.php_src_commit];
+  const approvedPrerelease = approvedApi && approvedApi === entry.php_api;
   if ((major < stableMajor || (major === stableMajor && minor <= stableMinor)) &&
-      !entry.php_src_commit && !base.php_src_commit) {
+      (!entry.php_src_commit || approvedPrerelease) && !base.php_src_commit) {
     // Stable modules are reusable across patch releases. Installation still
     // checks the module API, architecture, build mode and actual module load.
-    return [entry.php_semver, base.php_semver].every(version =>
+    // Retain the original provenance of approved pre-release module builds.
+    const packVersion = approvedPrerelease ? entry.php_semver.replace(/-dev$/, '') : entry.php_semver;
+    return [packVersion, base.php_semver].every(version =>
       /^\d+\.\d+\.\d+$/.test(version) && version.split('.').slice(0, 2).join('.') === entry.php_version);
   }
   return entry.php_semver.replace(/-dev$/, '') === base.php_semver.replace(/-dev$/, '') &&

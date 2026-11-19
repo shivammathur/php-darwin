@@ -1,5 +1,5 @@
 {
-  "current_version": "8.5",
+  "current_version": "8.6",
   "extension_tap": "shivammathur/extensions",
   "extension_tap_branch": "main",
   "extension_tap_repository": "https://github.com/shivammathur/homebrew-extensions",

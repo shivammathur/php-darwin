@@ -56,13 +56,13 @@ current_version=$(php_darwin_package_config current_version)
 php_darwin_validate_channel "$current_version" stable
 php_darwin_validate_channel 5.6 stable
 php_darwin_validate_channel 8.5 stable
-php_darwin_validate_channel 8.6 nightly
+php_darwin_validate_channel 8.6 stable
 php_darwin_validate_channel 8.7 nightly
-php_darwin_validate_php_semver 8.6 8.6.0beta2 || \
+php_darwin_validate_php_semver 8.7 8.7.0beta2 || \
   php_darwin_die 'nightly prerelease PHP version validation failed'
-php_darwin_validate_php_semver 8.6 8.6.0RC1 || \
+php_darwin_validate_php_semver 8.7 8.7.0RC1 || \
   php_darwin_die 'nightly release-candidate PHP version validation failed'
-if php_darwin_validate_php_semver 8.6 8.6.beta2; then
+if php_darwin_validate_php_semver 8.7 8.7.beta2; then
   php_darwin_die 'malformed nightly prerelease PHP version was accepted'
 fi
 [ "$(php_darwin_formula "$current_version" debug zts "$current_version")" = php-debug-zts ] || \
@@ -155,7 +155,8 @@ jq -e --argjson versions "$configured_versions" '
   (.compression_level | type == "number" and . >= 1 and . <= 22 and . == floor) and
   .compression_level == 19 and .compression_long == 27 and
   (.max_archive_bytes | keys | sort) == $versions and
-  all(.max_archive_bytes[]; . == 180000000)
+  all(.max_archive_bytes | to_entries[];
+    .value == (if (.key | split(".") | map(tonumber)) < [8,4] then 185000000 else 180000000 end))
 ' "$script_dir/../../../conf/build.json" >/dev/null || php_darwin_die 'invalid build configuration'
 jq -e '
   keys == ["artifact_bucket", "artifact_mirror", "current_version", "extension_release", "extension_tap", "extension_tap_branch", "extension_tap_repository",
@@ -200,17 +201,23 @@ jq -e '
   $'xdebug\tzend_extension pcov\textension ' ] || \
   php_darwin_die 'PHP 8.5 cached extension types are invalid'
 
-[ "$(php_darwin_pear_path 8.5 php)" = 'share/pear' ] || php_darwin_die 'current PEAR path is invalid'
+[ "$(php_darwin_pear_path 8.6 php)" = 'share/pear' ] || php_darwin_die 'current PEAR path is invalid'
 [ "$(php_darwin_pear_path 8.4 'php@8.4')" = 'share/pear@8.4' ] || \
   php_darwin_die 'versioned PEAR path is invalid'
 [ "$(php_darwin_pear_path 8.4 'php@8.4-debug-zts')" = 'share/pear@8.4-debug-zts' ] || \
   php_darwin_die 'versioned variant PEAR path is invalid'
+[ "$(php_darwin_pear_path 8.5 'php@8.5')" = 'share/pear@8.5' ] || \
+  php_darwin_die 'PHP 8.5 release PEAR path is invalid'
+for formula in php@8.5-debug php@8.5-zts php@8.5-debug-zts; do
+  [ "$(php_darwin_pear_path 8.5 "$formula")" = 'share/pear' ] || \
+    php_darwin_die 'PHP 8.5 variant PEAR path is invalid'
+done
 [ "$(php_darwin_config_id 8.5 debug zts)" = '8.5-debug-zts' ] || \
   php_darwin_die 'variant configuration id is invalid'
 [ "$(php_darwin_metadata_path 'php_8.5-nts-release+darwin_arm64.tar.zst')" = \
   'var/php-darwin/php_8.5-nts-release+darwin_arm64.json' ] || php_darwin_die 'embedded metadata path is invalid'
-current_postinstall_paths=$(php_darwin_postinstall_paths 8.5 php | tr '\n' ' ')
-[ "$current_postinstall_paths" = 'etc/php/8.5/pear.conf ' ] || \
+current_postinstall_paths=$(php_darwin_postinstall_paths 8.6 php | tr '\n' ' ')
+[ "$current_postinstall_paths" = 'etc/php/8.6/pear.conf ' ] || \
   php_darwin_die 'current post-install paths are invalid'
 versioned_postinstall_paths=$(php_darwin_postinstall_paths 8.4 'php@8.4' | tr '\n' ' ')
 [ "$versioned_postinstall_paths" = \

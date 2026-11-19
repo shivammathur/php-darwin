@@ -60,6 +60,20 @@ test('stable packs survive patch releases while minor series and variant mismatc
     assert.throws(() => validateBase(entry('imagick', {php_version, php_semver: `${php_version}.0-dev`}), base), /does not match/);
   }
 });
+test('PHP 8.6 stable reuses the approved nightly packs with the same module API', () => {
+  const pack = entry('imagick', {php_src_commit: 'ed13285afa9e62740e167148547411b40ddddf84', php_api: '20261112'});
+  const base = {...context, php_src_commit: '', php_semver: '8.6.0'};
+  validateBase(pack, base);
+  validateBase(pack, {...base, php_semver: '8.6.1'});
+  for (const change of [{php_api: '20250925'}, {php_src_commit: 'c'.repeat(40)}]) {
+    assert.throws(() => validateBase({...pack, ...change}, base), /does not match/);
+  }
+  for (const change of [{php_src_commit: 'c'.repeat(40)}, {architecture: 'x86_64'},
+    {build: 'debug'}, {thread_safety: 'zts'}, {php_version: '8.7', php_semver: '8.7.0'}]) {
+    assert.throws(() => validateBase(pack, {...base, ...change}), /does not match/);
+  }
+  assert.equal(pack.php_semver, '8.6.0-dev');
+});
 test('installation overlaps independent packs, waits before enabling and retains successes on a missing pack', async t => {
   const root = directory(t), names = ['imagick', 'mongodb', 'memcached'];
   fs.writeFileSync(path.join(root, 'requested.txt'), names.join('\n'));

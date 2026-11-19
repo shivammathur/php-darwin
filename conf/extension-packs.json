@@ -16,6 +16,11 @@
     "8.7"
   ],
   "partitioned_packs": ["redis", "amqp", "yaml", "ssh2", "rdkafka"],
+  "stable_source_commits": {
+    "8.6": {
+      "ed13285afa9e62740e167148547411b40ddddf84": "20261112"
+    }
+  },
   "cached": [
     {
       "name": "xdebug"

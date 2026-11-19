@@ -516,6 +516,11 @@ php_darwin_pear_path() {
 
   php_darwin_validate_version "$version"
   case "$formula" in
+    php@8.5-debug|php@8.5-zts|php@8.5-debug-zts)
+      [ "$version" = 8.5 ] || php_darwin_die "invalid versioned PHP formula for PEAR state: $formula"
+      # These versioned variants retain the shared PEAR setup from php 8.5.
+      printf 'share/pear\n'
+      ;;
     php@*)
       formula_version=${formula#php@}
       case "$formula_version" in
