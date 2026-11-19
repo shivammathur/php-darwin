@@ -10,7 +10,7 @@ on:
         type: boolean
       php-version:
         description: PHP minor version
-        default: '8.5'
+        default: '8.6'
         required: true
         type: string
       builds:

@@ -24,7 +24,7 @@ configuration and services.
 | 8.3 | Stable releases |
 | 8.4 | Stable releases |
 | 8.5 | Stable releases |
-| 8.6 | Nightly |
+| 8.6 | Stable releases |
 | 8.7 | Nightly |
 
 Every version is available in release and debug builds, with NTS and ZTS variants.

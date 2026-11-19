@@ -23,16 +23,14 @@ export PATH="$work_dir/bin:$PATH"
 export GITHUB_REPOSITORY=shivammathur/php-darwin GITHUB_REF_NAME=feature/nightly-test
 bash "$script_dir/../../release/dispatch-nightly.sh" || php_darwin_die 'nightly dispatch failed'
 cat > "$work_dir/expected.log" <<'EOF'
-workflow run cache-nightly.yml --repo shivammathur/php-darwin --ref feature/nightly-test -f php-version=8.6
 workflow run cache-nightly.yml --repo shivammathur/php-darwin --ref feature/nightly-test -f php-version=8.7
 EOF
 cmp -s "$work_dir/expected.log" "$PHP_DARWIN_TEST_GH_LOG" || \
-  php_darwin_die 'nightly dispatch did not start separate runs for both versions on the requested ref'
+  php_darwin_die 'nightly dispatch did not select only PHP 8.7 on the requested ref'
 
 : > "$PHP_DARWIN_TEST_GH_LOG"
-PHP_DARWIN_TEST_ACTIVE='Cache nightly PHP 8.6' bash "$script_dir/../../release/dispatch-nightly.sh" || exit 1
-[ "$(wc -l < "$PHP_DARWIN_TEST_GH_LOG" | tr -d ' ')" = 1 ] || php_darwin_die 'queued nightly run was dispatched again'
-grep -Fq 'php-version=8.7' "$PHP_DARWIN_TEST_GH_LOG" || exit 1
+PHP_DARWIN_TEST_ACTIVE='Cache nightly PHP 8.7' bash "$script_dir/../../release/dispatch-nightly.sh" || exit 1
+[ ! -s "$PHP_DARWIN_TEST_GH_LOG" ] || php_darwin_die 'queued nightly run was dispatched again'
 
 if PHP_DARWIN_TEST_GH_STATUS=1 bash "$script_dir/../../release/dispatch-nightly.sh" >/dev/null 2>&1; then
   php_darwin_die 'nightly dispatch ignored a workflow dispatch failure'
@@ -47,4 +45,4 @@ for configuration in 'stable 8.5' 'nightly 8.7 unexpected'; do
     php_darwin_die 'nightly dispatch started a workflow with invalid configuration'
 done
 
-printf 'Nightly dispatch validation passed (separate PHP 8.6 and 8.7 runs)\n'
+printf 'Nightly dispatch validation passed for PHP 8.7\n'

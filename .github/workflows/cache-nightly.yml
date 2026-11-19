@@ -1,5 +1,5 @@
 name: Cache nightly PHP
-run-name: Cache nightly PHP ${{ inputs.php-version || '8.6' }}
+run-name: Cache nightly PHP ${{ inputs.php-version || '8.7' }}
 
 on:
   workflow_dispatch:
@@ -10,7 +10,7 @@ on:
         type: boolean
       php-version:
         description: PHP minor version
-        default: '8.6'
+        default: '8.7'
         required: false
         type: string
       builds:
@@ -54,7 +54,7 @@ on:
         type: boolean
 
 concurrency:
-  group: cache-nightly-${{ inputs.php-version || '8.6' }}-${{ inputs.architectures }}-${{ inputs.builds }}-${{ inputs.ts }}
+  group: cache-nightly-${{ inputs.php-version || '8.7' }}-${{ inputs.architectures }}-${{ inputs.builds }}-${{ inputs.ts }}
   cancel-in-progress: false
 
 permissions:
