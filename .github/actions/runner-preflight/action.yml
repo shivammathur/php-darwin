@@ -1,5 +1,5 @@
-name: Recover abandoned Homebrew installers
-description: Release orphaned build locks on an idle self-hosted macOS runner without deleting caches
+name: Prepare the Homebrew runner
+description: Recover orphaned self-hosted installers and prepare the missing hosted Intel post-install directory without changing existing ownership
 runs:
   using: node24
   main: main.cjs
