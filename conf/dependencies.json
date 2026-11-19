@@ -47,13 +47,13 @@
           }
         },
         "pkgconf": {
-          "version": "3.0.7",
+          "version": "3.0.11",
           "bottle": {
             "formula": "pkgconf",
-            "version": "3.0.7",
-            "tag": "arm64_sonoma",
-            "sha256": "e066c26946cd5f27212a6e03e1745d27feba8aa0d0d0547ce36c793abb55d8ff",
-            "url": "https://ghcr.io/v2/homebrew/core/pkgconf/blobs/sha256:e066c26946cd5f27212a6e03e1745d27feba8aa0d0d0547ce36c793abb55d8ff"
+            "version": "3.0.11",
+            "tag": "arm64_sequoia",
+            "sha256": "984325551072d74b5c32e4c0a48464250612eaf835c39f8b23425fbaf7d3cbc1",
+            "url": "https://ghcr.io/v2/homebrew/core/pkgconf/blobs/sha256:984325551072d74b5c32e4c0a48464250612eaf835c39f8b23425fbaf7d3cbc1"
           }
         },
         "apr": {
@@ -337,13 +337,13 @@
           }
         },
         "freetds": {
-          "version": "1.5.21",
+          "version": "1.5.22",
           "bottle": {
             "formula": "freetds",
-            "version": "1.5.21",
+            "version": "1.5.22",
             "tag": "arm64_sequoia",
-            "sha256": "70a7207d61cc46931c386133d880220e015d4e712ddc8014168fe5d9755c543f",
-            "url": "https://ghcr.io/v2/homebrew/core/freetds/blobs/sha256:70a7207d61cc46931c386133d880220e015d4e712ddc8014168fe5d9755c543f"
+            "sha256": "5ea438e7b8c0a51165e5bd16f32213af09af2dab5ae8a1f3050a3a990dfae05a",
+            "url": "https://ghcr.io/v2/homebrew/core/freetds/blobs/sha256:5ea438e7b8c0a51165e5bd16f32213af09af2dab5ae8a1f3050a3a990dfae05a"
           }
         },
         "libpng": {
@@ -1229,132 +1229,13 @@
           }
         },
         "httpd": {
-          "version": "2.4.69_1",
-          "source": {
-            "key": "php-darwin-source-v1-c069d8b4553cf1204e30297a1b4d0edb80460b7f591f10d76fd5095526cc1105",
-            "inputs": {
-              "environment": {
-                "arch": "arm64",
-                "macos": "14",
-                "prefix": "/opt/homebrew",
-                "homebrew": "Homebrew 7",
-                "compiler": "Apple clang version 15.0.0 (clang-1500.3.9.4)\nTarget: arm64-apple-darwin23.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_15.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
-                "sdk": "14.5",
-                "buildEnv": {
-                  "CC": "",
-                  "CXX": "",
-                  "CFLAGS": "",
-                  "CXXFLAGS": "",
-                  "CPPFLAGS": "",
-                  "LDFLAGS": "",
-                  "MACOSX_DEPLOYMENT_TARGET": "",
-                  "SDKROOT": "",
-                  "HOMEBREW_CC": "",
-                  "HOMEBREW_CXX": "",
-                  "HOMEBREW_ARCH": ""
-                }
-              },
-              "formula": "httpd",
-              "version": "2.4.69_1",
-              "recipe": "14cc5eba92f45d8aa0f792f192b7a83ea0c29ef882a686b78d723f39a101079f",
-              "pkg_config_path": "/opt/homebrew/opt/openssl@4/lib/pkgconfig",
-              "openssl_build_environment": 1,
-              "dependencies": [
-                {
-                  "name": "apr",
-                  "version": "1.7.6",
-                  "recipe": "4c018e9d3e2ecc2273a2211ba505046b0521c3cda18673e7ab1fb3f4c5fa371c",
-                  "options": [],
-                  "compiler": "clang",
-                  "runtime_dependencies": []
-                },
-                {
-                  "name": "apr-util",
-                  "version": "1.6.5_1",
-                  "recipe": "f17af573b727157c3b24c11d237540d5f8438790a033a85744585577ce1a0fdb",
-                  "options": [],
-                  "compiler": "clang",
-                  "runtime_dependencies": [
-                    {
-                      "full_name": "apr",
-                      "version": "1.7.6",
-                      "revision": 0,
-                      "bottle_rebuild": 0,
-                      "pkg_version": "1.7.6",
-                      "declared_directly": true,
-                      "compatibility_version": 1
-                    },
-                    {
-                      "full_name": "ca-certificates",
-                      "version": "2026-09-25",
-                      "revision": 0,
-                      "bottle_rebuild": 0,
-                      "pkg_version": "2026-09-25",
-                      "declared_directly": false,
-                      "compatibility_version": 1
-                    },
-                    {
-                      "full_name": "openssl@4",
-                      "version": "4.0.3",
-                      "revision": 0,
-                      "pkg_version": "4.0.3",
-                      "declared_directly": true
-                    }
-                  ]
-                },
-                {
-                  "name": "brotli",
-                  "version": "1.2.0",
-                  "recipe": "2d0050036dfa720d8357fa8d7ddcbb2abb88cdc79f34b438a1f10dd4e1c72366",
-                  "options": [],
-                  "compiler": "clang",
-                  "runtime_dependencies": []
-                },
-                {
-                  "name": "ca-certificates",
-                  "version": "2026-09-25",
-                  "recipe": "29dcf220f07f8a390c81706851a000a835ede393492582a1ab967fea58fc222c",
-                  "options": [],
-                  "compiler": "clang",
-                  "runtime_dependencies": []
-                },
-                {
-                  "name": "libnghttp2",
-                  "version": "1.70.0",
-                  "recipe": "7a3aff8e1fbfc44c6d17f8520537236d5f6ce325ac07779f39bc43f67bdde328",
-                  "options": [],
-                  "compiler": "clang",
-                  "runtime_dependencies": []
-                },
-                {
-                  "name": "openssl@4",
-                  "version": "4.0.3",
-                  "recipe": "00ac3638979ef33b14ab3503f969601b50e3f169be4ff1a5e8371fdeaef13f59",
-                  "options": [],
-                  "compiler": "clang",
-                  "runtime_dependencies": [
-                    {
-                      "full_name": "ca-certificates",
-                      "version": "2026-09-25",
-                      "revision": 0,
-                      "bottle_rebuild": 0,
-                      "pkg_version": "2026-09-25",
-                      "declared_directly": true,
-                      "compatibility_version": 1
-                    }
-                  ]
-                },
-                {
-                  "name": "pcre2",
-                  "version": "10.48",
-                  "recipe": "493c6e81fa41064d8cdbb554f0884a9afe856f11c62d250ed747ce5f565a3f0d",
-                  "options": [],
-                  "compiler": "clang",
-                  "runtime_dependencies": []
-                }
-              ]
-            },
-            "sha256": "6d7bf0f5eb4bcd717be78e1ed2336f6f13d991d21bd06595caf123e4a85452a9"
+          "version": "2.4.71",
+          "bottle": {
+            "formula": "httpd",
+            "version": "2.4.71",
+            "tag": "arm64_sequoia",
+            "sha256": "70473f73fa318bc75e30fe319306b8790ee31404f844fd4947a0dbd9bb2d6e13",
+            "url": "https://ghcr.io/v2/homebrew/core/httpd/blobs/sha256:70473f73fa318bc75e30fe319306b8790ee31404f844fd4947a0dbd9bb2d6e13"
           }
         },
         "isl": {
@@ -2079,15 +1960,15 @@
           }
         },
         "pkgconf": {
-          "version": "3.0.7",
+          "version": "3.0.11",
           "source": {
-            "key": "php-darwin-source-v1-c6a895b5c285bb416d72a1be8233f40d7b90aa235ef7fb9bf89b10ff02e338f5",
+            "key": "php-darwin-source-v1-92be97c63f3e215b80b9b4489b9f7af022f9a3317abb85fae171fd5ae39e6ef9",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
                 "macos": "15",
                 "prefix": "/usr/local",
-                "homebrew": "Homebrew 6",
+                "homebrew": "Homebrew 7",
                 "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
                 "sdk": "15.5",
                 "buildEnv": {
@@ -2105,11 +1986,11 @@
                 }
               },
               "formula": "pkgconf",
-              "version": "3.0.7",
-              "recipe": "77aab95d75c05fb99fba5d1c0bbefb2540f6eadd7dc2b236661e311ece316901",
+              "version": "3.0.11",
+              "recipe": "c1f797bc6ab1120e146af18ed8540cae6695fd3ef4996b490ca3b68dd87a54c4",
               "dependencies": []
             },
-            "sha256": "319bc3fd169f7c22e10db0a8b009e501d4c1d807f61263346ad7202cbd29fc6a"
+            "sha256": "5420ea1305d810c2868b39f78c6a34ef107baee45480ffee78ac4069a78dc838"
           }
         },
         "bison": {
@@ -2334,9 +2215,9 @@
           }
         },
         "httpd": {
-          "version": "2.4.69_1",
+          "version": "2.4.71",
           "source": {
-            "key": "php-darwin-source-v1-95763860dca72e67b3f804d9a587de56da2c0dcc5bec220d947b8c7c09129736",
+            "key": "php-darwin-source-v1-0d15ae79a08228c94f74ec07e14a415ca6e853daed00c283fbed6cb83cc2a94e",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
@@ -2360,8 +2241,8 @@
                 }
               },
               "formula": "httpd",
-              "version": "2.4.69_1",
-              "recipe": "14cc5eba92f45d8aa0f792f192b7a83ea0c29ef882a686b78d723f39a101079f",
+              "version": "2.4.71",
+              "recipe": "1d392c47f50446731bc883c32851b94911b098da7180ed95de5cdf345bbad080",
               "pkg_config_path": "/usr/local/opt/openssl@4/lib/pkgconfig",
               "openssl_build_environment": 1,
               "dependencies": [
@@ -2375,8 +2256,8 @@
                 },
                 {
                   "name": "apr-util",
-                  "version": "1.6.5_1",
-                  "recipe": "f17af573b727157c3b24c11d237540d5f8438790a033a85744585577ce1a0fdb",
+                  "version": "1.6.6",
+                  "recipe": "c5e9f4f804ceddee89c84e55f188d93128eaf5f4e09f634aa175ceaa0046b104",
                   "options": [],
                   "compiler": "clang",
                   "runtime_dependencies": [
@@ -2391,59 +2272,60 @@
                     },
                     {
                       "full_name": "ca-certificates",
-                      "version": "2026-09-25",
+                      "version": "2026-11-05",
                       "revision": 0,
                       "bottle_rebuild": 0,
-                      "pkg_version": "2026-09-25",
+                      "pkg_version": "2026-11-05",
                       "declared_directly": false,
                       "compatibility_version": 1
                     },
                     {
                       "full_name": "openssl@4",
-                      "version": "4.0.3",
+                      "version": "4.1.0",
                       "revision": 0,
-                      "pkg_version": "4.0.3",
-                      "declared_directly": true
+                      "pkg_version": "4.1.0",
+                      "declared_directly": true,
+                      "compatibility_version": 1
                     }
                   ]
                 },
                 {
                   "name": "brotli",
-                  "version": "1.2.0",
-                  "recipe": "2d0050036dfa720d8357fa8d7ddcbb2abb88cdc79f34b438a1f10dd4e1c72366",
+                  "version": "1.2.1",
+                  "recipe": "5e2f806ea663cf0b0e8d403236e043855619c22e0c646a23fbbb716461a872b3",
                   "options": [],
                   "compiler": "clang",
                   "runtime_dependencies": []
                 },
                 {
                   "name": "ca-certificates",
-                  "version": "2026-09-25",
-                  "recipe": "29dcf220f07f8a390c81706851a000a835ede393492582a1ab967fea58fc222c",
+                  "version": "2026-11-05",
+                  "recipe": "5fe801a9e127cdd083e9f8879281228ed6cc2c680fbf62e001e292166927033f",
                   "options": [],
                   "compiler": "clang",
                   "runtime_dependencies": []
                 },
                 {
                   "name": "libnghttp2",
-                  "version": "1.70.0",
-                  "recipe": "7a3aff8e1fbfc44c6d17f8520537236d5f6ce325ac07779f39bc43f67bdde328",
+                  "version": "1.71.0",
+                  "recipe": "516c1fe7d49ddb0499c9071589d3f01a0fdb8f501eeb877d33cacacfca3cad9f",
                   "options": [],
                   "compiler": "clang",
                   "runtime_dependencies": []
                 },
                 {
                   "name": "openssl@4",
-                  "version": "4.0.3",
-                  "recipe": "00ac3638979ef33b14ab3503f969601b50e3f169be4ff1a5e8371fdeaef13f59",
+                  "version": "4.1.0",
+                  "recipe": "af2abcf4c07a85eb2c873cde9c22122b2453a7a183965d8ba8fc9995294cd75f",
                   "options": [],
                   "compiler": "clang",
                   "runtime_dependencies": [
                     {
                       "full_name": "ca-certificates",
-                      "version": "2026-09-25",
+                      "version": "2026-11-05",
                       "revision": 0,
                       "bottle_rebuild": 0,
-                      "pkg_version": "2026-09-25",
+                      "pkg_version": "2026-11-05",
                       "declared_directly": true,
                       "compatibility_version": 1
                     }
@@ -2451,15 +2333,15 @@
                 },
                 {
                   "name": "pcre2",
-                  "version": "10.48",
-                  "recipe": "493c6e81fa41064d8cdbb554f0884a9afe856f11c62d250ed747ce5f565a3f0d",
+                  "version": "10.49",
+                  "recipe": "94c19a0d869da4990a8f3f371e37c986ad72124d2d94032e061c4a9019f9e174",
                   "options": [],
                   "compiler": "clang",
                   "runtime_dependencies": []
                 }
               ]
             },
-            "sha256": "78010cfc7611f0506c393238e523c5b3db6e65f9ec11a81c58967e486eec7feb"
+            "sha256": "b4c395719d39118777e9fcbf4cafcb72d11729fcd2a7cc417b70c2a968468462"
           }
         },
         "re2c": {
@@ -3031,9 +2913,9 @@
           }
         },
         "freetds": {
-          "version": "1.5.21",
+          "version": "1.5.22",
           "source": {
-            "key": "php-darwin-source-v1-8eec4e19b9fa24d807c10f73b7829038007e957e6fff6d21275aa5a351397e78",
+            "key": "php-darwin-source-v1-8aefb862fde858684a8baf314df7ba18d0ffd65983883620a74859c6654d942a",
             "inputs": {
               "environment": {
                 "arch": "x86_64",
@@ -3057,8 +2939,8 @@
                 }
               },
               "formula": "freetds",
-              "version": "1.5.21",
-              "recipe": "ba9f181fdfdca695989f8228efc0cff9799c0849a40a92b79f1b75e316fa2b06",
+              "version": "1.5.22",
+              "recipe": "7589f1179ed14f2f334f4efcf43ea2ca584a9293fa32cf0a6be6451d7471e7c1",
               "pkg_config_path": "/usr/local/opt/openssl@4/lib/pkgconfig",
               "openssl_build_environment": 1,
               "dependencies": [
@@ -3116,8 +2998,8 @@
                 },
                 {
                   "name": "pkgconf",
-                  "version": "3.0.7",
-                  "recipe": "18650320e9599caed229bbd6dec72d42944df0e2cbe571c659e0ab2b59050b50",
+                  "version": "3.0.11",
+                  "recipe": "6e9871410d274300bd70cb1c88dd9658da155ec8f135a99bfb9d69ef567172f4",
                   "options": [],
                   "compiler": "clang",
                   "runtime_dependencies": []
@@ -3151,7 +3033,7 @@
                 }
               ]
             },
-            "sha256": "6a5c0f438e97be387c1795cbd074c17557b1c7c28597efa373714aea1f5d933c"
+            "sha256": "e97080ff57b9170225e0293ca8d04e293fd4631cd0e333e469b1381ba93ffb23"
           }
         },
         "libpng": {
@@ -7700,62 +7582,62 @@
   },
   "tap_inputs": {
     "schema": 1,
-    "sha256": "420fba7b4a90bb4ed8eb5cdea79bc5e727d530a78f9a9990d002481c4ce46867",
+    "sha256": "fb430de79f2f82ac43a109feb005cc0120761a6749a54eb4db7d177a106360a1",
     "records": {
       "homebrew-php/Formula/autoconf@2.69.rb": "fd33eadb8f275a2d089c7d112bfb39d680cc838b3af2f61ab4fb35f09dbeff7d",
       "homebrew-php/Formula/bison@2.7.rb": "54902fa819dd1736bcca826196ee75b2608337b4b83e484829446961fd4e2669",
-      "homebrew-php/Formula/php-debug-zts.rb": "2cb74f79bc9c071f04349d89e4817aec2d4589301cb814b56640c892d7ba5092",
-      "homebrew-php/Formula/php-debug.rb": "2cb74f79bc9c071f04349d89e4817aec2d4589301cb814b56640c892d7ba5092",
-      "homebrew-php/Formula/php-zts.rb": "2cb74f79bc9c071f04349d89e4817aec2d4589301cb814b56640c892d7ba5092",
-      "homebrew-php/Formula/php.rb": "2cb74f79bc9c071f04349d89e4817aec2d4589301cb814b56640c892d7ba5092",
-      "homebrew-php/Formula/php@5.6-debug-zts.rb": "65a6bc198a77377de0efb8d4acf981dcffb7bc6d83e9cace3dc8e80c6fd0e14f",
-      "homebrew-php/Formula/php@5.6-debug.rb": "3f2f59375053eb4e619c424852ce33e0f0798af6564980287267ecb4ab107a9c",
-      "homebrew-php/Formula/php@5.6-zts.rb": "65a6bc198a77377de0efb8d4acf981dcffb7bc6d83e9cace3dc8e80c6fd0e14f",
-      "homebrew-php/Formula/php@5.6.rb": "3f2f59375053eb4e619c424852ce33e0f0798af6564980287267ecb4ab107a9c",
-      "homebrew-php/Formula/php@7.0-debug-zts.rb": "720ced27030a260109f87043d03dd2062aba4e658a0cd3ca8b205fb990f09cee",
-      "homebrew-php/Formula/php@7.0-debug.rb": "720ced27030a260109f87043d03dd2062aba4e658a0cd3ca8b205fb990f09cee",
-      "homebrew-php/Formula/php@7.0-zts.rb": "720ced27030a260109f87043d03dd2062aba4e658a0cd3ca8b205fb990f09cee",
-      "homebrew-php/Formula/php@7.0.rb": "720ced27030a260109f87043d03dd2062aba4e658a0cd3ca8b205fb990f09cee",
-      "homebrew-php/Formula/php@7.1-debug-zts.rb": "0f11f492a9482580d5ee2730e53a8dd16cd37fd3731e482119a825d07507f98a",
-      "homebrew-php/Formula/php@7.1-debug.rb": "0f11f492a9482580d5ee2730e53a8dd16cd37fd3731e482119a825d07507f98a",
-      "homebrew-php/Formula/php@7.1-zts.rb": "0f11f492a9482580d5ee2730e53a8dd16cd37fd3731e482119a825d07507f98a",
-      "homebrew-php/Formula/php@7.1.rb": "0f11f492a9482580d5ee2730e53a8dd16cd37fd3731e482119a825d07507f98a",
-      "homebrew-php/Formula/php@7.2-debug-zts.rb": "68f72ad3e7f34495514177870db375727616e92c70659927c44aa5f6f5c98a3e",
-      "homebrew-php/Formula/php@7.2-debug.rb": "68f72ad3e7f34495514177870db375727616e92c70659927c44aa5f6f5c98a3e",
-      "homebrew-php/Formula/php@7.2-zts.rb": "68f72ad3e7f34495514177870db375727616e92c70659927c44aa5f6f5c98a3e",
-      "homebrew-php/Formula/php@7.2.rb": "68f72ad3e7f34495514177870db375727616e92c70659927c44aa5f6f5c98a3e",
-      "homebrew-php/Formula/php@7.3-debug-zts.rb": "c1ded251c78837cd7909fb4859a0af5ea5c5d009dcc36422860ebbd157993b28",
-      "homebrew-php/Formula/php@7.3-debug.rb": "c1ded251c78837cd7909fb4859a0af5ea5c5d009dcc36422860ebbd157993b28",
-      "homebrew-php/Formula/php@7.3-zts.rb": "c1ded251c78837cd7909fb4859a0af5ea5c5d009dcc36422860ebbd157993b28",
-      "homebrew-php/Formula/php@7.3.rb": "c1ded251c78837cd7909fb4859a0af5ea5c5d009dcc36422860ebbd157993b28",
-      "homebrew-php/Formula/php@7.4-debug-zts.rb": "cddc668ab1e5bbf60846e9c65c349fa3e49eb9060a1f52335b591df998beec73",
-      "homebrew-php/Formula/php@7.4-debug.rb": "c0b4b51e5db43d6161036d54c510fc005e493fa3d961094694a3845a1bd85c06",
-      "homebrew-php/Formula/php@7.4-zts.rb": "cddc668ab1e5bbf60846e9c65c349fa3e49eb9060a1f52335b591df998beec73",
-      "homebrew-php/Formula/php@7.4.rb": "c0b4b51e5db43d6161036d54c510fc005e493fa3d961094694a3845a1bd85c06",
-      "homebrew-php/Formula/php@8.0-debug-zts.rb": "c7a4da6d8692d7eda83c1653072be74a11df5fc00764c3f830aa589ae4f9b2a9",
-      "homebrew-php/Formula/php@8.0-debug.rb": "3d13a770049eff1fdab24efe9bbd5e449ed98823ca48a8590b105f6b6ccdbcdb",
-      "homebrew-php/Formula/php@8.0-zts.rb": "c7a4da6d8692d7eda83c1653072be74a11df5fc00764c3f830aa589ae4f9b2a9",
-      "homebrew-php/Formula/php@8.0.rb": "3d13a770049eff1fdab24efe9bbd5e449ed98823ca48a8590b105f6b6ccdbcdb",
-      "homebrew-php/Formula/php@8.1-debug-zts.rb": "935e38ab3794839c5c7e02bc74037101fef332625c47f902bb3a878b9d4359ef",
-      "homebrew-php/Formula/php@8.1-debug.rb": "d101b352df315186ded1d4ddb1a8c823a5ad6b74f07bb5f3661847d9c1592046",
-      "homebrew-php/Formula/php@8.1-zts.rb": "935e38ab3794839c5c7e02bc74037101fef332625c47f902bb3a878b9d4359ef",
-      "homebrew-php/Formula/php@8.1.rb": "3d13a770049eff1fdab24efe9bbd5e449ed98823ca48a8590b105f6b6ccdbcdb",
-      "homebrew-php/Formula/php@8.2-debug-zts.rb": "c7a4da6d8692d7eda83c1653072be74a11df5fc00764c3f830aa589ae4f9b2a9",
-      "homebrew-php/Formula/php@8.2-debug.rb": "83f422991cfb67667d2e3ac4b3a693ca9463214fe1eaecb83addb5ecbd6879f6",
-      "homebrew-php/Formula/php@8.2-zts.rb": "c7a4da6d8692d7eda83c1653072be74a11df5fc00764c3f830aa589ae4f9b2a9",
-      "homebrew-php/Formula/php@8.2.rb": "83f422991cfb67667d2e3ac4b3a693ca9463214fe1eaecb83addb5ecbd6879f6",
-      "homebrew-php/Formula/php@8.3-debug-zts.rb": "935e38ab3794839c5c7e02bc74037101fef332625c47f902bb3a878b9d4359ef",
-      "homebrew-php/Formula/php@8.3-debug.rb": "83f422991cfb67667d2e3ac4b3a693ca9463214fe1eaecb83addb5ecbd6879f6",
-      "homebrew-php/Formula/php@8.3-zts.rb": "935e38ab3794839c5c7e02bc74037101fef332625c47f902bb3a878b9d4359ef",
-      "homebrew-php/Formula/php@8.3.rb": "83f422991cfb67667d2e3ac4b3a693ca9463214fe1eaecb83addb5ecbd6879f6",
-      "homebrew-php/Formula/php@8.4-debug-zts.rb": "f8795fdb6ab81dd4865757d698082d5be62f0a0a3ef276873bcd644212997847",
-      "homebrew-php/Formula/php@8.4-debug.rb": "910177c3904d17bd4fb628e065f8e8dbedc79fda2f328064fb6fceaddcf71f4b",
-      "homebrew-php/Formula/php@8.4-zts.rb": "f8795fdb6ab81dd4865757d698082d5be62f0a0a3ef276873bcd644212997847",
-      "homebrew-php/Formula/php@8.4.rb": "910177c3904d17bd4fb628e065f8e8dbedc79fda2f328064fb6fceaddcf71f4b",
-      "homebrew-php/Formula/php@8.6-debug-zts.rb": "2cb74f79bc9c071f04349d89e4817aec2d4589301cb814b56640c892d7ba5092",
-      "homebrew-php/Formula/php@8.6-debug.rb": "2cb74f79bc9c071f04349d89e4817aec2d4589301cb814b56640c892d7ba5092",
-      "homebrew-php/Formula/php@8.6-zts.rb": "2cb74f79bc9c071f04349d89e4817aec2d4589301cb814b56640c892d7ba5092",
-      "homebrew-php/Formula/php@8.6.rb": "2cb74f79bc9c071f04349d89e4817aec2d4589301cb814b56640c892d7ba5092",
+      "homebrew-php/Formula/php-debug-zts.rb": "c69f5fec8a8c1b32bcae1089f85e5c3f881e629de5250807c08b32687f35178f",
+      "homebrew-php/Formula/php-debug.rb": "c69f5fec8a8c1b32bcae1089f85e5c3f881e629de5250807c08b32687f35178f",
+      "homebrew-php/Formula/php-zts.rb": "c69f5fec8a8c1b32bcae1089f85e5c3f881e629de5250807c08b32687f35178f",
+      "homebrew-php/Formula/php.rb": "c69f5fec8a8c1b32bcae1089f85e5c3f881e629de5250807c08b32687f35178f",
+      "homebrew-php/Formula/php@5.6-debug-zts.rb": "b8ce8d790a8c15f52833424fc7907bb0a08d39d86acb79775dc3ef8863f886e8",
+      "homebrew-php/Formula/php@5.6-debug.rb": "70ba3fc876ea550aef31dabc0817a1ab949b22ebdf4f1a258539ce404d0a4460",
+      "homebrew-php/Formula/php@5.6-zts.rb": "b8ce8d790a8c15f52833424fc7907bb0a08d39d86acb79775dc3ef8863f886e8",
+      "homebrew-php/Formula/php@5.6.rb": "70ba3fc876ea550aef31dabc0817a1ab949b22ebdf4f1a258539ce404d0a4460",
+      "homebrew-php/Formula/php@7.0-debug-zts.rb": "9ffc0aa5074da2bc1b1f161a0d8f8cff89339c898db0efb820b1c8d6c2f30df8",
+      "homebrew-php/Formula/php@7.0-debug.rb": "9ffc0aa5074da2bc1b1f161a0d8f8cff89339c898db0efb820b1c8d6c2f30df8",
+      "homebrew-php/Formula/php@7.0-zts.rb": "9ffc0aa5074da2bc1b1f161a0d8f8cff89339c898db0efb820b1c8d6c2f30df8",
+      "homebrew-php/Formula/php@7.0.rb": "9ffc0aa5074da2bc1b1f161a0d8f8cff89339c898db0efb820b1c8d6c2f30df8",
+      "homebrew-php/Formula/php@7.1-debug-zts.rb": "b2fccfa0461e57e1078690f3a31c03d06f441e3938c2035532a112813f0e6f9e",
+      "homebrew-php/Formula/php@7.1-debug.rb": "b2fccfa0461e57e1078690f3a31c03d06f441e3938c2035532a112813f0e6f9e",
+      "homebrew-php/Formula/php@7.1-zts.rb": "b2fccfa0461e57e1078690f3a31c03d06f441e3938c2035532a112813f0e6f9e",
+      "homebrew-php/Formula/php@7.1.rb": "b2fccfa0461e57e1078690f3a31c03d06f441e3938c2035532a112813f0e6f9e",
+      "homebrew-php/Formula/php@7.2-debug-zts.rb": "cbecc1d0fa8fbe5e745804dde187f2aec6cced934ceab0141fc40d6bb57fa533",
+      "homebrew-php/Formula/php@7.2-debug.rb": "cbecc1d0fa8fbe5e745804dde187f2aec6cced934ceab0141fc40d6bb57fa533",
+      "homebrew-php/Formula/php@7.2-zts.rb": "cbecc1d0fa8fbe5e745804dde187f2aec6cced934ceab0141fc40d6bb57fa533",
+      "homebrew-php/Formula/php@7.2.rb": "cbecc1d0fa8fbe5e745804dde187f2aec6cced934ceab0141fc40d6bb57fa533",
+      "homebrew-php/Formula/php@7.3-debug-zts.rb": "81296fdc4f149064b6c5a6bf552bc9678479221b0badf5afca608e399e718b46",
+      "homebrew-php/Formula/php@7.3-debug.rb": "81296fdc4f149064b6c5a6bf552bc9678479221b0badf5afca608e399e718b46",
+      "homebrew-php/Formula/php@7.3-zts.rb": "81296fdc4f149064b6c5a6bf552bc9678479221b0badf5afca608e399e718b46",
+      "homebrew-php/Formula/php@7.3.rb": "81296fdc4f149064b6c5a6bf552bc9678479221b0badf5afca608e399e718b46",
+      "homebrew-php/Formula/php@7.4-debug-zts.rb": "c280535f660c8782e3673ef5fe79f082dc6ce3829430d0453f7091345d4f6462",
+      "homebrew-php/Formula/php@7.4-debug.rb": "82c00fac6700a35816350f5119f99015d909920097bba3478b901c3148db4cfc",
+      "homebrew-php/Formula/php@7.4-zts.rb": "c280535f660c8782e3673ef5fe79f082dc6ce3829430d0453f7091345d4f6462",
+      "homebrew-php/Formula/php@7.4.rb": "82c00fac6700a35816350f5119f99015d909920097bba3478b901c3148db4cfc",
+      "homebrew-php/Formula/php@8.0-debug-zts.rb": "8cd15c9dd9fa56a0bf6c8b754c37fbcc8c5e8ba6c794d5b19a5507d5fb6c9e1f",
+      "homebrew-php/Formula/php@8.0-debug.rb": "7fd8ca8a5554a69b81d21c79c169ca4f37d4f4564393bfc15a6ffd7033b8daff",
+      "homebrew-php/Formula/php@8.0-zts.rb": "8cd15c9dd9fa56a0bf6c8b754c37fbcc8c5e8ba6c794d5b19a5507d5fb6c9e1f",
+      "homebrew-php/Formula/php@8.0.rb": "7fd8ca8a5554a69b81d21c79c169ca4f37d4f4564393bfc15a6ffd7033b8daff",
+      "homebrew-php/Formula/php@8.1-debug-zts.rb": "6a19eec27ac884f04e97533b9c9dd37d8965287e17497248e4c3cfe2e5f52747",
+      "homebrew-php/Formula/php@8.1-debug.rb": "5a8348aa17864e5ee8b7d587b02f6c21b94a255140e1d098ce453a16c66f19f8",
+      "homebrew-php/Formula/php@8.1-zts.rb": "6a19eec27ac884f04e97533b9c9dd37d8965287e17497248e4c3cfe2e5f52747",
+      "homebrew-php/Formula/php@8.1.rb": "7fd8ca8a5554a69b81d21c79c169ca4f37d4f4564393bfc15a6ffd7033b8daff",
+      "homebrew-php/Formula/php@8.2-debug-zts.rb": "8cd15c9dd9fa56a0bf6c8b754c37fbcc8c5e8ba6c794d5b19a5507d5fb6c9e1f",
+      "homebrew-php/Formula/php@8.2-debug.rb": "8a7a5da64047cdbd8ece8a0ba3a2f8ec4c6cbc6caab42e8aa586244822434c32",
+      "homebrew-php/Formula/php@8.2-zts.rb": "8cd15c9dd9fa56a0bf6c8b754c37fbcc8c5e8ba6c794d5b19a5507d5fb6c9e1f",
+      "homebrew-php/Formula/php@8.2.rb": "8a7a5da64047cdbd8ece8a0ba3a2f8ec4c6cbc6caab42e8aa586244822434c32",
+      "homebrew-php/Formula/php@8.3-debug-zts.rb": "6a19eec27ac884f04e97533b9c9dd37d8965287e17497248e4c3cfe2e5f52747",
+      "homebrew-php/Formula/php@8.3-debug.rb": "8a7a5da64047cdbd8ece8a0ba3a2f8ec4c6cbc6caab42e8aa586244822434c32",
+      "homebrew-php/Formula/php@8.3-zts.rb": "6a19eec27ac884f04e97533b9c9dd37d8965287e17497248e4c3cfe2e5f52747",
+      "homebrew-php/Formula/php@8.3.rb": "8a7a5da64047cdbd8ece8a0ba3a2f8ec4c6cbc6caab42e8aa586244822434c32",
+      "homebrew-php/Formula/php@8.4-debug-zts.rb": "6521305d410dd8503d7c75f0d7d16f36264e1480781b40684afb6398e3dffd5a",
+      "homebrew-php/Formula/php@8.4-debug.rb": "b3992935838c2de10627ead579d65c1e932d9c336e66a8bbb69df8def3fcc381",
+      "homebrew-php/Formula/php@8.4-zts.rb": "6521305d410dd8503d7c75f0d7d16f36264e1480781b40684afb6398e3dffd5a",
+      "homebrew-php/Formula/php@8.4.rb": "b3992935838c2de10627ead579d65c1e932d9c336e66a8bbb69df8def3fcc381",
+      "homebrew-php/Formula/php@8.5-debug-zts.rb": "c69f5fec8a8c1b32bcae1089f85e5c3f881e629de5250807c08b32687f35178f",
+      "homebrew-php/Formula/php@8.5-debug.rb": "c69f5fec8a8c1b32bcae1089f85e5c3f881e629de5250807c08b32687f35178f",
+      "homebrew-php/Formula/php@8.5-zts.rb": "c69f5fec8a8c1b32bcae1089f85e5c3f881e629de5250807c08b32687f35178f",
+      "homebrew-php/Formula/php@8.5.rb": "c69f5fec8a8c1b32bcae1089f85e5c3f881e629de5250807c08b32687f35178f",
       "homebrew-php/Formula/php@8.7-debug-zts.rb": "2cb74f79bc9c071f04349d89e4817aec2d4589301cb814b56640c892d7ba5092",
       "homebrew-php/Formula/php@8.7-debug.rb": "2cb74f79bc9c071f04349d89e4817aec2d4589301cb814b56640c892d7ba5092",
       "homebrew-php/Formula/php@8.7-zts.rb": "2cb74f79bc9c071f04349d89e4817aec2d4589301cb814b56640c892d7ba5092",
@@ -8614,6 +8496,2270 @@
           ]
         }
       },
+      "c69f5fec8a8c1b32bcae1089f85e5c3f881e629de5250807c08b32687f35178f": {
+        "sha256": "c69f5fec8a8c1b32bcae1089f85e5c3f881e629de5250807c08b32687f35178f",
+        "formulae": [
+          "apr",
+          "apr-util",
+          "argon2",
+          "autoconf",
+          "bison",
+          "bzip2",
+          "capstone",
+          "curl",
+          "cyrus-sasl",
+          "freetds",
+          "gd",
+          "gettext",
+          "gmp",
+          "httpd",
+          "icu4c@79",
+          "libedit",
+          "libffi",
+          "libpq",
+          "libsodium",
+          "libxml2",
+          "libxslt",
+          "libzip",
+          "net-snmp",
+          "oniguruma",
+          "openldap",
+          "openssl@4",
+          "pcre2",
+          "pkgconf",
+          "re2c",
+          "sqlite",
+          "tidy-html5",
+          "unixodbc",
+          "zlib-ng-compat"
+        ],
+        "declarations": {
+          "c7a96330cc158f1d3a8d4966ba62338c4e6fe89aecd0b63c19a84f698cbf78f8": [
+            "bison"
+          ],
+          "6fe84206c4a8804bb7d0e88edba9037238a9d4fca5d6bb23b22bafe25b3701c6": [
+            "httpd"
+          ],
+          "38c4c1d8d78d5265358ed4156a537799a7d193e96a50b351ebad01186d18fe64": [
+            "pkgconf"
+          ],
+          "f8e76515c515ab375168e7bfe911f20cc036e6e9f6853cf188a95058ac8c9394": [
+            "re2c"
+          ],
+          "99a6fc6f0f983ae8d0e53d3df71ab72f2ee5ac9729f45aae2b59933cf3cbb917": [
+            "apr"
+          ],
+          "ab5cf8f50a65153cfaee0872648199c1f889f6e682243cfd9da517fc085b5339": [
+            "apr-util"
+          ],
+          "bb2d8e8422a936ef35568f268a750e18597b51202c7fe3601c20bd30c2727e06": [
+            "argon2"
+          ],
+          "7f2593aa1455ddc6d89554ca036600936d63cb2f79ac681ce82322f71e7787b6": [
+            "autoconf"
+          ],
+          "d69efc5c4ad70fd477ff5a9c26ee5d5ea03afd35160af1f937eb5a234aed1ab1": [
+            "capstone"
+          ],
+          "26f52b26853c394a1f0cf06537dfc5e2a1b3934a7edb6f7a4cd75031da0e68c8": [
+            "curl"
+          ],
+          "ea90cb8d3177e56c5f93e4e52c3cd426991b6ccefb9b555bc6519f8d19bb1e80": [
+            "freetds"
+          ],
+          "45fb99f0c1cced67e5555d624f830ed4f95856036ff34bb9bce86fb998fe6d11": [
+            "gd"
+          ],
+          "6fc3507079d6afd462df4e8d1204f58d6a38b0b68c3d621ef1f5d3e55443790a": [
+            "gmp"
+          ],
+          "ff6b67def58facb1b80b5a245de7a3dd504a2dd2282be0be4390d3ca1db4ff7e": [
+            "icu4c@79"
+          ],
+          "d5a563a088728ae163c285ccf57ccb89d92162a01169c0ac4caccfd083f3b9a5": [
+            "libpq"
+          ],
+          "9401ac313ac2a28364bd7b0483b303d234a33c5e52b0342821cecde2373cb9e4": [
+            "libsodium"
+          ],
+          "2a7fa1d89be5ffe4f7dc845802c23da6be6660e7177ac8daae4e976f14e408d5": [
+            "libzip"
+          ],
+          "f477bbd77cb6c2d1d03b0a1598bf9bf62857e6b15b15f3de572ceefb65476cf6": [
+            "net-snmp"
+          ],
+          "9263cfdc1bb063afcc2687c5e5e2bca16e06dca68c17c138d988bb03d2502263": [
+            "oniguruma"
+          ],
+          "1a9a292ef3bb1617f4813f0b9db3b62acdff68d7c770c15fc3685f4315aa5e5c": [
+            "openldap"
+          ],
+          "0eb46a52343afdb00d31295d9df55a8c796b950d1a48fd637b530e9874731a57": [
+            "openssl@4"
+          ],
+          "f37ad77d6c032303eea0856dd84f8e6688be4b91877448b222c4a840ef938723": [
+            "pcre2"
+          ],
+          "455b0242870a161865b2d40b7f74caf32dc157ad7da6c9c45df01f541d35e531": [
+            "sqlite"
+          ],
+          "0ab4d602a9c6f31a2f46ffcf30d991fd4cdba22ee635af68104ef96ee510de2e": [
+            "tidy-html5"
+          ],
+          "336bae021880ccd5632f2a5b2d83387b5b07940d7256f0d34520a3ef899779e4": [
+            "unixodbc"
+          ],
+          "db0b30f66bbc4dec029e7128aca0a82f1a82968c10bc7d64eff1481d2e91ee15": [
+            "cyrus-sasl"
+          ],
+          "5ad0c8a8a056a0482c60bc0bd89b826d5c66407447efe86417286d98ecc1cbf9": [
+            "bzip2"
+          ],
+          "0dd80232aa516247d3b528d825642d53fb15b0186329f410746e38d681758033": [
+            "libedit"
+          ],
+          "9d8cf75b7a36e9ec709de8f1acdd124ff69c3e584d62c071ca3652a2fb1672c6": [
+            "libffi"
+          ],
+          "3efd30fd92ee4362aaaf180f24b820b2899315863cb62293fe563eda020887cc": [
+            "libxml2"
+          ],
+          "45322197af94277e5782fa162f42cd7893081e8a8230cc90e54c838a51a29e9d": [
+            "libxslt"
+          ],
+          "a200e17a2e16e1b7c7706f141fc8bc064d36859d795fae53d5827cd4bb6875e4": [
+            "gettext"
+          ],
+          "74e45d44846512644815054d27573915c4c8c216934c8282ae492b3060fbc7f8": [
+            "zlib-ng-compat"
+          ]
+        }
+      },
+      "b8ce8d790a8c15f52833424fc7907bb0a08d39d86acb79775dc3ef8863f886e8": {
+        "sha256": "b8ce8d790a8c15f52833424fc7907bb0a08d39d86acb79775dc3ef8863f886e8",
+        "formulae": [
+          "apr",
+          "apr-util",
+          "aspell",
+          "bzip2",
+          "curl",
+          "freetds",
+          "freetype",
+          "gd",
+          "gettext",
+          "gmp",
+          "httpd",
+          "icu4c@79",
+          "jpeg",
+          "krb5",
+          "libedit",
+          "libpng",
+          "libpq",
+          "libtool",
+          "libx11",
+          "libxml2",
+          "libxpm",
+          "libxslt",
+          "libzip",
+          "openldap",
+          "openssl@4",
+          "pcre",
+          "pkgconf",
+          "re2c",
+          "sqlite",
+          "tidy-html5",
+          "unixodbc",
+          "zlib-ng-compat"
+        ],
+        "declarations": {
+          "6fe84206c4a8804bb7d0e88edba9037238a9d4fca5d6bb23b22bafe25b3701c6": [
+            "httpd"
+          ],
+          "38c4c1d8d78d5265358ed4156a537799a7d193e96a50b351ebad01186d18fe64": [
+            "pkgconf"
+          ],
+          "f8e76515c515ab375168e7bfe911f20cc036e6e9f6853cf188a95058ac8c9394": [
+            "re2c"
+          ],
+          "4bca2c7562e6ff3d89feafb115f9e3fc2f249d6610b1a8a1f600bbbeaa943ebe": [],
+          "99a6fc6f0f983ae8d0e53d3df71ab72f2ee5ac9729f45aae2b59933cf3cbb917": [
+            "apr"
+          ],
+          "ab5cf8f50a65153cfaee0872648199c1f889f6e682243cfd9da517fc085b5339": [
+            "apr-util"
+          ],
+          "a19890c57dbfb063640d016cd729529d1f1eeacfc29086cb5acb6b1030fcb722": [
+            "aspell"
+          ],
+          "26f52b26853c394a1f0cf06537dfc5e2a1b3934a7edb6f7a4cd75031da0e68c8": [
+            "curl"
+          ],
+          "ea90cb8d3177e56c5f93e4e52c3cd426991b6ccefb9b555bc6519f8d19bb1e80": [
+            "freetds"
+          ],
+          "d6a32ed1e8586dbf79a7e931b839b43ca0c73a737bc39d06e0cbd37ee82bb6ff": [
+            "freetype"
+          ],
+          "45fb99f0c1cced67e5555d624f830ed4f95856036ff34bb9bce86fb998fe6d11": [
+            "gd"
+          ],
+          "6fc3507079d6afd462df4e8d1204f58d6a38b0b68c3d621ef1f5d3e55443790a": [
+            "gmp"
+          ],
+          "ff6b67def58facb1b80b5a245de7a3dd504a2dd2282be0be4390d3ca1db4ff7e": [
+            "icu4c@79"
+          ],
+          "646c3dcfdcb81d22dd0a7b9c8ef486d69d54047485dbdb629922d070d58345d7": [
+            "jpeg"
+          ],
+          "35b7dca5a554f2a2665bf485899d449c1d6bbd332bfe029177c0c76cdaa2b98c": [
+            "krb5"
+          ],
+          "b46c3d9ce20da815605e74b87f58044d61de4629432c01e7506cbd45d4fa5ca2": [
+            "libpng"
+          ],
+          "d5a563a088728ae163c285ccf57ccb89d92162a01169c0ac4caccfd083f3b9a5": [
+            "libpq"
+          ],
+          "37bd0678aca767f78358e31916ac9c8a29209f7fce1281684f89b2a2a64de403": [
+            "libtool"
+          ],
+          "cb96b527fb79fceac4629c334b05152984d0861c3a0af06f47745bdfd2cfd4d6": [
+            "libx11"
+          ],
+          "7f487c5090a0f5aa0750eb8723fc5326c52155580d6fc90a39ae530d51f0e936": [
+            "libxpm"
+          ],
+          "2a7fa1d89be5ffe4f7dc845802c23da6be6660e7177ac8daae4e976f14e408d5": [
+            "libzip"
+          ],
+          "1a9a292ef3bb1617f4813f0b9db3b62acdff68d7c770c15fc3685f4315aa5e5c": [
+            "openldap"
+          ],
+          "0eb46a52343afdb00d31295d9df55a8c796b950d1a48fd637b530e9874731a57": [
+            "openssl@4"
+          ],
+          "0e593881621fa197c6f8cda91c6ba4cd009f33180ec15c1cb9185953c36ae6b0": [
+            "pcre"
+          ],
+          "cd061624348d09070ca4f73a80ac01f6b68ac9f8838e425ddf5c0da055b65bdf": [],
+          "455b0242870a161865b2d40b7f74caf32dc157ad7da6c9c45df01f541d35e531": [
+            "sqlite"
+          ],
+          "0ab4d602a9c6f31a2f46ffcf30d991fd4cdba22ee635af68104ef96ee510de2e": [
+            "tidy-html5"
+          ],
+          "336bae021880ccd5632f2a5b2d83387b5b07940d7256f0d34520a3ef899779e4": [
+            "unixodbc"
+          ],
+          "5ad0c8a8a056a0482c60bc0bd89b826d5c66407447efe86417286d98ecc1cbf9": [
+            "bzip2"
+          ],
+          "0dd80232aa516247d3b528d825642d53fb15b0186329f410746e38d681758033": [
+            "libedit"
+          ],
+          "3efd30fd92ee4362aaaf180f24b820b2899315863cb62293fe563eda020887cc": [
+            "libxml2"
+          ],
+          "45322197af94277e5782fa162f42cd7893081e8a8230cc90e54c838a51a29e9d": [
+            "libxslt"
+          ],
+          "a200e17a2e16e1b7c7706f141fc8bc064d36859d795fae53d5827cd4bb6875e4": [
+            "gettext"
+          ],
+          "74e45d44846512644815054d27573915c4c8c216934c8282ae492b3060fbc7f8": [
+            "zlib-ng-compat"
+          ]
+        }
+      },
+      "70ba3fc876ea550aef31dabc0817a1ab949b22ebdf4f1a258539ce404d0a4460": {
+        "sha256": "70ba3fc876ea550aef31dabc0817a1ab949b22ebdf4f1a258539ce404d0a4460",
+        "formulae": [
+          "apr",
+          "apr-util",
+          "aspell",
+          "autoconf",
+          "bison",
+          "bzip2",
+          "curl",
+          "freetds",
+          "freetype",
+          "gd",
+          "gettext",
+          "gmp",
+          "httpd",
+          "icu4c@79",
+          "jpeg",
+          "krb5",
+          "libedit",
+          "libpng",
+          "libpq",
+          "libtool",
+          "libx11",
+          "libxml2",
+          "libxpm",
+          "libxslt",
+          "libzip",
+          "openldap",
+          "openssl@4",
+          "pcre",
+          "pkgconf",
+          "re2c",
+          "sqlite",
+          "tidy-html5",
+          "unixodbc",
+          "zlib-ng-compat"
+        ],
+        "declarations": {
+          "c7a96330cc158f1d3a8d4966ba62338c4e6fe89aecd0b63c19a84f698cbf78f8": [
+            "bison"
+          ],
+          "6fe84206c4a8804bb7d0e88edba9037238a9d4fca5d6bb23b22bafe25b3701c6": [
+            "httpd"
+          ],
+          "38c4c1d8d78d5265358ed4156a537799a7d193e96a50b351ebad01186d18fe64": [
+            "pkgconf"
+          ],
+          "f8e76515c515ab375168e7bfe911f20cc036e6e9f6853cf188a95058ac8c9394": [
+            "re2c"
+          ],
+          "99a6fc6f0f983ae8d0e53d3df71ab72f2ee5ac9729f45aae2b59933cf3cbb917": [
+            "apr"
+          ],
+          "ab5cf8f50a65153cfaee0872648199c1f889f6e682243cfd9da517fc085b5339": [
+            "apr-util"
+          ],
+          "a19890c57dbfb063640d016cd729529d1f1eeacfc29086cb5acb6b1030fcb722": [
+            "aspell"
+          ],
+          "7f2593aa1455ddc6d89554ca036600936d63cb2f79ac681ce82322f71e7787b6": [
+            "autoconf"
+          ],
+          "26f52b26853c394a1f0cf06537dfc5e2a1b3934a7edb6f7a4cd75031da0e68c8": [
+            "curl"
+          ],
+          "ea90cb8d3177e56c5f93e4e52c3cd426991b6ccefb9b555bc6519f8d19bb1e80": [
+            "freetds"
+          ],
+          "d6a32ed1e8586dbf79a7e931b839b43ca0c73a737bc39d06e0cbd37ee82bb6ff": [
+            "freetype"
+          ],
+          "45fb99f0c1cced67e5555d624f830ed4f95856036ff34bb9bce86fb998fe6d11": [
+            "gd"
+          ],
+          "6fc3507079d6afd462df4e8d1204f58d6a38b0b68c3d621ef1f5d3e55443790a": [
+            "gmp"
+          ],
+          "ff6b67def58facb1b80b5a245de7a3dd504a2dd2282be0be4390d3ca1db4ff7e": [
+            "icu4c@79"
+          ],
+          "646c3dcfdcb81d22dd0a7b9c8ef486d69d54047485dbdb629922d070d58345d7": [
+            "jpeg"
+          ],
+          "35b7dca5a554f2a2665bf485899d449c1d6bbd332bfe029177c0c76cdaa2b98c": [
+            "krb5"
+          ],
+          "b46c3d9ce20da815605e74b87f58044d61de4629432c01e7506cbd45d4fa5ca2": [
+            "libpng"
+          ],
+          "d5a563a088728ae163c285ccf57ccb89d92162a01169c0ac4caccfd083f3b9a5": [
+            "libpq"
+          ],
+          "37bd0678aca767f78358e31916ac9c8a29209f7fce1281684f89b2a2a64de403": [
+            "libtool"
+          ],
+          "cb96b527fb79fceac4629c334b05152984d0861c3a0af06f47745bdfd2cfd4d6": [
+            "libx11"
+          ],
+          "7f487c5090a0f5aa0750eb8723fc5326c52155580d6fc90a39ae530d51f0e936": [
+            "libxpm"
+          ],
+          "2a7fa1d89be5ffe4f7dc845802c23da6be6660e7177ac8daae4e976f14e408d5": [
+            "libzip"
+          ],
+          "1a9a292ef3bb1617f4813f0b9db3b62acdff68d7c770c15fc3685f4315aa5e5c": [
+            "openldap"
+          ],
+          "0eb46a52343afdb00d31295d9df55a8c796b950d1a48fd637b530e9874731a57": [
+            "openssl@4"
+          ],
+          "0e593881621fa197c6f8cda91c6ba4cd009f33180ec15c1cb9185953c36ae6b0": [
+            "pcre"
+          ],
+          "455b0242870a161865b2d40b7f74caf32dc157ad7da6c9c45df01f541d35e531": [
+            "sqlite"
+          ],
+          "0ab4d602a9c6f31a2f46ffcf30d991fd4cdba22ee635af68104ef96ee510de2e": [
+            "tidy-html5"
+          ],
+          "336bae021880ccd5632f2a5b2d83387b5b07940d7256f0d34520a3ef899779e4": [
+            "unixodbc"
+          ],
+          "5ad0c8a8a056a0482c60bc0bd89b826d5c66407447efe86417286d98ecc1cbf9": [
+            "bzip2"
+          ],
+          "0dd80232aa516247d3b528d825642d53fb15b0186329f410746e38d681758033": [
+            "libedit"
+          ],
+          "3efd30fd92ee4362aaaf180f24b820b2899315863cb62293fe563eda020887cc": [
+            "libxml2"
+          ],
+          "45322197af94277e5782fa162f42cd7893081e8a8230cc90e54c838a51a29e9d": [
+            "libxslt"
+          ],
+          "a200e17a2e16e1b7c7706f141fc8bc064d36859d795fae53d5827cd4bb6875e4": [
+            "gettext"
+          ],
+          "74e45d44846512644815054d27573915c4c8c216934c8282ae492b3060fbc7f8": [
+            "zlib-ng-compat"
+          ]
+        }
+      },
+      "9ffc0aa5074da2bc1b1f161a0d8f8cff89339c898db0efb820b1c8d6c2f30df8": {
+        "sha256": "9ffc0aa5074da2bc1b1f161a0d8f8cff89339c898db0efb820b1c8d6c2f30df8",
+        "formulae": [
+          "apr",
+          "apr-util",
+          "aspell",
+          "autoconf",
+          "bison",
+          "bzip2",
+          "curl",
+          "freetds",
+          "freetype",
+          "gd",
+          "gettext",
+          "gmp",
+          "httpd",
+          "icu4c@79",
+          "jpeg",
+          "krb5",
+          "libedit",
+          "libpng",
+          "libpq",
+          "libtool",
+          "libx11",
+          "libxml2",
+          "libxpm",
+          "libxslt",
+          "libzip",
+          "openldap",
+          "openssl@4",
+          "pcre",
+          "pkgconf",
+          "re2c",
+          "sqlite",
+          "tidy-html5",
+          "unixodbc",
+          "webp",
+          "zlib-ng-compat"
+        ],
+        "declarations": {
+          "c7a96330cc158f1d3a8d4966ba62338c4e6fe89aecd0b63c19a84f698cbf78f8": [
+            "bison"
+          ],
+          "6fe84206c4a8804bb7d0e88edba9037238a9d4fca5d6bb23b22bafe25b3701c6": [
+            "httpd"
+          ],
+          "38c4c1d8d78d5265358ed4156a537799a7d193e96a50b351ebad01186d18fe64": [
+            "pkgconf"
+          ],
+          "f8e76515c515ab375168e7bfe911f20cc036e6e9f6853cf188a95058ac8c9394": [
+            "re2c"
+          ],
+          "99a6fc6f0f983ae8d0e53d3df71ab72f2ee5ac9729f45aae2b59933cf3cbb917": [
+            "apr"
+          ],
+          "ab5cf8f50a65153cfaee0872648199c1f889f6e682243cfd9da517fc085b5339": [
+            "apr-util"
+          ],
+          "a19890c57dbfb063640d016cd729529d1f1eeacfc29086cb5acb6b1030fcb722": [
+            "aspell"
+          ],
+          "7f2593aa1455ddc6d89554ca036600936d63cb2f79ac681ce82322f71e7787b6": [
+            "autoconf"
+          ],
+          "26f52b26853c394a1f0cf06537dfc5e2a1b3934a7edb6f7a4cd75031da0e68c8": [
+            "curl"
+          ],
+          "ea90cb8d3177e56c5f93e4e52c3cd426991b6ccefb9b555bc6519f8d19bb1e80": [
+            "freetds"
+          ],
+          "d6a32ed1e8586dbf79a7e931b839b43ca0c73a737bc39d06e0cbd37ee82bb6ff": [
+            "freetype"
+          ],
+          "45fb99f0c1cced67e5555d624f830ed4f95856036ff34bb9bce86fb998fe6d11": [
+            "gd"
+          ],
+          "6fc3507079d6afd462df4e8d1204f58d6a38b0b68c3d621ef1f5d3e55443790a": [
+            "gmp"
+          ],
+          "ff6b67def58facb1b80b5a245de7a3dd504a2dd2282be0be4390d3ca1db4ff7e": [
+            "icu4c@79"
+          ],
+          "646c3dcfdcb81d22dd0a7b9c8ef486d69d54047485dbdb629922d070d58345d7": [
+            "jpeg"
+          ],
+          "35b7dca5a554f2a2665bf485899d449c1d6bbd332bfe029177c0c76cdaa2b98c": [
+            "krb5"
+          ],
+          "b46c3d9ce20da815605e74b87f58044d61de4629432c01e7506cbd45d4fa5ca2": [
+            "libpng"
+          ],
+          "d5a563a088728ae163c285ccf57ccb89d92162a01169c0ac4caccfd083f3b9a5": [
+            "libpq"
+          ],
+          "37bd0678aca767f78358e31916ac9c8a29209f7fce1281684f89b2a2a64de403": [
+            "libtool"
+          ],
+          "cb96b527fb79fceac4629c334b05152984d0861c3a0af06f47745bdfd2cfd4d6": [
+            "libx11"
+          ],
+          "7f487c5090a0f5aa0750eb8723fc5326c52155580d6fc90a39ae530d51f0e936": [
+            "libxpm"
+          ],
+          "2a7fa1d89be5ffe4f7dc845802c23da6be6660e7177ac8daae4e976f14e408d5": [
+            "libzip"
+          ],
+          "1a9a292ef3bb1617f4813f0b9db3b62acdff68d7c770c15fc3685f4315aa5e5c": [
+            "openldap"
+          ],
+          "0eb46a52343afdb00d31295d9df55a8c796b950d1a48fd637b530e9874731a57": [
+            "openssl@4"
+          ],
+          "0e593881621fa197c6f8cda91c6ba4cd009f33180ec15c1cb9185953c36ae6b0": [
+            "pcre"
+          ],
+          "455b0242870a161865b2d40b7f74caf32dc157ad7da6c9c45df01f541d35e531": [
+            "sqlite"
+          ],
+          "0ab4d602a9c6f31a2f46ffcf30d991fd4cdba22ee635af68104ef96ee510de2e": [
+            "tidy-html5"
+          ],
+          "336bae021880ccd5632f2a5b2d83387b5b07940d7256f0d34520a3ef899779e4": [
+            "unixodbc"
+          ],
+          "8f6df29a9a612cc1882768b3fb0c804d9e9afb3a8b9ff77b1cbb1857a904ab62": [
+            "webp"
+          ],
+          "5ad0c8a8a056a0482c60bc0bd89b826d5c66407447efe86417286d98ecc1cbf9": [
+            "bzip2"
+          ],
+          "0dd80232aa516247d3b528d825642d53fb15b0186329f410746e38d681758033": [
+            "libedit"
+          ],
+          "3efd30fd92ee4362aaaf180f24b820b2899315863cb62293fe563eda020887cc": [
+            "libxml2"
+          ],
+          "45322197af94277e5782fa162f42cd7893081e8a8230cc90e54c838a51a29e9d": [
+            "libxslt"
+          ],
+          "a200e17a2e16e1b7c7706f141fc8bc064d36859d795fae53d5827cd4bb6875e4": [
+            "gettext"
+          ],
+          "74e45d44846512644815054d27573915c4c8c216934c8282ae492b3060fbc7f8": [
+            "zlib-ng-compat"
+          ]
+        }
+      },
+      "b2fccfa0461e57e1078690f3a31c03d06f441e3938c2035532a112813f0e6f9e": {
+        "sha256": "b2fccfa0461e57e1078690f3a31c03d06f441e3938c2035532a112813f0e6f9e",
+        "formulae": [
+          "apr",
+          "apr-util",
+          "aspell",
+          "autoconf",
+          "bison",
+          "bzip2",
+          "curl",
+          "freetds",
+          "freetype",
+          "gd",
+          "gettext",
+          "gmp",
+          "httpd",
+          "icu4c@79",
+          "jpeg",
+          "krb5",
+          "libedit",
+          "libpng",
+          "libpq",
+          "libtool",
+          "libx11",
+          "libxml2",
+          "libxpm",
+          "libxslt",
+          "libzip",
+          "openldap",
+          "openssl@4",
+          "pkgconf",
+          "re2c",
+          "sqlite",
+          "tidy-html5",
+          "unixodbc",
+          "webp",
+          "zlib-ng-compat"
+        ],
+        "declarations": {
+          "c7a96330cc158f1d3a8d4966ba62338c4e6fe89aecd0b63c19a84f698cbf78f8": [
+            "bison"
+          ],
+          "6fe84206c4a8804bb7d0e88edba9037238a9d4fca5d6bb23b22bafe25b3701c6": [
+            "httpd"
+          ],
+          "38c4c1d8d78d5265358ed4156a537799a7d193e96a50b351ebad01186d18fe64": [
+            "pkgconf"
+          ],
+          "f8e76515c515ab375168e7bfe911f20cc036e6e9f6853cf188a95058ac8c9394": [
+            "re2c"
+          ],
+          "99a6fc6f0f983ae8d0e53d3df71ab72f2ee5ac9729f45aae2b59933cf3cbb917": [
+            "apr"
+          ],
+          "ab5cf8f50a65153cfaee0872648199c1f889f6e682243cfd9da517fc085b5339": [
+            "apr-util"
+          ],
+          "a19890c57dbfb063640d016cd729529d1f1eeacfc29086cb5acb6b1030fcb722": [
+            "aspell"
+          ],
+          "7f2593aa1455ddc6d89554ca036600936d63cb2f79ac681ce82322f71e7787b6": [
+            "autoconf"
+          ],
+          "26f52b26853c394a1f0cf06537dfc5e2a1b3934a7edb6f7a4cd75031da0e68c8": [
+            "curl"
+          ],
+          "ea90cb8d3177e56c5f93e4e52c3cd426991b6ccefb9b555bc6519f8d19bb1e80": [
+            "freetds"
+          ],
+          "d6a32ed1e8586dbf79a7e931b839b43ca0c73a737bc39d06e0cbd37ee82bb6ff": [
+            "freetype"
+          ],
+          "45fb99f0c1cced67e5555d624f830ed4f95856036ff34bb9bce86fb998fe6d11": [
+            "gd"
+          ],
+          "6fc3507079d6afd462df4e8d1204f58d6a38b0b68c3d621ef1f5d3e55443790a": [
+            "gmp"
+          ],
+          "ff6b67def58facb1b80b5a245de7a3dd504a2dd2282be0be4390d3ca1db4ff7e": [
+            "icu4c@79"
+          ],
+          "646c3dcfdcb81d22dd0a7b9c8ef486d69d54047485dbdb629922d070d58345d7": [
+            "jpeg"
+          ],
+          "35b7dca5a554f2a2665bf485899d449c1d6bbd332bfe029177c0c76cdaa2b98c": [
+            "krb5"
+          ],
+          "b46c3d9ce20da815605e74b87f58044d61de4629432c01e7506cbd45d4fa5ca2": [
+            "libpng"
+          ],
+          "d5a563a088728ae163c285ccf57ccb89d92162a01169c0ac4caccfd083f3b9a5": [
+            "libpq"
+          ],
+          "37bd0678aca767f78358e31916ac9c8a29209f7fce1281684f89b2a2a64de403": [
+            "libtool"
+          ],
+          "cb96b527fb79fceac4629c334b05152984d0861c3a0af06f47745bdfd2cfd4d6": [
+            "libx11"
+          ],
+          "7f487c5090a0f5aa0750eb8723fc5326c52155580d6fc90a39ae530d51f0e936": [
+            "libxpm"
+          ],
+          "2a7fa1d89be5ffe4f7dc845802c23da6be6660e7177ac8daae4e976f14e408d5": [
+            "libzip"
+          ],
+          "1a9a292ef3bb1617f4813f0b9db3b62acdff68d7c770c15fc3685f4315aa5e5c": [
+            "openldap"
+          ],
+          "0eb46a52343afdb00d31295d9df55a8c796b950d1a48fd637b530e9874731a57": [
+            "openssl@4"
+          ],
+          "455b0242870a161865b2d40b7f74caf32dc157ad7da6c9c45df01f541d35e531": [
+            "sqlite"
+          ],
+          "0ab4d602a9c6f31a2f46ffcf30d991fd4cdba22ee635af68104ef96ee510de2e": [
+            "tidy-html5"
+          ],
+          "336bae021880ccd5632f2a5b2d83387b5b07940d7256f0d34520a3ef899779e4": [
+            "unixodbc"
+          ],
+          "8f6df29a9a612cc1882768b3fb0c804d9e9afb3a8b9ff77b1cbb1857a904ab62": [
+            "webp"
+          ],
+          "5ad0c8a8a056a0482c60bc0bd89b826d5c66407447efe86417286d98ecc1cbf9": [
+            "bzip2"
+          ],
+          "0dd80232aa516247d3b528d825642d53fb15b0186329f410746e38d681758033": [
+            "libedit"
+          ],
+          "3efd30fd92ee4362aaaf180f24b820b2899315863cb62293fe563eda020887cc": [
+            "libxml2"
+          ],
+          "45322197af94277e5782fa162f42cd7893081e8a8230cc90e54c838a51a29e9d": [
+            "libxslt"
+          ],
+          "a200e17a2e16e1b7c7706f141fc8bc064d36859d795fae53d5827cd4bb6875e4": [
+            "gettext"
+          ],
+          "74e45d44846512644815054d27573915c4c8c216934c8282ae492b3060fbc7f8": [
+            "zlib-ng-compat"
+          ]
+        }
+      },
+      "cbecc1d0fa8fbe5e745804dde187f2aec6cced934ceab0141fc40d6bb57fa533": {
+        "sha256": "cbecc1d0fa8fbe5e745804dde187f2aec6cced934ceab0141fc40d6bb57fa533",
+        "formulae": [
+          "apr",
+          "apr-util",
+          "argon2",
+          "aspell",
+          "autoconf",
+          "bison",
+          "bzip2",
+          "curl",
+          "freetds",
+          "freetype",
+          "gd",
+          "gettext",
+          "gmp",
+          "httpd",
+          "icu4c@79",
+          "jpeg",
+          "krb5",
+          "libedit",
+          "libpng",
+          "libpq",
+          "libsodium",
+          "libx11",
+          "libxml2",
+          "libxpm",
+          "libxslt",
+          "libzip",
+          "openldap",
+          "openssl@4",
+          "pkgconf",
+          "re2c",
+          "sqlite",
+          "tidy-html5",
+          "unixodbc",
+          "webp",
+          "zlib-ng-compat"
+        ],
+        "declarations": {
+          "c7a96330cc158f1d3a8d4966ba62338c4e6fe89aecd0b63c19a84f698cbf78f8": [
+            "bison"
+          ],
+          "6fe84206c4a8804bb7d0e88edba9037238a9d4fca5d6bb23b22bafe25b3701c6": [
+            "httpd"
+          ],
+          "38c4c1d8d78d5265358ed4156a537799a7d193e96a50b351ebad01186d18fe64": [
+            "pkgconf"
+          ],
+          "f8e76515c515ab375168e7bfe911f20cc036e6e9f6853cf188a95058ac8c9394": [
+            "re2c"
+          ],
+          "99a6fc6f0f983ae8d0e53d3df71ab72f2ee5ac9729f45aae2b59933cf3cbb917": [
+            "apr"
+          ],
+          "ab5cf8f50a65153cfaee0872648199c1f889f6e682243cfd9da517fc085b5339": [
+            "apr-util"
+          ],
+          "bb2d8e8422a936ef35568f268a750e18597b51202c7fe3601c20bd30c2727e06": [
+            "argon2"
+          ],
+          "a19890c57dbfb063640d016cd729529d1f1eeacfc29086cb5acb6b1030fcb722": [
+            "aspell"
+          ],
+          "7f2593aa1455ddc6d89554ca036600936d63cb2f79ac681ce82322f71e7787b6": [
+            "autoconf"
+          ],
+          "26f52b26853c394a1f0cf06537dfc5e2a1b3934a7edb6f7a4cd75031da0e68c8": [
+            "curl"
+          ],
+          "ea90cb8d3177e56c5f93e4e52c3cd426991b6ccefb9b555bc6519f8d19bb1e80": [
+            "freetds"
+          ],
+          "d6a32ed1e8586dbf79a7e931b839b43ca0c73a737bc39d06e0cbd37ee82bb6ff": [
+            "freetype"
+          ],
+          "45fb99f0c1cced67e5555d624f830ed4f95856036ff34bb9bce86fb998fe6d11": [
+            "gd"
+          ],
+          "6fc3507079d6afd462df4e8d1204f58d6a38b0b68c3d621ef1f5d3e55443790a": [
+            "gmp"
+          ],
+          "ff6b67def58facb1b80b5a245de7a3dd504a2dd2282be0be4390d3ca1db4ff7e": [
+            "icu4c@79"
+          ],
+          "646c3dcfdcb81d22dd0a7b9c8ef486d69d54047485dbdb629922d070d58345d7": [
+            "jpeg"
+          ],
+          "35b7dca5a554f2a2665bf485899d449c1d6bbd332bfe029177c0c76cdaa2b98c": [
+            "krb5"
+          ],
+          "b46c3d9ce20da815605e74b87f58044d61de4629432c01e7506cbd45d4fa5ca2": [
+            "libpng"
+          ],
+          "d5a563a088728ae163c285ccf57ccb89d92162a01169c0ac4caccfd083f3b9a5": [
+            "libpq"
+          ],
+          "9401ac313ac2a28364bd7b0483b303d234a33c5e52b0342821cecde2373cb9e4": [
+            "libsodium"
+          ],
+          "cb96b527fb79fceac4629c334b05152984d0861c3a0af06f47745bdfd2cfd4d6": [
+            "libx11"
+          ],
+          "7f487c5090a0f5aa0750eb8723fc5326c52155580d6fc90a39ae530d51f0e936": [
+            "libxpm"
+          ],
+          "2a7fa1d89be5ffe4f7dc845802c23da6be6660e7177ac8daae4e976f14e408d5": [
+            "libzip"
+          ],
+          "1a9a292ef3bb1617f4813f0b9db3b62acdff68d7c770c15fc3685f4315aa5e5c": [
+            "openldap"
+          ],
+          "0eb46a52343afdb00d31295d9df55a8c796b950d1a48fd637b530e9874731a57": [
+            "openssl@4"
+          ],
+          "455b0242870a161865b2d40b7f74caf32dc157ad7da6c9c45df01f541d35e531": [
+            "sqlite"
+          ],
+          "0ab4d602a9c6f31a2f46ffcf30d991fd4cdba22ee635af68104ef96ee510de2e": [
+            "tidy-html5"
+          ],
+          "336bae021880ccd5632f2a5b2d83387b5b07940d7256f0d34520a3ef899779e4": [
+            "unixodbc"
+          ],
+          "8f6df29a9a612cc1882768b3fb0c804d9e9afb3a8b9ff77b1cbb1857a904ab62": [
+            "webp"
+          ],
+          "5ad0c8a8a056a0482c60bc0bd89b826d5c66407447efe86417286d98ecc1cbf9": [
+            "bzip2"
+          ],
+          "0dd80232aa516247d3b528d825642d53fb15b0186329f410746e38d681758033": [
+            "libedit"
+          ],
+          "3efd30fd92ee4362aaaf180f24b820b2899315863cb62293fe563eda020887cc": [
+            "libxml2"
+          ],
+          "45322197af94277e5782fa162f42cd7893081e8a8230cc90e54c838a51a29e9d": [
+            "libxslt"
+          ],
+          "a200e17a2e16e1b7c7706f141fc8bc064d36859d795fae53d5827cd4bb6875e4": [
+            "gettext"
+          ],
+          "74e45d44846512644815054d27573915c4c8c216934c8282ae492b3060fbc7f8": [
+            "zlib-ng-compat"
+          ]
+        }
+      },
+      "81296fdc4f149064b6c5a6bf552bc9678479221b0badf5afca608e399e718b46": {
+        "sha256": "81296fdc4f149064b6c5a6bf552bc9678479221b0badf5afca608e399e718b46",
+        "formulae": [
+          "apr",
+          "apr-util",
+          "argon2",
+          "aspell",
+          "autoconf",
+          "bison",
+          "bzip2",
+          "curl",
+          "freetds",
+          "freetype",
+          "gd",
+          "gettext",
+          "gmp",
+          "httpd",
+          "icu4c@79",
+          "jpeg",
+          "krb5",
+          "libedit",
+          "libpng",
+          "libpq",
+          "libsodium",
+          "libx11",
+          "libxml2",
+          "libxpm",
+          "libxslt",
+          "libzip",
+          "openldap",
+          "openssl@4",
+          "pcre2",
+          "pkgconf",
+          "re2c",
+          "sqlite",
+          "tidy-html5",
+          "unixodbc",
+          "webp",
+          "xz",
+          "zlib-ng-compat"
+        ],
+        "declarations": {
+          "c7a96330cc158f1d3a8d4966ba62338c4e6fe89aecd0b63c19a84f698cbf78f8": [
+            "bison"
+          ],
+          "6fe84206c4a8804bb7d0e88edba9037238a9d4fca5d6bb23b22bafe25b3701c6": [
+            "httpd"
+          ],
+          "38c4c1d8d78d5265358ed4156a537799a7d193e96a50b351ebad01186d18fe64": [
+            "pkgconf"
+          ],
+          "f8e76515c515ab375168e7bfe911f20cc036e6e9f6853cf188a95058ac8c9394": [
+            "re2c"
+          ],
+          "99a6fc6f0f983ae8d0e53d3df71ab72f2ee5ac9729f45aae2b59933cf3cbb917": [
+            "apr"
+          ],
+          "ab5cf8f50a65153cfaee0872648199c1f889f6e682243cfd9da517fc085b5339": [
+            "apr-util"
+          ],
+          "bb2d8e8422a936ef35568f268a750e18597b51202c7fe3601c20bd30c2727e06": [
+            "argon2"
+          ],
+          "a19890c57dbfb063640d016cd729529d1f1eeacfc29086cb5acb6b1030fcb722": [
+            "aspell"
+          ],
+          "7f2593aa1455ddc6d89554ca036600936d63cb2f79ac681ce82322f71e7787b6": [
+            "autoconf"
+          ],
+          "26f52b26853c394a1f0cf06537dfc5e2a1b3934a7edb6f7a4cd75031da0e68c8": [
+            "curl"
+          ],
+          "ea90cb8d3177e56c5f93e4e52c3cd426991b6ccefb9b555bc6519f8d19bb1e80": [
+            "freetds"
+          ],
+          "d6a32ed1e8586dbf79a7e931b839b43ca0c73a737bc39d06e0cbd37ee82bb6ff": [
+            "freetype"
+          ],
+          "45fb99f0c1cced67e5555d624f830ed4f95856036ff34bb9bce86fb998fe6d11": [
+            "gd"
+          ],
+          "6fc3507079d6afd462df4e8d1204f58d6a38b0b68c3d621ef1f5d3e55443790a": [
+            "gmp"
+          ],
+          "ff6b67def58facb1b80b5a245de7a3dd504a2dd2282be0be4390d3ca1db4ff7e": [
+            "icu4c@79"
+          ],
+          "646c3dcfdcb81d22dd0a7b9c8ef486d69d54047485dbdb629922d070d58345d7": [
+            "jpeg"
+          ],
+          "35b7dca5a554f2a2665bf485899d449c1d6bbd332bfe029177c0c76cdaa2b98c": [
+            "krb5"
+          ],
+          "b46c3d9ce20da815605e74b87f58044d61de4629432c01e7506cbd45d4fa5ca2": [
+            "libpng"
+          ],
+          "d5a563a088728ae163c285ccf57ccb89d92162a01169c0ac4caccfd083f3b9a5": [
+            "libpq"
+          ],
+          "9401ac313ac2a28364bd7b0483b303d234a33c5e52b0342821cecde2373cb9e4": [
+            "libsodium"
+          ],
+          "cb96b527fb79fceac4629c334b05152984d0861c3a0af06f47745bdfd2cfd4d6": [
+            "libx11"
+          ],
+          "7f487c5090a0f5aa0750eb8723fc5326c52155580d6fc90a39ae530d51f0e936": [
+            "libxpm"
+          ],
+          "2a7fa1d89be5ffe4f7dc845802c23da6be6660e7177ac8daae4e976f14e408d5": [
+            "libzip"
+          ],
+          "1a9a292ef3bb1617f4813f0b9db3b62acdff68d7c770c15fc3685f4315aa5e5c": [
+            "openldap"
+          ],
+          "0eb46a52343afdb00d31295d9df55a8c796b950d1a48fd637b530e9874731a57": [
+            "openssl@4"
+          ],
+          "f37ad77d6c032303eea0856dd84f8e6688be4b91877448b222c4a840ef938723": [
+            "pcre2"
+          ],
+          "455b0242870a161865b2d40b7f74caf32dc157ad7da6c9c45df01f541d35e531": [
+            "sqlite"
+          ],
+          "0ab4d602a9c6f31a2f46ffcf30d991fd4cdba22ee635af68104ef96ee510de2e": [
+            "tidy-html5"
+          ],
+          "336bae021880ccd5632f2a5b2d83387b5b07940d7256f0d34520a3ef899779e4": [
+            "unixodbc"
+          ],
+          "8f6df29a9a612cc1882768b3fb0c804d9e9afb3a8b9ff77b1cbb1857a904ab62": [
+            "webp"
+          ],
+          "444ea78341ee35d937ecb3899c3bd43966c4a994dd525e539a3a40da148bc13e": [
+            "xz"
+          ],
+          "5ad0c8a8a056a0482c60bc0bd89b826d5c66407447efe86417286d98ecc1cbf9": [
+            "bzip2"
+          ],
+          "0dd80232aa516247d3b528d825642d53fb15b0186329f410746e38d681758033": [
+            "libedit"
+          ],
+          "3efd30fd92ee4362aaaf180f24b820b2899315863cb62293fe563eda020887cc": [
+            "libxml2"
+          ],
+          "45322197af94277e5782fa162f42cd7893081e8a8230cc90e54c838a51a29e9d": [
+            "libxslt"
+          ],
+          "a200e17a2e16e1b7c7706f141fc8bc064d36859d795fae53d5827cd4bb6875e4": [
+            "gettext"
+          ],
+          "74e45d44846512644815054d27573915c4c8c216934c8282ae492b3060fbc7f8": [
+            "zlib-ng-compat"
+          ]
+        }
+      },
+      "c280535f660c8782e3673ef5fe79f082dc6ce3829430d0453f7091345d4f6462": {
+        "sha256": "c280535f660c8782e3673ef5fe79f082dc6ce3829430d0453f7091345d4f6462",
+        "formulae": [
+          "apr",
+          "apr-util",
+          "argon2",
+          "aspell",
+          "autoconf",
+          "bison",
+          "bzip2",
+          "curl",
+          "freetds",
+          "gd",
+          "gettext",
+          "gmp",
+          "httpd",
+          "icu4c@79",
+          "krb5",
+          "libedit",
+          "libffi",
+          "libpq",
+          "libsodium",
+          "libxml2",
+          "libxslt",
+          "libzip",
+          "oniguruma",
+          "openldap",
+          "openssl@4",
+          "pcre2",
+          "pkgconf",
+          "re2c",
+          "sqlite",
+          "tidy-html5",
+          "unixodbc",
+          "xz",
+          "zlib-ng-compat"
+        ],
+        "declarations": {
+          "c7a96330cc158f1d3a8d4966ba62338c4e6fe89aecd0b63c19a84f698cbf78f8": [
+            "bison"
+          ],
+          "6fe84206c4a8804bb7d0e88edba9037238a9d4fca5d6bb23b22bafe25b3701c6": [
+            "httpd"
+          ],
+          "38c4c1d8d78d5265358ed4156a537799a7d193e96a50b351ebad01186d18fe64": [
+            "pkgconf"
+          ],
+          "f8e76515c515ab375168e7bfe911f20cc036e6e9f6853cf188a95058ac8c9394": [
+            "re2c"
+          ],
+          "99a6fc6f0f983ae8d0e53d3df71ab72f2ee5ac9729f45aae2b59933cf3cbb917": [
+            "apr"
+          ],
+          "ab5cf8f50a65153cfaee0872648199c1f889f6e682243cfd9da517fc085b5339": [
+            "apr-util"
+          ],
+          "bb2d8e8422a936ef35568f268a750e18597b51202c7fe3601c20bd30c2727e06": [
+            "argon2"
+          ],
+          "a19890c57dbfb063640d016cd729529d1f1eeacfc29086cb5acb6b1030fcb722": [
+            "aspell"
+          ],
+          "7f2593aa1455ddc6d89554ca036600936d63cb2f79ac681ce82322f71e7787b6": [
+            "autoconf"
+          ],
+          "26f52b26853c394a1f0cf06537dfc5e2a1b3934a7edb6f7a4cd75031da0e68c8": [
+            "curl"
+          ],
+          "ea90cb8d3177e56c5f93e4e52c3cd426991b6ccefb9b555bc6519f8d19bb1e80": [
+            "freetds"
+          ],
+          "45fb99f0c1cced67e5555d624f830ed4f95856036ff34bb9bce86fb998fe6d11": [
+            "gd"
+          ],
+          "6fc3507079d6afd462df4e8d1204f58d6a38b0b68c3d621ef1f5d3e55443790a": [
+            "gmp"
+          ],
+          "ff6b67def58facb1b80b5a245de7a3dd504a2dd2282be0be4390d3ca1db4ff7e": [
+            "icu4c@79"
+          ],
+          "35b7dca5a554f2a2665bf485899d449c1d6bbd332bfe029177c0c76cdaa2b98c": [
+            "krb5"
+          ],
+          "2ee87a6a868cfc05a216fcf2045842a28b2627d1aeefcd8c816a2361950d21ee": [
+            "libffi"
+          ],
+          "d5a563a088728ae163c285ccf57ccb89d92162a01169c0ac4caccfd083f3b9a5": [
+            "libpq"
+          ],
+          "9401ac313ac2a28364bd7b0483b303d234a33c5e52b0342821cecde2373cb9e4": [
+            "libsodium"
+          ],
+          "2a7fa1d89be5ffe4f7dc845802c23da6be6660e7177ac8daae4e976f14e408d5": [
+            "libzip"
+          ],
+          "9263cfdc1bb063afcc2687c5e5e2bca16e06dca68c17c138d988bb03d2502263": [
+            "oniguruma"
+          ],
+          "1a9a292ef3bb1617f4813f0b9db3b62acdff68d7c770c15fc3685f4315aa5e5c": [
+            "openldap"
+          ],
+          "0eb46a52343afdb00d31295d9df55a8c796b950d1a48fd637b530e9874731a57": [
+            "openssl@4"
+          ],
+          "f37ad77d6c032303eea0856dd84f8e6688be4b91877448b222c4a840ef938723": [
+            "pcre2"
+          ],
+          "455b0242870a161865b2d40b7f74caf32dc157ad7da6c9c45df01f541d35e531": [
+            "sqlite"
+          ],
+          "0ab4d602a9c6f31a2f46ffcf30d991fd4cdba22ee635af68104ef96ee510de2e": [
+            "tidy-html5"
+          ],
+          "336bae021880ccd5632f2a5b2d83387b5b07940d7256f0d34520a3ef899779e4": [
+            "unixodbc"
+          ],
+          "444ea78341ee35d937ecb3899c3bd43966c4a994dd525e539a3a40da148bc13e": [
+            "xz"
+          ],
+          "5ad0c8a8a056a0482c60bc0bd89b826d5c66407447efe86417286d98ecc1cbf9": [
+            "bzip2"
+          ],
+          "0dd80232aa516247d3b528d825642d53fb15b0186329f410746e38d681758033": [
+            "libedit"
+          ],
+          "9d8cf75b7a36e9ec709de8f1acdd124ff69c3e584d62c071ca3652a2fb1672c6": [
+            "libffi"
+          ],
+          "3efd30fd92ee4362aaaf180f24b820b2899315863cb62293fe563eda020887cc": [
+            "libxml2"
+          ],
+          "45322197af94277e5782fa162f42cd7893081e8a8230cc90e54c838a51a29e9d": [
+            "libxslt"
+          ],
+          "a200e17a2e16e1b7c7706f141fc8bc064d36859d795fae53d5827cd4bb6875e4": [
+            "gettext"
+          ],
+          "74e45d44846512644815054d27573915c4c8c216934c8282ae492b3060fbc7f8": [
+            "zlib-ng-compat"
+          ]
+        }
+      },
+      "82c00fac6700a35816350f5119f99015d909920097bba3478b901c3148db4cfc": {
+        "sha256": "82c00fac6700a35816350f5119f99015d909920097bba3478b901c3148db4cfc",
+        "formulae": [
+          "apr",
+          "apr-util",
+          "argon2",
+          "aspell",
+          "autoconf",
+          "bison",
+          "bzip2",
+          "curl",
+          "freetds",
+          "gcc",
+          "gd",
+          "gettext",
+          "gmp",
+          "httpd",
+          "icu4c@79",
+          "krb5",
+          "libedit",
+          "libffi",
+          "libpq",
+          "libsodium",
+          "libxml2",
+          "libxslt",
+          "libzip",
+          "oniguruma",
+          "openldap",
+          "openssl@4",
+          "pcre2",
+          "pkgconf",
+          "re2c",
+          "sqlite",
+          "tidy-html5",
+          "unixodbc",
+          "xz",
+          "zlib-ng-compat"
+        ],
+        "declarations": {
+          "c7a96330cc158f1d3a8d4966ba62338c4e6fe89aecd0b63c19a84f698cbf78f8": [
+            "bison"
+          ],
+          "6fe84206c4a8804bb7d0e88edba9037238a9d4fca5d6bb23b22bafe25b3701c6": [
+            "httpd"
+          ],
+          "38c4c1d8d78d5265358ed4156a537799a7d193e96a50b351ebad01186d18fe64": [
+            "pkgconf"
+          ],
+          "f8e76515c515ab375168e7bfe911f20cc036e6e9f6853cf188a95058ac8c9394": [
+            "re2c"
+          ],
+          "99a6fc6f0f983ae8d0e53d3df71ab72f2ee5ac9729f45aae2b59933cf3cbb917": [
+            "apr"
+          ],
+          "ab5cf8f50a65153cfaee0872648199c1f889f6e682243cfd9da517fc085b5339": [
+            "apr-util"
+          ],
+          "bb2d8e8422a936ef35568f268a750e18597b51202c7fe3601c20bd30c2727e06": [
+            "argon2"
+          ],
+          "a19890c57dbfb063640d016cd729529d1f1eeacfc29086cb5acb6b1030fcb722": [
+            "aspell"
+          ],
+          "7f2593aa1455ddc6d89554ca036600936d63cb2f79ac681ce82322f71e7787b6": [
+            "autoconf"
+          ],
+          "26f52b26853c394a1f0cf06537dfc5e2a1b3934a7edb6f7a4cd75031da0e68c8": [
+            "curl"
+          ],
+          "ea90cb8d3177e56c5f93e4e52c3cd426991b6ccefb9b555bc6519f8d19bb1e80": [
+            "freetds"
+          ],
+          "45fb99f0c1cced67e5555d624f830ed4f95856036ff34bb9bce86fb998fe6d11": [
+            "gd"
+          ],
+          "6fc3507079d6afd462df4e8d1204f58d6a38b0b68c3d621ef1f5d3e55443790a": [
+            "gmp"
+          ],
+          "ff6b67def58facb1b80b5a245de7a3dd504a2dd2282be0be4390d3ca1db4ff7e": [
+            "icu4c@79"
+          ],
+          "35b7dca5a554f2a2665bf485899d449c1d6bbd332bfe029177c0c76cdaa2b98c": [
+            "krb5"
+          ],
+          "2ee87a6a868cfc05a216fcf2045842a28b2627d1aeefcd8c816a2361950d21ee": [
+            "libffi"
+          ],
+          "d5a563a088728ae163c285ccf57ccb89d92162a01169c0ac4caccfd083f3b9a5": [
+            "libpq"
+          ],
+          "9401ac313ac2a28364bd7b0483b303d234a33c5e52b0342821cecde2373cb9e4": [
+            "libsodium"
+          ],
+          "2a7fa1d89be5ffe4f7dc845802c23da6be6660e7177ac8daae4e976f14e408d5": [
+            "libzip"
+          ],
+          "9263cfdc1bb063afcc2687c5e5e2bca16e06dca68c17c138d988bb03d2502263": [
+            "oniguruma"
+          ],
+          "1a9a292ef3bb1617f4813f0b9db3b62acdff68d7c770c15fc3685f4315aa5e5c": [
+            "openldap"
+          ],
+          "0eb46a52343afdb00d31295d9df55a8c796b950d1a48fd637b530e9874731a57": [
+            "openssl@4"
+          ],
+          "f37ad77d6c032303eea0856dd84f8e6688be4b91877448b222c4a840ef938723": [
+            "pcre2"
+          ],
+          "455b0242870a161865b2d40b7f74caf32dc157ad7da6c9c45df01f541d35e531": [
+            "sqlite"
+          ],
+          "0ab4d602a9c6f31a2f46ffcf30d991fd4cdba22ee635af68104ef96ee510de2e": [
+            "tidy-html5"
+          ],
+          "336bae021880ccd5632f2a5b2d83387b5b07940d7256f0d34520a3ef899779e4": [
+            "unixodbc"
+          ],
+          "444ea78341ee35d937ecb3899c3bd43966c4a994dd525e539a3a40da148bc13e": [
+            "xz"
+          ],
+          "5ad0c8a8a056a0482c60bc0bd89b826d5c66407447efe86417286d98ecc1cbf9": [
+            "bzip2"
+          ],
+          "0dd80232aa516247d3b528d825642d53fb15b0186329f410746e38d681758033": [
+            "libedit"
+          ],
+          "9d8cf75b7a36e9ec709de8f1acdd124ff69c3e584d62c071ca3652a2fb1672c6": [
+            "libffi"
+          ],
+          "3efd30fd92ee4362aaaf180f24b820b2899315863cb62293fe563eda020887cc": [
+            "libxml2"
+          ],
+          "45322197af94277e5782fa162f42cd7893081e8a8230cc90e54c838a51a29e9d": [
+            "libxslt"
+          ],
+          "e8c18225643d9712c4bb4d9fad64f474b12b5557955b2b7864f3195438f36654": [
+            "gcc"
+          ],
+          "a200e17a2e16e1b7c7706f141fc8bc064d36859d795fae53d5827cd4bb6875e4": [
+            "gettext"
+          ],
+          "74e45d44846512644815054d27573915c4c8c216934c8282ae492b3060fbc7f8": [
+            "zlib-ng-compat"
+          ]
+        }
+      },
+      "8cd15c9dd9fa56a0bf6c8b754c37fbcc8c5e8ba6c794d5b19a5507d5fb6c9e1f": {
+        "sha256": "8cd15c9dd9fa56a0bf6c8b754c37fbcc8c5e8ba6c794d5b19a5507d5fb6c9e1f",
+        "formulae": [
+          "apr",
+          "apr-util",
+          "argon2",
+          "aspell",
+          "autoconf",
+          "bison",
+          "bzip2",
+          "curl",
+          "freetds",
+          "gd",
+          "gettext",
+          "gmp",
+          "httpd",
+          "icu4c@79",
+          "krb5",
+          "libedit",
+          "libffi",
+          "libpq",
+          "libsodium",
+          "libxml2",
+          "libxslt",
+          "libzip",
+          "oniguruma",
+          "openldap",
+          "openssl@4",
+          "pcre2",
+          "pkgconf",
+          "re2c",
+          "sqlite",
+          "tidy-html5",
+          "unixodbc",
+          "xz",
+          "zlib-ng-compat"
+        ],
+        "declarations": {
+          "c7a96330cc158f1d3a8d4966ba62338c4e6fe89aecd0b63c19a84f698cbf78f8": [
+            "bison"
+          ],
+          "6fe84206c4a8804bb7d0e88edba9037238a9d4fca5d6bb23b22bafe25b3701c6": [
+            "httpd"
+          ],
+          "38c4c1d8d78d5265358ed4156a537799a7d193e96a50b351ebad01186d18fe64": [
+            "pkgconf"
+          ],
+          "f8e76515c515ab375168e7bfe911f20cc036e6e9f6853cf188a95058ac8c9394": [
+            "re2c"
+          ],
+          "99a6fc6f0f983ae8d0e53d3df71ab72f2ee5ac9729f45aae2b59933cf3cbb917": [
+            "apr"
+          ],
+          "ab5cf8f50a65153cfaee0872648199c1f889f6e682243cfd9da517fc085b5339": [
+            "apr-util"
+          ],
+          "bb2d8e8422a936ef35568f268a750e18597b51202c7fe3601c20bd30c2727e06": [
+            "argon2"
+          ],
+          "a19890c57dbfb063640d016cd729529d1f1eeacfc29086cb5acb6b1030fcb722": [
+            "aspell"
+          ],
+          "7f2593aa1455ddc6d89554ca036600936d63cb2f79ac681ce82322f71e7787b6": [
+            "autoconf"
+          ],
+          "26f52b26853c394a1f0cf06537dfc5e2a1b3934a7edb6f7a4cd75031da0e68c8": [
+            "curl"
+          ],
+          "ea90cb8d3177e56c5f93e4e52c3cd426991b6ccefb9b555bc6519f8d19bb1e80": [
+            "freetds"
+          ],
+          "45fb99f0c1cced67e5555d624f830ed4f95856036ff34bb9bce86fb998fe6d11": [
+            "gd"
+          ],
+          "6fc3507079d6afd462df4e8d1204f58d6a38b0b68c3d621ef1f5d3e55443790a": [
+            "gmp"
+          ],
+          "ff6b67def58facb1b80b5a245de7a3dd504a2dd2282be0be4390d3ca1db4ff7e": [
+            "icu4c@79"
+          ],
+          "35b7dca5a554f2a2665bf485899d449c1d6bbd332bfe029177c0c76cdaa2b98c": [
+            "krb5"
+          ],
+          "d5a563a088728ae163c285ccf57ccb89d92162a01169c0ac4caccfd083f3b9a5": [
+            "libpq"
+          ],
+          "9401ac313ac2a28364bd7b0483b303d234a33c5e52b0342821cecde2373cb9e4": [
+            "libsodium"
+          ],
+          "2a7fa1d89be5ffe4f7dc845802c23da6be6660e7177ac8daae4e976f14e408d5": [
+            "libzip"
+          ],
+          "9263cfdc1bb063afcc2687c5e5e2bca16e06dca68c17c138d988bb03d2502263": [
+            "oniguruma"
+          ],
+          "1a9a292ef3bb1617f4813f0b9db3b62acdff68d7c770c15fc3685f4315aa5e5c": [
+            "openldap"
+          ],
+          "0eb46a52343afdb00d31295d9df55a8c796b950d1a48fd637b530e9874731a57": [
+            "openssl@4"
+          ],
+          "f37ad77d6c032303eea0856dd84f8e6688be4b91877448b222c4a840ef938723": [
+            "pcre2"
+          ],
+          "455b0242870a161865b2d40b7f74caf32dc157ad7da6c9c45df01f541d35e531": [
+            "sqlite"
+          ],
+          "0ab4d602a9c6f31a2f46ffcf30d991fd4cdba22ee635af68104ef96ee510de2e": [
+            "tidy-html5"
+          ],
+          "336bae021880ccd5632f2a5b2d83387b5b07940d7256f0d34520a3ef899779e4": [
+            "unixodbc"
+          ],
+          "444ea78341ee35d937ecb3899c3bd43966c4a994dd525e539a3a40da148bc13e": [
+            "xz"
+          ],
+          "5ad0c8a8a056a0482c60bc0bd89b826d5c66407447efe86417286d98ecc1cbf9": [
+            "bzip2"
+          ],
+          "0dd80232aa516247d3b528d825642d53fb15b0186329f410746e38d681758033": [
+            "libedit"
+          ],
+          "9d8cf75b7a36e9ec709de8f1acdd124ff69c3e584d62c071ca3652a2fb1672c6": [
+            "libffi"
+          ],
+          "3efd30fd92ee4362aaaf180f24b820b2899315863cb62293fe563eda020887cc": [
+            "libxml2"
+          ],
+          "45322197af94277e5782fa162f42cd7893081e8a8230cc90e54c838a51a29e9d": [
+            "libxslt"
+          ],
+          "a200e17a2e16e1b7c7706f141fc8bc064d36859d795fae53d5827cd4bb6875e4": [
+            "gettext"
+          ],
+          "74e45d44846512644815054d27573915c4c8c216934c8282ae492b3060fbc7f8": [
+            "zlib-ng-compat"
+          ]
+        }
+      },
+      "7fd8ca8a5554a69b81d21c79c169ca4f37d4f4564393bfc15a6ffd7033b8daff": {
+        "sha256": "7fd8ca8a5554a69b81d21c79c169ca4f37d4f4564393bfc15a6ffd7033b8daff",
+        "formulae": [
+          "apr",
+          "apr-util",
+          "argon2",
+          "aspell",
+          "autoconf",
+          "bison",
+          "bzip2",
+          "curl",
+          "freetds",
+          "gcc",
+          "gd",
+          "gettext",
+          "gmp",
+          "httpd",
+          "icu4c@79",
+          "krb5",
+          "libedit",
+          "libffi",
+          "libpq",
+          "libsodium",
+          "libxml2",
+          "libxslt",
+          "libzip",
+          "oniguruma",
+          "openldap",
+          "openssl@4",
+          "pcre2",
+          "pkgconf",
+          "re2c",
+          "sqlite",
+          "tidy-html5",
+          "unixodbc",
+          "xz",
+          "zlib-ng-compat"
+        ],
+        "declarations": {
+          "c7a96330cc158f1d3a8d4966ba62338c4e6fe89aecd0b63c19a84f698cbf78f8": [
+            "bison"
+          ],
+          "6fe84206c4a8804bb7d0e88edba9037238a9d4fca5d6bb23b22bafe25b3701c6": [
+            "httpd"
+          ],
+          "38c4c1d8d78d5265358ed4156a537799a7d193e96a50b351ebad01186d18fe64": [
+            "pkgconf"
+          ],
+          "f8e76515c515ab375168e7bfe911f20cc036e6e9f6853cf188a95058ac8c9394": [
+            "re2c"
+          ],
+          "99a6fc6f0f983ae8d0e53d3df71ab72f2ee5ac9729f45aae2b59933cf3cbb917": [
+            "apr"
+          ],
+          "ab5cf8f50a65153cfaee0872648199c1f889f6e682243cfd9da517fc085b5339": [
+            "apr-util"
+          ],
+          "bb2d8e8422a936ef35568f268a750e18597b51202c7fe3601c20bd30c2727e06": [
+            "argon2"
+          ],
+          "a19890c57dbfb063640d016cd729529d1f1eeacfc29086cb5acb6b1030fcb722": [
+            "aspell"
+          ],
+          "7f2593aa1455ddc6d89554ca036600936d63cb2f79ac681ce82322f71e7787b6": [
+            "autoconf"
+          ],
+          "26f52b26853c394a1f0cf06537dfc5e2a1b3934a7edb6f7a4cd75031da0e68c8": [
+            "curl"
+          ],
+          "ea90cb8d3177e56c5f93e4e52c3cd426991b6ccefb9b555bc6519f8d19bb1e80": [
+            "freetds"
+          ],
+          "45fb99f0c1cced67e5555d624f830ed4f95856036ff34bb9bce86fb998fe6d11": [
+            "gd"
+          ],
+          "6fc3507079d6afd462df4e8d1204f58d6a38b0b68c3d621ef1f5d3e55443790a": [
+            "gmp"
+          ],
+          "ff6b67def58facb1b80b5a245de7a3dd504a2dd2282be0be4390d3ca1db4ff7e": [
+            "icu4c@79"
+          ],
+          "35b7dca5a554f2a2665bf485899d449c1d6bbd332bfe029177c0c76cdaa2b98c": [
+            "krb5"
+          ],
+          "d5a563a088728ae163c285ccf57ccb89d92162a01169c0ac4caccfd083f3b9a5": [
+            "libpq"
+          ],
+          "9401ac313ac2a28364bd7b0483b303d234a33c5e52b0342821cecde2373cb9e4": [
+            "libsodium"
+          ],
+          "2a7fa1d89be5ffe4f7dc845802c23da6be6660e7177ac8daae4e976f14e408d5": [
+            "libzip"
+          ],
+          "9263cfdc1bb063afcc2687c5e5e2bca16e06dca68c17c138d988bb03d2502263": [
+            "oniguruma"
+          ],
+          "1a9a292ef3bb1617f4813f0b9db3b62acdff68d7c770c15fc3685f4315aa5e5c": [
+            "openldap"
+          ],
+          "0eb46a52343afdb00d31295d9df55a8c796b950d1a48fd637b530e9874731a57": [
+            "openssl@4"
+          ],
+          "f37ad77d6c032303eea0856dd84f8e6688be4b91877448b222c4a840ef938723": [
+            "pcre2"
+          ],
+          "455b0242870a161865b2d40b7f74caf32dc157ad7da6c9c45df01f541d35e531": [
+            "sqlite"
+          ],
+          "0ab4d602a9c6f31a2f46ffcf30d991fd4cdba22ee635af68104ef96ee510de2e": [
+            "tidy-html5"
+          ],
+          "336bae021880ccd5632f2a5b2d83387b5b07940d7256f0d34520a3ef899779e4": [
+            "unixodbc"
+          ],
+          "444ea78341ee35d937ecb3899c3bd43966c4a994dd525e539a3a40da148bc13e": [
+            "xz"
+          ],
+          "5ad0c8a8a056a0482c60bc0bd89b826d5c66407447efe86417286d98ecc1cbf9": [
+            "bzip2"
+          ],
+          "0dd80232aa516247d3b528d825642d53fb15b0186329f410746e38d681758033": [
+            "libedit"
+          ],
+          "9d8cf75b7a36e9ec709de8f1acdd124ff69c3e584d62c071ca3652a2fb1672c6": [
+            "libffi"
+          ],
+          "3efd30fd92ee4362aaaf180f24b820b2899315863cb62293fe563eda020887cc": [
+            "libxml2"
+          ],
+          "45322197af94277e5782fa162f42cd7893081e8a8230cc90e54c838a51a29e9d": [
+            "libxslt"
+          ],
+          "e8c18225643d9712c4bb4d9fad64f474b12b5557955b2b7864f3195438f36654": [
+            "gcc"
+          ],
+          "a200e17a2e16e1b7c7706f141fc8bc064d36859d795fae53d5827cd4bb6875e4": [
+            "gettext"
+          ],
+          "74e45d44846512644815054d27573915c4c8c216934c8282ae492b3060fbc7f8": [
+            "zlib-ng-compat"
+          ]
+        }
+      },
+      "6a19eec27ac884f04e97533b9c9dd37d8965287e17497248e4c3cfe2e5f52747": {
+        "sha256": "6a19eec27ac884f04e97533b9c9dd37d8965287e17497248e4c3cfe2e5f52747",
+        "formulae": [
+          "apr",
+          "apr-util",
+          "argon2",
+          "aspell",
+          "autoconf",
+          "bison",
+          "bzip2",
+          "curl",
+          "freetds",
+          "gd",
+          "gettext",
+          "gmp",
+          "httpd",
+          "icu4c@79",
+          "krb5",
+          "libedit",
+          "libffi",
+          "libpq",
+          "libsodium",
+          "libxml2",
+          "libxslt",
+          "libzip",
+          "oniguruma",
+          "openldap",
+          "openssl@4",
+          "pcre2",
+          "pkgconf",
+          "re2c",
+          "sqlite",
+          "tidy-html5",
+          "unixodbc",
+          "zlib-ng-compat"
+        ],
+        "declarations": {
+          "c7a96330cc158f1d3a8d4966ba62338c4e6fe89aecd0b63c19a84f698cbf78f8": [
+            "bison"
+          ],
+          "6fe84206c4a8804bb7d0e88edba9037238a9d4fca5d6bb23b22bafe25b3701c6": [
+            "httpd"
+          ],
+          "38c4c1d8d78d5265358ed4156a537799a7d193e96a50b351ebad01186d18fe64": [
+            "pkgconf"
+          ],
+          "f8e76515c515ab375168e7bfe911f20cc036e6e9f6853cf188a95058ac8c9394": [
+            "re2c"
+          ],
+          "99a6fc6f0f983ae8d0e53d3df71ab72f2ee5ac9729f45aae2b59933cf3cbb917": [
+            "apr"
+          ],
+          "ab5cf8f50a65153cfaee0872648199c1f889f6e682243cfd9da517fc085b5339": [
+            "apr-util"
+          ],
+          "bb2d8e8422a936ef35568f268a750e18597b51202c7fe3601c20bd30c2727e06": [
+            "argon2"
+          ],
+          "a19890c57dbfb063640d016cd729529d1f1eeacfc29086cb5acb6b1030fcb722": [
+            "aspell"
+          ],
+          "7f2593aa1455ddc6d89554ca036600936d63cb2f79ac681ce82322f71e7787b6": [
+            "autoconf"
+          ],
+          "26f52b26853c394a1f0cf06537dfc5e2a1b3934a7edb6f7a4cd75031da0e68c8": [
+            "curl"
+          ],
+          "ea90cb8d3177e56c5f93e4e52c3cd426991b6ccefb9b555bc6519f8d19bb1e80": [
+            "freetds"
+          ],
+          "45fb99f0c1cced67e5555d624f830ed4f95856036ff34bb9bce86fb998fe6d11": [
+            "gd"
+          ],
+          "6fc3507079d6afd462df4e8d1204f58d6a38b0b68c3d621ef1f5d3e55443790a": [
+            "gmp"
+          ],
+          "ff6b67def58facb1b80b5a245de7a3dd504a2dd2282be0be4390d3ca1db4ff7e": [
+            "icu4c@79"
+          ],
+          "35b7dca5a554f2a2665bf485899d449c1d6bbd332bfe029177c0c76cdaa2b98c": [
+            "krb5"
+          ],
+          "d5a563a088728ae163c285ccf57ccb89d92162a01169c0ac4caccfd083f3b9a5": [
+            "libpq"
+          ],
+          "9401ac313ac2a28364bd7b0483b303d234a33c5e52b0342821cecde2373cb9e4": [
+            "libsodium"
+          ],
+          "2a7fa1d89be5ffe4f7dc845802c23da6be6660e7177ac8daae4e976f14e408d5": [
+            "libzip"
+          ],
+          "9263cfdc1bb063afcc2687c5e5e2bca16e06dca68c17c138d988bb03d2502263": [
+            "oniguruma"
+          ],
+          "1a9a292ef3bb1617f4813f0b9db3b62acdff68d7c770c15fc3685f4315aa5e5c": [
+            "openldap"
+          ],
+          "0eb46a52343afdb00d31295d9df55a8c796b950d1a48fd637b530e9874731a57": [
+            "openssl@4"
+          ],
+          "f37ad77d6c032303eea0856dd84f8e6688be4b91877448b222c4a840ef938723": [
+            "pcre2"
+          ],
+          "455b0242870a161865b2d40b7f74caf32dc157ad7da6c9c45df01f541d35e531": [
+            "sqlite"
+          ],
+          "0ab4d602a9c6f31a2f46ffcf30d991fd4cdba22ee635af68104ef96ee510de2e": [
+            "tidy-html5"
+          ],
+          "336bae021880ccd5632f2a5b2d83387b5b07940d7256f0d34520a3ef899779e4": [
+            "unixodbc"
+          ],
+          "5ad0c8a8a056a0482c60bc0bd89b826d5c66407447efe86417286d98ecc1cbf9": [
+            "bzip2"
+          ],
+          "0dd80232aa516247d3b528d825642d53fb15b0186329f410746e38d681758033": [
+            "libedit"
+          ],
+          "9d8cf75b7a36e9ec709de8f1acdd124ff69c3e584d62c071ca3652a2fb1672c6": [
+            "libffi"
+          ],
+          "3efd30fd92ee4362aaaf180f24b820b2899315863cb62293fe563eda020887cc": [
+            "libxml2"
+          ],
+          "45322197af94277e5782fa162f42cd7893081e8a8230cc90e54c838a51a29e9d": [
+            "libxslt"
+          ],
+          "a200e17a2e16e1b7c7706f141fc8bc064d36859d795fae53d5827cd4bb6875e4": [
+            "gettext"
+          ],
+          "74e45d44846512644815054d27573915c4c8c216934c8282ae492b3060fbc7f8": [
+            "zlib-ng-compat"
+          ]
+        }
+      },
+      "5a8348aa17864e5ee8b7d587b02f6c21b94a255140e1d098ce453a16c66f19f8": {
+        "sha256": "5a8348aa17864e5ee8b7d587b02f6c21b94a255140e1d098ce453a16c66f19f8",
+        "formulae": [
+          "apr",
+          "apr-util",
+          "argon2",
+          "aspell",
+          "autoconf",
+          "bison",
+          "bzip2",
+          "curl",
+          "freetds",
+          "gcc",
+          "gd",
+          "gettext",
+          "gmp",
+          "httpd",
+          "icu4c@79",
+          "krb5",
+          "libedit",
+          "libffi",
+          "libpq",
+          "libsodium",
+          "libxml2",
+          "libxslt",
+          "libzip",
+          "oniguruma",
+          "openldap",
+          "openssl@4",
+          "pcre2",
+          "pkgconf",
+          "re2c",
+          "sqlite",
+          "tidy-html5",
+          "unixodbc",
+          "zlib-ng-compat"
+        ],
+        "declarations": {
+          "c7a96330cc158f1d3a8d4966ba62338c4e6fe89aecd0b63c19a84f698cbf78f8": [
+            "bison"
+          ],
+          "6fe84206c4a8804bb7d0e88edba9037238a9d4fca5d6bb23b22bafe25b3701c6": [
+            "httpd"
+          ],
+          "38c4c1d8d78d5265358ed4156a537799a7d193e96a50b351ebad01186d18fe64": [
+            "pkgconf"
+          ],
+          "f8e76515c515ab375168e7bfe911f20cc036e6e9f6853cf188a95058ac8c9394": [
+            "re2c"
+          ],
+          "99a6fc6f0f983ae8d0e53d3df71ab72f2ee5ac9729f45aae2b59933cf3cbb917": [
+            "apr"
+          ],
+          "ab5cf8f50a65153cfaee0872648199c1f889f6e682243cfd9da517fc085b5339": [
+            "apr-util"
+          ],
+          "bb2d8e8422a936ef35568f268a750e18597b51202c7fe3601c20bd30c2727e06": [
+            "argon2"
+          ],
+          "a19890c57dbfb063640d016cd729529d1f1eeacfc29086cb5acb6b1030fcb722": [
+            "aspell"
+          ],
+          "7f2593aa1455ddc6d89554ca036600936d63cb2f79ac681ce82322f71e7787b6": [
+            "autoconf"
+          ],
+          "26f52b26853c394a1f0cf06537dfc5e2a1b3934a7edb6f7a4cd75031da0e68c8": [
+            "curl"
+          ],
+          "ea90cb8d3177e56c5f93e4e52c3cd426991b6ccefb9b555bc6519f8d19bb1e80": [
+            "freetds"
+          ],
+          "45fb99f0c1cced67e5555d624f830ed4f95856036ff34bb9bce86fb998fe6d11": [
+            "gd"
+          ],
+          "6fc3507079d6afd462df4e8d1204f58d6a38b0b68c3d621ef1f5d3e55443790a": [
+            "gmp"
+          ],
+          "ff6b67def58facb1b80b5a245de7a3dd504a2dd2282be0be4390d3ca1db4ff7e": [
+            "icu4c@79"
+          ],
+          "35b7dca5a554f2a2665bf485899d449c1d6bbd332bfe029177c0c76cdaa2b98c": [
+            "krb5"
+          ],
+          "d5a563a088728ae163c285ccf57ccb89d92162a01169c0ac4caccfd083f3b9a5": [
+            "libpq"
+          ],
+          "9401ac313ac2a28364bd7b0483b303d234a33c5e52b0342821cecde2373cb9e4": [
+            "libsodium"
+          ],
+          "2a7fa1d89be5ffe4f7dc845802c23da6be6660e7177ac8daae4e976f14e408d5": [
+            "libzip"
+          ],
+          "9263cfdc1bb063afcc2687c5e5e2bca16e06dca68c17c138d988bb03d2502263": [
+            "oniguruma"
+          ],
+          "1a9a292ef3bb1617f4813f0b9db3b62acdff68d7c770c15fc3685f4315aa5e5c": [
+            "openldap"
+          ],
+          "0eb46a52343afdb00d31295d9df55a8c796b950d1a48fd637b530e9874731a57": [
+            "openssl@4"
+          ],
+          "f37ad77d6c032303eea0856dd84f8e6688be4b91877448b222c4a840ef938723": [
+            "pcre2"
+          ],
+          "455b0242870a161865b2d40b7f74caf32dc157ad7da6c9c45df01f541d35e531": [
+            "sqlite"
+          ],
+          "0ab4d602a9c6f31a2f46ffcf30d991fd4cdba22ee635af68104ef96ee510de2e": [
+            "tidy-html5"
+          ],
+          "336bae021880ccd5632f2a5b2d83387b5b07940d7256f0d34520a3ef899779e4": [
+            "unixodbc"
+          ],
+          "5ad0c8a8a056a0482c60bc0bd89b826d5c66407447efe86417286d98ecc1cbf9": [
+            "bzip2"
+          ],
+          "0dd80232aa516247d3b528d825642d53fb15b0186329f410746e38d681758033": [
+            "libedit"
+          ],
+          "9d8cf75b7a36e9ec709de8f1acdd124ff69c3e584d62c071ca3652a2fb1672c6": [
+            "libffi"
+          ],
+          "3efd30fd92ee4362aaaf180f24b820b2899315863cb62293fe563eda020887cc": [
+            "libxml2"
+          ],
+          "45322197af94277e5782fa162f42cd7893081e8a8230cc90e54c838a51a29e9d": [
+            "libxslt"
+          ],
+          "e8c18225643d9712c4bb4d9fad64f474b12b5557955b2b7864f3195438f36654": [
+            "gcc"
+          ],
+          "a200e17a2e16e1b7c7706f141fc8bc064d36859d795fae53d5827cd4bb6875e4": [
+            "gettext"
+          ],
+          "74e45d44846512644815054d27573915c4c8c216934c8282ae492b3060fbc7f8": [
+            "zlib-ng-compat"
+          ]
+        }
+      },
+      "8a7a5da64047cdbd8ece8a0ba3a2f8ec4c6cbc6caab42e8aa586244822434c32": {
+        "sha256": "8a7a5da64047cdbd8ece8a0ba3a2f8ec4c6cbc6caab42e8aa586244822434c32",
+        "formulae": [
+          "apr",
+          "apr-util",
+          "argon2",
+          "aspell",
+          "autoconf",
+          "bzip2",
+          "curl",
+          "freetds",
+          "gcc",
+          "gd",
+          "gettext",
+          "gmp",
+          "httpd",
+          "icu4c@79",
+          "krb5",
+          "libedit",
+          "libffi",
+          "libpq",
+          "libsodium",
+          "libxml2",
+          "libxslt",
+          "libzip",
+          "oniguruma",
+          "openldap",
+          "openssl@4",
+          "pcre2",
+          "pkgconf",
+          "sqlite",
+          "tidy-html5",
+          "unixodbc",
+          "xz",
+          "zlib-ng-compat"
+        ],
+        "declarations": {
+          "6fe84206c4a8804bb7d0e88edba9037238a9d4fca5d6bb23b22bafe25b3701c6": [
+            "httpd"
+          ],
+          "38c4c1d8d78d5265358ed4156a537799a7d193e96a50b351ebad01186d18fe64": [
+            "pkgconf"
+          ],
+          "99a6fc6f0f983ae8d0e53d3df71ab72f2ee5ac9729f45aae2b59933cf3cbb917": [
+            "apr"
+          ],
+          "ab5cf8f50a65153cfaee0872648199c1f889f6e682243cfd9da517fc085b5339": [
+            "apr-util"
+          ],
+          "bb2d8e8422a936ef35568f268a750e18597b51202c7fe3601c20bd30c2727e06": [
+            "argon2"
+          ],
+          "a19890c57dbfb063640d016cd729529d1f1eeacfc29086cb5acb6b1030fcb722": [
+            "aspell"
+          ],
+          "7f2593aa1455ddc6d89554ca036600936d63cb2f79ac681ce82322f71e7787b6": [
+            "autoconf"
+          ],
+          "26f52b26853c394a1f0cf06537dfc5e2a1b3934a7edb6f7a4cd75031da0e68c8": [
+            "curl"
+          ],
+          "ea90cb8d3177e56c5f93e4e52c3cd426991b6ccefb9b555bc6519f8d19bb1e80": [
+            "freetds"
+          ],
+          "45fb99f0c1cced67e5555d624f830ed4f95856036ff34bb9bce86fb998fe6d11": [
+            "gd"
+          ],
+          "6fc3507079d6afd462df4e8d1204f58d6a38b0b68c3d621ef1f5d3e55443790a": [
+            "gmp"
+          ],
+          "ff6b67def58facb1b80b5a245de7a3dd504a2dd2282be0be4390d3ca1db4ff7e": [
+            "icu4c@79"
+          ],
+          "35b7dca5a554f2a2665bf485899d449c1d6bbd332bfe029177c0c76cdaa2b98c": [
+            "krb5"
+          ],
+          "d5a563a088728ae163c285ccf57ccb89d92162a01169c0ac4caccfd083f3b9a5": [
+            "libpq"
+          ],
+          "9401ac313ac2a28364bd7b0483b303d234a33c5e52b0342821cecde2373cb9e4": [
+            "libsodium"
+          ],
+          "2a7fa1d89be5ffe4f7dc845802c23da6be6660e7177ac8daae4e976f14e408d5": [
+            "libzip"
+          ],
+          "9263cfdc1bb063afcc2687c5e5e2bca16e06dca68c17c138d988bb03d2502263": [
+            "oniguruma"
+          ],
+          "1a9a292ef3bb1617f4813f0b9db3b62acdff68d7c770c15fc3685f4315aa5e5c": [
+            "openldap"
+          ],
+          "0eb46a52343afdb00d31295d9df55a8c796b950d1a48fd637b530e9874731a57": [
+            "openssl@4"
+          ],
+          "f37ad77d6c032303eea0856dd84f8e6688be4b91877448b222c4a840ef938723": [
+            "pcre2"
+          ],
+          "455b0242870a161865b2d40b7f74caf32dc157ad7da6c9c45df01f541d35e531": [
+            "sqlite"
+          ],
+          "0ab4d602a9c6f31a2f46ffcf30d991fd4cdba22ee635af68104ef96ee510de2e": [
+            "tidy-html5"
+          ],
+          "336bae021880ccd5632f2a5b2d83387b5b07940d7256f0d34520a3ef899779e4": [
+            "unixodbc"
+          ],
+          "444ea78341ee35d937ecb3899c3bd43966c4a994dd525e539a3a40da148bc13e": [
+            "xz"
+          ],
+          "5ad0c8a8a056a0482c60bc0bd89b826d5c66407447efe86417286d98ecc1cbf9": [
+            "bzip2"
+          ],
+          "0dd80232aa516247d3b528d825642d53fb15b0186329f410746e38d681758033": [
+            "libedit"
+          ],
+          "9d8cf75b7a36e9ec709de8f1acdd124ff69c3e584d62c071ca3652a2fb1672c6": [
+            "libffi"
+          ],
+          "3efd30fd92ee4362aaaf180f24b820b2899315863cb62293fe563eda020887cc": [
+            "libxml2"
+          ],
+          "45322197af94277e5782fa162f42cd7893081e8a8230cc90e54c838a51a29e9d": [
+            "libxslt"
+          ],
+          "e8c18225643d9712c4bb4d9fad64f474b12b5557955b2b7864f3195438f36654": [
+            "gcc"
+          ],
+          "a200e17a2e16e1b7c7706f141fc8bc064d36859d795fae53d5827cd4bb6875e4": [
+            "gettext"
+          ],
+          "74e45d44846512644815054d27573915c4c8c216934c8282ae492b3060fbc7f8": [
+            "zlib-ng-compat"
+          ]
+        }
+      },
+      "6521305d410dd8503d7c75f0d7d16f36264e1480781b40684afb6398e3dffd5a": {
+        "sha256": "6521305d410dd8503d7c75f0d7d16f36264e1480781b40684afb6398e3dffd5a",
+        "formulae": [
+          "apr",
+          "apr-util",
+          "argon2",
+          "autoconf",
+          "bison",
+          "bzip2",
+          "capstone",
+          "curl",
+          "freetds",
+          "gd",
+          "gettext",
+          "gmp",
+          "httpd",
+          "icu4c@79",
+          "libedit",
+          "libffi",
+          "libpq",
+          "libsodium",
+          "libxml2",
+          "libxslt",
+          "libzip",
+          "net-snmp",
+          "oniguruma",
+          "openldap",
+          "openssl@4",
+          "pcre2",
+          "pkgconf",
+          "re2c",
+          "sqlite",
+          "tidy-html5",
+          "unixodbc",
+          "xz",
+          "zlib-ng-compat"
+        ],
+        "declarations": {
+          "c7a96330cc158f1d3a8d4966ba62338c4e6fe89aecd0b63c19a84f698cbf78f8": [
+            "bison"
+          ],
+          "6fe84206c4a8804bb7d0e88edba9037238a9d4fca5d6bb23b22bafe25b3701c6": [
+            "httpd"
+          ],
+          "38c4c1d8d78d5265358ed4156a537799a7d193e96a50b351ebad01186d18fe64": [
+            "pkgconf"
+          ],
+          "f8e76515c515ab375168e7bfe911f20cc036e6e9f6853cf188a95058ac8c9394": [
+            "re2c"
+          ],
+          "99a6fc6f0f983ae8d0e53d3df71ab72f2ee5ac9729f45aae2b59933cf3cbb917": [
+            "apr"
+          ],
+          "ab5cf8f50a65153cfaee0872648199c1f889f6e682243cfd9da517fc085b5339": [
+            "apr-util"
+          ],
+          "bb2d8e8422a936ef35568f268a750e18597b51202c7fe3601c20bd30c2727e06": [
+            "argon2"
+          ],
+          "7f2593aa1455ddc6d89554ca036600936d63cb2f79ac681ce82322f71e7787b6": [
+            "autoconf"
+          ],
+          "d69efc5c4ad70fd477ff5a9c26ee5d5ea03afd35160af1f937eb5a234aed1ab1": [
+            "capstone"
+          ],
+          "26f52b26853c394a1f0cf06537dfc5e2a1b3934a7edb6f7a4cd75031da0e68c8": [
+            "curl"
+          ],
+          "ea90cb8d3177e56c5f93e4e52c3cd426991b6ccefb9b555bc6519f8d19bb1e80": [
+            "freetds"
+          ],
+          "45fb99f0c1cced67e5555d624f830ed4f95856036ff34bb9bce86fb998fe6d11": [
+            "gd"
+          ],
+          "6fc3507079d6afd462df4e8d1204f58d6a38b0b68c3d621ef1f5d3e55443790a": [
+            "gmp"
+          ],
+          "ff6b67def58facb1b80b5a245de7a3dd504a2dd2282be0be4390d3ca1db4ff7e": [
+            "icu4c@79"
+          ],
+          "d5a563a088728ae163c285ccf57ccb89d92162a01169c0ac4caccfd083f3b9a5": [
+            "libpq"
+          ],
+          "9401ac313ac2a28364bd7b0483b303d234a33c5e52b0342821cecde2373cb9e4": [
+            "libsodium"
+          ],
+          "2a7fa1d89be5ffe4f7dc845802c23da6be6660e7177ac8daae4e976f14e408d5": [
+            "libzip"
+          ],
+          "f477bbd77cb6c2d1d03b0a1598bf9bf62857e6b15b15f3de572ceefb65476cf6": [
+            "net-snmp"
+          ],
+          "9263cfdc1bb063afcc2687c5e5e2bca16e06dca68c17c138d988bb03d2502263": [
+            "oniguruma"
+          ],
+          "1a9a292ef3bb1617f4813f0b9db3b62acdff68d7c770c15fc3685f4315aa5e5c": [
+            "openldap"
+          ],
+          "0eb46a52343afdb00d31295d9df55a8c796b950d1a48fd637b530e9874731a57": [
+            "openssl@4"
+          ],
+          "f37ad77d6c032303eea0856dd84f8e6688be4b91877448b222c4a840ef938723": [
+            "pcre2"
+          ],
+          "455b0242870a161865b2d40b7f74caf32dc157ad7da6c9c45df01f541d35e531": [
+            "sqlite"
+          ],
+          "0ab4d602a9c6f31a2f46ffcf30d991fd4cdba22ee635af68104ef96ee510de2e": [
+            "tidy-html5"
+          ],
+          "336bae021880ccd5632f2a5b2d83387b5b07940d7256f0d34520a3ef899779e4": [
+            "unixodbc"
+          ],
+          "444ea78341ee35d937ecb3899c3bd43966c4a994dd525e539a3a40da148bc13e": [
+            "xz"
+          ],
+          "5ad0c8a8a056a0482c60bc0bd89b826d5c66407447efe86417286d98ecc1cbf9": [
+            "bzip2"
+          ],
+          "0dd80232aa516247d3b528d825642d53fb15b0186329f410746e38d681758033": [
+            "libedit"
+          ],
+          "9d8cf75b7a36e9ec709de8f1acdd124ff69c3e584d62c071ca3652a2fb1672c6": [
+            "libffi"
+          ],
+          "3efd30fd92ee4362aaaf180f24b820b2899315863cb62293fe563eda020887cc": [
+            "libxml2"
+          ],
+          "45322197af94277e5782fa162f42cd7893081e8a8230cc90e54c838a51a29e9d": [
+            "libxslt"
+          ],
+          "a200e17a2e16e1b7c7706f141fc8bc064d36859d795fae53d5827cd4bb6875e4": [
+            "gettext"
+          ],
+          "74e45d44846512644815054d27573915c4c8c216934c8282ae492b3060fbc7f8": [
+            "zlib-ng-compat"
+          ]
+        }
+      },
+      "b3992935838c2de10627ead579d65c1e932d9c336e66a8bbb69df8def3fcc381": {
+        "sha256": "b3992935838c2de10627ead579d65c1e932d9c336e66a8bbb69df8def3fcc381",
+        "formulae": [
+          "apr",
+          "apr-util",
+          "argon2",
+          "autoconf",
+          "bzip2",
+          "capstone",
+          "curl",
+          "freetds",
+          "gcc",
+          "gd",
+          "gettext",
+          "gmp",
+          "httpd",
+          "icu4c@79",
+          "libedit",
+          "libffi",
+          "libpq",
+          "libsodium",
+          "libxml2",
+          "libxslt",
+          "libzip",
+          "net-snmp",
+          "oniguruma",
+          "openldap",
+          "openssl@4",
+          "pcre2",
+          "pkgconf",
+          "sqlite",
+          "tidy-html5",
+          "unixodbc",
+          "xz",
+          "zlib-ng-compat"
+        ],
+        "declarations": {
+          "6fe84206c4a8804bb7d0e88edba9037238a9d4fca5d6bb23b22bafe25b3701c6": [
+            "httpd"
+          ],
+          "38c4c1d8d78d5265358ed4156a537799a7d193e96a50b351ebad01186d18fe64": [
+            "pkgconf"
+          ],
+          "99a6fc6f0f983ae8d0e53d3df71ab72f2ee5ac9729f45aae2b59933cf3cbb917": [
+            "apr"
+          ],
+          "ab5cf8f50a65153cfaee0872648199c1f889f6e682243cfd9da517fc085b5339": [
+            "apr-util"
+          ],
+          "bb2d8e8422a936ef35568f268a750e18597b51202c7fe3601c20bd30c2727e06": [
+            "argon2"
+          ],
+          "7f2593aa1455ddc6d89554ca036600936d63cb2f79ac681ce82322f71e7787b6": [
+            "autoconf"
+          ],
+          "d69efc5c4ad70fd477ff5a9c26ee5d5ea03afd35160af1f937eb5a234aed1ab1": [
+            "capstone"
+          ],
+          "26f52b26853c394a1f0cf06537dfc5e2a1b3934a7edb6f7a4cd75031da0e68c8": [
+            "curl"
+          ],
+          "ea90cb8d3177e56c5f93e4e52c3cd426991b6ccefb9b555bc6519f8d19bb1e80": [
+            "freetds"
+          ],
+          "45fb99f0c1cced67e5555d624f830ed4f95856036ff34bb9bce86fb998fe6d11": [
+            "gd"
+          ],
+          "6fc3507079d6afd462df4e8d1204f58d6a38b0b68c3d621ef1f5d3e55443790a": [
+            "gmp"
+          ],
+          "ff6b67def58facb1b80b5a245de7a3dd504a2dd2282be0be4390d3ca1db4ff7e": [
+            "icu4c@79"
+          ],
+          "d5a563a088728ae163c285ccf57ccb89d92162a01169c0ac4caccfd083f3b9a5": [
+            "libpq"
+          ],
+          "9401ac313ac2a28364bd7b0483b303d234a33c5e52b0342821cecde2373cb9e4": [
+            "libsodium"
+          ],
+          "2a7fa1d89be5ffe4f7dc845802c23da6be6660e7177ac8daae4e976f14e408d5": [
+            "libzip"
+          ],
+          "f477bbd77cb6c2d1d03b0a1598bf9bf62857e6b15b15f3de572ceefb65476cf6": [
+            "net-snmp"
+          ],
+          "9263cfdc1bb063afcc2687c5e5e2bca16e06dca68c17c138d988bb03d2502263": [
+            "oniguruma"
+          ],
+          "1a9a292ef3bb1617f4813f0b9db3b62acdff68d7c770c15fc3685f4315aa5e5c": [
+            "openldap"
+          ],
+          "0eb46a52343afdb00d31295d9df55a8c796b950d1a48fd637b530e9874731a57": [
+            "openssl@4"
+          ],
+          "f37ad77d6c032303eea0856dd84f8e6688be4b91877448b222c4a840ef938723": [
+            "pcre2"
+          ],
+          "455b0242870a161865b2d40b7f74caf32dc157ad7da6c9c45df01f541d35e531": [
+            "sqlite"
+          ],
+          "0ab4d602a9c6f31a2f46ffcf30d991fd4cdba22ee635af68104ef96ee510de2e": [
+            "tidy-html5"
+          ],
+          "336bae021880ccd5632f2a5b2d83387b5b07940d7256f0d34520a3ef899779e4": [
+            "unixodbc"
+          ],
+          "444ea78341ee35d937ecb3899c3bd43966c4a994dd525e539a3a40da148bc13e": [
+            "xz"
+          ],
+          "5ad0c8a8a056a0482c60bc0bd89b826d5c66407447efe86417286d98ecc1cbf9": [
+            "bzip2"
+          ],
+          "0dd80232aa516247d3b528d825642d53fb15b0186329f410746e38d681758033": [
+            "libedit"
+          ],
+          "9d8cf75b7a36e9ec709de8f1acdd124ff69c3e584d62c071ca3652a2fb1672c6": [
+            "libffi"
+          ],
+          "3efd30fd92ee4362aaaf180f24b820b2899315863cb62293fe563eda020887cc": [
+            "libxml2"
+          ],
+          "45322197af94277e5782fa162f42cd7893081e8a8230cc90e54c838a51a29e9d": [
+            "libxslt"
+          ],
+          "e8c18225643d9712c4bb4d9fad64f474b12b5557955b2b7864f3195438f36654": [
+            "gcc"
+          ],
+          "a200e17a2e16e1b7c7706f141fc8bc064d36859d795fae53d5827cd4bb6875e4": [
+            "gettext"
+          ],
+          "74e45d44846512644815054d27573915c4c8c216934c8282ae492b3060fbc7f8": [
+            "zlib-ng-compat"
+          ]
+        }
+      },
       "2cb74f79bc9c071f04349d89e4817aec2d4589301cb814b56640c892d7ba5092": {
         "sha256": "2cb74f79bc9c071f04349d89e4817aec2d4589301cb814b56640c892d7ba5092",
         "formulae": [
@@ -8744,2131 +10890,6 @@
           ],
           "45322197af94277e5782fa162f42cd7893081e8a8230cc90e54c838a51a29e9d": [
             "libxslt"
-          ],
-          "a200e17a2e16e1b7c7706f141fc8bc064d36859d795fae53d5827cd4bb6875e4": [
-            "gettext"
-          ],
-          "74e45d44846512644815054d27573915c4c8c216934c8282ae492b3060fbc7f8": [
-            "zlib-ng-compat"
-          ]
-        }
-      },
-      "65a6bc198a77377de0efb8d4acf981dcffb7bc6d83e9cace3dc8e80c6fd0e14f": {
-        "sha256": "65a6bc198a77377de0efb8d4acf981dcffb7bc6d83e9cace3dc8e80c6fd0e14f",
-        "formulae": [
-          "apr",
-          "apr-util",
-          "aspell",
-          "bzip2",
-          "curl",
-          "freetds",
-          "freetype",
-          "gd",
-          "gettext",
-          "gmp",
-          "httpd",
-          "icu4c@78",
-          "jpeg",
-          "krb5",
-          "libedit",
-          "libpng",
-          "libpq",
-          "libtool",
-          "libx11",
-          "libxml2",
-          "libxpm",
-          "libxslt",
-          "libzip",
-          "openldap",
-          "openssl@4",
-          "pcre",
-          "pkgconf",
-          "re2c",
-          "sqlite",
-          "tidy-html5",
-          "unixodbc",
-          "zlib-ng-compat"
-        ],
-        "declarations": {
-          "6fe84206c4a8804bb7d0e88edba9037238a9d4fca5d6bb23b22bafe25b3701c6": [
-            "httpd"
-          ],
-          "38c4c1d8d78d5265358ed4156a537799a7d193e96a50b351ebad01186d18fe64": [
-            "pkgconf"
-          ],
-          "f8e76515c515ab375168e7bfe911f20cc036e6e9f6853cf188a95058ac8c9394": [
-            "re2c"
-          ],
-          "4bca2c7562e6ff3d89feafb115f9e3fc2f249d6610b1a8a1f600bbbeaa943ebe": [],
-          "99a6fc6f0f983ae8d0e53d3df71ab72f2ee5ac9729f45aae2b59933cf3cbb917": [
-            "apr"
-          ],
-          "ab5cf8f50a65153cfaee0872648199c1f889f6e682243cfd9da517fc085b5339": [
-            "apr-util"
-          ],
-          "a19890c57dbfb063640d016cd729529d1f1eeacfc29086cb5acb6b1030fcb722": [
-            "aspell"
-          ],
-          "26f52b26853c394a1f0cf06537dfc5e2a1b3934a7edb6f7a4cd75031da0e68c8": [
-            "curl"
-          ],
-          "ea90cb8d3177e56c5f93e4e52c3cd426991b6ccefb9b555bc6519f8d19bb1e80": [
-            "freetds"
-          ],
-          "d6a32ed1e8586dbf79a7e931b839b43ca0c73a737bc39d06e0cbd37ee82bb6ff": [
-            "freetype"
-          ],
-          "45fb99f0c1cced67e5555d624f830ed4f95856036ff34bb9bce86fb998fe6d11": [
-            "gd"
-          ],
-          "6fc3507079d6afd462df4e8d1204f58d6a38b0b68c3d621ef1f5d3e55443790a": [
-            "gmp"
-          ],
-          "eb661e2036ecac315d569c0d0549b76b2ac48b7452811ec899580ed968bf464e": [
-            "icu4c@78"
-          ],
-          "646c3dcfdcb81d22dd0a7b9c8ef486d69d54047485dbdb629922d070d58345d7": [
-            "jpeg"
-          ],
-          "35b7dca5a554f2a2665bf485899d449c1d6bbd332bfe029177c0c76cdaa2b98c": [
-            "krb5"
-          ],
-          "b46c3d9ce20da815605e74b87f58044d61de4629432c01e7506cbd45d4fa5ca2": [
-            "libpng"
-          ],
-          "d5a563a088728ae163c285ccf57ccb89d92162a01169c0ac4caccfd083f3b9a5": [
-            "libpq"
-          ],
-          "37bd0678aca767f78358e31916ac9c8a29209f7fce1281684f89b2a2a64de403": [
-            "libtool"
-          ],
-          "cb96b527fb79fceac4629c334b05152984d0861c3a0af06f47745bdfd2cfd4d6": [
-            "libx11"
-          ],
-          "7f487c5090a0f5aa0750eb8723fc5326c52155580d6fc90a39ae530d51f0e936": [
-            "libxpm"
-          ],
-          "2a7fa1d89be5ffe4f7dc845802c23da6be6660e7177ac8daae4e976f14e408d5": [
-            "libzip"
-          ],
-          "1a9a292ef3bb1617f4813f0b9db3b62acdff68d7c770c15fc3685f4315aa5e5c": [
-            "openldap"
-          ],
-          "0eb46a52343afdb00d31295d9df55a8c796b950d1a48fd637b530e9874731a57": [
-            "openssl@4"
-          ],
-          "0e593881621fa197c6f8cda91c6ba4cd009f33180ec15c1cb9185953c36ae6b0": [
-            "pcre"
-          ],
-          "cd061624348d09070ca4f73a80ac01f6b68ac9f8838e425ddf5c0da055b65bdf": [],
-          "455b0242870a161865b2d40b7f74caf32dc157ad7da6c9c45df01f541d35e531": [
-            "sqlite"
-          ],
-          "0ab4d602a9c6f31a2f46ffcf30d991fd4cdba22ee635af68104ef96ee510de2e": [
-            "tidy-html5"
-          ],
-          "336bae021880ccd5632f2a5b2d83387b5b07940d7256f0d34520a3ef899779e4": [
-            "unixodbc"
-          ],
-          "5ad0c8a8a056a0482c60bc0bd89b826d5c66407447efe86417286d98ecc1cbf9": [
-            "bzip2"
-          ],
-          "0dd80232aa516247d3b528d825642d53fb15b0186329f410746e38d681758033": [
-            "libedit"
-          ],
-          "3efd30fd92ee4362aaaf180f24b820b2899315863cb62293fe563eda020887cc": [
-            "libxml2"
-          ],
-          "45322197af94277e5782fa162f42cd7893081e8a8230cc90e54c838a51a29e9d": [
-            "libxslt"
-          ],
-          "a200e17a2e16e1b7c7706f141fc8bc064d36859d795fae53d5827cd4bb6875e4": [
-            "gettext"
-          ],
-          "74e45d44846512644815054d27573915c4c8c216934c8282ae492b3060fbc7f8": [
-            "zlib-ng-compat"
-          ]
-        }
-      },
-      "3f2f59375053eb4e619c424852ce33e0f0798af6564980287267ecb4ab107a9c": {
-        "sha256": "3f2f59375053eb4e619c424852ce33e0f0798af6564980287267ecb4ab107a9c",
-        "formulae": [
-          "apr",
-          "apr-util",
-          "aspell",
-          "autoconf",
-          "bison",
-          "bzip2",
-          "curl",
-          "freetds",
-          "freetype",
-          "gd",
-          "gettext",
-          "gmp",
-          "httpd",
-          "icu4c@78",
-          "jpeg",
-          "krb5",
-          "libedit",
-          "libpng",
-          "libpq",
-          "libtool",
-          "libx11",
-          "libxml2",
-          "libxpm",
-          "libxslt",
-          "libzip",
-          "openldap",
-          "openssl@4",
-          "pcre",
-          "pkgconf",
-          "re2c",
-          "sqlite",
-          "tidy-html5",
-          "unixodbc",
-          "zlib-ng-compat"
-        ],
-        "declarations": {
-          "c7a96330cc158f1d3a8d4966ba62338c4e6fe89aecd0b63c19a84f698cbf78f8": [
-            "bison"
-          ],
-          "6fe84206c4a8804bb7d0e88edba9037238a9d4fca5d6bb23b22bafe25b3701c6": [
-            "httpd"
-          ],
-          "38c4c1d8d78d5265358ed4156a537799a7d193e96a50b351ebad01186d18fe64": [
-            "pkgconf"
-          ],
-          "f8e76515c515ab375168e7bfe911f20cc036e6e9f6853cf188a95058ac8c9394": [
-            "re2c"
-          ],
-          "99a6fc6f0f983ae8d0e53d3df71ab72f2ee5ac9729f45aae2b59933cf3cbb917": [
-            "apr"
-          ],
-          "ab5cf8f50a65153cfaee0872648199c1f889f6e682243cfd9da517fc085b5339": [
-            "apr-util"
-          ],
-          "a19890c57dbfb063640d016cd729529d1f1eeacfc29086cb5acb6b1030fcb722": [
-            "aspell"
-          ],
-          "7f2593aa1455ddc6d89554ca036600936d63cb2f79ac681ce82322f71e7787b6": [
-            "autoconf"
-          ],
-          "26f52b26853c394a1f0cf06537dfc5e2a1b3934a7edb6f7a4cd75031da0e68c8": [
-            "curl"
-          ],
-          "ea90cb8d3177e56c5f93e4e52c3cd426991b6ccefb9b555bc6519f8d19bb1e80": [
-            "freetds"
-          ],
-          "d6a32ed1e8586dbf79a7e931b839b43ca0c73a737bc39d06e0cbd37ee82bb6ff": [
-            "freetype"
-          ],
-          "45fb99f0c1cced67e5555d624f830ed4f95856036ff34bb9bce86fb998fe6d11": [
-            "gd"
-          ],
-          "6fc3507079d6afd462df4e8d1204f58d6a38b0b68c3d621ef1f5d3e55443790a": [
-            "gmp"
-          ],
-          "eb661e2036ecac315d569c0d0549b76b2ac48b7452811ec899580ed968bf464e": [
-            "icu4c@78"
-          ],
-          "646c3dcfdcb81d22dd0a7b9c8ef486d69d54047485dbdb629922d070d58345d7": [
-            "jpeg"
-          ],
-          "35b7dca5a554f2a2665bf485899d449c1d6bbd332bfe029177c0c76cdaa2b98c": [
-            "krb5"
-          ],
-          "b46c3d9ce20da815605e74b87f58044d61de4629432c01e7506cbd45d4fa5ca2": [
-            "libpng"
-          ],
-          "d5a563a088728ae163c285ccf57ccb89d92162a01169c0ac4caccfd083f3b9a5": [
-            "libpq"
-          ],
-          "37bd0678aca767f78358e31916ac9c8a29209f7fce1281684f89b2a2a64de403": [
-            "libtool"
-          ],
-          "cb96b527fb79fceac4629c334b05152984d0861c3a0af06f47745bdfd2cfd4d6": [
-            "libx11"
-          ],
-          "7f487c5090a0f5aa0750eb8723fc5326c52155580d6fc90a39ae530d51f0e936": [
-            "libxpm"
-          ],
-          "2a7fa1d89be5ffe4f7dc845802c23da6be6660e7177ac8daae4e976f14e408d5": [
-            "libzip"
-          ],
-          "1a9a292ef3bb1617f4813f0b9db3b62acdff68d7c770c15fc3685f4315aa5e5c": [
-            "openldap"
-          ],
-          "0eb46a52343afdb00d31295d9df55a8c796b950d1a48fd637b530e9874731a57": [
-            "openssl@4"
-          ],
-          "0e593881621fa197c6f8cda91c6ba4cd009f33180ec15c1cb9185953c36ae6b0": [
-            "pcre"
-          ],
-          "455b0242870a161865b2d40b7f74caf32dc157ad7da6c9c45df01f541d35e531": [
-            "sqlite"
-          ],
-          "0ab4d602a9c6f31a2f46ffcf30d991fd4cdba22ee635af68104ef96ee510de2e": [
-            "tidy-html5"
-          ],
-          "336bae021880ccd5632f2a5b2d83387b5b07940d7256f0d34520a3ef899779e4": [
-            "unixodbc"
-          ],
-          "5ad0c8a8a056a0482c60bc0bd89b826d5c66407447efe86417286d98ecc1cbf9": [
-            "bzip2"
-          ],
-          "0dd80232aa516247d3b528d825642d53fb15b0186329f410746e38d681758033": [
-            "libedit"
-          ],
-          "3efd30fd92ee4362aaaf180f24b820b2899315863cb62293fe563eda020887cc": [
-            "libxml2"
-          ],
-          "45322197af94277e5782fa162f42cd7893081e8a8230cc90e54c838a51a29e9d": [
-            "libxslt"
-          ],
-          "a200e17a2e16e1b7c7706f141fc8bc064d36859d795fae53d5827cd4bb6875e4": [
-            "gettext"
-          ],
-          "74e45d44846512644815054d27573915c4c8c216934c8282ae492b3060fbc7f8": [
-            "zlib-ng-compat"
-          ]
-        }
-      },
-      "720ced27030a260109f87043d03dd2062aba4e658a0cd3ca8b205fb990f09cee": {
-        "sha256": "720ced27030a260109f87043d03dd2062aba4e658a0cd3ca8b205fb990f09cee",
-        "formulae": [
-          "apr",
-          "apr-util",
-          "aspell",
-          "autoconf",
-          "bison",
-          "bzip2",
-          "curl",
-          "freetds",
-          "freetype",
-          "gd",
-          "gettext",
-          "gmp",
-          "httpd",
-          "icu4c@78",
-          "jpeg",
-          "krb5",
-          "libedit",
-          "libpng",
-          "libpq",
-          "libtool",
-          "libx11",
-          "libxml2",
-          "libxpm",
-          "libxslt",
-          "libzip",
-          "openldap",
-          "openssl@4",
-          "pcre",
-          "pkgconf",
-          "re2c",
-          "sqlite",
-          "tidy-html5",
-          "unixodbc",
-          "webp",
-          "zlib-ng-compat"
-        ],
-        "declarations": {
-          "c7a96330cc158f1d3a8d4966ba62338c4e6fe89aecd0b63c19a84f698cbf78f8": [
-            "bison"
-          ],
-          "6fe84206c4a8804bb7d0e88edba9037238a9d4fca5d6bb23b22bafe25b3701c6": [
-            "httpd"
-          ],
-          "38c4c1d8d78d5265358ed4156a537799a7d193e96a50b351ebad01186d18fe64": [
-            "pkgconf"
-          ],
-          "f8e76515c515ab375168e7bfe911f20cc036e6e9f6853cf188a95058ac8c9394": [
-            "re2c"
-          ],
-          "99a6fc6f0f983ae8d0e53d3df71ab72f2ee5ac9729f45aae2b59933cf3cbb917": [
-            "apr"
-          ],
-          "ab5cf8f50a65153cfaee0872648199c1f889f6e682243cfd9da517fc085b5339": [
-            "apr-util"
-          ],
-          "a19890c57dbfb063640d016cd729529d1f1eeacfc29086cb5acb6b1030fcb722": [
-            "aspell"
-          ],
-          "7f2593aa1455ddc6d89554ca036600936d63cb2f79ac681ce82322f71e7787b6": [
-            "autoconf"
-          ],
-          "26f52b26853c394a1f0cf06537dfc5e2a1b3934a7edb6f7a4cd75031da0e68c8": [
-            "curl"
-          ],
-          "ea90cb8d3177e56c5f93e4e52c3cd426991b6ccefb9b555bc6519f8d19bb1e80": [
-            "freetds"
-          ],
-          "d6a32ed1e8586dbf79a7e931b839b43ca0c73a737bc39d06e0cbd37ee82bb6ff": [
-            "freetype"
-          ],
-          "45fb99f0c1cced67e5555d624f830ed4f95856036ff34bb9bce86fb998fe6d11": [
-            "gd"
-          ],
-          "6fc3507079d6afd462df4e8d1204f58d6a38b0b68c3d621ef1f5d3e55443790a": [
-            "gmp"
-          ],
-          "eb661e2036ecac315d569c0d0549b76b2ac48b7452811ec899580ed968bf464e": [
-            "icu4c@78"
-          ],
-          "646c3dcfdcb81d22dd0a7b9c8ef486d69d54047485dbdb629922d070d58345d7": [
-            "jpeg"
-          ],
-          "35b7dca5a554f2a2665bf485899d449c1d6bbd332bfe029177c0c76cdaa2b98c": [
-            "krb5"
-          ],
-          "b46c3d9ce20da815605e74b87f58044d61de4629432c01e7506cbd45d4fa5ca2": [
-            "libpng"
-          ],
-          "d5a563a088728ae163c285ccf57ccb89d92162a01169c0ac4caccfd083f3b9a5": [
-            "libpq"
-          ],
-          "37bd0678aca767f78358e31916ac9c8a29209f7fce1281684f89b2a2a64de403": [
-            "libtool"
-          ],
-          "cb96b527fb79fceac4629c334b05152984d0861c3a0af06f47745bdfd2cfd4d6": [
-            "libx11"
-          ],
-          "7f487c5090a0f5aa0750eb8723fc5326c52155580d6fc90a39ae530d51f0e936": [
-            "libxpm"
-          ],
-          "2a7fa1d89be5ffe4f7dc845802c23da6be6660e7177ac8daae4e976f14e408d5": [
-            "libzip"
-          ],
-          "1a9a292ef3bb1617f4813f0b9db3b62acdff68d7c770c15fc3685f4315aa5e5c": [
-            "openldap"
-          ],
-          "0eb46a52343afdb00d31295d9df55a8c796b950d1a48fd637b530e9874731a57": [
-            "openssl@4"
-          ],
-          "0e593881621fa197c6f8cda91c6ba4cd009f33180ec15c1cb9185953c36ae6b0": [
-            "pcre"
-          ],
-          "455b0242870a161865b2d40b7f74caf32dc157ad7da6c9c45df01f541d35e531": [
-            "sqlite"
-          ],
-          "0ab4d602a9c6f31a2f46ffcf30d991fd4cdba22ee635af68104ef96ee510de2e": [
-            "tidy-html5"
-          ],
-          "336bae021880ccd5632f2a5b2d83387b5b07940d7256f0d34520a3ef899779e4": [
-            "unixodbc"
-          ],
-          "8f6df29a9a612cc1882768b3fb0c804d9e9afb3a8b9ff77b1cbb1857a904ab62": [
-            "webp"
-          ],
-          "5ad0c8a8a056a0482c60bc0bd89b826d5c66407447efe86417286d98ecc1cbf9": [
-            "bzip2"
-          ],
-          "0dd80232aa516247d3b528d825642d53fb15b0186329f410746e38d681758033": [
-            "libedit"
-          ],
-          "3efd30fd92ee4362aaaf180f24b820b2899315863cb62293fe563eda020887cc": [
-            "libxml2"
-          ],
-          "45322197af94277e5782fa162f42cd7893081e8a8230cc90e54c838a51a29e9d": [
-            "libxslt"
-          ],
-          "a200e17a2e16e1b7c7706f141fc8bc064d36859d795fae53d5827cd4bb6875e4": [
-            "gettext"
-          ],
-          "74e45d44846512644815054d27573915c4c8c216934c8282ae492b3060fbc7f8": [
-            "zlib-ng-compat"
-          ]
-        }
-      },
-      "0f11f492a9482580d5ee2730e53a8dd16cd37fd3731e482119a825d07507f98a": {
-        "sha256": "0f11f492a9482580d5ee2730e53a8dd16cd37fd3731e482119a825d07507f98a",
-        "formulae": [
-          "apr",
-          "apr-util",
-          "aspell",
-          "autoconf",
-          "bison",
-          "bzip2",
-          "curl",
-          "freetds",
-          "freetype",
-          "gd",
-          "gettext",
-          "gmp",
-          "httpd",
-          "icu4c@78",
-          "jpeg",
-          "krb5",
-          "libedit",
-          "libpng",
-          "libpq",
-          "libtool",
-          "libx11",
-          "libxml2",
-          "libxpm",
-          "libxslt",
-          "libzip",
-          "openldap",
-          "openssl@4",
-          "pkgconf",
-          "re2c",
-          "sqlite",
-          "tidy-html5",
-          "unixodbc",
-          "webp",
-          "zlib-ng-compat"
-        ],
-        "declarations": {
-          "c7a96330cc158f1d3a8d4966ba62338c4e6fe89aecd0b63c19a84f698cbf78f8": [
-            "bison"
-          ],
-          "6fe84206c4a8804bb7d0e88edba9037238a9d4fca5d6bb23b22bafe25b3701c6": [
-            "httpd"
-          ],
-          "38c4c1d8d78d5265358ed4156a537799a7d193e96a50b351ebad01186d18fe64": [
-            "pkgconf"
-          ],
-          "f8e76515c515ab375168e7bfe911f20cc036e6e9f6853cf188a95058ac8c9394": [
-            "re2c"
-          ],
-          "99a6fc6f0f983ae8d0e53d3df71ab72f2ee5ac9729f45aae2b59933cf3cbb917": [
-            "apr"
-          ],
-          "ab5cf8f50a65153cfaee0872648199c1f889f6e682243cfd9da517fc085b5339": [
-            "apr-util"
-          ],
-          "a19890c57dbfb063640d016cd729529d1f1eeacfc29086cb5acb6b1030fcb722": [
-            "aspell"
-          ],
-          "7f2593aa1455ddc6d89554ca036600936d63cb2f79ac681ce82322f71e7787b6": [
-            "autoconf"
-          ],
-          "26f52b26853c394a1f0cf06537dfc5e2a1b3934a7edb6f7a4cd75031da0e68c8": [
-            "curl"
-          ],
-          "ea90cb8d3177e56c5f93e4e52c3cd426991b6ccefb9b555bc6519f8d19bb1e80": [
-            "freetds"
-          ],
-          "d6a32ed1e8586dbf79a7e931b839b43ca0c73a737bc39d06e0cbd37ee82bb6ff": [
-            "freetype"
-          ],
-          "45fb99f0c1cced67e5555d624f830ed4f95856036ff34bb9bce86fb998fe6d11": [
-            "gd"
-          ],
-          "6fc3507079d6afd462df4e8d1204f58d6a38b0b68c3d621ef1f5d3e55443790a": [
-            "gmp"
-          ],
-          "eb661e2036ecac315d569c0d0549b76b2ac48b7452811ec899580ed968bf464e": [
-            "icu4c@78"
-          ],
-          "646c3dcfdcb81d22dd0a7b9c8ef486d69d54047485dbdb629922d070d58345d7": [
-            "jpeg"
-          ],
-          "35b7dca5a554f2a2665bf485899d449c1d6bbd332bfe029177c0c76cdaa2b98c": [
-            "krb5"
-          ],
-          "b46c3d9ce20da815605e74b87f58044d61de4629432c01e7506cbd45d4fa5ca2": [
-            "libpng"
-          ],
-          "d5a563a088728ae163c285ccf57ccb89d92162a01169c0ac4caccfd083f3b9a5": [
-            "libpq"
-          ],
-          "37bd0678aca767f78358e31916ac9c8a29209f7fce1281684f89b2a2a64de403": [
-            "libtool"
-          ],
-          "cb96b527fb79fceac4629c334b05152984d0861c3a0af06f47745bdfd2cfd4d6": [
-            "libx11"
-          ],
-          "7f487c5090a0f5aa0750eb8723fc5326c52155580d6fc90a39ae530d51f0e936": [
-            "libxpm"
-          ],
-          "2a7fa1d89be5ffe4f7dc845802c23da6be6660e7177ac8daae4e976f14e408d5": [
-            "libzip"
-          ],
-          "1a9a292ef3bb1617f4813f0b9db3b62acdff68d7c770c15fc3685f4315aa5e5c": [
-            "openldap"
-          ],
-          "0eb46a52343afdb00d31295d9df55a8c796b950d1a48fd637b530e9874731a57": [
-            "openssl@4"
-          ],
-          "455b0242870a161865b2d40b7f74caf32dc157ad7da6c9c45df01f541d35e531": [
-            "sqlite"
-          ],
-          "0ab4d602a9c6f31a2f46ffcf30d991fd4cdba22ee635af68104ef96ee510de2e": [
-            "tidy-html5"
-          ],
-          "336bae021880ccd5632f2a5b2d83387b5b07940d7256f0d34520a3ef899779e4": [
-            "unixodbc"
-          ],
-          "8f6df29a9a612cc1882768b3fb0c804d9e9afb3a8b9ff77b1cbb1857a904ab62": [
-            "webp"
-          ],
-          "5ad0c8a8a056a0482c60bc0bd89b826d5c66407447efe86417286d98ecc1cbf9": [
-            "bzip2"
-          ],
-          "0dd80232aa516247d3b528d825642d53fb15b0186329f410746e38d681758033": [
-            "libedit"
-          ],
-          "3efd30fd92ee4362aaaf180f24b820b2899315863cb62293fe563eda020887cc": [
-            "libxml2"
-          ],
-          "45322197af94277e5782fa162f42cd7893081e8a8230cc90e54c838a51a29e9d": [
-            "libxslt"
-          ],
-          "a200e17a2e16e1b7c7706f141fc8bc064d36859d795fae53d5827cd4bb6875e4": [
-            "gettext"
-          ],
-          "74e45d44846512644815054d27573915c4c8c216934c8282ae492b3060fbc7f8": [
-            "zlib-ng-compat"
-          ]
-        }
-      },
-      "68f72ad3e7f34495514177870db375727616e92c70659927c44aa5f6f5c98a3e": {
-        "sha256": "68f72ad3e7f34495514177870db375727616e92c70659927c44aa5f6f5c98a3e",
-        "formulae": [
-          "apr",
-          "apr-util",
-          "argon2",
-          "aspell",
-          "autoconf",
-          "bison",
-          "bzip2",
-          "curl",
-          "freetds",
-          "freetype",
-          "gd",
-          "gettext",
-          "gmp",
-          "httpd",
-          "icu4c@78",
-          "jpeg",
-          "krb5",
-          "libedit",
-          "libpng",
-          "libpq",
-          "libsodium",
-          "libx11",
-          "libxml2",
-          "libxpm",
-          "libxslt",
-          "libzip",
-          "openldap",
-          "openssl@4",
-          "pkgconf",
-          "re2c",
-          "sqlite",
-          "tidy-html5",
-          "unixodbc",
-          "webp",
-          "zlib-ng-compat"
-        ],
-        "declarations": {
-          "c7a96330cc158f1d3a8d4966ba62338c4e6fe89aecd0b63c19a84f698cbf78f8": [
-            "bison"
-          ],
-          "6fe84206c4a8804bb7d0e88edba9037238a9d4fca5d6bb23b22bafe25b3701c6": [
-            "httpd"
-          ],
-          "38c4c1d8d78d5265358ed4156a537799a7d193e96a50b351ebad01186d18fe64": [
-            "pkgconf"
-          ],
-          "f8e76515c515ab375168e7bfe911f20cc036e6e9f6853cf188a95058ac8c9394": [
-            "re2c"
-          ],
-          "99a6fc6f0f983ae8d0e53d3df71ab72f2ee5ac9729f45aae2b59933cf3cbb917": [
-            "apr"
-          ],
-          "ab5cf8f50a65153cfaee0872648199c1f889f6e682243cfd9da517fc085b5339": [
-            "apr-util"
-          ],
-          "bb2d8e8422a936ef35568f268a750e18597b51202c7fe3601c20bd30c2727e06": [
-            "argon2"
-          ],
-          "a19890c57dbfb063640d016cd729529d1f1eeacfc29086cb5acb6b1030fcb722": [
-            "aspell"
-          ],
-          "7f2593aa1455ddc6d89554ca036600936d63cb2f79ac681ce82322f71e7787b6": [
-            "autoconf"
-          ],
-          "26f52b26853c394a1f0cf06537dfc5e2a1b3934a7edb6f7a4cd75031da0e68c8": [
-            "curl"
-          ],
-          "ea90cb8d3177e56c5f93e4e52c3cd426991b6ccefb9b555bc6519f8d19bb1e80": [
-            "freetds"
-          ],
-          "d6a32ed1e8586dbf79a7e931b839b43ca0c73a737bc39d06e0cbd37ee82bb6ff": [
-            "freetype"
-          ],
-          "45fb99f0c1cced67e5555d624f830ed4f95856036ff34bb9bce86fb998fe6d11": [
-            "gd"
-          ],
-          "6fc3507079d6afd462df4e8d1204f58d6a38b0b68c3d621ef1f5d3e55443790a": [
-            "gmp"
-          ],
-          "eb661e2036ecac315d569c0d0549b76b2ac48b7452811ec899580ed968bf464e": [
-            "icu4c@78"
-          ],
-          "646c3dcfdcb81d22dd0a7b9c8ef486d69d54047485dbdb629922d070d58345d7": [
-            "jpeg"
-          ],
-          "35b7dca5a554f2a2665bf485899d449c1d6bbd332bfe029177c0c76cdaa2b98c": [
-            "krb5"
-          ],
-          "b46c3d9ce20da815605e74b87f58044d61de4629432c01e7506cbd45d4fa5ca2": [
-            "libpng"
-          ],
-          "d5a563a088728ae163c285ccf57ccb89d92162a01169c0ac4caccfd083f3b9a5": [
-            "libpq"
-          ],
-          "9401ac313ac2a28364bd7b0483b303d234a33c5e52b0342821cecde2373cb9e4": [
-            "libsodium"
-          ],
-          "cb96b527fb79fceac4629c334b05152984d0861c3a0af06f47745bdfd2cfd4d6": [
-            "libx11"
-          ],
-          "7f487c5090a0f5aa0750eb8723fc5326c52155580d6fc90a39ae530d51f0e936": [
-            "libxpm"
-          ],
-          "2a7fa1d89be5ffe4f7dc845802c23da6be6660e7177ac8daae4e976f14e408d5": [
-            "libzip"
-          ],
-          "1a9a292ef3bb1617f4813f0b9db3b62acdff68d7c770c15fc3685f4315aa5e5c": [
-            "openldap"
-          ],
-          "0eb46a52343afdb00d31295d9df55a8c796b950d1a48fd637b530e9874731a57": [
-            "openssl@4"
-          ],
-          "455b0242870a161865b2d40b7f74caf32dc157ad7da6c9c45df01f541d35e531": [
-            "sqlite"
-          ],
-          "0ab4d602a9c6f31a2f46ffcf30d991fd4cdba22ee635af68104ef96ee510de2e": [
-            "tidy-html5"
-          ],
-          "336bae021880ccd5632f2a5b2d83387b5b07940d7256f0d34520a3ef899779e4": [
-            "unixodbc"
-          ],
-          "8f6df29a9a612cc1882768b3fb0c804d9e9afb3a8b9ff77b1cbb1857a904ab62": [
-            "webp"
-          ],
-          "5ad0c8a8a056a0482c60bc0bd89b826d5c66407447efe86417286d98ecc1cbf9": [
-            "bzip2"
-          ],
-          "0dd80232aa516247d3b528d825642d53fb15b0186329f410746e38d681758033": [
-            "libedit"
-          ],
-          "3efd30fd92ee4362aaaf180f24b820b2899315863cb62293fe563eda020887cc": [
-            "libxml2"
-          ],
-          "45322197af94277e5782fa162f42cd7893081e8a8230cc90e54c838a51a29e9d": [
-            "libxslt"
-          ],
-          "a200e17a2e16e1b7c7706f141fc8bc064d36859d795fae53d5827cd4bb6875e4": [
-            "gettext"
-          ],
-          "74e45d44846512644815054d27573915c4c8c216934c8282ae492b3060fbc7f8": [
-            "zlib-ng-compat"
-          ]
-        }
-      },
-      "c1ded251c78837cd7909fb4859a0af5ea5c5d009dcc36422860ebbd157993b28": {
-        "sha256": "c1ded251c78837cd7909fb4859a0af5ea5c5d009dcc36422860ebbd157993b28",
-        "formulae": [
-          "apr",
-          "apr-util",
-          "argon2",
-          "aspell",
-          "autoconf",
-          "bison",
-          "bzip2",
-          "curl",
-          "freetds",
-          "freetype",
-          "gd",
-          "gettext",
-          "gmp",
-          "httpd",
-          "icu4c@78",
-          "jpeg",
-          "krb5",
-          "libedit",
-          "libpng",
-          "libpq",
-          "libsodium",
-          "libx11",
-          "libxml2",
-          "libxpm",
-          "libxslt",
-          "libzip",
-          "openldap",
-          "openssl@4",
-          "pcre2",
-          "pkgconf",
-          "re2c",
-          "sqlite",
-          "tidy-html5",
-          "unixodbc",
-          "webp",
-          "xz",
-          "zlib-ng-compat"
-        ],
-        "declarations": {
-          "c7a96330cc158f1d3a8d4966ba62338c4e6fe89aecd0b63c19a84f698cbf78f8": [
-            "bison"
-          ],
-          "6fe84206c4a8804bb7d0e88edba9037238a9d4fca5d6bb23b22bafe25b3701c6": [
-            "httpd"
-          ],
-          "38c4c1d8d78d5265358ed4156a537799a7d193e96a50b351ebad01186d18fe64": [
-            "pkgconf"
-          ],
-          "f8e76515c515ab375168e7bfe911f20cc036e6e9f6853cf188a95058ac8c9394": [
-            "re2c"
-          ],
-          "99a6fc6f0f983ae8d0e53d3df71ab72f2ee5ac9729f45aae2b59933cf3cbb917": [
-            "apr"
-          ],
-          "ab5cf8f50a65153cfaee0872648199c1f889f6e682243cfd9da517fc085b5339": [
-            "apr-util"
-          ],
-          "bb2d8e8422a936ef35568f268a750e18597b51202c7fe3601c20bd30c2727e06": [
-            "argon2"
-          ],
-          "a19890c57dbfb063640d016cd729529d1f1eeacfc29086cb5acb6b1030fcb722": [
-            "aspell"
-          ],
-          "7f2593aa1455ddc6d89554ca036600936d63cb2f79ac681ce82322f71e7787b6": [
-            "autoconf"
-          ],
-          "26f52b26853c394a1f0cf06537dfc5e2a1b3934a7edb6f7a4cd75031da0e68c8": [
-            "curl"
-          ],
-          "ea90cb8d3177e56c5f93e4e52c3cd426991b6ccefb9b555bc6519f8d19bb1e80": [
-            "freetds"
-          ],
-          "d6a32ed1e8586dbf79a7e931b839b43ca0c73a737bc39d06e0cbd37ee82bb6ff": [
-            "freetype"
-          ],
-          "45fb99f0c1cced67e5555d624f830ed4f95856036ff34bb9bce86fb998fe6d11": [
-            "gd"
-          ],
-          "6fc3507079d6afd462df4e8d1204f58d6a38b0b68c3d621ef1f5d3e55443790a": [
-            "gmp"
-          ],
-          "eb661e2036ecac315d569c0d0549b76b2ac48b7452811ec899580ed968bf464e": [
-            "icu4c@78"
-          ],
-          "646c3dcfdcb81d22dd0a7b9c8ef486d69d54047485dbdb629922d070d58345d7": [
-            "jpeg"
-          ],
-          "35b7dca5a554f2a2665bf485899d449c1d6bbd332bfe029177c0c76cdaa2b98c": [
-            "krb5"
-          ],
-          "b46c3d9ce20da815605e74b87f58044d61de4629432c01e7506cbd45d4fa5ca2": [
-            "libpng"
-          ],
-          "d5a563a088728ae163c285ccf57ccb89d92162a01169c0ac4caccfd083f3b9a5": [
-            "libpq"
-          ],
-          "9401ac313ac2a28364bd7b0483b303d234a33c5e52b0342821cecde2373cb9e4": [
-            "libsodium"
-          ],
-          "cb96b527fb79fceac4629c334b05152984d0861c3a0af06f47745bdfd2cfd4d6": [
-            "libx11"
-          ],
-          "7f487c5090a0f5aa0750eb8723fc5326c52155580d6fc90a39ae530d51f0e936": [
-            "libxpm"
-          ],
-          "2a7fa1d89be5ffe4f7dc845802c23da6be6660e7177ac8daae4e976f14e408d5": [
-            "libzip"
-          ],
-          "1a9a292ef3bb1617f4813f0b9db3b62acdff68d7c770c15fc3685f4315aa5e5c": [
-            "openldap"
-          ],
-          "0eb46a52343afdb00d31295d9df55a8c796b950d1a48fd637b530e9874731a57": [
-            "openssl@4"
-          ],
-          "f37ad77d6c032303eea0856dd84f8e6688be4b91877448b222c4a840ef938723": [
-            "pcre2"
-          ],
-          "455b0242870a161865b2d40b7f74caf32dc157ad7da6c9c45df01f541d35e531": [
-            "sqlite"
-          ],
-          "0ab4d602a9c6f31a2f46ffcf30d991fd4cdba22ee635af68104ef96ee510de2e": [
-            "tidy-html5"
-          ],
-          "336bae021880ccd5632f2a5b2d83387b5b07940d7256f0d34520a3ef899779e4": [
-            "unixodbc"
-          ],
-          "8f6df29a9a612cc1882768b3fb0c804d9e9afb3a8b9ff77b1cbb1857a904ab62": [
-            "webp"
-          ],
-          "444ea78341ee35d937ecb3899c3bd43966c4a994dd525e539a3a40da148bc13e": [
-            "xz"
-          ],
-          "5ad0c8a8a056a0482c60bc0bd89b826d5c66407447efe86417286d98ecc1cbf9": [
-            "bzip2"
-          ],
-          "0dd80232aa516247d3b528d825642d53fb15b0186329f410746e38d681758033": [
-            "libedit"
-          ],
-          "3efd30fd92ee4362aaaf180f24b820b2899315863cb62293fe563eda020887cc": [
-            "libxml2"
-          ],
-          "45322197af94277e5782fa162f42cd7893081e8a8230cc90e54c838a51a29e9d": [
-            "libxslt"
-          ],
-          "a200e17a2e16e1b7c7706f141fc8bc064d36859d795fae53d5827cd4bb6875e4": [
-            "gettext"
-          ],
-          "74e45d44846512644815054d27573915c4c8c216934c8282ae492b3060fbc7f8": [
-            "zlib-ng-compat"
-          ]
-        }
-      },
-      "cddc668ab1e5bbf60846e9c65c349fa3e49eb9060a1f52335b591df998beec73": {
-        "sha256": "cddc668ab1e5bbf60846e9c65c349fa3e49eb9060a1f52335b591df998beec73",
-        "formulae": [
-          "apr",
-          "apr-util",
-          "argon2",
-          "aspell",
-          "autoconf",
-          "bison",
-          "bzip2",
-          "curl",
-          "freetds",
-          "gd",
-          "gettext",
-          "gmp",
-          "httpd",
-          "icu4c@78",
-          "krb5",
-          "libedit",
-          "libffi",
-          "libpq",
-          "libsodium",
-          "libxml2",
-          "libxslt",
-          "libzip",
-          "oniguruma",
-          "openldap",
-          "openssl@4",
-          "pcre2",
-          "pkgconf",
-          "re2c",
-          "sqlite",
-          "tidy-html5",
-          "unixodbc",
-          "xz",
-          "zlib-ng-compat"
-        ],
-        "declarations": {
-          "c7a96330cc158f1d3a8d4966ba62338c4e6fe89aecd0b63c19a84f698cbf78f8": [
-            "bison"
-          ],
-          "6fe84206c4a8804bb7d0e88edba9037238a9d4fca5d6bb23b22bafe25b3701c6": [
-            "httpd"
-          ],
-          "38c4c1d8d78d5265358ed4156a537799a7d193e96a50b351ebad01186d18fe64": [
-            "pkgconf"
-          ],
-          "f8e76515c515ab375168e7bfe911f20cc036e6e9f6853cf188a95058ac8c9394": [
-            "re2c"
-          ],
-          "99a6fc6f0f983ae8d0e53d3df71ab72f2ee5ac9729f45aae2b59933cf3cbb917": [
-            "apr"
-          ],
-          "ab5cf8f50a65153cfaee0872648199c1f889f6e682243cfd9da517fc085b5339": [
-            "apr-util"
-          ],
-          "bb2d8e8422a936ef35568f268a750e18597b51202c7fe3601c20bd30c2727e06": [
-            "argon2"
-          ],
-          "a19890c57dbfb063640d016cd729529d1f1eeacfc29086cb5acb6b1030fcb722": [
-            "aspell"
-          ],
-          "7f2593aa1455ddc6d89554ca036600936d63cb2f79ac681ce82322f71e7787b6": [
-            "autoconf"
-          ],
-          "26f52b26853c394a1f0cf06537dfc5e2a1b3934a7edb6f7a4cd75031da0e68c8": [
-            "curl"
-          ],
-          "ea90cb8d3177e56c5f93e4e52c3cd426991b6ccefb9b555bc6519f8d19bb1e80": [
-            "freetds"
-          ],
-          "45fb99f0c1cced67e5555d624f830ed4f95856036ff34bb9bce86fb998fe6d11": [
-            "gd"
-          ],
-          "6fc3507079d6afd462df4e8d1204f58d6a38b0b68c3d621ef1f5d3e55443790a": [
-            "gmp"
-          ],
-          "eb661e2036ecac315d569c0d0549b76b2ac48b7452811ec899580ed968bf464e": [
-            "icu4c@78"
-          ],
-          "35b7dca5a554f2a2665bf485899d449c1d6bbd332bfe029177c0c76cdaa2b98c": [
-            "krb5"
-          ],
-          "2ee87a6a868cfc05a216fcf2045842a28b2627d1aeefcd8c816a2361950d21ee": [
-            "libffi"
-          ],
-          "d5a563a088728ae163c285ccf57ccb89d92162a01169c0ac4caccfd083f3b9a5": [
-            "libpq"
-          ],
-          "9401ac313ac2a28364bd7b0483b303d234a33c5e52b0342821cecde2373cb9e4": [
-            "libsodium"
-          ],
-          "2a7fa1d89be5ffe4f7dc845802c23da6be6660e7177ac8daae4e976f14e408d5": [
-            "libzip"
-          ],
-          "9263cfdc1bb063afcc2687c5e5e2bca16e06dca68c17c138d988bb03d2502263": [
-            "oniguruma"
-          ],
-          "1a9a292ef3bb1617f4813f0b9db3b62acdff68d7c770c15fc3685f4315aa5e5c": [
-            "openldap"
-          ],
-          "0eb46a52343afdb00d31295d9df55a8c796b950d1a48fd637b530e9874731a57": [
-            "openssl@4"
-          ],
-          "f37ad77d6c032303eea0856dd84f8e6688be4b91877448b222c4a840ef938723": [
-            "pcre2"
-          ],
-          "455b0242870a161865b2d40b7f74caf32dc157ad7da6c9c45df01f541d35e531": [
-            "sqlite"
-          ],
-          "0ab4d602a9c6f31a2f46ffcf30d991fd4cdba22ee635af68104ef96ee510de2e": [
-            "tidy-html5"
-          ],
-          "336bae021880ccd5632f2a5b2d83387b5b07940d7256f0d34520a3ef899779e4": [
-            "unixodbc"
-          ],
-          "444ea78341ee35d937ecb3899c3bd43966c4a994dd525e539a3a40da148bc13e": [
-            "xz"
-          ],
-          "5ad0c8a8a056a0482c60bc0bd89b826d5c66407447efe86417286d98ecc1cbf9": [
-            "bzip2"
-          ],
-          "0dd80232aa516247d3b528d825642d53fb15b0186329f410746e38d681758033": [
-            "libedit"
-          ],
-          "9d8cf75b7a36e9ec709de8f1acdd124ff69c3e584d62c071ca3652a2fb1672c6": [
-            "libffi"
-          ],
-          "3efd30fd92ee4362aaaf180f24b820b2899315863cb62293fe563eda020887cc": [
-            "libxml2"
-          ],
-          "45322197af94277e5782fa162f42cd7893081e8a8230cc90e54c838a51a29e9d": [
-            "libxslt"
-          ],
-          "a200e17a2e16e1b7c7706f141fc8bc064d36859d795fae53d5827cd4bb6875e4": [
-            "gettext"
-          ],
-          "74e45d44846512644815054d27573915c4c8c216934c8282ae492b3060fbc7f8": [
-            "zlib-ng-compat"
-          ]
-        }
-      },
-      "c0b4b51e5db43d6161036d54c510fc005e493fa3d961094694a3845a1bd85c06": {
-        "sha256": "c0b4b51e5db43d6161036d54c510fc005e493fa3d961094694a3845a1bd85c06",
-        "formulae": [
-          "apr",
-          "apr-util",
-          "argon2",
-          "aspell",
-          "autoconf",
-          "bison",
-          "bzip2",
-          "curl",
-          "freetds",
-          "gcc",
-          "gd",
-          "gettext",
-          "gmp",
-          "httpd",
-          "icu4c@78",
-          "krb5",
-          "libedit",
-          "libffi",
-          "libpq",
-          "libsodium",
-          "libxml2",
-          "libxslt",
-          "libzip",
-          "oniguruma",
-          "openldap",
-          "openssl@4",
-          "pcre2",
-          "pkgconf",
-          "re2c",
-          "sqlite",
-          "tidy-html5",
-          "unixodbc",
-          "xz",
-          "zlib-ng-compat"
-        ],
-        "declarations": {
-          "c7a96330cc158f1d3a8d4966ba62338c4e6fe89aecd0b63c19a84f698cbf78f8": [
-            "bison"
-          ],
-          "6fe84206c4a8804bb7d0e88edba9037238a9d4fca5d6bb23b22bafe25b3701c6": [
-            "httpd"
-          ],
-          "38c4c1d8d78d5265358ed4156a537799a7d193e96a50b351ebad01186d18fe64": [
-            "pkgconf"
-          ],
-          "f8e76515c515ab375168e7bfe911f20cc036e6e9f6853cf188a95058ac8c9394": [
-            "re2c"
-          ],
-          "99a6fc6f0f983ae8d0e53d3df71ab72f2ee5ac9729f45aae2b59933cf3cbb917": [
-            "apr"
-          ],
-          "ab5cf8f50a65153cfaee0872648199c1f889f6e682243cfd9da517fc085b5339": [
-            "apr-util"
-          ],
-          "bb2d8e8422a936ef35568f268a750e18597b51202c7fe3601c20bd30c2727e06": [
-            "argon2"
-          ],
-          "a19890c57dbfb063640d016cd729529d1f1eeacfc29086cb5acb6b1030fcb722": [
-            "aspell"
-          ],
-          "7f2593aa1455ddc6d89554ca036600936d63cb2f79ac681ce82322f71e7787b6": [
-            "autoconf"
-          ],
-          "26f52b26853c394a1f0cf06537dfc5e2a1b3934a7edb6f7a4cd75031da0e68c8": [
-            "curl"
-          ],
-          "ea90cb8d3177e56c5f93e4e52c3cd426991b6ccefb9b555bc6519f8d19bb1e80": [
-            "freetds"
-          ],
-          "45fb99f0c1cced67e5555d624f830ed4f95856036ff34bb9bce86fb998fe6d11": [
-            "gd"
-          ],
-          "6fc3507079d6afd462df4e8d1204f58d6a38b0b68c3d621ef1f5d3e55443790a": [
-            "gmp"
-          ],
-          "eb661e2036ecac315d569c0d0549b76b2ac48b7452811ec899580ed968bf464e": [
-            "icu4c@78"
-          ],
-          "35b7dca5a554f2a2665bf485899d449c1d6bbd332bfe029177c0c76cdaa2b98c": [
-            "krb5"
-          ],
-          "2ee87a6a868cfc05a216fcf2045842a28b2627d1aeefcd8c816a2361950d21ee": [
-            "libffi"
-          ],
-          "d5a563a088728ae163c285ccf57ccb89d92162a01169c0ac4caccfd083f3b9a5": [
-            "libpq"
-          ],
-          "9401ac313ac2a28364bd7b0483b303d234a33c5e52b0342821cecde2373cb9e4": [
-            "libsodium"
-          ],
-          "2a7fa1d89be5ffe4f7dc845802c23da6be6660e7177ac8daae4e976f14e408d5": [
-            "libzip"
-          ],
-          "9263cfdc1bb063afcc2687c5e5e2bca16e06dca68c17c138d988bb03d2502263": [
-            "oniguruma"
-          ],
-          "1a9a292ef3bb1617f4813f0b9db3b62acdff68d7c770c15fc3685f4315aa5e5c": [
-            "openldap"
-          ],
-          "0eb46a52343afdb00d31295d9df55a8c796b950d1a48fd637b530e9874731a57": [
-            "openssl@4"
-          ],
-          "f37ad77d6c032303eea0856dd84f8e6688be4b91877448b222c4a840ef938723": [
-            "pcre2"
-          ],
-          "455b0242870a161865b2d40b7f74caf32dc157ad7da6c9c45df01f541d35e531": [
-            "sqlite"
-          ],
-          "0ab4d602a9c6f31a2f46ffcf30d991fd4cdba22ee635af68104ef96ee510de2e": [
-            "tidy-html5"
-          ],
-          "336bae021880ccd5632f2a5b2d83387b5b07940d7256f0d34520a3ef899779e4": [
-            "unixodbc"
-          ],
-          "444ea78341ee35d937ecb3899c3bd43966c4a994dd525e539a3a40da148bc13e": [
-            "xz"
-          ],
-          "5ad0c8a8a056a0482c60bc0bd89b826d5c66407447efe86417286d98ecc1cbf9": [
-            "bzip2"
-          ],
-          "0dd80232aa516247d3b528d825642d53fb15b0186329f410746e38d681758033": [
-            "libedit"
-          ],
-          "9d8cf75b7a36e9ec709de8f1acdd124ff69c3e584d62c071ca3652a2fb1672c6": [
-            "libffi"
-          ],
-          "3efd30fd92ee4362aaaf180f24b820b2899315863cb62293fe563eda020887cc": [
-            "libxml2"
-          ],
-          "45322197af94277e5782fa162f42cd7893081e8a8230cc90e54c838a51a29e9d": [
-            "libxslt"
-          ],
-          "e8c18225643d9712c4bb4d9fad64f474b12b5557955b2b7864f3195438f36654": [
-            "gcc"
-          ],
-          "a200e17a2e16e1b7c7706f141fc8bc064d36859d795fae53d5827cd4bb6875e4": [
-            "gettext"
-          ],
-          "74e45d44846512644815054d27573915c4c8c216934c8282ae492b3060fbc7f8": [
-            "zlib-ng-compat"
-          ]
-        }
-      },
-      "c7a4da6d8692d7eda83c1653072be74a11df5fc00764c3f830aa589ae4f9b2a9": {
-        "sha256": "c7a4da6d8692d7eda83c1653072be74a11df5fc00764c3f830aa589ae4f9b2a9",
-        "formulae": [
-          "apr",
-          "apr-util",
-          "argon2",
-          "aspell",
-          "autoconf",
-          "bison",
-          "bzip2",
-          "curl",
-          "freetds",
-          "gd",
-          "gettext",
-          "gmp",
-          "httpd",
-          "icu4c@78",
-          "krb5",
-          "libedit",
-          "libffi",
-          "libpq",
-          "libsodium",
-          "libxml2",
-          "libxslt",
-          "libzip",
-          "oniguruma",
-          "openldap",
-          "openssl@4",
-          "pcre2",
-          "pkgconf",
-          "re2c",
-          "sqlite",
-          "tidy-html5",
-          "unixodbc",
-          "xz",
-          "zlib-ng-compat"
-        ],
-        "declarations": {
-          "c7a96330cc158f1d3a8d4966ba62338c4e6fe89aecd0b63c19a84f698cbf78f8": [
-            "bison"
-          ],
-          "6fe84206c4a8804bb7d0e88edba9037238a9d4fca5d6bb23b22bafe25b3701c6": [
-            "httpd"
-          ],
-          "38c4c1d8d78d5265358ed4156a537799a7d193e96a50b351ebad01186d18fe64": [
-            "pkgconf"
-          ],
-          "f8e76515c515ab375168e7bfe911f20cc036e6e9f6853cf188a95058ac8c9394": [
-            "re2c"
-          ],
-          "99a6fc6f0f983ae8d0e53d3df71ab72f2ee5ac9729f45aae2b59933cf3cbb917": [
-            "apr"
-          ],
-          "ab5cf8f50a65153cfaee0872648199c1f889f6e682243cfd9da517fc085b5339": [
-            "apr-util"
-          ],
-          "bb2d8e8422a936ef35568f268a750e18597b51202c7fe3601c20bd30c2727e06": [
-            "argon2"
-          ],
-          "a19890c57dbfb063640d016cd729529d1f1eeacfc29086cb5acb6b1030fcb722": [
-            "aspell"
-          ],
-          "7f2593aa1455ddc6d89554ca036600936d63cb2f79ac681ce82322f71e7787b6": [
-            "autoconf"
-          ],
-          "26f52b26853c394a1f0cf06537dfc5e2a1b3934a7edb6f7a4cd75031da0e68c8": [
-            "curl"
-          ],
-          "ea90cb8d3177e56c5f93e4e52c3cd426991b6ccefb9b555bc6519f8d19bb1e80": [
-            "freetds"
-          ],
-          "45fb99f0c1cced67e5555d624f830ed4f95856036ff34bb9bce86fb998fe6d11": [
-            "gd"
-          ],
-          "6fc3507079d6afd462df4e8d1204f58d6a38b0b68c3d621ef1f5d3e55443790a": [
-            "gmp"
-          ],
-          "eb661e2036ecac315d569c0d0549b76b2ac48b7452811ec899580ed968bf464e": [
-            "icu4c@78"
-          ],
-          "35b7dca5a554f2a2665bf485899d449c1d6bbd332bfe029177c0c76cdaa2b98c": [
-            "krb5"
-          ],
-          "d5a563a088728ae163c285ccf57ccb89d92162a01169c0ac4caccfd083f3b9a5": [
-            "libpq"
-          ],
-          "9401ac313ac2a28364bd7b0483b303d234a33c5e52b0342821cecde2373cb9e4": [
-            "libsodium"
-          ],
-          "2a7fa1d89be5ffe4f7dc845802c23da6be6660e7177ac8daae4e976f14e408d5": [
-            "libzip"
-          ],
-          "9263cfdc1bb063afcc2687c5e5e2bca16e06dca68c17c138d988bb03d2502263": [
-            "oniguruma"
-          ],
-          "1a9a292ef3bb1617f4813f0b9db3b62acdff68d7c770c15fc3685f4315aa5e5c": [
-            "openldap"
-          ],
-          "0eb46a52343afdb00d31295d9df55a8c796b950d1a48fd637b530e9874731a57": [
-            "openssl@4"
-          ],
-          "f37ad77d6c032303eea0856dd84f8e6688be4b91877448b222c4a840ef938723": [
-            "pcre2"
-          ],
-          "455b0242870a161865b2d40b7f74caf32dc157ad7da6c9c45df01f541d35e531": [
-            "sqlite"
-          ],
-          "0ab4d602a9c6f31a2f46ffcf30d991fd4cdba22ee635af68104ef96ee510de2e": [
-            "tidy-html5"
-          ],
-          "336bae021880ccd5632f2a5b2d83387b5b07940d7256f0d34520a3ef899779e4": [
-            "unixodbc"
-          ],
-          "444ea78341ee35d937ecb3899c3bd43966c4a994dd525e539a3a40da148bc13e": [
-            "xz"
-          ],
-          "5ad0c8a8a056a0482c60bc0bd89b826d5c66407447efe86417286d98ecc1cbf9": [
-            "bzip2"
-          ],
-          "0dd80232aa516247d3b528d825642d53fb15b0186329f410746e38d681758033": [
-            "libedit"
-          ],
-          "9d8cf75b7a36e9ec709de8f1acdd124ff69c3e584d62c071ca3652a2fb1672c6": [
-            "libffi"
-          ],
-          "3efd30fd92ee4362aaaf180f24b820b2899315863cb62293fe563eda020887cc": [
-            "libxml2"
-          ],
-          "45322197af94277e5782fa162f42cd7893081e8a8230cc90e54c838a51a29e9d": [
-            "libxslt"
-          ],
-          "a200e17a2e16e1b7c7706f141fc8bc064d36859d795fae53d5827cd4bb6875e4": [
-            "gettext"
-          ],
-          "74e45d44846512644815054d27573915c4c8c216934c8282ae492b3060fbc7f8": [
-            "zlib-ng-compat"
-          ]
-        }
-      },
-      "3d13a770049eff1fdab24efe9bbd5e449ed98823ca48a8590b105f6b6ccdbcdb": {
-        "sha256": "3d13a770049eff1fdab24efe9bbd5e449ed98823ca48a8590b105f6b6ccdbcdb",
-        "formulae": [
-          "apr",
-          "apr-util",
-          "argon2",
-          "aspell",
-          "autoconf",
-          "bison",
-          "bzip2",
-          "curl",
-          "freetds",
-          "gcc",
-          "gd",
-          "gettext",
-          "gmp",
-          "httpd",
-          "icu4c@78",
-          "krb5",
-          "libedit",
-          "libffi",
-          "libpq",
-          "libsodium",
-          "libxml2",
-          "libxslt",
-          "libzip",
-          "oniguruma",
-          "openldap",
-          "openssl@4",
-          "pcre2",
-          "pkgconf",
-          "re2c",
-          "sqlite",
-          "tidy-html5",
-          "unixodbc",
-          "xz",
-          "zlib-ng-compat"
-        ],
-        "declarations": {
-          "c7a96330cc158f1d3a8d4966ba62338c4e6fe89aecd0b63c19a84f698cbf78f8": [
-            "bison"
-          ],
-          "6fe84206c4a8804bb7d0e88edba9037238a9d4fca5d6bb23b22bafe25b3701c6": [
-            "httpd"
-          ],
-          "38c4c1d8d78d5265358ed4156a537799a7d193e96a50b351ebad01186d18fe64": [
-            "pkgconf"
-          ],
-          "f8e76515c515ab375168e7bfe911f20cc036e6e9f6853cf188a95058ac8c9394": [
-            "re2c"
-          ],
-          "99a6fc6f0f983ae8d0e53d3df71ab72f2ee5ac9729f45aae2b59933cf3cbb917": [
-            "apr"
-          ],
-          "ab5cf8f50a65153cfaee0872648199c1f889f6e682243cfd9da517fc085b5339": [
-            "apr-util"
-          ],
-          "bb2d8e8422a936ef35568f268a750e18597b51202c7fe3601c20bd30c2727e06": [
-            "argon2"
-          ],
-          "a19890c57dbfb063640d016cd729529d1f1eeacfc29086cb5acb6b1030fcb722": [
-            "aspell"
-          ],
-          "7f2593aa1455ddc6d89554ca036600936d63cb2f79ac681ce82322f71e7787b6": [
-            "autoconf"
-          ],
-          "26f52b26853c394a1f0cf06537dfc5e2a1b3934a7edb6f7a4cd75031da0e68c8": [
-            "curl"
-          ],
-          "ea90cb8d3177e56c5f93e4e52c3cd426991b6ccefb9b555bc6519f8d19bb1e80": [
-            "freetds"
-          ],
-          "45fb99f0c1cced67e5555d624f830ed4f95856036ff34bb9bce86fb998fe6d11": [
-            "gd"
-          ],
-          "6fc3507079d6afd462df4e8d1204f58d6a38b0b68c3d621ef1f5d3e55443790a": [
-            "gmp"
-          ],
-          "eb661e2036ecac315d569c0d0549b76b2ac48b7452811ec899580ed968bf464e": [
-            "icu4c@78"
-          ],
-          "35b7dca5a554f2a2665bf485899d449c1d6bbd332bfe029177c0c76cdaa2b98c": [
-            "krb5"
-          ],
-          "d5a563a088728ae163c285ccf57ccb89d92162a01169c0ac4caccfd083f3b9a5": [
-            "libpq"
-          ],
-          "9401ac313ac2a28364bd7b0483b303d234a33c5e52b0342821cecde2373cb9e4": [
-            "libsodium"
-          ],
-          "2a7fa1d89be5ffe4f7dc845802c23da6be6660e7177ac8daae4e976f14e408d5": [
-            "libzip"
-          ],
-          "9263cfdc1bb063afcc2687c5e5e2bca16e06dca68c17c138d988bb03d2502263": [
-            "oniguruma"
-          ],
-          "1a9a292ef3bb1617f4813f0b9db3b62acdff68d7c770c15fc3685f4315aa5e5c": [
-            "openldap"
-          ],
-          "0eb46a52343afdb00d31295d9df55a8c796b950d1a48fd637b530e9874731a57": [
-            "openssl@4"
-          ],
-          "f37ad77d6c032303eea0856dd84f8e6688be4b91877448b222c4a840ef938723": [
-            "pcre2"
-          ],
-          "455b0242870a161865b2d40b7f74caf32dc157ad7da6c9c45df01f541d35e531": [
-            "sqlite"
-          ],
-          "0ab4d602a9c6f31a2f46ffcf30d991fd4cdba22ee635af68104ef96ee510de2e": [
-            "tidy-html5"
-          ],
-          "336bae021880ccd5632f2a5b2d83387b5b07940d7256f0d34520a3ef899779e4": [
-            "unixodbc"
-          ],
-          "444ea78341ee35d937ecb3899c3bd43966c4a994dd525e539a3a40da148bc13e": [
-            "xz"
-          ],
-          "5ad0c8a8a056a0482c60bc0bd89b826d5c66407447efe86417286d98ecc1cbf9": [
-            "bzip2"
-          ],
-          "0dd80232aa516247d3b528d825642d53fb15b0186329f410746e38d681758033": [
-            "libedit"
-          ],
-          "9d8cf75b7a36e9ec709de8f1acdd124ff69c3e584d62c071ca3652a2fb1672c6": [
-            "libffi"
-          ],
-          "3efd30fd92ee4362aaaf180f24b820b2899315863cb62293fe563eda020887cc": [
-            "libxml2"
-          ],
-          "45322197af94277e5782fa162f42cd7893081e8a8230cc90e54c838a51a29e9d": [
-            "libxslt"
-          ],
-          "e8c18225643d9712c4bb4d9fad64f474b12b5557955b2b7864f3195438f36654": [
-            "gcc"
-          ],
-          "a200e17a2e16e1b7c7706f141fc8bc064d36859d795fae53d5827cd4bb6875e4": [
-            "gettext"
-          ],
-          "74e45d44846512644815054d27573915c4c8c216934c8282ae492b3060fbc7f8": [
-            "zlib-ng-compat"
-          ]
-        }
-      },
-      "935e38ab3794839c5c7e02bc74037101fef332625c47f902bb3a878b9d4359ef": {
-        "sha256": "935e38ab3794839c5c7e02bc74037101fef332625c47f902bb3a878b9d4359ef",
-        "formulae": [
-          "apr",
-          "apr-util",
-          "argon2",
-          "aspell",
-          "autoconf",
-          "bison",
-          "bzip2",
-          "curl",
-          "freetds",
-          "gd",
-          "gettext",
-          "gmp",
-          "httpd",
-          "icu4c@78",
-          "krb5",
-          "libedit",
-          "libffi",
-          "libpq",
-          "libsodium",
-          "libxml2",
-          "libxslt",
-          "libzip",
-          "oniguruma",
-          "openldap",
-          "openssl@4",
-          "pcre2",
-          "pkgconf",
-          "re2c",
-          "sqlite",
-          "tidy-html5",
-          "unixodbc",
-          "zlib-ng-compat"
-        ],
-        "declarations": {
-          "c7a96330cc158f1d3a8d4966ba62338c4e6fe89aecd0b63c19a84f698cbf78f8": [
-            "bison"
-          ],
-          "6fe84206c4a8804bb7d0e88edba9037238a9d4fca5d6bb23b22bafe25b3701c6": [
-            "httpd"
-          ],
-          "38c4c1d8d78d5265358ed4156a537799a7d193e96a50b351ebad01186d18fe64": [
-            "pkgconf"
-          ],
-          "f8e76515c515ab375168e7bfe911f20cc036e6e9f6853cf188a95058ac8c9394": [
-            "re2c"
-          ],
-          "99a6fc6f0f983ae8d0e53d3df71ab72f2ee5ac9729f45aae2b59933cf3cbb917": [
-            "apr"
-          ],
-          "ab5cf8f50a65153cfaee0872648199c1f889f6e682243cfd9da517fc085b5339": [
-            "apr-util"
-          ],
-          "bb2d8e8422a936ef35568f268a750e18597b51202c7fe3601c20bd30c2727e06": [
-            "argon2"
-          ],
-          "a19890c57dbfb063640d016cd729529d1f1eeacfc29086cb5acb6b1030fcb722": [
-            "aspell"
-          ],
-          "7f2593aa1455ddc6d89554ca036600936d63cb2f79ac681ce82322f71e7787b6": [
-            "autoconf"
-          ],
-          "26f52b26853c394a1f0cf06537dfc5e2a1b3934a7edb6f7a4cd75031da0e68c8": [
-            "curl"
-          ],
-          "ea90cb8d3177e56c5f93e4e52c3cd426991b6ccefb9b555bc6519f8d19bb1e80": [
-            "freetds"
-          ],
-          "45fb99f0c1cced67e5555d624f830ed4f95856036ff34bb9bce86fb998fe6d11": [
-            "gd"
-          ],
-          "6fc3507079d6afd462df4e8d1204f58d6a38b0b68c3d621ef1f5d3e55443790a": [
-            "gmp"
-          ],
-          "eb661e2036ecac315d569c0d0549b76b2ac48b7452811ec899580ed968bf464e": [
-            "icu4c@78"
-          ],
-          "35b7dca5a554f2a2665bf485899d449c1d6bbd332bfe029177c0c76cdaa2b98c": [
-            "krb5"
-          ],
-          "d5a563a088728ae163c285ccf57ccb89d92162a01169c0ac4caccfd083f3b9a5": [
-            "libpq"
-          ],
-          "9401ac313ac2a28364bd7b0483b303d234a33c5e52b0342821cecde2373cb9e4": [
-            "libsodium"
-          ],
-          "2a7fa1d89be5ffe4f7dc845802c23da6be6660e7177ac8daae4e976f14e408d5": [
-            "libzip"
-          ],
-          "9263cfdc1bb063afcc2687c5e5e2bca16e06dca68c17c138d988bb03d2502263": [
-            "oniguruma"
-          ],
-          "1a9a292ef3bb1617f4813f0b9db3b62acdff68d7c770c15fc3685f4315aa5e5c": [
-            "openldap"
-          ],
-          "0eb46a52343afdb00d31295d9df55a8c796b950d1a48fd637b530e9874731a57": [
-            "openssl@4"
-          ],
-          "f37ad77d6c032303eea0856dd84f8e6688be4b91877448b222c4a840ef938723": [
-            "pcre2"
-          ],
-          "455b0242870a161865b2d40b7f74caf32dc157ad7da6c9c45df01f541d35e531": [
-            "sqlite"
-          ],
-          "0ab4d602a9c6f31a2f46ffcf30d991fd4cdba22ee635af68104ef96ee510de2e": [
-            "tidy-html5"
-          ],
-          "336bae021880ccd5632f2a5b2d83387b5b07940d7256f0d34520a3ef899779e4": [
-            "unixodbc"
-          ],
-          "5ad0c8a8a056a0482c60bc0bd89b826d5c66407447efe86417286d98ecc1cbf9": [
-            "bzip2"
-          ],
-          "0dd80232aa516247d3b528d825642d53fb15b0186329f410746e38d681758033": [
-            "libedit"
-          ],
-          "9d8cf75b7a36e9ec709de8f1acdd124ff69c3e584d62c071ca3652a2fb1672c6": [
-            "libffi"
-          ],
-          "3efd30fd92ee4362aaaf180f24b820b2899315863cb62293fe563eda020887cc": [
-            "libxml2"
-          ],
-          "45322197af94277e5782fa162f42cd7893081e8a8230cc90e54c838a51a29e9d": [
-            "libxslt"
-          ],
-          "a200e17a2e16e1b7c7706f141fc8bc064d36859d795fae53d5827cd4bb6875e4": [
-            "gettext"
-          ],
-          "74e45d44846512644815054d27573915c4c8c216934c8282ae492b3060fbc7f8": [
-            "zlib-ng-compat"
-          ]
-        }
-      },
-      "d101b352df315186ded1d4ddb1a8c823a5ad6b74f07bb5f3661847d9c1592046": {
-        "sha256": "d101b352df315186ded1d4ddb1a8c823a5ad6b74f07bb5f3661847d9c1592046",
-        "formulae": [
-          "apr",
-          "apr-util",
-          "argon2",
-          "aspell",
-          "autoconf",
-          "bison",
-          "bzip2",
-          "curl",
-          "freetds",
-          "gcc",
-          "gd",
-          "gettext",
-          "gmp",
-          "httpd",
-          "icu4c@78",
-          "krb5",
-          "libedit",
-          "libffi",
-          "libpq",
-          "libsodium",
-          "libxml2",
-          "libxslt",
-          "libzip",
-          "oniguruma",
-          "openldap",
-          "openssl@4",
-          "pcre2",
-          "pkgconf",
-          "re2c",
-          "sqlite",
-          "tidy-html5",
-          "unixodbc",
-          "zlib-ng-compat"
-        ],
-        "declarations": {
-          "c7a96330cc158f1d3a8d4966ba62338c4e6fe89aecd0b63c19a84f698cbf78f8": [
-            "bison"
-          ],
-          "6fe84206c4a8804bb7d0e88edba9037238a9d4fca5d6bb23b22bafe25b3701c6": [
-            "httpd"
-          ],
-          "38c4c1d8d78d5265358ed4156a537799a7d193e96a50b351ebad01186d18fe64": [
-            "pkgconf"
-          ],
-          "f8e76515c515ab375168e7bfe911f20cc036e6e9f6853cf188a95058ac8c9394": [
-            "re2c"
-          ],
-          "99a6fc6f0f983ae8d0e53d3df71ab72f2ee5ac9729f45aae2b59933cf3cbb917": [
-            "apr"
-          ],
-          "ab5cf8f50a65153cfaee0872648199c1f889f6e682243cfd9da517fc085b5339": [
-            "apr-util"
-          ],
-          "bb2d8e8422a936ef35568f268a750e18597b51202c7fe3601c20bd30c2727e06": [
-            "argon2"
-          ],
-          "a19890c57dbfb063640d016cd729529d1f1eeacfc29086cb5acb6b1030fcb722": [
-            "aspell"
-          ],
-          "7f2593aa1455ddc6d89554ca036600936d63cb2f79ac681ce82322f71e7787b6": [
-            "autoconf"
-          ],
-          "26f52b26853c394a1f0cf06537dfc5e2a1b3934a7edb6f7a4cd75031da0e68c8": [
-            "curl"
-          ],
-          "ea90cb8d3177e56c5f93e4e52c3cd426991b6ccefb9b555bc6519f8d19bb1e80": [
-            "freetds"
-          ],
-          "45fb99f0c1cced67e5555d624f830ed4f95856036ff34bb9bce86fb998fe6d11": [
-            "gd"
-          ],
-          "6fc3507079d6afd462df4e8d1204f58d6a38b0b68c3d621ef1f5d3e55443790a": [
-            "gmp"
-          ],
-          "eb661e2036ecac315d569c0d0549b76b2ac48b7452811ec899580ed968bf464e": [
-            "icu4c@78"
-          ],
-          "35b7dca5a554f2a2665bf485899d449c1d6bbd332bfe029177c0c76cdaa2b98c": [
-            "krb5"
-          ],
-          "d5a563a088728ae163c285ccf57ccb89d92162a01169c0ac4caccfd083f3b9a5": [
-            "libpq"
-          ],
-          "9401ac313ac2a28364bd7b0483b303d234a33c5e52b0342821cecde2373cb9e4": [
-            "libsodium"
-          ],
-          "2a7fa1d89be5ffe4f7dc845802c23da6be6660e7177ac8daae4e976f14e408d5": [
-            "libzip"
-          ],
-          "9263cfdc1bb063afcc2687c5e5e2bca16e06dca68c17c138d988bb03d2502263": [
-            "oniguruma"
-          ],
-          "1a9a292ef3bb1617f4813f0b9db3b62acdff68d7c770c15fc3685f4315aa5e5c": [
-            "openldap"
-          ],
-          "0eb46a52343afdb00d31295d9df55a8c796b950d1a48fd637b530e9874731a57": [
-            "openssl@4"
-          ],
-          "f37ad77d6c032303eea0856dd84f8e6688be4b91877448b222c4a840ef938723": [
-            "pcre2"
-          ],
-          "455b0242870a161865b2d40b7f74caf32dc157ad7da6c9c45df01f541d35e531": [
-            "sqlite"
-          ],
-          "0ab4d602a9c6f31a2f46ffcf30d991fd4cdba22ee635af68104ef96ee510de2e": [
-            "tidy-html5"
-          ],
-          "336bae021880ccd5632f2a5b2d83387b5b07940d7256f0d34520a3ef899779e4": [
-            "unixodbc"
-          ],
-          "5ad0c8a8a056a0482c60bc0bd89b826d5c66407447efe86417286d98ecc1cbf9": [
-            "bzip2"
-          ],
-          "0dd80232aa516247d3b528d825642d53fb15b0186329f410746e38d681758033": [
-            "libedit"
-          ],
-          "9d8cf75b7a36e9ec709de8f1acdd124ff69c3e584d62c071ca3652a2fb1672c6": [
-            "libffi"
-          ],
-          "3efd30fd92ee4362aaaf180f24b820b2899315863cb62293fe563eda020887cc": [
-            "libxml2"
-          ],
-          "45322197af94277e5782fa162f42cd7893081e8a8230cc90e54c838a51a29e9d": [
-            "libxslt"
-          ],
-          "e8c18225643d9712c4bb4d9fad64f474b12b5557955b2b7864f3195438f36654": [
-            "gcc"
-          ],
-          "a200e17a2e16e1b7c7706f141fc8bc064d36859d795fae53d5827cd4bb6875e4": [
-            "gettext"
-          ],
-          "74e45d44846512644815054d27573915c4c8c216934c8282ae492b3060fbc7f8": [
-            "zlib-ng-compat"
-          ]
-        }
-      },
-      "83f422991cfb67667d2e3ac4b3a693ca9463214fe1eaecb83addb5ecbd6879f6": {
-        "sha256": "83f422991cfb67667d2e3ac4b3a693ca9463214fe1eaecb83addb5ecbd6879f6",
-        "formulae": [
-          "apr",
-          "apr-util",
-          "argon2",
-          "aspell",
-          "autoconf",
-          "bzip2",
-          "curl",
-          "freetds",
-          "gcc",
-          "gd",
-          "gettext",
-          "gmp",
-          "httpd",
-          "icu4c@78",
-          "krb5",
-          "libedit",
-          "libffi",
-          "libpq",
-          "libsodium",
-          "libxml2",
-          "libxslt",
-          "libzip",
-          "oniguruma",
-          "openldap",
-          "openssl@4",
-          "pcre2",
-          "pkgconf",
-          "sqlite",
-          "tidy-html5",
-          "unixodbc",
-          "xz",
-          "zlib-ng-compat"
-        ],
-        "declarations": {
-          "6fe84206c4a8804bb7d0e88edba9037238a9d4fca5d6bb23b22bafe25b3701c6": [
-            "httpd"
-          ],
-          "38c4c1d8d78d5265358ed4156a537799a7d193e96a50b351ebad01186d18fe64": [
-            "pkgconf"
-          ],
-          "99a6fc6f0f983ae8d0e53d3df71ab72f2ee5ac9729f45aae2b59933cf3cbb917": [
-            "apr"
-          ],
-          "ab5cf8f50a65153cfaee0872648199c1f889f6e682243cfd9da517fc085b5339": [
-            "apr-util"
-          ],
-          "bb2d8e8422a936ef35568f268a750e18597b51202c7fe3601c20bd30c2727e06": [
-            "argon2"
-          ],
-          "a19890c57dbfb063640d016cd729529d1f1eeacfc29086cb5acb6b1030fcb722": [
-            "aspell"
-          ],
-          "7f2593aa1455ddc6d89554ca036600936d63cb2f79ac681ce82322f71e7787b6": [
-            "autoconf"
-          ],
-          "26f52b26853c394a1f0cf06537dfc5e2a1b3934a7edb6f7a4cd75031da0e68c8": [
-            "curl"
-          ],
-          "ea90cb8d3177e56c5f93e4e52c3cd426991b6ccefb9b555bc6519f8d19bb1e80": [
-            "freetds"
-          ],
-          "45fb99f0c1cced67e5555d624f830ed4f95856036ff34bb9bce86fb998fe6d11": [
-            "gd"
-          ],
-          "6fc3507079d6afd462df4e8d1204f58d6a38b0b68c3d621ef1f5d3e55443790a": [
-            "gmp"
-          ],
-          "eb661e2036ecac315d569c0d0549b76b2ac48b7452811ec899580ed968bf464e": [
-            "icu4c@78"
-          ],
-          "35b7dca5a554f2a2665bf485899d449c1d6bbd332bfe029177c0c76cdaa2b98c": [
-            "krb5"
-          ],
-          "d5a563a088728ae163c285ccf57ccb89d92162a01169c0ac4caccfd083f3b9a5": [
-            "libpq"
-          ],
-          "9401ac313ac2a28364bd7b0483b303d234a33c5e52b0342821cecde2373cb9e4": [
-            "libsodium"
-          ],
-          "2a7fa1d89be5ffe4f7dc845802c23da6be6660e7177ac8daae4e976f14e408d5": [
-            "libzip"
-          ],
-          "9263cfdc1bb063afcc2687c5e5e2bca16e06dca68c17c138d988bb03d2502263": [
-            "oniguruma"
-          ],
-          "1a9a292ef3bb1617f4813f0b9db3b62acdff68d7c770c15fc3685f4315aa5e5c": [
-            "openldap"
-          ],
-          "0eb46a52343afdb00d31295d9df55a8c796b950d1a48fd637b530e9874731a57": [
-            "openssl@4"
-          ],
-          "f37ad77d6c032303eea0856dd84f8e6688be4b91877448b222c4a840ef938723": [
-            "pcre2"
-          ],
-          "455b0242870a161865b2d40b7f74caf32dc157ad7da6c9c45df01f541d35e531": [
-            "sqlite"
-          ],
-          "0ab4d602a9c6f31a2f46ffcf30d991fd4cdba22ee635af68104ef96ee510de2e": [
-            "tidy-html5"
-          ],
-          "336bae021880ccd5632f2a5b2d83387b5b07940d7256f0d34520a3ef899779e4": [
-            "unixodbc"
-          ],
-          "444ea78341ee35d937ecb3899c3bd43966c4a994dd525e539a3a40da148bc13e": [
-            "xz"
-          ],
-          "5ad0c8a8a056a0482c60bc0bd89b826d5c66407447efe86417286d98ecc1cbf9": [
-            "bzip2"
-          ],
-          "0dd80232aa516247d3b528d825642d53fb15b0186329f410746e38d681758033": [
-            "libedit"
-          ],
-          "9d8cf75b7a36e9ec709de8f1acdd124ff69c3e584d62c071ca3652a2fb1672c6": [
-            "libffi"
-          ],
-          "3efd30fd92ee4362aaaf180f24b820b2899315863cb62293fe563eda020887cc": [
-            "libxml2"
-          ],
-          "45322197af94277e5782fa162f42cd7893081e8a8230cc90e54c838a51a29e9d": [
-            "libxslt"
-          ],
-          "e8c18225643d9712c4bb4d9fad64f474b12b5557955b2b7864f3195438f36654": [
-            "gcc"
-          ],
-          "a200e17a2e16e1b7c7706f141fc8bc064d36859d795fae53d5827cd4bb6875e4": [
-            "gettext"
-          ],
-          "74e45d44846512644815054d27573915c4c8c216934c8282ae492b3060fbc7f8": [
-            "zlib-ng-compat"
-          ]
-        }
-      },
-      "f8795fdb6ab81dd4865757d698082d5be62f0a0a3ef276873bcd644212997847": {
-        "sha256": "f8795fdb6ab81dd4865757d698082d5be62f0a0a3ef276873bcd644212997847",
-        "formulae": [
-          "apr",
-          "apr-util",
-          "argon2",
-          "autoconf",
-          "bison",
-          "bzip2",
-          "capstone",
-          "curl",
-          "freetds",
-          "gd",
-          "gettext",
-          "gmp",
-          "httpd",
-          "icu4c@78",
-          "libedit",
-          "libffi",
-          "libpq",
-          "libsodium",
-          "libxml2",
-          "libxslt",
-          "libzip",
-          "net-snmp",
-          "oniguruma",
-          "openldap",
-          "openssl@4",
-          "pcre2",
-          "pkgconf",
-          "re2c",
-          "sqlite",
-          "tidy-html5",
-          "unixodbc",
-          "xz",
-          "zlib-ng-compat"
-        ],
-        "declarations": {
-          "c7a96330cc158f1d3a8d4966ba62338c4e6fe89aecd0b63c19a84f698cbf78f8": [
-            "bison"
-          ],
-          "6fe84206c4a8804bb7d0e88edba9037238a9d4fca5d6bb23b22bafe25b3701c6": [
-            "httpd"
-          ],
-          "38c4c1d8d78d5265358ed4156a537799a7d193e96a50b351ebad01186d18fe64": [
-            "pkgconf"
-          ],
-          "f8e76515c515ab375168e7bfe911f20cc036e6e9f6853cf188a95058ac8c9394": [
-            "re2c"
-          ],
-          "99a6fc6f0f983ae8d0e53d3df71ab72f2ee5ac9729f45aae2b59933cf3cbb917": [
-            "apr"
-          ],
-          "ab5cf8f50a65153cfaee0872648199c1f889f6e682243cfd9da517fc085b5339": [
-            "apr-util"
-          ],
-          "bb2d8e8422a936ef35568f268a750e18597b51202c7fe3601c20bd30c2727e06": [
-            "argon2"
-          ],
-          "7f2593aa1455ddc6d89554ca036600936d63cb2f79ac681ce82322f71e7787b6": [
-            "autoconf"
-          ],
-          "d69efc5c4ad70fd477ff5a9c26ee5d5ea03afd35160af1f937eb5a234aed1ab1": [
-            "capstone"
-          ],
-          "26f52b26853c394a1f0cf06537dfc5e2a1b3934a7edb6f7a4cd75031da0e68c8": [
-            "curl"
-          ],
-          "ea90cb8d3177e56c5f93e4e52c3cd426991b6ccefb9b555bc6519f8d19bb1e80": [
-            "freetds"
-          ],
-          "45fb99f0c1cced67e5555d624f830ed4f95856036ff34bb9bce86fb998fe6d11": [
-            "gd"
-          ],
-          "6fc3507079d6afd462df4e8d1204f58d6a38b0b68c3d621ef1f5d3e55443790a": [
-            "gmp"
-          ],
-          "eb661e2036ecac315d569c0d0549b76b2ac48b7452811ec899580ed968bf464e": [
-            "icu4c@78"
-          ],
-          "d5a563a088728ae163c285ccf57ccb89d92162a01169c0ac4caccfd083f3b9a5": [
-            "libpq"
-          ],
-          "9401ac313ac2a28364bd7b0483b303d234a33c5e52b0342821cecde2373cb9e4": [
-            "libsodium"
-          ],
-          "2a7fa1d89be5ffe4f7dc845802c23da6be6660e7177ac8daae4e976f14e408d5": [
-            "libzip"
-          ],
-          "f477bbd77cb6c2d1d03b0a1598bf9bf62857e6b15b15f3de572ceefb65476cf6": [
-            "net-snmp"
-          ],
-          "9263cfdc1bb063afcc2687c5e5e2bca16e06dca68c17c138d988bb03d2502263": [
-            "oniguruma"
-          ],
-          "1a9a292ef3bb1617f4813f0b9db3b62acdff68d7c770c15fc3685f4315aa5e5c": [
-            "openldap"
-          ],
-          "0eb46a52343afdb00d31295d9df55a8c796b950d1a48fd637b530e9874731a57": [
-            "openssl@4"
-          ],
-          "f37ad77d6c032303eea0856dd84f8e6688be4b91877448b222c4a840ef938723": [
-            "pcre2"
-          ],
-          "455b0242870a161865b2d40b7f74caf32dc157ad7da6c9c45df01f541d35e531": [
-            "sqlite"
-          ],
-          "0ab4d602a9c6f31a2f46ffcf30d991fd4cdba22ee635af68104ef96ee510de2e": [
-            "tidy-html5"
-          ],
-          "336bae021880ccd5632f2a5b2d83387b5b07940d7256f0d34520a3ef899779e4": [
-            "unixodbc"
-          ],
-          "444ea78341ee35d937ecb3899c3bd43966c4a994dd525e539a3a40da148bc13e": [
-            "xz"
-          ],
-          "5ad0c8a8a056a0482c60bc0bd89b826d5c66407447efe86417286d98ecc1cbf9": [
-            "bzip2"
-          ],
-          "0dd80232aa516247d3b528d825642d53fb15b0186329f410746e38d681758033": [
-            "libedit"
-          ],
-          "9d8cf75b7a36e9ec709de8f1acdd124ff69c3e584d62c071ca3652a2fb1672c6": [
-            "libffi"
-          ],
-          "3efd30fd92ee4362aaaf180f24b820b2899315863cb62293fe563eda020887cc": [
-            "libxml2"
-          ],
-          "45322197af94277e5782fa162f42cd7893081e8a8230cc90e54c838a51a29e9d": [
-            "libxslt"
-          ],
-          "a200e17a2e16e1b7c7706f141fc8bc064d36859d795fae53d5827cd4bb6875e4": [
-            "gettext"
-          ],
-          "74e45d44846512644815054d27573915c4c8c216934c8282ae492b3060fbc7f8": [
-            "zlib-ng-compat"
-          ]
-        }
-      },
-      "910177c3904d17bd4fb628e065f8e8dbedc79fda2f328064fb6fceaddcf71f4b": {
-        "sha256": "910177c3904d17bd4fb628e065f8e8dbedc79fda2f328064fb6fceaddcf71f4b",
-        "formulae": [
-          "apr",
-          "apr-util",
-          "argon2",
-          "autoconf",
-          "bzip2",
-          "capstone",
-          "curl",
-          "freetds",
-          "gcc",
-          "gd",
-          "gettext",
-          "gmp",
-          "httpd",
-          "icu4c@78",
-          "libedit",
-          "libffi",
-          "libpq",
-          "libsodium",
-          "libxml2",
-          "libxslt",
-          "libzip",
-          "net-snmp",
-          "oniguruma",
-          "openldap",
-          "openssl@4",
-          "pcre2",
-          "pkgconf",
-          "sqlite",
-          "tidy-html5",
-          "unixodbc",
-          "xz",
-          "zlib-ng-compat"
-        ],
-        "declarations": {
-          "6fe84206c4a8804bb7d0e88edba9037238a9d4fca5d6bb23b22bafe25b3701c6": [
-            "httpd"
-          ],
-          "38c4c1d8d78d5265358ed4156a537799a7d193e96a50b351ebad01186d18fe64": [
-            "pkgconf"
-          ],
-          "99a6fc6f0f983ae8d0e53d3df71ab72f2ee5ac9729f45aae2b59933cf3cbb917": [
-            "apr"
-          ],
-          "ab5cf8f50a65153cfaee0872648199c1f889f6e682243cfd9da517fc085b5339": [
-            "apr-util"
-          ],
-          "bb2d8e8422a936ef35568f268a750e18597b51202c7fe3601c20bd30c2727e06": [
-            "argon2"
-          ],
-          "7f2593aa1455ddc6d89554ca036600936d63cb2f79ac681ce82322f71e7787b6": [
-            "autoconf"
-          ],
-          "d69efc5c4ad70fd477ff5a9c26ee5d5ea03afd35160af1f937eb5a234aed1ab1": [
-            "capstone"
-          ],
-          "26f52b26853c394a1f0cf06537dfc5e2a1b3934a7edb6f7a4cd75031da0e68c8": [
-            "curl"
-          ],
-          "ea90cb8d3177e56c5f93e4e52c3cd426991b6ccefb9b555bc6519f8d19bb1e80": [
-            "freetds"
-          ],
-          "45fb99f0c1cced67e5555d624f830ed4f95856036ff34bb9bce86fb998fe6d11": [
-            "gd"
-          ],
-          "6fc3507079d6afd462df4e8d1204f58d6a38b0b68c3d621ef1f5d3e55443790a": [
-            "gmp"
-          ],
-          "eb661e2036ecac315d569c0d0549b76b2ac48b7452811ec899580ed968bf464e": [
-            "icu4c@78"
-          ],
-          "d5a563a088728ae163c285ccf57ccb89d92162a01169c0ac4caccfd083f3b9a5": [
-            "libpq"
-          ],
-          "9401ac313ac2a28364bd7b0483b303d234a33c5e52b0342821cecde2373cb9e4": [
-            "libsodium"
-          ],
-          "2a7fa1d89be5ffe4f7dc845802c23da6be6660e7177ac8daae4e976f14e408d5": [
-            "libzip"
-          ],
-          "f477bbd77cb6c2d1d03b0a1598bf9bf62857e6b15b15f3de572ceefb65476cf6": [
-            "net-snmp"
-          ],
-          "9263cfdc1bb063afcc2687c5e5e2bca16e06dca68c17c138d988bb03d2502263": [
-            "oniguruma"
-          ],
-          "1a9a292ef3bb1617f4813f0b9db3b62acdff68d7c770c15fc3685f4315aa5e5c": [
-            "openldap"
-          ],
-          "0eb46a52343afdb00d31295d9df55a8c796b950d1a48fd637b530e9874731a57": [
-            "openssl@4"
-          ],
-          "f37ad77d6c032303eea0856dd84f8e6688be4b91877448b222c4a840ef938723": [
-            "pcre2"
-          ],
-          "455b0242870a161865b2d40b7f74caf32dc157ad7da6c9c45df01f541d35e531": [
-            "sqlite"
-          ],
-          "0ab4d602a9c6f31a2f46ffcf30d991fd4cdba22ee635af68104ef96ee510de2e": [
-            "tidy-html5"
-          ],
-          "336bae021880ccd5632f2a5b2d83387b5b07940d7256f0d34520a3ef899779e4": [
-            "unixodbc"
-          ],
-          "444ea78341ee35d937ecb3899c3bd43966c4a994dd525e539a3a40da148bc13e": [
-            "xz"
-          ],
-          "5ad0c8a8a056a0482c60bc0bd89b826d5c66407447efe86417286d98ecc1cbf9": [
-            "bzip2"
-          ],
-          "0dd80232aa516247d3b528d825642d53fb15b0186329f410746e38d681758033": [
-            "libedit"
-          ],
-          "9d8cf75b7a36e9ec709de8f1acdd124ff69c3e584d62c071ca3652a2fb1672c6": [
-            "libffi"
-          ],
-          "3efd30fd92ee4362aaaf180f24b820b2899315863cb62293fe563eda020887cc": [
-            "libxml2"
-          ],
-          "45322197af94277e5782fa162f42cd7893081e8a8230cc90e54c838a51a29e9d": [
-            "libxslt"
-          ],
-          "e8c18225643d9712c4bb4d9fad64f474b12b5557955b2b7864f3195438f36654": [
-            "gcc"
           ],
           "a200e17a2e16e1b7c7706f141fc8bc064d36859d795fae53d5827cd4bb6875e4": [
             "gettext"
@@ -12989,58 +13010,58 @@
     "bottles": {
       "homebrew-php/Formula/autoconf@2.69.rb": "c49656abdd14cdd02e5c0eb71465808b0fcb99ea6b4fb2e0c4f625239d71bd70",
       "homebrew-php/Formula/bison@2.7.rb": "b51c6ca9e2d498b439d04775132e3e821e2f422dcab8b7f6a15330632f5dad89",
-      "homebrew-php/Formula/php-debug-zts.rb": "6d193bb0af92bc7e78a56b11e75a961d111e900373bbfa69b25f0964cb477872",
-      "homebrew-php/Formula/php-debug.rb": "1feab59cdd617c180194d71819712fa08ce248928b9ae5c77f374496a95daa1d",
-      "homebrew-php/Formula/php-zts.rb": "0945f49dad0f17df1045e7756ecd6b4d43321c7b793d093b15593e8632226987",
-      "homebrew-php/Formula/php.rb": "72f0422e55c4927b5a3fa0b97e0117e9ab522aa236804b064ce2463e82a2ce91",
-      "homebrew-php/Formula/php@5.6-debug-zts.rb": "1f8f228d965714fd43f9e0294bf7586ff9ab22bbb39a4cf01581e1379ee7925d",
-      "homebrew-php/Formula/php@5.6-debug.rb": "0b016bb4947d64d2bea958dfa4ec20f2bda6c9a51390493ecd5b5b200a53ed3f",
-      "homebrew-php/Formula/php@5.6-zts.rb": "ff5285dd344a2d71b82c61e8600d54b5de7c429788c849f359bf83299f587222",
-      "homebrew-php/Formula/php@5.6.rb": "5bbc45e5dda943576cc7e13a6492da1dfa2cc4cdc0b96305c84fa3601bf8795e",
-      "homebrew-php/Formula/php@7.0-debug-zts.rb": "663d432b09ffcbafafff2a2ec7fa78845f0ff747d7a44b0114068785e1a1a396",
-      "homebrew-php/Formula/php@7.0-debug.rb": "e7078a28d359ca02a16b638947c9c56612bdec2d1d1d64a12df4c1b04680df93",
-      "homebrew-php/Formula/php@7.0-zts.rb": "16ae7e0b8759d9d6467980b49c5452914366a647f133e4f94e6acb958a153460",
-      "homebrew-php/Formula/php@7.0.rb": "111fcf64dfc01411058b8ae405fc2ff927f7ffa91147c0b2266f0527c1b91973",
-      "homebrew-php/Formula/php@7.1-debug-zts.rb": "d7c7234a81a24491532e7c44962c7448945c57ac86340ecee0ac0eebd0dcaf97",
-      "homebrew-php/Formula/php@7.1-debug.rb": "e51d0400a52f9bc2eda58ba6fd243ae39322377eb404962c5de55452d2ba80b0",
-      "homebrew-php/Formula/php@7.1-zts.rb": "e92246e1b3e3a99d76834ee9d1e2384e1e6a9b025e659a5a6316a684ddb846e5",
-      "homebrew-php/Formula/php@7.1.rb": "79b45a0d25f4613378c434808906c4441bb886a2b6f5a79b8ab1f25eadbe712e",
-      "homebrew-php/Formula/php@7.2-debug-zts.rb": "fc94c4b205cf50092b4d9280311af5e390401e7acfa1ee5fcd32929da929623d",
-      "homebrew-php/Formula/php@7.2-debug.rb": "ee64cbb884191d6c2d1aec16ebc5c53979b1198a700558310b3a4c3ad1d96ab7",
-      "homebrew-php/Formula/php@7.2-zts.rb": "fa8ced0d4e36519d95afc5003bc958433116e16a341f5116facc7533094ec3f6",
-      "homebrew-php/Formula/php@7.2.rb": "80c531e2969af11e0b747b5b167b91d943fad359b3928fbfd24f5fb4f0277b7f",
-      "homebrew-php/Formula/php@7.3-debug-zts.rb": "d1ba2f976dd88fef362ec6ecde815cedf0e804649af496df6629e37b74c08248",
-      "homebrew-php/Formula/php@7.3-debug.rb": "397e051776a8884829c7f14f01d16cae93b9565b279dd9e3022c49686c6ee0ef",
-      "homebrew-php/Formula/php@7.3-zts.rb": "3679fa99937c31edfa51a8fc5897abb1f32bc9d79f99d36761a21dc27aee683e",
-      "homebrew-php/Formula/php@7.3.rb": "327feb248be0732c81a1aa53a6e30840105c7956ab0be411c726d93ebbf49640",
-      "homebrew-php/Formula/php@7.4-debug-zts.rb": "baf5ab1a7ed145955fbac9b846d6ca0c32a532dfb5b78db64cc278ea7b473866",
-      "homebrew-php/Formula/php@7.4-debug.rb": "232d354101c717a70591204e8baafe9604ef967f5550a26697cb445a96e4a110",
-      "homebrew-php/Formula/php@7.4-zts.rb": "ffd949335e802aba04419ac3166177134716922052b80146b9fb71f7fec42c59",
-      "homebrew-php/Formula/php@7.4.rb": "2f46e4450e6b41216def4cc71383218da6db92023bf0d917a26e2824f4da19d8",
-      "homebrew-php/Formula/php@8.0-debug-zts.rb": "3e2288df2f720c1a49e8ac0d8e00b2bace728717de6d78820ae45a72004a5995",
-      "homebrew-php/Formula/php@8.0-debug.rb": "1f5b4630f726eb77c5bed24cb70543a5306d83384b3e12f631847df42b3cab64",
-      "homebrew-php/Formula/php@8.0-zts.rb": "24bb4aab3137d75bce9b430fa70a0b6a034eddd2b957367786bfbbf9c1183ccf",
-      "homebrew-php/Formula/php@8.0.rb": "110f33ad7d644d18c19c2eab54258fd3e387e7815a510a062eef90537c5932c2",
-      "homebrew-php/Formula/php@8.1-debug-zts.rb": "f8ee119f0bced1d76560d2c66d9922c97751acc84c22d56733c5a83f90ab7f82",
-      "homebrew-php/Formula/php@8.1-debug.rb": "c44c72b3f9de923a4338c154d7417e1caecd460bf5be9180ff6205a7f8748ee0",
-      "homebrew-php/Formula/php@8.1-zts.rb": "356584d1ceed69882baaf4eab9cdc0cbdd070bc12e79c2b231a514bc8e5005ba",
-      "homebrew-php/Formula/php@8.1.rb": "76aad02b2090736d11b5f9b42d640865c993617a6ac78f120331e6c5e2167e69",
-      "homebrew-php/Formula/php@8.2-debug-zts.rb": "b595c3c0c077c69d584b600580a0219f0479d9ebc31d1463577fa8c402ee6dc1",
-      "homebrew-php/Formula/php@8.2-debug.rb": "103be2610f1e34d0f365d4f63260eb31b475b67800acea2b54e553addcf7a31d",
-      "homebrew-php/Formula/php@8.2-zts.rb": "47608676f0c1239b7c8b9c935f19644b7e8b8b0d3bd2948a5d5d1506aa817d2a",
-      "homebrew-php/Formula/php@8.2.rb": "e975fe06b2c6559d1d373d06a1589a4d2ca5a995849342fdd8dacd8cef96e69f",
-      "homebrew-php/Formula/php@8.3-debug-zts.rb": "0a873bb76f6f0983c4d5bb942ddc1cf55fccec7a3c7a3a3c79e9218190f76fd9",
-      "homebrew-php/Formula/php@8.3-debug.rb": "35529bc4bb0bdeffbd1294575d063cc3a36f48b7decd594db96194ea5d281654",
-      "homebrew-php/Formula/php@8.3-zts.rb": "0679b38abff74982a2ac83a4cf626a29e17d212938cf737e01de7e82b9ee126e",
-      "homebrew-php/Formula/php@8.3.rb": "7c09e628545360da472e3f2c78cc77c8076754b2b1b8be6d4a531f6b71c76252",
-      "homebrew-php/Formula/php@8.4-debug-zts.rb": "da88f098fe8e5c87546985cff9e6a76ba581bd363aae077697df0ac97f8b2f7e",
-      "homebrew-php/Formula/php@8.4-debug.rb": "b6717fbe0f946eab1f2ffd125c586967433cc358306dd368934958b0ee44b74a",
-      "homebrew-php/Formula/php@8.4-zts.rb": "5c043a84175d73476fbfd6bae0e5e3d6fee6fe391e4b521eed4e7584182b014a",
-      "homebrew-php/Formula/php@8.4.rb": "4c8b3eafabbc69764a7efa8c2174a69a198282631adfca37a9a4f680ed6529d0",
-      "homebrew-php/Formula/php@8.6-debug-zts.rb": "f756551110cea193c99ef78e56b2b1b7a396fd12017e39d7a908f5694d0d8cff",
-      "homebrew-php/Formula/php@8.6-debug.rb": "251956e9ec1e15c364b418bfd08b0fa0f3b03705bf2ccbd21b7991ff97e24f30",
-      "homebrew-php/Formula/php@8.6-zts.rb": "4decf842056f560ae1de40089fcf665271fad291f926d684248f8567c85c34f6",
-      "homebrew-php/Formula/php@8.6.rb": "364b6cb2371a33309fb58908a8dc324a54f17bb0b51b57be1695638b496deafa",
+      "homebrew-php/Formula/php-debug-zts.rb": "c45099f8754b2ccc4d78f9d25d55392b045262e81f953aed327390e594e44aca",
+      "homebrew-php/Formula/php-debug.rb": "a2dda2c948aff62615504194a5f03dd452ad908d7b5d375bc4a59e50dead741c",
+      "homebrew-php/Formula/php-zts.rb": "054e62c5341630faa510b1e112f21bff1063c1b9c3448f35edfb10b922c04e18",
+      "homebrew-php/Formula/php.rb": "89da98c0c3798d734bd0b5f9a06ec68653daca8375508e87b7386fc49ea1190f",
+      "homebrew-php/Formula/php@5.6-debug-zts.rb": "2c8d75f6cb989be22f052b819f46071fbdc99a84c4b2377b440b627d104fb8ff",
+      "homebrew-php/Formula/php@5.6-debug.rb": "a5782a5dd427679ac84bb012436ff07c4919bd1800e24230817dd6cc21b807ed",
+      "homebrew-php/Formula/php@5.6-zts.rb": "8885394267aa5b3e0f84cc2a2bb5d3033951e7be581875f1accf76e10787a68a",
+      "homebrew-php/Formula/php@5.6.rb": "7824542b73898a61ce8a8b1232a4bd72c14225ddfd1fe12faa182ad4aa3b0494",
+      "homebrew-php/Formula/php@7.0-debug-zts.rb": "c39c5e392a7e61e4d83db2decf3b00a5e3f4649ab3c7e9cd1b7b8785d7df03af",
+      "homebrew-php/Formula/php@7.0-debug.rb": "c8d692998e84015e82c1efd5ef84f402e0967b7a4e76b2ec5e5f4fea549ab3fb",
+      "homebrew-php/Formula/php@7.0-zts.rb": "7949f5cb7c05553a26fe9d60c29a3dc829df3cc89c4dab2b55d50b02186bed29",
+      "homebrew-php/Formula/php@7.0.rb": "80164b4ab3eec5a85d47b8f792c8c89a78f0cd08f95b2c470759df9c7ed30289",
+      "homebrew-php/Formula/php@7.1-debug-zts.rb": "cacb278b69f632efc0206dc4a01266a4873c54b143fd9925286550130dcea817",
+      "homebrew-php/Formula/php@7.1-debug.rb": "6e0b4ffa9db52a79a2ed73cf046ada047381237cc62f5d48c84c32d8641285c5",
+      "homebrew-php/Formula/php@7.1-zts.rb": "7cec69dcaf57237d47426f2c26992a0ac9af70addb2ce8cbed9a5292a0425667",
+      "homebrew-php/Formula/php@7.1.rb": "ea1295bfafd132901932398732ed570245cdb169a57296c11da02a112501dca8",
+      "homebrew-php/Formula/php@7.2-debug-zts.rb": "f5cb11df1701dd8e1b55fb42c3121d82a501a00881a1c5d3443a5a2ac2644c93",
+      "homebrew-php/Formula/php@7.2-debug.rb": "aa9059e573577491772f841258b9507cfc3561d524f89a45035dd1af8e38d651",
+      "homebrew-php/Formula/php@7.2-zts.rb": "0843435f2c33244b192c3812f5438c73b8acc73e4e55967080e0a89852629a27",
+      "homebrew-php/Formula/php@7.2.rb": "bd7a4a1f694754bfb08565a02eb149f483dd5d98210f78dc285f80d5cdf16cf0",
+      "homebrew-php/Formula/php@7.3-debug-zts.rb": "da0061110f2cdc6bf827c9301356fc8415d3aa258b72e5b27dec41100fc92c43",
+      "homebrew-php/Formula/php@7.3-debug.rb": "66c83d2bf8c57137bf1a240616036a97bc91e8f803d24c5a610a06190817c209",
+      "homebrew-php/Formula/php@7.3-zts.rb": "7304b64e882d1f5b6e4c265b0193e1b1368d777aa30cd9d40da087524fb6caea",
+      "homebrew-php/Formula/php@7.3.rb": "f8c1ca5840adba5ac96789ee704104e1456793a23690f0fdbdf1c3a076d81755",
+      "homebrew-php/Formula/php@7.4-debug-zts.rb": "8ed3a450af8ee84533c90c43f1b25dcaa4565a19750b272a5cfb72f0f1422cc6",
+      "homebrew-php/Formula/php@7.4-debug.rb": "b8802c04f888b74b940a223fada77a2b49b0df38b2080d03812ad621e445a5eb",
+      "homebrew-php/Formula/php@7.4-zts.rb": "56139a92622bcf1f792003f15265f601a8b7f564c567b909e9f3bdc415f10c27",
+      "homebrew-php/Formula/php@7.4.rb": "a87b1d38b00711c9acfb74793cc2a77abcb50f0739df6d82f363f47d78bddabd",
+      "homebrew-php/Formula/php@8.0-debug-zts.rb": "31431c4f07adcee608e5a15c02e90ffbeebc84d630dc3692b57029fffcdba44a",
+      "homebrew-php/Formula/php@8.0-debug.rb": "01600882736e5be65e326f0f421ddf3ac351a5cf0c8e9d2118fcee7f836cee09",
+      "homebrew-php/Formula/php@8.0-zts.rb": "5a75f847c79bd7457844d9fc800aaf3c48bb586e552a7fafd076e6118d95b8d3",
+      "homebrew-php/Formula/php@8.0.rb": "be4929b1d1af45e77352844096b8182607210f228cdd984557854db8160d2572",
+      "homebrew-php/Formula/php@8.1-debug-zts.rb": "f7d45281f363ff50ba1bc958cae2c1ca15c77d88a2f609a9ee81f623435d4f0b",
+      "homebrew-php/Formula/php@8.1-debug.rb": "ea908da1ecced229ef82f57f7df9bd778f1deb3830f1a33d03c9f01c4a9014db",
+      "homebrew-php/Formula/php@8.1-zts.rb": "bca95ad8a8361f20796008991260aec57fd3b65bc8c0f7337f93a8c8c35eb3fe",
+      "homebrew-php/Formula/php@8.1.rb": "2327922417a0b4e927d9977a04b0643bb6b9401684240c1df0e82aedf49d1fd0",
+      "homebrew-php/Formula/php@8.2-debug-zts.rb": "31b07537e2cdf3a033bd5858da13f0a0d479379f63e7ca26dee8b1b7f5150b9b",
+      "homebrew-php/Formula/php@8.2-debug.rb": "a4e3f31c197a125b71034a4c8c986d59a0cf8dbb9ec1e20071b81c2c712eb1eb",
+      "homebrew-php/Formula/php@8.2-zts.rb": "ce7cb9e30ced3510bdd4c8da33989dfb56cf1db2595f197c132cfcbb83f1d6ee",
+      "homebrew-php/Formula/php@8.2.rb": "6b1a1174f2aa97054662478501bce5e82498b86e3c7d82d2fe513164d8c3c801",
+      "homebrew-php/Formula/php@8.3-debug-zts.rb": "ec98d176edd1088944e34873d64acc55d5ff3ed944811ea520670598be81d359",
+      "homebrew-php/Formula/php@8.3-debug.rb": "f515e91ea8668a85c1fd577d8eca42d9a4dad75ec8c3187d0f4ba96e56510e67",
+      "homebrew-php/Formula/php@8.3-zts.rb": "cb5c3a3a3aa598db40d6c25cfeb1f34560abf123ea97c712ce055aad2d5dfd9f",
+      "homebrew-php/Formula/php@8.3.rb": "ceaabc9beba687bbf2c0ad4be3462b927530984379810a0444694b9750d1ee85",
+      "homebrew-php/Formula/php@8.4-debug-zts.rb": "cb8f1c851d0fc58543c48886c98f2764e3f54c59e67011a12a12479d219a2e02",
+      "homebrew-php/Formula/php@8.4-debug.rb": "3b0bdaef68163a47d57ead1d3717033c3542c1d383d630676f13ee25aa9d85c3",
+      "homebrew-php/Formula/php@8.4-zts.rb": "cc6b3204af780a82caf12fa5aec9a5af4414047fe0d0244de47fce1c81110714",
+      "homebrew-php/Formula/php@8.4.rb": "1fd6eb84f06384ba4c9a9e8a626fc97e28b4eaba65013e5a778e0f63b29b64c6",
+      "homebrew-php/Formula/php@8.5-debug-zts.rb": "b9595d34d96ad434a73dede1bf5b1ab984ac29df08547c9c47a0f3bc04a2a93e",
+      "homebrew-php/Formula/php@8.5-debug.rb": "17225e75d182db52b9c58ce4d7935913e4404a92171c2385e7dffc44270d3132",
+      "homebrew-php/Formula/php@8.5-zts.rb": "7b88825c71e86021bdbd2b64f3a9f6d6be374d12e5740f60a741a190f4fd758e",
+      "homebrew-php/Formula/php@8.5.rb": "50cd23bc01b6dd5b1a58d35fcb684054dcc1be9a29426aed7684516d1210a299",
       "homebrew-php/Formula/php@8.7-debug-zts.rb": "4d6f2744f16e1921c85a4d7f84c3c87392dff64dcfc8a789c7991c3c6925c4e5",
       "homebrew-php/Formula/php@8.7-debug.rb": "30804bf5294d7e47b0e4ec6c9f9467ff3808decdbfdb48bb5ab8fbbc62961c54",
       "homebrew-php/Formula/php@8.7-zts.rb": "214d4cf9f173b862e72fd73ed2949803f8f914a55bd4f17b05aa662a076bb480",
@@ -13884,9 +13905,9 @@
     "cyrus-sasl": "0ccdcb95308638e5d97507d9d9a40b5fada62dd8",
     "dav1d": "a7cf3525d7e200e264d58611d597effd11abf0aa",
     "fontconfig": "9223d9ce00fb27d1f1d11f6ca06269f8fcb6cbb7",
-    "freetds": "3967e17e863691884f182ccd356d55da9eb1acc6",
+    "freetds": "5549d9b64f02e013012060e48ee365f87a08254b",
     "freetype": "3967e17e863691884f182ccd356d55da9eb1acc6",
-    "httpd": "0ccdcb95308638e5d97507d9d9a40b5fada62dd8",
+    "httpd": "5549d9b64f02e013012060e48ee365f87a08254b",
     "icu4c@78": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "icu4c@79": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "imagemagick": "a7cf3525d7e200e264d58611d597effd11abf0aa",
@@ -13916,6 +13937,7 @@
     "openldap": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "openssl@4": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "pcre2": "3967e17e863691884f182ccd356d55da9eb1acc6",
+    "pkgconf": "5549d9b64f02e013012060e48ee365f87a08254b",
     "python@3.14": "0ccdcb95308638e5d97507d9d9a40b5fada62dd8",
     "rabbitmq-c": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "sqlite": "3967e17e863691884f182ccd356d55da9eb1acc6",
