@@ -182,13 +182,14 @@ run_gate 0
 
 printf 'changed xdebug source\n' > "$extensions_path/Formula/xdebug@8.5.rb" || \
   php_darwin_die 'could not change the configured stable extension fixture'
-run_gate 1 'arm64 x86_64'
+run_gate 0
 
 extensions_hash=$(HOMEBREW_EXTENSIONS_PATH="$extensions_path" \
   bash "$script_dir/../../build/extensions-source-hash.sh" 8.5) || \
   php_darwin_die 'could not rehash the stable extension fixtures'
 write_manifest "$php_hash" "$extensions_hash" || php_darwin_die 'could not refresh the stable manifest fixture'
-printf 'changed php source\n' >> "$php_path/Formula/php.rb" || \
+formula=$(php_darwin_formula 8.5 release nts) || exit 1
+printf 'changed php source\n' >> "$php_path/Formula/$formula.rb" || \
   php_darwin_die 'could not change the stable PHP formula fixture'
 run_gate 1 'arm64 x86_64'
 

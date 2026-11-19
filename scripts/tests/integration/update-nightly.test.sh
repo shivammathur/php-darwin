@@ -13,6 +13,7 @@ trap 'rm -rf "$work_dir"' EXIT
 tap_path="$work_dir/homebrew-php"
 formula_dir="$tap_path/Formula"
 extensions_path="$work_dir/homebrew-extensions"
+core_path="$work_dir/homebrew-core"
 manifest="$work_dir/php-$version-manifest.json"
 assets_jsonl="$work_dir/assets.jsonl"
 output="$work_dir/github-output"
@@ -83,7 +84,7 @@ run_gate() {
   local expected_architectures=${3:-arm64 x86_64}
 
   : > "$output" || php_darwin_die 'could not reset the nightly output fixture'
-  FORCE="$force" GITHUB_OUTPUT="$output" HOMEBREW_EXTENSIONS_PATH="$extensions_path" \
+  FORCE="$force" GITHUB_OUTPUT="$output" HOMEBREW_EXTENSIONS_PATH="$extensions_path" HOMEBREW_CORE_PATH="$core_path" \
     HOMEBREW_PHP_PATH="$tap_path" \
     PHP_DARWIN_MANIFEST_PATH="$manifest" PHP_VERSION="$version" \
     bash "$script_dir/../../release/update-nightly.sh" >/dev/null || php_darwin_die 'nightly update gate failed'
@@ -96,7 +97,7 @@ run_gate() {
   grep -Fxq "architectures=$expected_architectures" "$output" || \
     php_darwin_die "nightly update gate did not return architectures=$expected_architectures"
   FORCE="$force" PUBLISH=true CHANNEL=nightly GITHUB_OUTPUT="$output" \
-    HOMEBREW_EXTENSIONS_PATH="$extensions_path" HOMEBREW_PHP_PATH="$tap_path" \
+    HOMEBREW_EXTENSIONS_PATH="$extensions_path" HOMEBREW_PHP_PATH="$tap_path" HOMEBREW_CORE_PATH="$core_path" \
     PHP_DARWIN_MANIFEST_PATH="$manifest" PHP_VERSION="$version" \
     bash "$script_dir/../../build/check-build-freshness.sh" >/dev/null || php_darwin_die 'queued nightly freshness check failed'
   grep -Fxq "build-required=$expected" "$output" || \
@@ -113,6 +114,17 @@ php_commit=$(git -C "$tap_path" rev-parse HEAD) || exit 1
   php_darwin_die 'PHP source commit resolver returned the wrong commit'
 write_manifest "$current"
 run_gate false
+mkdir -p "$core_path/Formula/d" || exit 1
+printf 'dependency recipe\n' > "$core_path/Formula/d/dependency.rb" || exit 1
+dependency_hash=$(php_darwin_sha256 "$core_path/Formula/d/dependency.rb") || exit 1
+jq --arg hash "$dependency_hash" '.assets[].build_inputs.source_records += [
+  {repository:"Homebrew/homebrew-core",path:"Formula/d/dependency.rb",sha256:$hash}
+]' "$manifest" > "$manifest.dependencies" || exit 1
+mv "$manifest.dependencies" "$manifest" || exit 1
+run_gate false
+printf 'updated dependency recipe\n' >> "$core_path/Formula/d/dependency.rb" || exit 1
+run_gate true
+write_manifest "$current"
 printf '  revision 1\n' >> "$formula_dir/php@$version.rb" || exit 1
 run_gate true
 write_formulae "$current"

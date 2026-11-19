@@ -34,38 +34,22 @@ fi
 for version in "${version_values[@]}"; do
   current=$(bash "$script_dir/../lib/source-hash.sh" "$version") || \
     php_darwin_die "could not compute the PHP $version source hash"
-  current_extensions=$(bash "$script_dir/../build/extensions-source-hash.sh" "$version") || \
-    php_darwin_die "could not compute the PHP $version cached extension source hash"
   manifest="$work_dir/php-$version-manifest.json"
   published=
-  published_extensions=
   manifest_current_platforms=false
   manifest_source_commit=
   manifest_extension_commit=
   php_current=false
-  extensions_current=false
-  dependencies_current=false
   if ! http_status=$(php_darwin_fetch_release_manifest "$release_repository" "$version" "$manifest"); then
     php_darwin_die "could not request the PHP $version release manifest"
   fi
   case "$http_status" in
     200)
       if php_darwin_validate_release_manifest "$manifest" "$version" stable 2>/dev/null; then
-        dependencies_current=$("${PHP_DARWIN_NODE:-node}" "$script_dir/../build/package-inputs.cjs" current "$manifest") || exit 1
         published=$(jq -er '.source_hash' "$manifest") || \
           php_darwin_die "could not read the PHP $version published source hash"
-        published_extensions=$(bash "$script_dir/../build/manifest-extensions-source-hash.sh" "$manifest" "$version") || \
-          php_darwin_die "could not read the PHP $version published cached extension source hash"
         php_current=$(bash "$script_dir/../build/build-inputs-current.sh" "$manifest" "$version" php "$current" "$published") || \
           php_darwin_die "could not compare PHP $version build inputs"
-        tap_only=$("${PHP_DARWIN_NODE:-node}" "$script_dir/../build/package-inputs.cjs" tap-only "$manifest") || exit 1
-        if [ "$php_current" = true ] && [ "$tap_only" = true ] && php_darwin_release_manifest_has_current_platforms "$manifest"; then
-          printf 'Retaining published PHP %s: the accepted homebrew-php recipes have not changed\n' "$version"
-          continue
-        fi
-        extensions_current=$(bash "$script_dir/../build/build-inputs-current.sh" "$manifest" "$version" extensions \
-          "$current_extensions" "$published_extensions") || \
-          php_darwin_die "could not compare PHP $version extension build inputs"
         if php_darwin_release_manifest_has_current_platforms "$manifest"; then
           manifest_current_platforms=true
         else
@@ -79,16 +63,16 @@ for version in "${version_values[@]}"; do
     404) ;;
     *) php_darwin_die "could not fetch the PHP $version release manifest (HTTP $http_status)" ;;
   esac
-  if [ "$php_current" = true ] && [ "$extensions_current" = true ] && \
-    [ "$manifest_current_platforms" = true ] && [ "$dependencies_current" = true ]; then
-    printf 'PHP %s cache build inputs are current (PHP %s, extensions %s)\n' "$version" "$current" "$current_extensions"
+  # Dependency and coverage-extension updates do not rebuild stable PHP.
+  # A manual cache-stable.yml dispatch with force=true can refresh them.
+  if [ "$php_current" = true ] && [ "$manifest_current_platforms" = true ]; then
+    printf 'Retaining published PHP %s: the homebrew-php recipes have not changed\n' "$version"
     continue
   fi
 
   architectures='arm64 x86_64'
   pinned_arguments=()
-  if [ "$php_current" = true ] && [ "$extensions_current" = true ] && \
-    [ "$manifest_current_platforms" = false ] && [ "$dependencies_current" = true ] && [ -n "$manifest_source_commit" ] && \
+  if [ "$php_current" = true ] && [ "$manifest_current_platforms" = false ] && [ -n "$manifest_source_commit" ] && \
     [ -n "$manifest_extension_commit" ]; then
     architectures=$(php_darwin_release_manifest_outdated_architectures "$manifest") || exit 1
     pinned_arguments=(-f "homebrew-php-commit=$manifest_source_commit" \
@@ -96,8 +80,8 @@ for version in "${version_values[@]}"; do
     printf 'Updating PHP %s platform caches: %s\n' "$version" "$architectures"
   fi
   if [ -n "$published" ]; then
-    printf 'Dispatching PHP %s: published PHP source %s, current PHP source %s; published extensions %s, current extensions %s\n' \
-      "$version" "$published" "$current" "${published_extensions:-missing}" "$current_extensions"
+    printf 'Dispatching PHP %s: published PHP source %s, current PHP source %s\n' \
+      "$version" "$published" "$current"
   else
     printf 'Dispatching PHP %s: no valid release manifest, current source %s\n' "$version" "$current"
   fi

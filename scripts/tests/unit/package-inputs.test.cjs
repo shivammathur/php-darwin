@@ -64,12 +64,15 @@ test('accepted tap baselines retain provenance, expire with publication changes 
   assert.equal(current(manifest, repositories, baselines), false);
 });
 
-test('checked-in baselines bind all four variants of the twelve accepted stable publications', () => {
+test('checked-in baselines bind all four variants of every configured stable publication', () => {
   const baselines = require('../../../conf/php-cache-baselines.json');
+  const {current_version: currentVersion} = require('../../../conf/package.json');
+  const stableVersions = fs.readFileSync(path.resolve(__dirname, '../../../conf/versions'), 'utf8')
+    .split('\n').filter(line => line.startsWith('stable ')).map(line => line.split(/\s+/)[1]);
   assert.match(baselines.tap_commit, /^[a-f0-9]{40}$/);
-  assert.equal(Object.keys(baselines.releases).length, 12);
+  assert.deepEqual(Object.keys(baselines.releases).sort(), stableVersions.sort());
   for (const [version, baseline] of Object.entries(baselines.releases)) {
-    const base = version === '8.5' ? 'php' : `php@${version}`;
+    const base = version === currentVersion ? 'php' : `php@${version}`;
     assert.deepEqual(baseline.records.map(record => record.path).sort(),
       ['', '-zts', '-debug', '-debug-zts'].map(suffix => `Formula/${base}${suffix}.rb`).sort());
     const raw = baseline.records.map(record => `${record.path.slice(8, -3)}\t${record.published_sha256}\n`).sort().join('');

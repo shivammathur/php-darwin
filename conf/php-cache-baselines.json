@@ -1,484 +1,524 @@
 {
   "schema": 1,
-  "tap_commit": "4751d787be027f938bfb75733e23071ed59db01e",
+  "tap_commit": "d6c05347ba36514d8256fe2ed26bec3a481463bd",
   "releases": {
     "5.6": {
       "php_semver": "5.6.40",
-      "homebrew_php_commit": "cbd5314e4bfe63d2771bc8a77757d64f0c1d9d56",
-      "source_hash": "b42610e97945e6918a300a381f15cb31062b55aab275c3e77d211a1d4c1aa820",
+      "homebrew_php_commit": "f66a18874676774b3e63154566b499cc85157f10",
+      "source_hash": "d15ff1abf3d4fcd51b2a26960e0f65afc135bc055476d87fb7775236d8c7c1a3",
       "tap_only_updates": true,
       "records": [
         {
           "path": "Formula/php@5.6.rb",
-          "published_sha256": "b54d98a5f0f92e3c237730827acaa409e64b5b2ce2581b80bb8f550c96a2053e",
-          "sha256": "b54d98a5f0f92e3c237730827acaa409e64b5b2ce2581b80bb8f550c96a2053e",
+          "published_sha256": "a40845465ed96bbc2c1c754f0549729d356412fb9918c211b343aefba65710ad",
+          "sha256": "a40845465ed96bbc2c1c754f0549729d356412fb9918c211b343aefba65710ad",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "779ff610b088ef4cb89d751066c6d5a318a692b5717c1280cbcbb845bd191b6d"
+          "inputs_sha256": "14bbb4f5db2a0568aa425c19f2a9b416f3139e4786e3f80de70828a96c4bc46b"
         },
         {
           "path": "Formula/php@5.6-zts.rb",
-          "published_sha256": "c93a79fc2beee6cc4459799e09d25ff0e699c7eba3e21d03ad5da1c704ff5343",
-          "sha256": "c93a79fc2beee6cc4459799e09d25ff0e699c7eba3e21d03ad5da1c704ff5343",
+          "published_sha256": "87058326ced489e0567db73a77bdd3de50a2d02922fa7beb9c2811aa696ec764",
+          "sha256": "87058326ced489e0567db73a77bdd3de50a2d02922fa7beb9c2811aa696ec764",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "f6a6a8edb0f8c0e45f672ee0cb6478db1223a57b06705e775268e74b12d337d9"
+          "inputs_sha256": "1fe2488660a80884fc16172c12a29d748bb04a3d5a1fc4597663aa1167b646ef"
         },
         {
           "path": "Formula/php@5.6-debug.rb",
-          "published_sha256": "1a3df832e2bca780ce81c1b29c049ad9ec6022a16c2e479044657f04b884d46b",
-          "sha256": "1a3df832e2bca780ce81c1b29c049ad9ec6022a16c2e479044657f04b884d46b",
+          "published_sha256": "1fafad13e9fd471eb40d206f2b423a7cf56ac6ff32312899acc6843d153dd8fd",
+          "sha256": "1fafad13e9fd471eb40d206f2b423a7cf56ac6ff32312899acc6843d153dd8fd",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "86b5087dcee2049a47bbb94047c6ff18bd4c3cf5dec4ff8894dc3b5f252d147d"
+          "inputs_sha256": "8a4dcec8a834e46356211cae875beab1b045f1163b1f65c066d6f93706cc4442"
         },
         {
           "path": "Formula/php@5.6-debug-zts.rb",
-          "published_sha256": "0a019c4fda7fd3b588f98c61c24284cf01801095659600666261083e4909f8fb",
-          "sha256": "0a019c4fda7fd3b588f98c61c24284cf01801095659600666261083e4909f8fb",
+          "published_sha256": "aed3b90b03ecfade349b58fe6d060d85e24fb9a7462d707a3b5b9361255d4eb7",
+          "sha256": "aed3b90b03ecfade349b58fe6d060d85e24fb9a7462d707a3b5b9361255d4eb7",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "8fb75777a1775b67bd1eef59e270d1c752e6fdcd927ec5a37961481967a01e1c"
+          "inputs_sha256": "f87dc8bc818c8030d99ada2e1739fee317f768fde81116043420a8ee951392e7"
         }
       ]
     },
     "7.0": {
       "php_semver": "7.0.33",
-      "homebrew_php_commit": "cbd5314e4bfe63d2771bc8a77757d64f0c1d9d56",
-      "source_hash": "4d0d779cfa0e1592ab6759f22e50741be13d5a47a760ffe87d22af33a5caa50d",
+      "homebrew_php_commit": "59959b52768db728e50147c976367b083586bd8e",
+      "source_hash": "136eee95cd181f848978dda81e7fc66e09df364151e74b4b2ed5d717e3d660a6",
       "tap_only_updates": true,
       "records": [
         {
           "path": "Formula/php@7.0.rb",
-          "published_sha256": "44931573acb84da37b012c0b6fb47b13827caa7536001d8059ec8e7adc1eca2f",
-          "sha256": "44931573acb84da37b012c0b6fb47b13827caa7536001d8059ec8e7adc1eca2f",
+          "published_sha256": "20297dcb9b3e16612039c94a792abf94010aad0015595b3e365fed51be7de234",
+          "sha256": "20297dcb9b3e16612039c94a792abf94010aad0015595b3e365fed51be7de234",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "6c0ce0aec4cf7868044b2daebeac9c6555996d79f4a8488ee67d3b3588f92554"
+          "inputs_sha256": "448713a08bca3c0196017f6e930b8cf396de73f368b2c3c87323e41906005dc3"
         },
         {
           "path": "Formula/php@7.0-zts.rb",
-          "published_sha256": "e4f2feec44dc2ed1a13c5516b2c8ea22845a322c3033bfd94dbb8c7370d12699",
-          "sha256": "e4f2feec44dc2ed1a13c5516b2c8ea22845a322c3033bfd94dbb8c7370d12699",
+          "published_sha256": "6d984a6cae9d8cbab2ba6f5f78fec78f510b775ffe2ddfe31c1cdc9e14fa3cf3",
+          "sha256": "6d984a6cae9d8cbab2ba6f5f78fec78f510b775ffe2ddfe31c1cdc9e14fa3cf3",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "4e6a2b14af78133437b44884e07994aff096229876e27a596b8f35bf84ed9d11"
+          "inputs_sha256": "0eb8eba76d057212ab8735395698fea2b3fd92a446bd878fb7be4f6c6844664f"
         },
         {
           "path": "Formula/php@7.0-debug.rb",
-          "published_sha256": "88362e6b17a361e9064b835dbacf900eb6150d299adffaffbd08d933018ebfc6",
-          "sha256": "88362e6b17a361e9064b835dbacf900eb6150d299adffaffbd08d933018ebfc6",
+          "published_sha256": "c905de546af62c28ba93e9a6fcec48ff7becab963a4d39af1dfb8d93a0681726",
+          "sha256": "c905de546af62c28ba93e9a6fcec48ff7becab963a4d39af1dfb8d93a0681726",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "986d06e367128a12dd8c6a300ff44ef68c6e01be1f5c6c85026f061abb553f38"
+          "inputs_sha256": "5001d52458c1ccd4b930df2836aabc6e8eccbdf405db1fd283a84d3a449822a5"
         },
         {
           "path": "Formula/php@7.0-debug-zts.rb",
-          "published_sha256": "4c7a3221a8de4b0a006c30561281c9002ba92988f1ec4655635a60b202b7c046",
-          "sha256": "4c7a3221a8de4b0a006c30561281c9002ba92988f1ec4655635a60b202b7c046",
+          "published_sha256": "be311b6a16a18d8d244276bfd060f5db4b86be149e71b9f721b093957999141d",
+          "sha256": "be311b6a16a18d8d244276bfd060f5db4b86be149e71b9f721b093957999141d",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "66708fd9b69d93e556f4ab18a25b24b3a3b4fa49040c352aefe95d0550edf5b7"
+          "inputs_sha256": "8dcbb6c426b8e71c8fe4be47cda83dbcf8573dd574ddfdfebc2594304bbaec7e"
         }
       ]
     },
     "7.1": {
       "php_semver": "7.1.33",
-      "homebrew_php_commit": "cbd5314e4bfe63d2771bc8a77757d64f0c1d9d56",
-      "source_hash": "943b44ef5261482e5590283922da4da4f66378b148b96dd5d2ed8ea8a9326c8e",
+      "homebrew_php_commit": "59959b52768db728e50147c976367b083586bd8e",
+      "source_hash": "166e998c48b5bc080b516d01ca4b17b6e306825413f54ccd67dae2a9835eb895",
       "tap_only_updates": true,
       "records": [
         {
           "path": "Formula/php@7.1.rb",
-          "published_sha256": "87ff914f5021620b1e8698de98c8bd8538e201f8d29ba8d45b33499e8116e1bb",
-          "sha256": "87ff914f5021620b1e8698de98c8bd8538e201f8d29ba8d45b33499e8116e1bb",
+          "published_sha256": "e03fbf0c94ee780b2a9943d43e6e2f6cb8d5b1db47f61b8b87ac27791071083e",
+          "sha256": "e03fbf0c94ee780b2a9943d43e6e2f6cb8d5b1db47f61b8b87ac27791071083e",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "b29db8825b2591a9e6bb0a35ff344ea9d553ddf0367b315e6f899ac84dc37b95"
+          "inputs_sha256": "bc67cce4163251f003959a4b0c1de2ee554557fa9c39e23992caa01c1ea2e587"
         },
         {
           "path": "Formula/php@7.1-zts.rb",
-          "published_sha256": "dcfbf4c7fc1388002949f7caa3334665841c6fbb5f329fda6440699b0c940a5a",
-          "sha256": "dcfbf4c7fc1388002949f7caa3334665841c6fbb5f329fda6440699b0c940a5a",
+          "published_sha256": "d1f7adf872991b29834ceca2f824e85b30ca138acdf421d784156db6d978503c",
+          "sha256": "d1f7adf872991b29834ceca2f824e85b30ca138acdf421d784156db6d978503c",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "4f898cc8036bae3f2b6ac69f78f02c7cfda394f5f318208399bfc17232d2b56b"
+          "inputs_sha256": "03f414e600d143e59190205f1d6285593f510f4fa1649f5951bb5e442c5f388e"
         },
         {
           "path": "Formula/php@7.1-debug.rb",
-          "published_sha256": "e0aaf4dea418d58398dbff9a1cba94e7c3b93f475346d3e94dc4f3cfd09c58a5",
-          "sha256": "e0aaf4dea418d58398dbff9a1cba94e7c3b93f475346d3e94dc4f3cfd09c58a5",
+          "published_sha256": "b93f25a4d8f336ee859e06e05e6d5a101d9e13242bc100b5a6c2cf86d714058b",
+          "sha256": "b93f25a4d8f336ee859e06e05e6d5a101d9e13242bc100b5a6c2cf86d714058b",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "ea3720af31d36bb51309ba4cfc50a8ca5068fea2fe3b6f2ca54afd06af60fc24"
+          "inputs_sha256": "c6ced22abd1c6d9f39d497e024bc08d7a4ea2a9369df241746efcd60eed32ecb"
         },
         {
           "path": "Formula/php@7.1-debug-zts.rb",
-          "published_sha256": "ce9a03a4ef413f57d93fe1312663f604dd5b9040e64d63f2ad6a64d0c597f3c0",
-          "sha256": "ce9a03a4ef413f57d93fe1312663f604dd5b9040e64d63f2ad6a64d0c597f3c0",
+          "published_sha256": "af5c18f42c16801d3d1bea2c92fb724affca0f1019974c9246ccc915db6bfead",
+          "sha256": "af5c18f42c16801d3d1bea2c92fb724affca0f1019974c9246ccc915db6bfead",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "35030fab2b0c06161ecac4f199a1bf36cf8e7c93193c41b2e14a0be21848904c"
+          "inputs_sha256": "41d77e71e316a903c0b218f4f82eca6b9b5153f8dc195986f61bfbde7de9e9f0"
         }
       ]
     },
     "7.2": {
       "php_semver": "7.2.34",
-      "homebrew_php_commit": "cbd5314e4bfe63d2771bc8a77757d64f0c1d9d56",
-      "source_hash": "444c8c53d6c77fc162352e8882b1247bf53722b772a871b18fb46a8165bfe5bb",
+      "homebrew_php_commit": "59959b52768db728e50147c976367b083586bd8e",
+      "source_hash": "0e89c6513eff664db6762eddc657a4a5fbc2e1cbe4f894e44ec5b82861a6e7e5",
       "tap_only_updates": true,
       "records": [
         {
           "path": "Formula/php@7.2.rb",
-          "published_sha256": "32df4b67e1c646e59d1a7424f71bf74d29e47d072bc1fab3688a13f24a32788b",
-          "sha256": "32df4b67e1c646e59d1a7424f71bf74d29e47d072bc1fab3688a13f24a32788b",
+          "published_sha256": "4c6ad8080e8235e5af879f1f7819c64e8f96433294453ffa766b92bbca96f495",
+          "sha256": "4c6ad8080e8235e5af879f1f7819c64e8f96433294453ffa766b92bbca96f495",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "9cca2acfbf4cdf7aac2862a548bae140364fcf838b4a142bce3fe8d0785be93d"
+          "inputs_sha256": "eceed2b95f459f24f008e76c5100a689d0832cb161915826fe8d2988bad0798e"
         },
         {
           "path": "Formula/php@7.2-zts.rb",
-          "published_sha256": "2bde3dc136d80a3d272817cff425b2ca6a8bbdb076292a725ed13330b2c07375",
-          "sha256": "2bde3dc136d80a3d272817cff425b2ca6a8bbdb076292a725ed13330b2c07375",
+          "published_sha256": "5d8aa1423fb533984d38fe03c31a911d19316702170778b28090f2dc76514cc6",
+          "sha256": "5d8aa1423fb533984d38fe03c31a911d19316702170778b28090f2dc76514cc6",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "5f14279b828c6a426c06d99c84ea24952791f9f3f674b85d8b3b55f608e16cb1"
+          "inputs_sha256": "e81933788daedaf2cd67f32619da2d2ed02b527d4a6498546774b8777a7905c2"
         },
         {
           "path": "Formula/php@7.2-debug.rb",
-          "published_sha256": "572ed04c93296a4dd5ae7a47b0e6cf078e61bb1ee53ded6ac89d1cde3b900c5f",
-          "sha256": "572ed04c93296a4dd5ae7a47b0e6cf078e61bb1ee53ded6ac89d1cde3b900c5f",
+          "published_sha256": "728cfd6611ae399e535c33e759f72e261f3b36cebdc886b3f983ffb1468111f3",
+          "sha256": "728cfd6611ae399e535c33e759f72e261f3b36cebdc886b3f983ffb1468111f3",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "79b8d049838a8cb259b74cf03492ebb4928123c56c9e92568a1027bea99b4920"
+          "inputs_sha256": "3425226f4fd1a1fc438537add63805d4a8270614e470120a4cdd9e185948dcee"
         },
         {
           "path": "Formula/php@7.2-debug-zts.rb",
-          "published_sha256": "ce777193d9df46297a123b5125b8c4b871f8164a0d49168856ebe59591e97da0",
-          "sha256": "ce777193d9df46297a123b5125b8c4b871f8164a0d49168856ebe59591e97da0",
+          "published_sha256": "a5c233ac452b2952aa5ee0f0db9ba269b7305d130a83f5513a6630545496ea48",
+          "sha256": "a5c233ac452b2952aa5ee0f0db9ba269b7305d130a83f5513a6630545496ea48",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "380ad83113e0198b908d018e88ba42a0e7da4406361df2e508716fd69ee38c6c"
+          "inputs_sha256": "8cc3bd382e966b3189e6cb3ba38210575bd460f4cb215173e592355a45ebb34e"
         }
       ]
     },
     "7.3": {
       "php_semver": "7.3.33",
-      "homebrew_php_commit": "cbd5314e4bfe63d2771bc8a77757d64f0c1d9d56",
-      "source_hash": "ac828a2bedf083794b0d3f83996739cc667aa65db6cacd6d0df8522b551c7212",
+      "homebrew_php_commit": "f66a18874676774b3e63154566b499cc85157f10",
+      "source_hash": "dddc0c1ccd7263c9809369a16e4998ae17e72f89645c6184a9eaf6fc5a958de0",
       "tap_only_updates": true,
       "records": [
         {
           "path": "Formula/php@7.3.rb",
-          "published_sha256": "2a49e00ad1648dc5612a0e930e479d82a9960b2ed9912c454d98afee9293dd70",
-          "sha256": "2a49e00ad1648dc5612a0e930e479d82a9960b2ed9912c454d98afee9293dd70",
+          "published_sha256": "49d0d530942cb392166e027035d6d7ff79b924be61253935f4de814e70c401ea",
+          "sha256": "49d0d530942cb392166e027035d6d7ff79b924be61253935f4de814e70c401ea",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "2c5107addf65e096a3b2ecec6a2956a850d35c1a17943c21740fff01c4577642"
+          "inputs_sha256": "f7dd6f4891a3778cb992c2f4651caea66ef5ec01f12c61a4989920782cc8e403"
         },
         {
           "path": "Formula/php@7.3-zts.rb",
-          "published_sha256": "bcf2ad14c80f341cc8170156175f8257a7c678b74b1c5ba7ebb85ea0e6f6e3c0",
-          "sha256": "bcf2ad14c80f341cc8170156175f8257a7c678b74b1c5ba7ebb85ea0e6f6e3c0",
+          "published_sha256": "190e845fa08f60d240a1162c2239e468df0d6809e6ae20188c98b08b19e7c62d",
+          "sha256": "190e845fa08f60d240a1162c2239e468df0d6809e6ae20188c98b08b19e7c62d",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "45e354ec6ccf5fab002882a2cf729baf0c1f304e45722351b4e844349a15ff87"
+          "inputs_sha256": "d57a12fc15bd6dd61f759986921b6f7bbbb81500ed49c42e0ca0997733f3d5c5"
         },
         {
           "path": "Formula/php@7.3-debug.rb",
-          "published_sha256": "2f1386a31ded0f34e3dc2986c6a1b4475371e7a82529fec9a573d08fdc40a066",
-          "sha256": "2f1386a31ded0f34e3dc2986c6a1b4475371e7a82529fec9a573d08fdc40a066",
+          "published_sha256": "e0a58c0cb0d9c0726782a9498b4e41be06232948c405d23da3d8eba96fe8b0c9",
+          "sha256": "e0a58c0cb0d9c0726782a9498b4e41be06232948c405d23da3d8eba96fe8b0c9",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "4eed6d84f8d478102ba6cced95f3416e02537f40e4b994c803fc98b729c6c17b"
+          "inputs_sha256": "54743f704bbedb73fb9fa1a06f17dbaa2f5bad1257cac11800a2ec8e3cd2f7ab"
         },
         {
           "path": "Formula/php@7.3-debug-zts.rb",
-          "published_sha256": "710d53a4d4af2ae0f1648c2f881fb246cccd06a087235ee637d839a1b2f50cbf",
-          "sha256": "710d53a4d4af2ae0f1648c2f881fb246cccd06a087235ee637d839a1b2f50cbf",
+          "published_sha256": "3bf6ab7fe41d7344466734201945ad5591700d075b5abf64f3301c7440192864",
+          "sha256": "3bf6ab7fe41d7344466734201945ad5591700d075b5abf64f3301c7440192864",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "b849c96268ec86f1f6fef466e9d590224a7f9bd94639847fbe5ba92bd0b03dbb"
+          "inputs_sha256": "386610a9e080b3d98f2525017235383ac5ac1265c8c67383ef6e9b60911962e4"
         }
       ]
     },
     "7.4": {
       "php_semver": "7.4.33",
-      "homebrew_php_commit": "cbd5314e4bfe63d2771bc8a77757d64f0c1d9d56",
-      "source_hash": "c21af83b82a3a2bab9a11eb513bb741f048a5eca0a9d4dc1f8b07361de16d4a8",
+      "homebrew_php_commit": "f66a18874676774b3e63154566b499cc85157f10",
+      "source_hash": "b780019a87302489cc64ea66344f6d6716cbf1390ef0e980b3ab56ae0e35f749",
       "tap_only_updates": true,
       "records": [
         {
           "path": "Formula/php@7.4.rb",
-          "published_sha256": "4b39d08b61697bf124607ae70bc0544069574ab77b3f5f4fc6215c617f05c7c6",
-          "sha256": "4b39d08b61697bf124607ae70bc0544069574ab77b3f5f4fc6215c617f05c7c6",
+          "published_sha256": "482424615b96584f519cfbdb384c1dd5c9cee7e13e503eea3a0f2862334dcf38",
+          "sha256": "482424615b96584f519cfbdb384c1dd5c9cee7e13e503eea3a0f2862334dcf38",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "b2b420f637773a5e28e47ba2af995b64e1c0a432e1c26f9b9c473b61bdf830d6"
+          "inputs_sha256": "920d4c6f8f68665ff9ce54a02329fb9e16ef90eb6497af53087637350c5eff37"
         },
         {
           "path": "Formula/php@7.4-zts.rb",
-          "published_sha256": "8aaad4f32b947f8729d8b039029facd16617dcde40df62f86a97b1447375b7f1",
-          "sha256": "8aaad4f32b947f8729d8b039029facd16617dcde40df62f86a97b1447375b7f1",
+          "published_sha256": "d969ea10978aee6ae85939be7303482fa65fb4ebc7f2749a365826bc6eb1c23a",
+          "sha256": "d969ea10978aee6ae85939be7303482fa65fb4ebc7f2749a365826bc6eb1c23a",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "f11fdf4c5a75b365ed0573492832bcc54f43a9427face7b51a4253a3b25d8e79"
+          "inputs_sha256": "d8c99a97d3344dc9c0160cac3c06e636c06869e554c0c5462782adbf900a69e3"
         },
         {
           "path": "Formula/php@7.4-debug.rb",
-          "published_sha256": "06cfe8eba591dddb7b02dcc9937f36ee995d60bda9d1580a08d2936f162d27d0",
-          "sha256": "06cfe8eba591dddb7b02dcc9937f36ee995d60bda9d1580a08d2936f162d27d0",
+          "published_sha256": "e7b286abcad40522812beca4a986e9563ca611fb96f1b5ca4ed849ab4c5573e5",
+          "sha256": "e7b286abcad40522812beca4a986e9563ca611fb96f1b5ca4ed849ab4c5573e5",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "678c76dc6c800c46e579d01b28efd4f88867b3ad0486cac88e9305e88f75cf2a"
+          "inputs_sha256": "019dd54f70353ee7504fda5feb0cef1163e2e1929a0624ebcbfd41eccbe38f9c"
         },
         {
           "path": "Formula/php@7.4-debug-zts.rb",
-          "published_sha256": "7a8f446a55ccf789081fe44df9ca4a19990a8ab0cb5f02d611665f334dccd71a",
-          "sha256": "7a8f446a55ccf789081fe44df9ca4a19990a8ab0cb5f02d611665f334dccd71a",
+          "published_sha256": "a1a864c333baf97b71e10a7d549772f81d1d27fa3d3b848b162ccb167ab4e49c",
+          "sha256": "a1a864c333baf97b71e10a7d549772f81d1d27fa3d3b848b162ccb167ab4e49c",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "8c7212c351a87d891214608e0bf32e5cc8d1c968eb581bdee61c2f9a63d7e81d"
+          "inputs_sha256": "6419ef2beaf6a1c27ae522070f98a13c46ee1bb32c18e80a6d7a6ddbfb071b8a"
         }
       ]
     },
     "8.0": {
       "php_semver": "8.0.30",
-      "homebrew_php_commit": "cbd5314e4bfe63d2771bc8a77757d64f0c1d9d56",
-      "source_hash": "c0c94f0e64f1576de8d5249fe9d76702835d93c9b41d94e94804a20ae57e1780",
+      "homebrew_php_commit": "f66a18874676774b3e63154566b499cc85157f10",
+      "source_hash": "55483bbff1550003926baedfc93ff16ef19032fd12e383268e265ecf4c8eb9da",
       "tap_only_updates": true,
       "records": [
         {
           "path": "Formula/php@8.0.rb",
-          "published_sha256": "fc6807be1ddbcd80a4e79e27f469d8e3951d8c7057a0e44be09b443c9011e74d",
-          "sha256": "fc6807be1ddbcd80a4e79e27f469d8e3951d8c7057a0e44be09b443c9011e74d",
+          "published_sha256": "20dc4ed60eb0f539b9a7c62811401961b2250a2139bf5e68157775c467da4a84",
+          "sha256": "20dc4ed60eb0f539b9a7c62811401961b2250a2139bf5e68157775c467da4a84",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "a298d1cab36f04f98a54ebef68ac2fc9746e1a2e371cdfdf28259040c0d80a4b"
+          "inputs_sha256": "5dadeee5963ca913972e5ff59a82a6d90daab82b45b320c3de1240b6b6971446"
         },
         {
           "path": "Formula/php@8.0-zts.rb",
-          "published_sha256": "b79a0b12a42bb00927b1c82a46d842081eafb8c34f5b3857f00d64a817c77dc4",
-          "sha256": "b79a0b12a42bb00927b1c82a46d842081eafb8c34f5b3857f00d64a817c77dc4",
+          "published_sha256": "32a421bebf0a641275f078d9cef3e149df86ac91ad6d5ba11d02dbc54c7c0b9a",
+          "sha256": "32a421bebf0a641275f078d9cef3e149df86ac91ad6d5ba11d02dbc54c7c0b9a",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "c1b6bdbb35184b68bc6b9ce4c963bc2acbd12d67c1882447b017398e84592426"
+          "inputs_sha256": "5cd11bffab6270d711d5b0e0990fcb49e1c9b8c2628a48e23666d98972723762"
         },
         {
           "path": "Formula/php@8.0-debug.rb",
-          "published_sha256": "ee2dd08d7884ac42f28b125c46ca5d642e0a2d6d87137f0c5bb4c0117a69b0de",
-          "sha256": "ee2dd08d7884ac42f28b125c46ca5d642e0a2d6d87137f0c5bb4c0117a69b0de",
+          "published_sha256": "61a83d928c665ed8b5c79c92417fb42428f38f6cb70d0b6aeebe04ff11214a7e",
+          "sha256": "61a83d928c665ed8b5c79c92417fb42428f38f6cb70d0b6aeebe04ff11214a7e",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "13b4dfa36607081f3f056ca83f8b6f765b0737e6cb18517cc949676b626e0e09"
+          "inputs_sha256": "f46be1140ac4b3607b9ac1f43dc2ae319e9bbdc56cc74f2b5a1243e26c9ad204"
         },
         {
           "path": "Formula/php@8.0-debug-zts.rb",
-          "published_sha256": "f28684c340dcaca9e55b48ed279d517626aa021d782d7bd8d5d056c258b7d2d5",
-          "sha256": "f28684c340dcaca9e55b48ed279d517626aa021d782d7bd8d5d056c258b7d2d5",
+          "published_sha256": "d312526f07af3be500a9715f1593b04b4e3a4526d653749dcde74cd2c0a21dc4",
+          "sha256": "d312526f07af3be500a9715f1593b04b4e3a4526d653749dcde74cd2c0a21dc4",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "7a057df90d1153b3fabb641e960ada01c9395eeee469781c3b04dd2ddde21252"
+          "inputs_sha256": "80b1a1e83660eaa04a9efb346f78b0d7b60d9380be96baf05a6a6e2189b17287"
         }
       ]
     },
     "8.1": {
       "php_semver": "8.1.34",
-      "homebrew_php_commit": "cbd5314e4bfe63d2771bc8a77757d64f0c1d9d56",
-      "source_hash": "024417e67d611025c8b729ba3f150bf6fc437e98e5728747844994f57712dc06",
+      "homebrew_php_commit": "f66a18874676774b3e63154566b499cc85157f10",
+      "source_hash": "fb7605d3d64d4416c0cd6bb5f6f890df1f5cd92d51db392761f4bf87a9de45c4",
       "tap_only_updates": true,
       "records": [
         {
           "path": "Formula/php@8.1.rb",
-          "published_sha256": "da3e498ddd08677535f63eb880d1f3862fbd6cb242ee77779f427e67541ee056",
-          "sha256": "da3e498ddd08677535f63eb880d1f3862fbd6cb242ee77779f427e67541ee056",
+          "published_sha256": "b72b9f2a1dc002da80fcdab16ec6cba77f94632907d0219b3a6523225a479e7a",
+          "sha256": "b72b9f2a1dc002da80fcdab16ec6cba77f94632907d0219b3a6523225a479e7a",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "4ab1e6cbb2d7abedb8f34930cbb1106d9cac109300ed38352fc5782685959e85"
+          "inputs_sha256": "8209c7aa7bcb569bf702dfcf156aa26d0d4a08f507f3953c3634d9af5488b6cf"
         },
         {
           "path": "Formula/php@8.1-zts.rb",
-          "published_sha256": "38c4b7f579ec1eab7704354699344609b8dfcf34d586e6c9de54b49fb254b951",
-          "sha256": "38c4b7f579ec1eab7704354699344609b8dfcf34d586e6c9de54b49fb254b951",
+          "published_sha256": "eb295da9893c0942a97d517d382a820ba2dc09df4bf759c52b5a619764a9a318",
+          "sha256": "eb295da9893c0942a97d517d382a820ba2dc09df4bf759c52b5a619764a9a318",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "68e1ea7ad7d9956b445b71a2ce04f57b0802b56397f52bec9f540373bc18f036"
+          "inputs_sha256": "589f4582cdf3ce485f43ac1e280d76075b0860c5fd1b4a8545879c9443c7278d"
         },
         {
           "path": "Formula/php@8.1-debug.rb",
-          "published_sha256": "1cebb8c5313f0b1653e94af7752ce5f0723e3ab44243d9ba3436d7b1e1ad60ad",
-          "sha256": "1cebb8c5313f0b1653e94af7752ce5f0723e3ab44243d9ba3436d7b1e1ad60ad",
+          "published_sha256": "16417e630da2900d0609be83e90204baee9fda6e0cb54c9afab93c25c809994d",
+          "sha256": "16417e630da2900d0609be83e90204baee9fda6e0cb54c9afab93c25c809994d",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "aad16fd2dd6025a575436a6962f6acc36bde3a6168fae927eb850cd1395facc7"
+          "inputs_sha256": "801bbac83d2ee610235731967b05caf743f5b1a734c869659885df5297e2610d"
         },
         {
           "path": "Formula/php@8.1-debug-zts.rb",
-          "published_sha256": "5cee2518e595e8f63f3a2d5b55d6496f9f0e5b987dac697c0361eeef27f879c3",
-          "sha256": "5cee2518e595e8f63f3a2d5b55d6496f9f0e5b987dac697c0361eeef27f879c3",
+          "published_sha256": "f2c8f2ec026824740597413fd97819c0576f73a5c8edee42e569acfe92470e1d",
+          "sha256": "f2c8f2ec026824740597413fd97819c0576f73a5c8edee42e569acfe92470e1d",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "325ff14c8ce586f66a5e6eb7f771021c2cb3538e22e39f78cca498afb12a5511"
+          "inputs_sha256": "9a26729d3e6674ce2f1b289658a687fa00067787d5bff212ea8bf510386691f8"
         }
       ]
     },
     "8.2": {
-      "php_semver": "8.2.35",
-      "homebrew_php_commit": "8891168f53c33a1cc29b3ec03414a1abf0adf78e",
-      "source_hash": "c2c8b97a3eff6e8088b30bca374adc0d4d7e24fd9de294e5bf1a38917ca4738b",
+      "php_semver": "8.2.36",
+      "homebrew_php_commit": "59959b52768db728e50147c976367b083586bd8e",
+      "source_hash": "71fca9bc18c4e86d961a0ad6f5ab70904c4afd47bf1c2fe6f0d103c8e55b4407",
       "tap_only_updates": true,
       "records": [
         {
           "path": "Formula/php@8.2.rb",
-          "published_sha256": "686713be796c094be6243c8292e702795d512bbdc2713146704f180647076074",
-          "sha256": "fff20db781ab2146ee2eb3d61440ecb83cf94de0b81815345dce283b5345189b",
+          "published_sha256": "1f40ebf44a70797f394dfe1f1272414a372e454066b4bbdcde040a560de3bbd0",
+          "sha256": "1f40ebf44a70797f394dfe1f1272414a372e454066b4bbdcde040a560de3bbd0",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "6f32bdbacc213ae063c13577ebae576182303dec431cd42d26fc5abc956bb3b8"
+          "inputs_sha256": "cdc3f4c88b87d75ba60321deab1b7e19e7bbcab1804dc1bd7b16f7446ed538be"
         },
         {
           "path": "Formula/php@8.2-zts.rb",
-          "published_sha256": "8b677466e2ed2421fcbd021422c228a77e1ad7fa0934ed653435fa302ee44ccf",
-          "sha256": "6d938979f0942618a597b444bb9137fb68a0d84d7a26af4a4db0be6532e47794",
+          "published_sha256": "0b1539a4d33e48e9248e4fe26fdc86bc8a7c38f35c0ccade84231a6bb5eab6a3",
+          "sha256": "0b1539a4d33e48e9248e4fe26fdc86bc8a7c38f35c0ccade84231a6bb5eab6a3",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "bf0ef2f25f54a218d9b4dc6b647bfb9349a5660c3942e3838218fbc02ed004bf"
+          "inputs_sha256": "ea896f66afb5555083408a19874a9ebed237f193856cd044f71d9294565cb545"
         },
         {
           "path": "Formula/php@8.2-debug.rb",
-          "published_sha256": "b6ce816cb4ee9ae9bead178dd4156a2370ef1ce5a598b51bbdc369e6e5bcab63",
-          "sha256": "5ad1b5460981a9b41a64f2d18940789dee911281de10d7ca7de1df00de9e7ed2",
+          "published_sha256": "d238edc124a6ebc809d487c245008cc2516ff5575ded0694127cdecb16102b92",
+          "sha256": "d238edc124a6ebc809d487c245008cc2516ff5575ded0694127cdecb16102b92",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "f07fb022054b6e6ff5a9b8b5019a64aaa8cafe86b033525ee108d475f579539f"
+          "inputs_sha256": "57af31a9f31f3c5ff936aae4948ed9e5d2279fc9abc2ef7676e8562265987be9"
         },
         {
           "path": "Formula/php@8.2-debug-zts.rb",
-          "published_sha256": "71d6526dd12705386cb9ae0f0896d10d24af6562a8b3d92d626c012d5761ace3",
-          "sha256": "da2246e589df81881112f5b2fe92536501750d462ce8c556000e373c9cd0335e",
+          "published_sha256": "232dba65cefd11c8558524d16dda23f6017bb507394ecd440cf97b200f79b488",
+          "sha256": "232dba65cefd11c8558524d16dda23f6017bb507394ecd440cf97b200f79b488",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "6829bc1732dd1c0ca06b013c5865ea7688dcf964c1d4b38f0d919cabc6649329"
+          "inputs_sha256": "9df2b9c08511705c570de26a69c2282c54390aaceca276b556a49adaf09f74f9"
         }
       ]
     },
     "8.3": {
-      "php_semver": "8.3.36",
-      "homebrew_php_commit": "c3bc18df9abe00baa8747a82cf4d7ddf67e1735a",
-      "source_hash": "cf75754609b3a6ce95db182a5394eba5bc0ed41ace2b86443416ac0023b2510b",
+      "php_semver": "8.3.37",
+      "homebrew_php_commit": "59959b52768db728e50147c976367b083586bd8e",
+      "source_hash": "63bf6d102fbf290cc0f938cd3a63a7b5dadb66f73735081db0ae47269350ffd1",
       "tap_only_updates": true,
       "records": [
         {
           "path": "Formula/php@8.3.rb",
-          "published_sha256": "2838974ccce21f404eaeb40d68aae89cf596e7a62bccdb40915b510963248fbb",
-          "sha256": "0e88863f39e126cd5e06da39859da157d6f52418625db44b71c4afb2f351d60e",
+          "published_sha256": "3696bc4e40518dd4ac075c61638e73cb49fae725a711bcdda3205937dd5760f5",
+          "sha256": "3696bc4e40518dd4ac075c61638e73cb49fae725a711bcdda3205937dd5760f5",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "b8f7fab15afddde4effa3cbe32dba52a6a37843af9a4522ca2276084fa0de8f8"
+          "inputs_sha256": "9677965dbe30f79dc9a5c6a9d3fec648b4af40486b0010a1bb0e35c85c9221cc"
         },
         {
           "path": "Formula/php@8.3-zts.rb",
-          "published_sha256": "e5d92a0b4e3c0d805f6b0ca6ebc92bf560486513d3805a5b75a8ce9977da488f",
-          "sha256": "4396ceacbc7cc975bee1de1c688942b18833a66b75bedbde3b6adb5a08d336b5",
+          "published_sha256": "6ad0b36100b4ca87c0ca20e2bf212502efa15b8ca8a70a081252a84cb968902f",
+          "sha256": "6ad0b36100b4ca87c0ca20e2bf212502efa15b8ca8a70a081252a84cb968902f",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "b7ba64b015519add001eab1d6a9e80952e60a19a7cfbfe5ba4c2fe23eb2dc1d6"
+          "inputs_sha256": "ab55a90e2415e5712b6b7a6000cdc8b6b9ebf7fe2719ec85acde9ef37d3e3eb5"
         },
         {
           "path": "Formula/php@8.3-debug.rb",
-          "published_sha256": "4c4fe7d42eb5bc9f0d21b675bae109fa36b6f2aac8dacb899b867a47fe9c1c28",
-          "sha256": "aa49fbf6326792ccef2b2cb98f8055f3b6e00f60b7e8d57780bf11f6926110e1",
+          "published_sha256": "6dbc7fb745cf5d0ed94bcbe24f8fcfb42fed4cb48de595a3fbadfda3c05e827c",
+          "sha256": "6dbc7fb745cf5d0ed94bcbe24f8fcfb42fed4cb48de595a3fbadfda3c05e827c",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "bda889194b8e530bbb53fa825333f806531465bc7b379cb713d01370e56568d6"
+          "inputs_sha256": "15d08ef2d2ca3222334ae531561876580a3957d4cf2d7175f06ad04b2692bcdb"
         },
         {
           "path": "Formula/php@8.3-debug-zts.rb",
-          "published_sha256": "2390e39046ddf2dea81a34392efdc8c9227cec3a004957aaf55ddf178389e779",
-          "sha256": "712755ce32caf2322a3087a81e23dc2addd5512bfda1785b3f8ed94edaafc9c2",
+          "published_sha256": "a2d32aa1c5160e3d05bae7dd44a8a8dbcfdc69585f73aad100832fe75f319039",
+          "sha256": "a2d32aa1c5160e3d05bae7dd44a8a8dbcfdc69585f73aad100832fe75f319039",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "60be75b752f8c668ee2132b8f4dd972c96798069c15873f93fadc3f1fcf4cecb"
+          "inputs_sha256": "08b865a864f5d1f2a451aa582ac84142e73693350c23f90ad431fb4b848a2563"
         }
       ]
     },
     "8.4": {
-      "php_semver": "8.4.27",
-      "homebrew_php_commit": "9126869c72aed48aa6aa2d6371c9340074ec2a40",
-      "source_hash": "28d975b4c93ae466a2f12a02867060ab07af34d5189f588d9956897d3c4d3abe",
+      "php_semver": "8.4.28",
+      "homebrew_php_commit": "59959b52768db728e50147c976367b083586bd8e",
+      "source_hash": "ad5fad55c3a2b10911f985e7d5f7762a900d4c1821c77e2fc4eb22bc2cf96474",
       "tap_only_updates": true,
       "records": [
         {
           "path": "Formula/php@8.4.rb",
-          "published_sha256": "41226e74cb669c601254d9576df31b6f7f225752b3bdbb5d40e2bccc138eb7e4",
-          "sha256": "7acc0a6f8a400451eccd03a33a608e3a97327a1c546160d59285cea4b9eba0fc",
+          "published_sha256": "ff976e9471418d228018877c013ab940d74fd6ecb5edc64c1acf5f0b5cfc1fef",
+          "sha256": "ff976e9471418d228018877c013ab940d74fd6ecb5edc64c1acf5f0b5cfc1fef",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "7493d762ea75cd120ee049412071893e65d71ad292baa891293122b50ffa4394"
+          "inputs_sha256": "1b9c7ac81a472bd4fc6c71ea01272729f28987137b58b7edbcd1cafa662d66b3"
         },
         {
           "path": "Formula/php@8.4-zts.rb",
-          "published_sha256": "13b8e7ed190f19b15b7def2e3e4d07711e35cce556f614d33b304db4ade212b1",
-          "sha256": "6627add4be0c9115cd3323b00f49f74c27827c9ec4cc5c06473df89a080edfec",
+          "published_sha256": "f751d37bd78911d9642ec8c68f12cfadd0b4fb3e8c594887809f3235e6b31d67",
+          "sha256": "f751d37bd78911d9642ec8c68f12cfadd0b4fb3e8c594887809f3235e6b31d67",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "7538d5024d6ddfd92971d50a2eb58a12a41b6bfb2cf28ead1c35fab7f93c2292"
+          "inputs_sha256": "39bf8b24d99504be849212798299b697ea180d0b530296b4fdbdba05edca761e"
         },
         {
           "path": "Formula/php@8.4-debug.rb",
-          "published_sha256": "013da5cac74386dba1da856b4b3d1d7932da01ac0f882810e085bae8cd2b59a7",
-          "sha256": "1992e777154631e44a71ced94e53e3b49c77eecc969528b6bc51bad3600a99b8",
+          "published_sha256": "212f76badf6d73330b0f436f566a49979a8299c390cc79b7ddbbb6254f7cc6b5",
+          "sha256": "212f76badf6d73330b0f436f566a49979a8299c390cc79b7ddbbb6254f7cc6b5",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "f9f19b724da9c5756e551768e925c0b01072cad74a00c4cf964f21645d9e7da5"
+          "inputs_sha256": "45effaeae14710d12bdcac17c65875c990cc51df041d8b50109574209a2236b3"
         },
         {
           "path": "Formula/php@8.4-debug-zts.rb",
-          "published_sha256": "d8d5c1d372b9584ec311be091c1afe12127adb72d3164fb97fe64fa693c62b2e",
-          "sha256": "a9c9823a02bcff3bf118f56879da81b562c7d05a551fe84bbb43dbbc799e84ed",
+          "published_sha256": "75b6056247a2161374cb847b2a99b407396e6744b3d52917f7058e9dd394186f",
+          "sha256": "75b6056247a2161374cb847b2a99b407396e6744b3d52917f7058e9dd394186f",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "a1524affff8d597ef1939821df5f9826ec9bfc5a49985ccf08eba9b628006e56"
+          "inputs_sha256": "a4769c78598ea0a7637d13baf34f18cf7a3e53daf0b179707c3d4cda0eba486c"
         }
       ]
     },
     "8.5": {
-      "php_semver": "8.5.12",
-      "homebrew_php_commit": "5019d22991d1d00b5bdfb08758411338847a8b76",
-      "source_hash": "79a7467917d8c43caea66eba1fef16e4abe5431000f25b1db4588eb0735484c5",
+      "php_semver": "8.5.13",
+      "homebrew_php_commit": "59959b52768db728e50147c976367b083586bd8e",
+      "source_hash": "5a2789a3fe3eb4e45eae2f80e288a6ae108f4354c67a7ef0525d5d8ead8e4e7b",
+      "tap_only_updates": true,
+      "records": [
+        {
+          "path": "Formula/php@8.5.rb",
+          "published_sha256": "9ca02dbbe8e07743cc4afe3cb4b56f07e6ee76fa69ed3e68471c07d62f55145d",
+          "sha256": "9ca02dbbe8e07743cc4afe3cb4b56f07e6ee76fa69ed3e68471c07d62f55145d",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "58c81b2419ad1d6b118f70ce954667ff6332a987e63451292735d497b2a9e73d"
+        },
+        {
+          "path": "Formula/php@8.5-zts.rb",
+          "published_sha256": "843d87b7a37f6d5db67f1fa3b748394a5da0edbbf3f5d482a747685783b61873",
+          "sha256": "843d87b7a37f6d5db67f1fa3b748394a5da0edbbf3f5d482a747685783b61873",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "f0c89d538afea6ddb71772ee8de5cd4ef84383fd5bfbe7f76af8a40170ae0f8a"
+        },
+        {
+          "path": "Formula/php@8.5-debug.rb",
+          "published_sha256": "45a4705e49047b390f33e1a859db0ab03245ff4093c9ae5c5bf1d1ff0f9cfc77",
+          "sha256": "45a4705e49047b390f33e1a859db0ab03245ff4093c9ae5c5bf1d1ff0f9cfc77",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "ba18c36fc359c455ab08e95c80a678504d5af8352a3875268bad5a9c6e7eb45a"
+        },
+        {
+          "path": "Formula/php@8.5-debug-zts.rb",
+          "published_sha256": "f7da77b08487d7e45b218752a1fcfaf4815a07efa3c322c9211a843a272a20b8",
+          "sha256": "f7da77b08487d7e45b218752a1fcfaf4815a07efa3c322c9211a843a272a20b8",
+          "inputs_schema": 1,
+          "inputs_mode": "platforms",
+          "inputs_sha256": "5b83b06c4ebd1390fc2792344385703ec10f70a01c56aac3448690c2a1ffab3b"
+        }
+      ]
+    },
+    "8.6": {
+      "php_semver": "8.6.0",
+      "homebrew_php_commit": "59959b52768db728e50147c976367b083586bd8e",
+      "source_hash": "daa0cf7e62accfa600429e250c3464838358c21ba2caead3f9d4086e8b6ebbfe",
       "tap_only_updates": true,
       "records": [
         {
           "path": "Formula/php.rb",
-          "published_sha256": "07146a2ed92978d741d795decea1e06a780494abe978d27bf6d7995613b92ce4",
-          "sha256": "06251202ce83f6bd2ca8fa2960f9014f181e53a3dcb3ee7563d8547cd4f80e6d",
+          "published_sha256": "1b4185674ab0b9dcfaada83d88aa8babeb0f0f3ef20384245b80ae0f56091e99",
+          "sha256": "1b4185674ab0b9dcfaada83d88aa8babeb0f0f3ef20384245b80ae0f56091e99",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "3702bffb98fcd28caef0864fbaa80f8b6a64be53e62ec83c825c003b6b86e1c9"
+          "inputs_sha256": "4143aed6d0fefddd80313b7561afb4b8371ec1e66d3efedeba1f2be88d2f668b"
         },
         {
           "path": "Formula/php-zts.rb",
-          "published_sha256": "8ffe4ffdc54bb1ee98fa4d852ca8ae8d8816f91af6009e005e397180940b52e3",
-          "sha256": "c053fcdd839bc9f70817d078e23f77006c38d1b681d40028c77f1c59ffca4045",
+          "published_sha256": "47c6a5b473c135f7ef4aa156be1d7c37ee679d166fcc63ad98d36dd0ce2fd505",
+          "sha256": "47c6a5b473c135f7ef4aa156be1d7c37ee679d166fcc63ad98d36dd0ce2fd505",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "077d6aa9894c7df1d64a13570a3af55cbbfdfd3d513628001c71a200cc583c78"
+          "inputs_sha256": "1bc033f049e6a8ed431f120ac03f520a0879a52658b8a8fcc13a7198dec179e3"
         },
         {
           "path": "Formula/php-debug.rb",
-          "published_sha256": "a7415bc91056c7f6dfe8952e4d48b93bc2a92bfacfa9f50c513450dfef90e09e",
-          "sha256": "0827b2c87927665192cb08b5242feef686a51353659279b7472dc810a8c0a540",
+          "published_sha256": "2d6331df23593ae0a0bede171d9712c3f8de20f98691f363638a5d70797a8fa5",
+          "sha256": "2d6331df23593ae0a0bede171d9712c3f8de20f98691f363638a5d70797a8fa5",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "37c90903d3bef782a3e19a7e09a284b66371589eb6e2909009f4a10f88d47509"
+          "inputs_sha256": "524dadf18a12779c54d1e12eb21e1072afd000d9e5d651c2951e8a53abe4a293"
         },
         {
           "path": "Formula/php-debug-zts.rb",
-          "published_sha256": "37d1233ca46cd38f7d5b9325cd0e13250a7ad826fae7841fbfb8db935af7ce92",
-          "sha256": "6f2579c9fde801357d30db9c90f6f73879cd8d231a9de144cf6c212a8bd090d9",
+          "published_sha256": "eaeaed40ba29365044fd0a4f70640d70dccac75be712b256a59ea8204f060d1f",
+          "sha256": "eaeaed40ba29365044fd0a4f70640d70dccac75be712b256a59ea8204f060d1f",
           "inputs_schema": 1,
           "inputs_mode": "platforms",
-          "inputs_sha256": "07184354d0c6296fc59f1d51456a4a79cbbb9a5b27a4a20035cdfcc9ec646143"
+          "inputs_sha256": "3ca59739a46e1d6b3ee86d60944a0808d88559e33010c26fa4ea1d4412640c5e"
         }
       ]
     }

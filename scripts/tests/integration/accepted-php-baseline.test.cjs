@@ -7,8 +7,9 @@ const {execFileSync} = require('node:child_process');
 const {digest} = require('../../installer/install-extensions.cjs');
 const {recipeInputs} = require('../../lib/recipe-inputs.cjs');
 const platforms = require('../../../conf/platforms.json');
+const {current_version: currentVersion} = require('../../../conf/package.json');
 
-test('accepted stable publications retain caches across dependency refreshes until PHP recipes change', t => {
+test('stable publications retain caches across dependency refreshes until PHP recipes change or a build is forced', t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'accepted-php-baseline-'));
   t.after(() => fs.rmSync(root, {recursive: true, force: true}));
   const repository = path.resolve(__dirname, '../../..');
@@ -26,7 +27,7 @@ test('accepted stable publications retain caches across dependency refreshes unt
     CHANNEL: 'stable', PUBLISH: 'true', FORCE: 'false', GITHUB_OUTPUT: path.join(root, 'output')};
   const run = (file, args = []) => execFileSync('bash', [path.join(root, 'scripts', file), ...args], {env, encoding: 'utf8'}).trim();
   const variants = [['release', 'nts', ''], ['release', 'zts', '-zts'], ['debug', 'nts', '-debug'], ['debug', 'zts', '-debug-zts']];
-  for (const [version, tapOnly] of [['8.1', true], ['8.2', true], ['8.5', true], ['8.3', false]]) {
+  for (const [version, tapOnly] of [['8.1', true], ['8.2', true], ['8.5', true], [currentVersion, true], ['8.3', false]]) {
     env.PHP_VERSION = version;
     env.ONLY_VERSION = version;
     fs.writeFileSync(dependency, 'dependency\n');
@@ -37,7 +38,7 @@ test('accepted stable publications retain caches across dependency refreshes unt
       '-c', 'commit.gpgsign=false', 'commit', '-qm', version]);
     const extensionCommit = execFileSync('git', ['-C', extensions, 'rev-parse', 'HEAD'], {encoding: 'utf8'}).trim();
     const records = variants.map(([_build, _ts, suffix]) => {
-      const base = version === '8.5' ? 'php' : `php@${version}`;
+      const base = version === currentVersion ? 'php' : `php@${version}`;
       const relative = `Formula/${base}${suffix}.rb`;
       fs.writeFileSync(path.join(php, relative), 'published source\n');
       return {repository: 'shivammathur/homebrew-php', path: relative, sha256: digest('published source\n')};
@@ -72,7 +73,12 @@ test('accepted stable publications retain caches across dependency refreshes unt
     check(false);
     fs.appendFileSync(dependency, 'dependency update\n');
     fs.appendFileSync(path.join(extensions, `Formula/xdebug@${version}.rb`), 'extension update\n');
-    check(!tapOnly);
+    check(false);
+    fs.writeFileSync(env.GITHUB_OUTPUT, '');
+    env.FORCE = 'true';
+    run('build/check-build-freshness.sh');
+    assert.match(fs.readFileSync(env.GITHUB_OUTPUT, 'utf8'), /build-required=true/, `${version}: manual forced refresh`);
+    env.FORCE = 'false';
     fs.appendFileSync(path.join(php, records[0].path), 'future tap source update\n');
     check(true);
   }

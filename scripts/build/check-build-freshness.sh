@@ -34,19 +34,18 @@ case "$status" in
       current=$(bash "$script_dir/../lib/source-hash.sh" "$version") || exit 1
       published=$(jq -er '.source_hash' "$manifest") || exit 1
       php_current=$(bash "$script_dir/build-inputs-current.sh" "$manifest" "$version" php "$current" "$published") || exit 1
-      tap_only=$("${PHP_DARWIN_NODE:-node}" "$script_dir/package-inputs.cjs" tap-only "$manifest") || exit 1
-      if [ "$php_current" = true ] && [ "$tap_only" = true ]; then
-        required=false
+      if [ "$channel" = stable ]; then
+        # Published stable PHP keeps its dependencies until its PHP recipes
+        # change or a manual dispatch explicitly forces a refresh.
+        [ "$php_current" != true ] || required=false
       else
         current_extensions=$(bash "$script_dir/extensions-source-hash.sh" "$version") || exit 1
         published_extensions=$(bash "$script_dir/manifest-extensions-source-hash.sh" "$manifest" "$version") || exit 1
         extensions_current=$(bash "$script_dir/build-inputs-current.sh" "$manifest" "$version" extensions "$current_extensions" "$published_extensions") || exit 1
-        if [ "$channel" = nightly ]; then
-          # Preserve EX_TEMPFAIL so scheduled consumers can defer a tap snapshot
-          # whose nightly variants are still being updated, without hiding errors.
-          current_commit=$(bash "$script_dir/php-src-commit.sh" "$version") || exit $?
-          [ "$(jq -r '.php_src_commit' "$manifest")" = "$current_commit" ] || php_current=false
-        fi
+        # Preserve EX_TEMPFAIL so scheduled consumers can defer a tap snapshot
+        # whose nightly variants are still being updated, without hiding errors.
+        current_commit=$(bash "$script_dir/php-src-commit.sh" "$version") || exit $?
+        [ "$(jq -r '.php_src_commit' "$manifest")" = "$current_commit" ] || php_current=false
         dependencies_current=$("${PHP_DARWIN_NODE:-node}" "$script_dir/package-inputs.cjs" current "$manifest") || exit 1
         if [ "$php_current" = true ] && [ "$extensions_current" = true ] && [ "$dependencies_current" = true ]; then required=false; fi
       fi
