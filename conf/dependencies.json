@@ -438,13 +438,13 @@
           }
         },
         "fontconfig": {
-          "version": "2.18.3",
+          "version": "2.18.4",
           "bottle": {
             "formula": "fontconfig",
-            "version": "2.18.3",
-            "tag": "arm64_sonoma",
-            "sha256": "24bd9a2d42f9bc46d4cd51aa51299cbe2c59b2c848656a7657875b0aaedc223b",
-            "url": "https://ghcr.io/v2/homebrew/core/fontconfig/blobs/sha256:24bd9a2d42f9bc46d4cd51aa51299cbe2c59b2c848656a7657875b0aaedc223b"
+            "version": "2.18.4",
+            "tag": "arm64_sequoia",
+            "sha256": "cec32d9ebf57d27a1c7e7b306d6fa3fdbbaeccfeec06d14ab5a6d46662b1820b",
+            "url": "https://ghcr.io/v2/homebrew/core/fontconfig/blobs/sha256:cec32d9ebf57d27a1c7e7b306d6fa3fdbbaeccfeec06d14ab5a6d46662b1820b"
           }
         },
         "jpeg-turbo": {
@@ -3376,13 +3376,226 @@
           }
         },
         "fontconfig": {
-          "version": "2.18.3",
-          "bottle": {
-            "formula": "fontconfig",
-            "version": "2.18.3",
-            "tag": "sonoma",
-            "sha256": "dbc9016619292284590e7e16e6492d911e0926b976ebe6d502f6e86fe01fd64c",
-            "url": "https://ghcr.io/v2/homebrew/core/fontconfig/blobs/sha256:dbc9016619292284590e7e16e6492d911e0926b976ebe6d502f6e86fe01fd64c"
+          "version": "2.18.4",
+          "source": {
+            "key": "php-darwin-source-v1-e7bf924933790dff8e0da56134fa982a93e043a75b734568ac50198b889a9a08",
+            "inputs": {
+              "environment": {
+                "arch": "x86_64",
+                "macos": "15",
+                "prefix": "/usr/local",
+                "homebrew": "Homebrew 7",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
+                "buildEnv": {
+                  "CC": "",
+                  "CXX": "",
+                  "CFLAGS": "",
+                  "CXXFLAGS": "",
+                  "CPPFLAGS": "",
+                  "LDFLAGS": "",
+                  "MACOSX_DEPLOYMENT_TARGET": "",
+                  "SDKROOT": "",
+                  "HOMEBREW_CC": "",
+                  "HOMEBREW_CXX": "",
+                  "HOMEBREW_ARCH": ""
+                }
+              },
+              "formula": "fontconfig",
+              "version": "2.18.4",
+              "recipe": "192b66153f64a074362a7e86a73179b3bf034fd8b063d6ffcd53b6d3afb168c7",
+              "dependencies": [
+                {
+                  "name": "brotli",
+                  "version": "1.2.1",
+                  "recipe": "5e2f806ea663cf0b0e8d403236e043855619c22e0c646a23fbbb716461a872b3",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": []
+                },
+                {
+                  "name": "freetype",
+                  "version": "2.15.0",
+                  "recipe": "8329de81670a5bc6930efa3ed0f5255faab8f999a02db1fd19dffab7bd90c5f3",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": [
+                    {
+                      "full_name": "brotli",
+                      "version": "1.2.1",
+                      "revision": 0,
+                      "pkg_version": "1.2.1",
+                      "declared_directly": true,
+                      "compatibility_version": 1
+                    },
+                    {
+                      "full_name": "libpng",
+                      "version": "1.6.59",
+                      "revision": 0,
+                      "pkg_version": "1.6.59",
+                      "declared_directly": true,
+                      "compatibility_version": 1
+                    }
+                  ]
+                },
+                {
+                  "name": "gettext",
+                  "version": "1.0",
+                  "recipe": "74dbc9cbf1c427c148b5d5247adfb43957b5d02be20a4e1d162aa903f0dd614e",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": [
+                    {
+                      "full_name": "json-c",
+                      "version": "0.19",
+                      "revision": 0,
+                      "pkg_version": "0.19",
+                      "declared_directly": true
+                    },
+                    {
+                      "full_name": "libunistring",
+                      "version": "1.5",
+                      "revision": 0,
+                      "pkg_version": "1.5",
+                      "declared_directly": true,
+                      "compatibility_version": 1
+                    }
+                  ]
+                },
+                {
+                  "name": "json-c",
+                  "version": "0.19",
+                  "recipe": "4d6b25671b690b98f7a4868e0a3610ddff2ab7b0836d9011f7d67f68eeaabaae",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": []
+                },
+                {
+                  "name": "libpng",
+                  "version": "1.6.59",
+                  "recipe": "3ef2e9c5f499c302dc8e9f1f76980732ad850618a00606fbfac2522080632b37",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": []
+                },
+                {
+                  "name": "libunistring",
+                  "version": "1.5",
+                  "recipe": "5a0ff014063865e7acebbe3b0e1e5b4434773b8124975898e235e78440279d6d",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": []
+                },
+                {
+                  "name": "meson",
+                  "version": "1.12.1",
+                  "recipe": "164474f808daa0637ba95f3007f858a3f3279f4b2cbcb696ea6127556360cc66",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": [
+                    {
+                      "full_name": "ninja",
+                      "version": "1.13.2",
+                      "revision": 0,
+                      "pkg_version": "1.13.2",
+                      "declared_directly": true,
+                      "compatibility_version": 1
+                    },
+                    {
+                      "full_name": "ca-certificates",
+                      "version": "2026-11-05",
+                      "revision": 0,
+                      "bottle_rebuild": 0,
+                      "pkg_version": "2026-11-05",
+                      "declared_directly": false,
+                      "compatibility_version": 1
+                    },
+                    {
+                      "full_name": "mpdecimal",
+                      "version": "4.0.1",
+                      "revision": 0,
+                      "pkg_version": "4.0.1",
+                      "declared_directly": false,
+                      "compatibility_version": 1
+                    },
+                    {
+                      "full_name": "openssl@4",
+                      "version": "4.1.0",
+                      "revision": 0,
+                      "pkg_version": "4.1.0",
+                      "declared_directly": false,
+                      "compatibility_version": 1
+                    },
+                    {
+                      "full_name": "readline",
+                      "version": "8.3.6",
+                      "revision": 0,
+                      "pkg_version": "8.3.6",
+                      "declared_directly": false,
+                      "compatibility_version": 1
+                    },
+                    {
+                      "full_name": "sqlite",
+                      "version": "3.54.1",
+                      "revision": 0,
+                      "pkg_version": "3.54.1",
+                      "declared_directly": false,
+                      "compatibility_version": 1
+                    },
+                    {
+                      "full_name": "xz",
+                      "version": "5.8.4",
+                      "revision": 0,
+                      "pkg_version": "5.8.4",
+                      "declared_directly": false,
+                      "compatibility_version": 1
+                    },
+                    {
+                      "full_name": "lz4",
+                      "version": "1.11.1",
+                      "revision": 0,
+                      "pkg_version": "1.11.1",
+                      "declared_directly": false,
+                      "compatibility_version": 1
+                    },
+                    {
+                      "full_name": "zstd",
+                      "version": "1.5.7",
+                      "revision": 1,
+                      "bottle_rebuild": 0,
+                      "pkg_version": "1.5.7_1",
+                      "declared_directly": false,
+                      "compatibility_version": 1
+                    },
+                    {
+                      "full_name": "python@3.14",
+                      "version": "3.14.8",
+                      "revision": 1,
+                      "pkg_version": "3.14.8_1",
+                      "declared_directly": true,
+                      "compatibility_version": 1
+                    }
+                  ]
+                },
+                {
+                  "name": "ninja",
+                  "version": "1.13.2",
+                  "recipe": "6e5309e103ab11da01bd45b1886813e4beb60ad068260e9c7c8a42acfb8aa720",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": []
+                },
+                {
+                  "name": "pkgconf",
+                  "version": "3.0.7",
+                  "recipe": "18650320e9599caed229bbd6dec72d42944df0e2cbe571c659e0ab2b59050b50",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": []
+                }
+              ]
+            },
+            "sha256": "6d05cbf6df33cd38270c32a04cc81f0a53d9c8f8058fda3bd1b89c1d719d497e"
           }
         },
         "nasm": {
@@ -7487,7 +7700,7 @@
   },
   "tap_inputs": {
     "schema": 1,
-    "sha256": "67c34998a7e836900c58c4d541fab85e017d9e2a2b9dcc9e4b7cf40f69bfbb96",
+    "sha256": "420fba7b4a90bb4ed8eb5cdea79bc5e727d530a78f9a9990d002481c4ce46867",
     "records": {
       "homebrew-php/Formula/autoconf@2.69.rb": "fd33eadb8f275a2d089c7d112bfb39d680cc838b3af2f61ab4fb35f09dbeff7d",
       "homebrew-php/Formula/bison@2.7.rb": "54902fa819dd1736bcca826196ee75b2608337b4b83e484829446961fd4e2669",
@@ -12828,10 +13041,10 @@
       "homebrew-php/Formula/php@8.6-debug.rb": "251956e9ec1e15c364b418bfd08b0fa0f3b03705bf2ccbd21b7991ff97e24f30",
       "homebrew-php/Formula/php@8.6-zts.rb": "4decf842056f560ae1de40089fcf665271fad291f926d684248f8567c85c34f6",
       "homebrew-php/Formula/php@8.6.rb": "364b6cb2371a33309fb58908a8dc324a54f17bb0b51b57be1695638b496deafa",
-      "homebrew-php/Formula/php@8.7-debug-zts.rb": "274324cf7549be43752a2409bb4513132e18e24f1dea1e843359e2b7b624c85c",
-      "homebrew-php/Formula/php@8.7-debug.rb": "59206bf784bffd47ef5501c9f575300ef4237f944f99cae9898ca0269a58183f",
-      "homebrew-php/Formula/php@8.7-zts.rb": "7765553ca4c2ed441e2006f9419f3f26b62f5bc16516c85369644dd977066c63",
-      "homebrew-php/Formula/php@8.7.rb": "6d9c1812650c5a250085ecca622b7db21c3d6887b104f0f1c0cf10e9207af968",
+      "homebrew-php/Formula/php@8.7-debug-zts.rb": "4d6f2744f16e1921c85a4d7f84c3c87392dff64dcfc8a789c7991c3c6925c4e5",
+      "homebrew-php/Formula/php@8.7-debug.rb": "30804bf5294d7e47b0e4ec6c9f9467ff3808decdbfdb48bb5ab8fbbc62961c54",
+      "homebrew-php/Formula/php@8.7-zts.rb": "214d4cf9f173b862e72fd73ed2949803f8f914a55bd4f17b05aa662a076bb480",
+      "homebrew-php/Formula/php@8.7.rb": "406e4ca1c2f7606a9caafade871b5cdbd4a30a4cfba25a30b9ec1f7ccc3b90c7",
       "homebrew-extensions/Formula/amqp@5.6.rb": "4bbfc54cb9797357863a7e78e30d13d90da4b07e9e1d8428433dc920c5c94b29",
       "homebrew-extensions/Formula/amqp@7.0.rb": "8577b42a3f0d4c0295d510b14542a44108971a9dbf8b47900a86c8091fbfb28d",
       "homebrew-extensions/Formula/amqp@7.1.rb": "99f9190e4269b0ac8620fc4a813cf785548da6f86e587727234c21b4857be5f1",
@@ -13265,8 +13478,8 @@
       "homebrew-extensions/Formula/pdo_firebird@8.3.rb": "442643b71cbd8d395dabeb93d207204ad23a9ebf73c6ea293c51a07a71e101d9",
       "homebrew-extensions/Formula/pdo_firebird@8.4.rb": "8af2a15a2611d0c49f172a0d1e90807debaea2d999821b1b9580254773d65f99",
       "homebrew-extensions/Formula/pdo_firebird@8.5.rb": "2aaea47fcbaf9768fcfe3a8f71787f7fd673520f9dff55f79877e56e949b921d",
-      "homebrew-extensions/Formula/pdo_firebird@8.6.rb": "576e996d8c59b3153d17c5e7e094beadde4e851d556aa54586533929ace3be08",
-      "homebrew-extensions/Formula/pdo_firebird@8.7.rb": "d1cd26bb4664ca880e184a2ed2f53bdc1a26eb366595216bc15cea30c72f21fe",
+      "homebrew-extensions/Formula/pdo_firebird@8.6.rb": "06fe162a1395cbd9c072a7394ec91f6cff46e91b1e49f6a1bc4221b182c9d868",
+      "homebrew-extensions/Formula/pdo_firebird@8.7.rb": "82f1aaf690a042c2b42b3c01b158204516ec03723df792ac58035d9995de7937",
       "homebrew-extensions/Formula/pdo_sqlsrv@7.0.rb": "efa98f8cca89bc2b55927a968e25d79c418880bd563d14a20d4c17b6cbe1b0f8",
       "homebrew-extensions/Formula/pdo_sqlsrv@7.1.rb": "a21f5eae65ada65867843a6b90d286b63b185ee1dd9c99c377a676956df67a83",
       "homebrew-extensions/Formula/pdo_sqlsrv@7.2.rb": "ef72047dcef1f398d71c97c519645c8052d1e866ef94c10423d61b141b7dc745",
@@ -13588,8 +13801,8 @@
       "homebrew-extensions/Formula/xdebug@8.3.rb": "de8b3cbdd4fa84b021a1c6869e2ee408502070a16627dbbd7927f15ad9a1df41",
       "homebrew-extensions/Formula/xdebug@8.4.rb": "23c9754c0f8e1bede21518d3c624710b2f7eb0fdb6995e014c797902de381591",
       "homebrew-extensions/Formula/xdebug@8.5.rb": "1799c4a24f143e483643bd73d3396d0c3c9e5f4cbbadc1dcc85003dce4d3a75d",
-      "homebrew-extensions/Formula/xdebug@8.6.rb": "19f73182acd0f8438f93b3ceaa7c0da6931473b3b788948808c9269fd2ad69d6",
-      "homebrew-extensions/Formula/xdebug@8.7.rb": "4e488c37e66c5b566b9866ae481869000565ab470e0eba065aa6b968bab254b9",
+      "homebrew-extensions/Formula/xdebug@8.6.rb": "26d75836dddff05d8dc2db04c20a3eecb454f267c10cb1ae8085e56072f3dc54",
+      "homebrew-extensions/Formula/xdebug@8.7.rb": "f4f8dfa31692a434005cf7cd5dda056cad9acae057cf5286daa1863e648e2773",
       "homebrew-extensions/Formula/xhprof@7.0.rb": "11ce14ef770835318a4a2ac2ffb482efea2c9951483dd2e29db63d9776e1920d",
       "homebrew-extensions/Formula/xhprof@7.1.rb": "04356a552522bb454b71773053ea383be53ae0f82b103f3111aaabebff67e489",
       "homebrew-extensions/Formula/xhprof@7.2.rb": "741c396875947badd6b5887ce08cafab71229b03714d68fee59fd380634223d4",
@@ -13670,6 +13883,7 @@
     "curl": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "cyrus-sasl": "0ccdcb95308638e5d97507d9d9a40b5fada62dd8",
     "dav1d": "a7cf3525d7e200e264d58611d597effd11abf0aa",
+    "fontconfig": "9223d9ce00fb27d1f1d11f6ca06269f8fcb6cbb7",
     "freetds": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "freetype": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "httpd": "0ccdcb95308638e5d97507d9d9a40b5fada62dd8",
