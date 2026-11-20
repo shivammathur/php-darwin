@@ -104,6 +104,33 @@ function environment() {
   };
 }
 
+function bottleJsonPath(bottle) {
+  // Homebrew omits the optional bottle rebuild number from the JSON filename.
+  return bottle.replace(/\.(?:\d+\.)?tar\.gz$/, '.json');
+}
+
+function restoreBottleJson(bottle, metadata) {
+  const filename = bottleJsonPath(bottle);
+  const json = metadata.bottle_json;
+  if (json !== undefined) {
+    const formulae = json && typeof json === 'object' && !Array.isArray(json) ? Object.keys(json) : [];
+    const formula = formulae.length === 1 && json[formulae[0]];
+    const tags = Object.entries(formula?.bottle?.tags || {});
+    const [tag, details] = tags.length === 1 ? tags[0] : [];
+    if (formulae[0] !== metadata.inputs?.formula || formula?.formula?.pkg_version !== metadata.inputs?.version ||
+        !tag || tag !== metadata.file.match(/\.([^.]+)\.bottle(?:\.\d+)?\.tar\.gz$/)?.[1] ||
+        details?.local_filename !== metadata.file || details?.sha256 !== metadata.sha256 ||
+        !details?.tab || typeof details.tab !== 'object' || Array.isArray(details.tab)) {
+      throw new Error('Invalid source bottle JSON');
+    }
+  }
+  // The release bundle still contains just metadata.json and the bottle. Recreate
+  // Homebrew's companion file before any local-bottle installer reads the tab.
+  // Legacy caches keep their embedded INSTALL_RECEIPT.json and need no sidecar.
+  fs.rmSync(filename, { force: true });
+  if (json !== undefined) fs.writeFileSync(filename, JSON.stringify(json), { flag: 'wx' });
+}
+
 function readBottle(directory, key) {
   const metadataPath = path.join(directory, 'metadata.json');
   if (!fs.existsSync(metadataPath)) return null;
@@ -117,6 +144,7 @@ function readBottle(directory, key) {
   if (!fs.lstatSync(bottle).isFile() || digest(fs.readFileSync(bottle)) !== metadata.sha256) {
     throw new Error('Cached source bottle checksum mismatch');
   }
+  restoreBottleJson(bottle, metadata);
   return bottle;
 }
 
@@ -330,7 +358,9 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
         brewSource('install', ['--formula', '--build-bottle', ...flags, item.full_name], { run, inherit: true, env });
         compileMs = Date.now() - compileStarted;
         bottleStarted = Date.now();
-        run('brew', ['bottle', '--json', '--no-rebuild', item.full_name], {
+        // Match test-bot's normalized GNU tar path. Homebrew moves the receipt
+        // into the companion JSON, which must travel with our cached bottle.
+        run('brew', ['bottle', '--json', '--only-json-tab', '--no-rebuild', item.full_name], {
           inherit: true, cwd: path.resolve(directory),
         });
       });
@@ -338,7 +368,11 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
       if (files.length !== 1) throw new Error(`Expected one bottle for ${item.full_name}`);
       const file = files[0];
       const sha256 = digest(fs.readFileSync(path.join(directory, file)));
-      fs.writeFileSync(path.join(directory, 'metadata.json'), JSON.stringify({ schema: 1, key, file, sha256, inputs: build }));
+      const jsonPath = bottleJsonPath(path.join(directory, file));
+      const bottleJson = fs.existsSync(jsonPath) ? JSON.parse(fs.readFileSync(jsonPath, 'utf8')) : undefined;
+      fs.writeFileSync(path.join(directory, 'metadata.json'), JSON.stringify({
+        schema: 1, key, file, sha256, inputs: build, bottle_json: bottleJson,
+      }));
       readBottle(directory, key);
       // --build-bottle skips post_install. Run it after bottling so first builds
       // and restored bottles both recreate PHP/PEAR and dependency configuration.
