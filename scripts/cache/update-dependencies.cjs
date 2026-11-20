@@ -37,6 +37,21 @@ function requireRunner() {
   }
 }
 
+function removeFrameworkPythonLinks(prefix) {
+  const bin = path.join(prefix, 'bin');
+  if (!fs.existsSync(bin)) return;
+  for (const entry of fs.readdirSync(bin, {withFileTypes: true})) {
+    if (!entry.isSymbolicLink()) continue;
+    const file = path.join(bin, entry.name);
+    const target = path.resolve(bin, fs.readlinkSync(file));
+    // The python.org installer links outside the Cellar, so brew uninstall
+    // cannot clear these conflicts before pouring the approved Python bottle.
+    if (!/^\/Library\/Frameworks\/Python\.framework\/Versions\/[^/]+\/bin\/[^/]+$/.test(target)) continue;
+    fs.unlinkSync(file);
+    console.log(`Removed framework Python link: ${file} -> ${target}`);
+  }
+}
+
 function clean() {
   requireRunner();
   const names = command('brew', ['list', '--formula']).trim().split('\n').filter(Boolean);
@@ -44,6 +59,7 @@ function clean() {
   const pinned = command('brew', ['list', '--pinned']).trim().split('\n').filter(Boolean);
   if (pinned.length) command('brew', ['unpin', ...pinned], { inherit: true });
   if (names.length) command('brew', ['uninstall', '--formula', '--force', '--ignore-dependencies', ...names], { inherit: true });
+  removeFrameworkPythonLinks(command('brew', ['--prefix']).trim());
 }
 
 async function prepare() {
@@ -245,7 +261,7 @@ async function promote(file) {
   } });
 }
 
-module.exports = { roots, merge };
+module.exports = { roots, merge, removeFrameworkPythonLinks };
 if (require.main === module) {
   (async () => {
     const [mode, directory, output] = process.argv.slice(2);
