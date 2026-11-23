@@ -47,6 +47,10 @@ esac
   const cacheAction = path.join(directory, 'cache-action.cjs');
   fs.writeFileSync(cacheAction, `require('node:fs').writeFileSync(process.env.FIXTURE_OBSERVED,
     JSON.stringify({source_commit: process.env.PHP_DARWIN_PHP_SRC_COMMIT})); process.exit(1);`);
+  const {current_version: stable} = require('../../../conf/package.json');
+  const nightlies = fs.readFileSync(path.join(root, 'conf/versions'), 'utf8')
+    .split('\n').filter(line => line.startsWith('nightly ')).map(line => line.split(/\s+/)[1]);
+  assert.ok(nightlies.length);
   function run(version, build, ts, source, mismatch = false) {
     for (const suffix of ['', '-zts', '-debug', '-debug-zts']) {
       const current = mismatch && suffix === '-debug-zts' ? 'c'.repeat(40) : source;
@@ -69,12 +73,12 @@ esac
     }
     assert.ok(fs.existsSync(observed), result.stderr);
     const actual = JSON.parse(fs.readFileSync(observed, 'utf8'));
-    assert.equal(actual.source_commit, version === '8.5' ? undefined : source);
+    assert.equal(actual.source_commit, version === stable ? undefined : source);
     assert.equal(git('status', '--porcelain'), '');
     return keyFor({formula: `shivammathur/extensions/pcov@${version}`, version: '1.0.12_2',
       context: {build, ts, php: {version: `${version}.0-dev`, api: {ZEND_MODULE_API_NO: '20260925'}, ...actual}}});
   }
-  for (const version of ['8.6', '8.7']) {
+  for (const version of nightlies) {
     for (const build of ['release', 'debug']) for (const ts of ['nts', 'zts']) {
       const first = run(version, build, ts, 'a'.repeat(40));
       const second = run(version, build, ts, 'b'.repeat(40));
@@ -82,5 +86,5 @@ esac
     }
     run(version, 'release', 'nts', 'a'.repeat(40), true);
   }
-  run('8.5', 'release', 'nts', 'a'.repeat(40));
+  run(stable, 'release', 'nts', 'a'.repeat(40));
 });

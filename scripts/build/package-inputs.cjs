@@ -16,7 +16,7 @@ function comparisonRecord(manifest, record, baselines) {
     item.path === record.path && item.published_sha256 === record.sha256);
   // The baseline acknowledges an existing publication; it never rewrites the
   // archive's actual recipe provenance or applies to a different publication.
-  return accepted ? {...record, ...accepted} : record;
+  return accepted ? {...record, syntax_sha256: undefined, ...accepted} : record;
 }
 
 function current(manifest, repositories, baselines = acceptedBaselines) {
@@ -40,7 +40,10 @@ function phpCurrent(manifest, repository, formulae, baselines = acceptedBaseline
     const record = matches[0];
     if (!/^[a-f0-9]{64}$/.test(record.sha256 || '') || matches.some(other =>
       ['sha256', 'inputs_schema', 'inputs_mode', 'inputs_sha256'].some(field => other[field] !== record[field]))) return false;
-    records.push(record);
+    // A partial publication may combine old and new metadata for identical recipe bytes.
+    const syntax = new Set(matches.map(item => item.syntax_sha256).filter(value => value !== undefined));
+    if (syntax.size > 1) return false;
+    records.push(matches.find(item => item.syntax_sha256) || record);
   }
   if (!records.length) return null;
   // Bind the complete variant records to the published raw formula checksum,

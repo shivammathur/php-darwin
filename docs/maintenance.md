@@ -75,7 +75,17 @@ publish only after required compatibility jobs pass. Stable/nightly update
 workflows compare relevant formula, runtime dependency, packaging and php-src
 inputs before dispatching work. Package metadata records normalized recipe
 inputs; new bottles for unrelated platforms do not invalidate existing caches.
-An older manifest without dependency provenance requires a controlled refresh.
+Ruby recipe comparisons retain build arguments, dependencies, patches and the selected
+platform bottle checksums. Comments, formatting, equivalent DSL calls and the aggregate
+OCI index checksum can change while a published pack remains current. New package
+records carry both the source checksum and a Ruby syntax fingerprint.
+
+For older releases, `conf/recipe-syntax-baselines.json` maps verified source checksums
+to the same fingerprints. The PHP tap's reviewed SDK-path refactor in
+`3db03bbae7385f39b54f1423131fb36db95725da` uses its equivalent replacement for
+the 20 affected files. An unrecognized legacy record still needs a matching source
+or its original build-input fingerprint to qualify for reuse. An older manifest
+without dependency provenance requires a controlled refresh.
 
 ### Normal and fast refresh
 

@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {execFileSync} = require('node:child_process');
 const {createHash} = require('node:crypto');
+const {recipeSyntax} = require('../lib/recipe-inputs.cjs');
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
 function capture(repositories) {
@@ -14,7 +15,7 @@ function capture(repositories) {
       {input:JSON.stringify(formulae), encoding:'utf8', maxBuffer:16*1024*1024}));
     for (const file of files) {
       const parsedFormula = parsed[path.join(directory,file)];
-      const value = file.startsWith('Formula/') ? parsedFormula.declarations : fs.readFileSync(path.join(directory,file),'utf8');
+      const value = file.startsWith('Formula/') ? parsedFormula.declarations : recipeSyntax(fs.readFileSync(path.join(directory,file)));
       if (file.startsWith('Formula/')) bottles[`${name}/${file}`] = hash(parsedFormula.bottles);
       const formulae = [...new Set([...JSON.stringify(value).matchAll(/"@tstring_content","([a-z0-9][a-z0-9@+_.-]*)"/g)].map(match=>match[1]))].sort();
       const declarations = Array.isArray(value) ? Object.fromEntries(value.map(item => [hash(item),

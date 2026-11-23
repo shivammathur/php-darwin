@@ -39,11 +39,12 @@ esac
 `, { mode: 0o755 });
   const cacheAction = path.join(directory, 'cache-action.cjs');
   fs.writeFileSync(cacheAction, `require('node:fs').copyFileSync(process.env.FIXTURE_TAP + '/Abstract/abstract-php-extension.rb', process.env.FIXTURE_OBSERVED); process.exit(1);`);
+  const {current_version: current} = require('../../../conf/package.json');
   for (const [arch, version, build, ts, formula] of [
     ['x86_64', '7.2', 'debug', 'nts', 'php@7.2-debug'],
-    ['x86_64', '8.5', 'release', 'nts', 'php'],
-    ['x86_64', '8.5', 'debug', 'zts', 'php-debug-zts'],
-    ['arm64', '8.5', 'debug', 'zts', 'php-debug-zts'],
+    ['x86_64', current, 'release', 'nts', 'php'],
+    ['x86_64', current, 'debug', 'zts', 'php-debug-zts'],
+    ['arm64', current, 'debug', 'zts', 'php-debug-zts'],
   ]) {
     // Reproduce a killed producer leaving its PHP 8.4 patch in the tap.
     execFileSync(process.env.PHP_DARWIN_RUBY || 'ruby',
@@ -51,7 +52,7 @@ esac
     fs.rmSync(observed, { force: true });
     const result = spawnSync('bash', [path.join(root, 'scripts/build/build-extensions.sh')], {
       encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`,
-        RUNNER_TEMP: directory, PHP_VERSION: version, BUILD: build, TS: ts, EXTENSION_PACK: 'swoole',
+        RUNNER_TEMP: directory, PHP_VERSION: version, BUILD: build, TS: ts, EXTENSION_PACK: 'apcu',
         HOMEBREW_EXTENSIONS_COMMIT: commit, PHP_DARWIN_SOURCE_CACHE_NODE: process.execPath,
         PHP_DARWIN_SOURCE_CACHE_ACTION: cacheAction,
         FIXTURE_ARCH: arch, FIXTURE_PREFIX: directory, FIXTURE_TAP: tap, FIXTURE_OBSERVED: observed },

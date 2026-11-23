@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const {current, phpCurrent, baselineFor} = require('../../build/package-inputs.cjs');
-const {recipeInputs} = require('../../lib/recipe-inputs.cjs');
+const {recipeInputs, recipeSyntax} = require('../../lib/recipe-inputs.cjs');
 const {digest} = require('../../installer/install-extensions.cjs');
 
 test('dependency changes invalidate packages; php-darwin revisions and unrelated bottles retain cache hits', t => {
@@ -103,6 +103,12 @@ test('published PHP variant records verify inaccessible commits without hiding r
     source_hash: digest(formulae.map((formula, i) => `${formula}\t${records[i].sha256}\n`).sort().join('')),
     assets: records.flatMap(record => ['arm64', 'x86_64'].map(architecture =>
       ({architecture, build_inputs: {schema: 1, source_records: [{...record}]}})))};
+  const mixed = structuredClone(manifest);
+  const sharedSyntax = recipeSyntax(recipe);
+  mixed.assets[1].build_inputs.source_records[0].syntax_sha256 = sharedSyntax;
+  assert.equal(phpCurrent(mixed, root, formulae), true, 'old and new records can describe identical bytes');
+  mixed.assets[0].build_inputs.source_records[0].syntax_sha256 = '0'.repeat(64);
+  assert.equal(phpCurrent(mixed, root, formulae), false, 'conflicting syntax fingerprints cannot be trusted');
   assert.equal(phpCurrent(manifest, root, formulae), true);
   const file = path.join(root, 'Formula/php-debug-zts.rb');
   fs.writeFileSync(file, recipe.replace('b'.repeat(64), 'c'.repeat(64)));

@@ -44,8 +44,8 @@ for relative in "${files[@]}"; do
   else
     cp "$source_path/$relative" "$destination" || php_darwin_die "could not read $relative"
   fi
-  if [ "$mode" = build ] && [[ "$relative" = Formula/* ]]; then
-    bash "$script_dir/formula-build-inputs.sh" "$destination" > "$destination.inputs" || exit 1
+  if [ "$mode" = build ]; then
+    "${PHP_DARWIN_RUBY:-ruby}" --disable=gems "$script_dir/recipe-syntax.rb" platforms < "$destination" > "$destination.inputs" || exit 1
     mv "$destination.inputs" "$destination" || exit 1
   fi
 done

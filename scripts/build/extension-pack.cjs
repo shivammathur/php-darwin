@@ -1,7 +1,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { command, digest, key, packs, extensionFormula, inspectTree, packEnvironment, phpApi } = require('../installer/install-extensions.cjs');
-const { recipeInputs } = require('../lib/recipe-inputs.cjs');
+const { execFileSync } = require('node:child_process');
+const { recipeInputs, recipeSyntax } = require('../lib/recipe-inputs.cjs');
 
 const configuration = require('../../conf/extension-packs.json');
 const platforms = require('../../conf/platforms.json');
@@ -54,8 +55,9 @@ function sourceRecords(formulae) {
     // Preserve usable bottle changes, excluding only unrelated platform tags.
     const mode = 'platforms';
     const repository = tapName === 'homebrew/core' ? 'Homebrew/homebrew-core' : tapName.replace('/', '/homebrew-');
+    const bytes = fs.readFileSync(recipe);
     return { formula, repository,
-      path: path.relative(tap, recipe), sha256: digest(fs.readFileSync(recipe)),
+      path: path.relative(tap, recipe), sha256: digest(bytes), syntax_sha256: recipeSyntax(bytes),
       inputs_schema: 1, inputs_mode: mode, inputs_sha256: recipeInputs(recipe, mode) };
   });
 }
@@ -91,8 +93,10 @@ function packageExtension({ name, php_version, build, thread_safety, architectur
     dependencies: info.map(formula => ({ name: formula.name,
       versions: [path.basename(fs.realpathSync(path.join(prefix, 'opt', formula.name)))] })) };
   const tap = command('brew', ['--repository', packageConfig.extension_tap]);
-  metadata.source_records.push({ repository: packageConfig.extension_tap_repository.replace('https://github.com/', ''), path: 'Abstract/abstract-php-extension.rb',
-    sha256: digest(command('git', ['-C', tap, 'show', 'HEAD:Abstract/abstract-php-extension.rb']) + '\n') });
+  const shared = 'Abstract/abstract-php-extension.rb';
+  const source = execFileSync('git', ['-C', tap, 'show', `HEAD:${shared}`]);
+  metadata.source_records.push({repository: packageConfig.extension_tap_repository.replace('https://github.com/', ''),
+    path: shared, sha256: digest(source), syntax_sha256: recipeSyntax(source)});
   metadata.inputs_sha256 = digest(JSON.stringify(metadata));
   fs.mkdirSync(output, { recursive: true });
   const stage = fs.mkdtempSync(path.join(output, '.pack-'));

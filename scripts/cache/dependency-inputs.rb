@@ -2,12 +2,24 @@
 # require newer runtime libraries without changing any depends_on declarations.
 require 'json'
 require 'ripper'
+require_relative '../build/recipe-syntax'
 
 def clean(node)
   return node unless node.is_a?(Array)
   return [node[0], node[1]] if node[0].is_a?(Symbol) && node[0].to_s.start_with?('@')
 
   node.map { |child| clean(child) }
+end
+
+# Preserve the existing command-form snapshot when a tap adds parentheses.
+def dsl_calls(node)
+  return node unless node.is_a?(Array)
+
+  if node[0] == :method_add_arg && node.dig(1, 0) == :fcall && node.dig(2, 0) == :arg_paren && node.dig(2, 1)
+    node = [:command, node[1][1], node[2][1]]
+  end
+  node[1] = RecipeSyntax.symbol_label(node[1]) if node[0] == :assoc_new
+  node.map { |child| dsl_calls(child) }
 end
 
 def declarations(node, guards = [], result = [])
@@ -35,6 +47,14 @@ def bottles(node, result = [])
     call = node[1]
     call = call[1] if call[0] == :method_add_arg
     if call[0] == :fcall && call.dig(1, 1) == 'bottle'
+      body = node[2]
+      if body[0] == :do_block && body[2][0] == :bodystmt
+        body[2][1] = body[2][1].reject do |stmt|
+          stmt[0] == :command && stmt.dig(1, 1) == 'manifest_sha256' &&
+            stmt.dig(2, 0) == :args_add_block && stmt[2][1].size == 1 && stmt[2][2] == false &&
+            RecipeSyntax.index_digest?(stmt[2][1][0])
+        end
+      end
       result << clean(node)
       return result
     end
@@ -44,7 +64,7 @@ def bottles(node, result = [])
 end
 
 puts JSON.generate(JSON.parse(STDIN.read).map do |file|
-  ast = Ripper.sexp(File.read(file))
+  ast = dsl_calls(Ripper.sexp(File.read(file)))
   abort "Cannot parse dependency declarations: #{file}" unless ast
   # Command form is the usual Homebrew DSL; normalize to method_add_arg above.
   normalize = lambda do |node|

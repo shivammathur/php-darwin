@@ -34,7 +34,9 @@ test('macOS bootstrap downloads survive a broken Homebrew curl on PATH', async t
   Object.assign(env, Object.fromEntries(fs.readFileSync(env.GITHUB_ENV, 'utf8').trim().split('\n').map(line => {
     const equal = line.indexOf('='); return [line.slice(0, equal), line.slice(equal + 1)];
   })));
-  env.PATH = `${fs.readFileSync(env.GITHUB_PATH, 'utf8').trim()}${path.delimiter}${env.PATH}`;
+  // The runner prepends each entry in GITHUB_PATH, last entry first.
+  const additions = fs.readFileSync(env.GITHUB_PATH, 'utf8').trim().split('\n').reverse();
+  env.PATH = [...additions, env.PATH].join(path.delimiter);
   const url = await server(t, (_request, response) => response.end('verified download'));
   const execute = promisify(execFile);
   for (const curl of ['curl', env.HOMEBREW_CURL_PATH]) {

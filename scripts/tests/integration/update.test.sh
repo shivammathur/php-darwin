@@ -25,7 +25,7 @@ mkdir -p "$php_path/Formula" "$extensions_path/Abstract" "$extensions_path/Formu
   php_darwin_die 'could not create stable update fixture directories'
 while read -r build ts; do
   formula=$(php_darwin_formula 8.5 "$build" "$ts") || exit 1
-  printf 'formula %s\n' "$formula" > "$php_path/Formula/$formula.rb" || \
+  printf 'formula "%s"\n' "$formula" > "$php_path/Formula/$formula.rb" || \
     php_darwin_die "could not write the $formula fixture"
   printf '  bottle do\n    root_url "https://example.invalid/bottles"\n    sha256 arm64_sonoma: "%064d"\n  end\n' 1 \
     >> "$php_path/Formula/$formula.rb" || php_darwin_die 'could not write bottle fixtures'
