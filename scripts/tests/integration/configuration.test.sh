@@ -5,6 +5,18 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 . "$script_dir/../../lib/lib.sh"
 
 "${PHP_DARWIN_RUBY:-ruby}" -ryaml -e '
+  test_cache = YAML.safe_load(File.read(File.join(ARGV.fetch(0), ".github/actions/test-cache/action.yml")), aliases: true)
+  test_steps = test_cache.fetch("runs").fetch("steps")
+  preflight = test_steps.index { |step| step["uses"] == "./.github/actions/runner-preflight" }
+  runtime = test_steps.index { |step| step["uses"] == "./.github/actions/node-runtime" }
+  prerequisite = test_steps.index { |step| step["run"] == "bash scripts/tests/helpers/prepare-homebrew.sh" }
+  archive_tools = test_steps.index { |step| step["run"] == "bash scripts/build/archive-tools.sh" }
+  core_layout = test_steps.index { |step| step["id"] == "core-layout" }
+  prepare = test_steps.index { |step| step["id"] == "prepare-release-nts" }
+  abort "Compatibility tests must prepare Homebrew after recovery and before tools, core fixtures and archived formulae" unless
+    preflight && runtime && prerequisite && archive_tools && core_layout && prepare &&
+    preflight < runtime && runtime < prerequisite && prerequisite < archive_tools && archive_tools < core_layout && core_layout < prepare &&
+    !test_steps[prerequisite].key?("if") && !test_steps[prerequisite]["continue-on-error"]
   workflows = Dir[File.join(ARGV.fetch(0), ".github/workflows/*.yml")]
   publishers = workflows.map do |file|
     workflow = YAML.safe_load(File.read(file), aliases: true)

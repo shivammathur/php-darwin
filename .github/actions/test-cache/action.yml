@@ -44,6 +44,9 @@ runs:
         echo 'PHP_DARWIN_SOURCE_CACHE_READ_ONLY=true' >> "$GITHUB_ENV"
     - uses: ./.github/actions/runner-preflight
     - uses: ./.github/actions/node-runtime
+    - name: Ensure Homebrew can read archived formulae
+      shell: bash
+      run: bash scripts/tests/helpers/prepare-homebrew.sh
     - name: Restore missing archive tools
       shell: bash
       env:
