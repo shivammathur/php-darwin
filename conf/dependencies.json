@@ -7582,7 +7582,7 @@
   },
   "tap_inputs": {
     "schema": 1,
-    "sha256": "5fee3b66b1a9dfccc880c16efdd2ecb30ba2fe8d6a8161439bd884e870e810da",
+    "sha256": "34b115baea783889fcc3fc8483696685fbfbb246519d40003bf47aed211f02da",
     "records": {
       "homebrew-php/Formula/autoconf@2.69.rb": "fd33eadb8f275a2d089c7d112bfb39d680cc838b3af2f61ab4fb35f09dbeff7d",
       "homebrew-php/Formula/bison@2.7.rb": "54902fa819dd1736bcca826196ee75b2608337b4b83e484829446961fd4e2669",
@@ -7642,7 +7642,7 @@
       "homebrew-php/Formula/php@8.7-debug.rb": "2cb74f79bc9c071f04349d89e4817aec2d4589301cb814b56640c892d7ba5092",
       "homebrew-php/Formula/php@8.7-zts.rb": "2cb74f79bc9c071f04349d89e4817aec2d4589301cb814b56640c892d7ba5092",
       "homebrew-php/Formula/php@8.7.rb": "2cb74f79bc9c071f04349d89e4817aec2d4589301cb814b56640c892d7ba5092",
-      "homebrew-extensions/Abstract/abstract-php-extension.rb": "7401a6d228e8d69ca625140a2636251a35c538236beeb00cc8fe57f97b49e373",
+      "homebrew-extensions/Abstract/abstract-php-extension.rb": "74aeb3c417878eaa8251f37a59960152a8c58037c7458eb19e6519f90c4f9f9b",
       "homebrew-extensions/Formula/amqp@5.6.rb": "20493890926f1c9957b9065648d6b1dedaee27abd45f245fecaea560b34de035",
       "homebrew-extensions/Formula/amqp@7.0.rb": "20493890926f1c9957b9065648d6b1dedaee27abd45f245fecaea560b34de035",
       "homebrew-extensions/Formula/amqp@7.1.rb": "20493890926f1c9957b9065648d6b1dedaee27abd45f245fecaea560b34de035",
@@ -10899,8 +10899,8 @@
           ]
         }
       },
-      "7401a6d228e8d69ca625140a2636251a35c538236beeb00cc8fe57f97b49e373": {
-        "sha256": "7401a6d228e8d69ca625140a2636251a35c538236beeb00cc8fe57f97b49e373",
+      "74aeb3c417878eaa8251f37a59960152a8c58037c7458eb19e6519f90c4f9f9b": {
+        "sha256": "74aeb3c417878eaa8251f37a59960152a8c58037c7458eb19e6519f90c4f9f9b",
         "formulae": []
       },
       "20493890926f1c9957b9065648d6b1dedaee27abd45f245fecaea560b34de035": {
@@ -13062,10 +13062,10 @@
       "homebrew-php/Formula/php@8.5-debug.rb": "17225e75d182db52b9c58ce4d7935913e4404a92171c2385e7dffc44270d3132",
       "homebrew-php/Formula/php@8.5-zts.rb": "7b88825c71e86021bdbd2b64f3a9f6d6be374d12e5740f60a741a190f4fd758e",
       "homebrew-php/Formula/php@8.5.rb": "50cd23bc01b6dd5b1a58d35fcb684054dcc1be9a29426aed7684516d1210a299",
-      "homebrew-php/Formula/php@8.7-debug-zts.rb": "cd443787c03737456b202624030620dc5b54c7e08e418e05d60466ad2cdef473",
-      "homebrew-php/Formula/php@8.7-debug.rb": "4ee497bdeca94a5fec64282ebd49c982df5149e50198dba8de8e431095f540be",
-      "homebrew-php/Formula/php@8.7-zts.rb": "fa2f970a6defcbb147ccb3c9b0aca1aa932bdde39d517f85e82286ec58ddab1f",
-      "homebrew-php/Formula/php@8.7.rb": "36c4ad8f7af4eec713aca88c9e1910c12ec40ed37184023daf7811412feb7c51",
+      "homebrew-php/Formula/php@8.7-debug-zts.rb": "2d0e8e7c2765ae29caa04aa4bdab66770e8f1d34e7186098b9de2b574a3b091b",
+      "homebrew-php/Formula/php@8.7-debug.rb": "5324edb9c82dbca0f4a3d54bd0a38f75625bc2c381235337cbf567afd4b55221",
+      "homebrew-php/Formula/php@8.7-zts.rb": "52b3dd7362d7989e173d569129817c02801a6b0fbc03445e2854f0d95b10e20a",
+      "homebrew-php/Formula/php@8.7.rb": "2eb6e7e8185323cb93882359a708713dcd439419ce0bde4ce6ebe8cb4d6e3748",
       "homebrew-extensions/Formula/amqp@5.6.rb": "4bbfc54cb9797357863a7e78e30d13d90da4b07e9e1d8428433dc920c5c94b29",
       "homebrew-extensions/Formula/amqp@7.0.rb": "8577b42a3f0d4c0295d510b14542a44108971a9dbf8b47900a86c8091fbfb28d",
       "homebrew-extensions/Formula/amqp@7.1.rb": "99f9190e4269b0ac8620fc4a813cf785548da6f86e587727234c21b4857be5f1",
@@ -13093,7 +13093,7 @@
       "homebrew-extensions/Formula/apcu@8.4.rb": "6b41e2fd9587251a7953d1af5a8263516afd2277a24e8f6842189162b4eb6fc4",
       "homebrew-extensions/Formula/apcu@8.5.rb": "d3017c64650c8fe8cf9da7fd779b2c659aaeba569b8ee0da30d921997c15417d",
       "homebrew-extensions/Formula/apcu@8.6.rb": "529adda67cdf36ff2d3235186b89e381af47779ae04b992098cbea78f76490fc",
-      "homebrew-extensions/Formula/apcu@8.7.rb": "524d4b977d6b95975ba25da567424277320d2a4511c26a55d057e74053af6ddb",
+      "homebrew-extensions/Formula/apcu@8.7.rb": "553e601e1a6d988eb32fd48d28d137e3abe8bd86ed0dd11c1049f774a1e68401",
       "homebrew-extensions/Formula/ast@7.0.rb": "dfb25f79381e4a3238c218762dc0a3e2e95e86625b1bf8ac62134e7d9c30cca1",
       "homebrew-extensions/Formula/ast@7.1.rb": "49bb485152ff48245c200b0333ef6c863f40e564ac5535441c30d2c043b6cbcb",
       "homebrew-extensions/Formula/ast@7.2.rb": "0710a0d6ea6dfc17d56ed207f98058bd5008c5859cd74be49f2c188725a7ecaa",
@@ -13823,7 +13823,7 @@
       "homebrew-extensions/Formula/xdebug@8.4.rb": "23c9754c0f8e1bede21518d3c624710b2f7eb0fdb6995e014c797902de381591",
       "homebrew-extensions/Formula/xdebug@8.5.rb": "1799c4a24f143e483643bd73d3396d0c3c9e5f4cbbadc1dcc85003dce4d3a75d",
       "homebrew-extensions/Formula/xdebug@8.6.rb": "26d75836dddff05d8dc2db04c20a3eecb454f267c10cb1ae8085e56072f3dc54",
-      "homebrew-extensions/Formula/xdebug@8.7.rb": "f4f8dfa31692a434005cf7cd5dda056cad9acae057cf5286daa1863e648e2773",
+      "homebrew-extensions/Formula/xdebug@8.7.rb": "8a8f0230163c2aed036068cbaf8289aeacc3b93fe0cf26f061120332dfb31c2f",
       "homebrew-extensions/Formula/xhprof@7.0.rb": "11ce14ef770835318a4a2ac2ffb482efea2c9951483dd2e29db63d9776e1920d",
       "homebrew-extensions/Formula/xhprof@7.1.rb": "04356a552522bb454b71773053ea383be53ae0f82b103f3111aaabebff67e489",
       "homebrew-extensions/Formula/xhprof@7.2.rb": "741c396875947badd6b5887ce08cafab71229b03714d68fee59fd380634223d4",
