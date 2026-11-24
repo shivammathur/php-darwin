@@ -30,6 +30,7 @@ test('the PHP baseline is captured after approved dependency batches and before 
     beforeTarget() {baseline = installed; events.push('snapshot');},
     run(program, argv) {
       assert.equal(program, 'brew'); assert.equal(argv.at(-1), target);
+      if (argv[0] === 'fetch') { assert.ok(argv.includes('--retry')); return; }
       assert.equal(baseline, 'aom 3.15.1'); events.push('PHP install');
     },
   };
@@ -209,7 +210,7 @@ function fixture(t) {
     log: () => {}, warn: message => warnings.push(message),
     run: (program, argv, options = {}) => {
       assert.equal(program, 'brew');
-      if (argv.includes('--build-bottle') || argv[1] === 'bottle') {
+      if (argv[0] !== 'fetch' && (argv.includes('--build-bottle') || argv[1] === 'bottle')) {
         assert.equal(argv[0], 'php-darwin-source', 'Source builds must preserve the compiler dependency environment');
         assert.ok(options.env.PATH.startsWith(path.resolve(__dirname, '../../cache') + path.delimiter));
         argv = argv.slice(1);
@@ -245,6 +246,40 @@ test('cache-only consumers restore exact bottles and reject misses before acquir
   assert.ok(f.events.every(args => !args.includes('--build-bottle')));
 });
 
+test('source downloads use Homebrew retries before builds and do not repeat for cached bottles', async t => {
+  const f = fixture(t);
+  await install(f.args);
+  for (const item of f.args.query()) {
+    const fetch = f.events.findIndex(args => args[0] === 'fetch' && args.at(-1) === item.full_name);
+    const build = f.events.findIndex(args => args[0] === 'install' && args.at(-1) === item.full_name);
+    assert.deepEqual(f.events[fetch], ['fetch', '--formula', '--retry', '--build-bottle', item.full_name]);
+    assert.ok(fetch < build);
+  }
+  f.freshRunner();
+  await install(f.args);
+  assert.ok(f.events.every(args => args[0] !== 'fetch' && !args.includes('--build-bottle')));
+});
+
+test('exhausted source fetching stops before compilation or moving existing configuration', async t => {
+  const f = fixture(t);
+  const prefix = path.dirname(f.cacheRoot), config = path.join(prefix, 'etc/openssl@4/openssl.cnf');
+  fs.mkdirSync(path.dirname(config), {recursive: true});
+  fs.writeFileSync(config, 'existing runner configuration');
+  f.state.formula = f.args.formula = 'openssl@4';
+  const query = f.args.query;
+  f.args.query = () => query().slice(1);
+  f.args.buildEnvironment = () => ({arch: 'x86_64', prefix});
+  f.args.run = (program, args) => {
+    assert.equal(program, 'brew');
+    assert.deepEqual(args, ['fetch', '--formula', '--retry', '--build-bottle', 'openssl@4']);
+    assert.equal(fs.readFileSync(config, 'utf8'), 'existing runner configuration');
+    throw new Error('Homebrew fetch exhausted');
+  };
+  await assert.rejects(install(f.args), /Homebrew fetch exhausted/);
+  assert.deepEqual(fs.readdirSync(f.store), []);
+  assert.equal(fs.readFileSync(config, 'utf8'), 'existing runner configuration');
+});
+
 test('ARM64 refuses missing bottles even when a worker explicitly allows source builds', async t => {
   const f = fixture(t);
   f.args.buildEnvironment = () => ({arch: 'arm64', macos: '15', prefix: '/opt/homebrew'});
@@ -275,7 +310,7 @@ test('ARM64 builds only configured extension variants and never their missing de
     f.args.buildEnvironment = () => ({arch: 'arm64', macos: '15'});
     f.args.forceSource = true;
     f.args.run = (program, args, options) => {
-      if (args.includes('--build-bottle')) {
+      if (args[0] !== 'fetch' && args.includes('--build-bottle')) {
         assert.equal(args.at(-1), f.args.formula);
         assert.equal(options.env.HOMEBREW_PHP_DARWIN_EXTENSION_VARIANT, `${build}/${ts}`);
       }
@@ -367,6 +402,7 @@ test('planned upstream bottle installs cannot silently fall back to source', asy
   f.args.query = () => [{full_name: 'jq', version: '1.8.2', bottled: true, installed: false}];
   f.args.prefetch = async () => {};
   f.args.run = (_program, args) => {
+    if (args[0] === 'fetch') { assert.ok(args.includes('--retry')); return; }
     assert.ok(args.includes('--force-bottle'));
     throw new Error('Bottle unavailable');
   };
@@ -380,6 +416,7 @@ test('an incomplete ICU keg restores its upstream bottle without compiling healt
   f.args.prefetch = async () => {};
   assert.deepEqual(await install(f.args), {built: 0, restored: 0});
   assert.deepEqual(f.events, [
+    ['fetch', '--formula', '--retry', 'icu4c@78'],
     ['uninstall', '--formula', '--force', '--ignore-dependencies', 'icu4c@78'],
     ['install', '--formula', '--force-bottle', '--verbose', '--ignore-dependencies', 'icu4c@78'],
   ]);
@@ -395,11 +432,11 @@ test('reuse libxml2 across PHP builds and rebuild both when libxml2 changes', as
   assert.equal(f.events.filter(args => args[0] === 'postinstall').length, 2);
   f.freshRunner();
   assert.deepEqual(await install(f.args), { built: 0, restored: 2 });
-  assert.equal(f.events.filter(args => args.includes('--build-bottle')).length, 0);
+  assert.equal(f.events.filter(args => args[0] === 'install' && args.includes('--build-bottle')).length, 0);
   f.freshRunner();
   f.state.php = '8.4.2';
   assert.deepEqual(await install(f.args), { built: 1, restored: 1 });
-  assert.deepEqual(f.events.filter(args => args.includes('--build-bottle')).map(args => args.at(-1)),
+  assert.deepEqual(f.events.filter(args => args[0] === 'install' && args.includes('--build-bottle')).map(args => args.at(-1)),
     ['shivammathur/php/php@8.4']);
   f.freshRunner();
   f.state.library = '2.0';
@@ -446,7 +483,7 @@ test('approved dependencies survive compiler and recipe fingerprint changes with
   f.state.compiler = 'clang-2';
   f.state.recipe = 'different installed recipe provenance';
   assert.deepEqual(await install(f.args), {built: 0, restored: 2});
-  assert.deepEqual(f.events.filter(args => args.includes('--build-bottle')), []);
+  assert.deepEqual(f.events.filter(args => args[0] === 'install' && args.includes('--build-bottle')), []);
   f.freshRunner();
   f.state.library = '1.0.1';
   await assert.rejects(install(f.args), /not in the approved snapshot/);
@@ -486,7 +523,7 @@ test('dependency preparation excludes PHP and extensions and preserves dependenc
     ];
   };
   assert.deepEqual(await install(f.args), {built: 1, restored: 0});
-  const built = f.events.filter(args => args.includes('--build-bottle'));
+  const built = f.events.filter(args => args[0] === 'install' && args.includes('--build-bottle'));
   assert.equal(built.length, 1);
   assert.equal(built[0].at(-1), 'libxml2');
   assert.ok(built[0].includes('--as-dependency'));
@@ -541,7 +578,7 @@ test('exhausted bottle publication fails the producer before building its consum
   const f = fixture(t);
   f.args.cache.saveCache = async () => {throw new Error('upload retries exhausted');};
   await assert.rejects(install(f.args), /Could not publish source bottle for libxml2: upload retries exhausted/);
-  assert.deepEqual(f.events.filter(args => args.includes('--build-bottle')).map(args => args.at(-1)), ['libxml2']);
+  assert.deepEqual(f.events.filter(args => args[0] === 'install' && args.includes('--build-bottle')).map(args => args.at(-1)), ['libxml2']);
 });
 
 test('a library uploaded while waiting is restored instead of being compiled twice', async t => {
@@ -556,7 +593,7 @@ test('a library uploaded while waiting is restored instead of being compiled twi
     try { return await build(500); } finally { owned = false; }
   };
   assert.deepEqual(await install(f.args), { built: 0, restored: 2 });
-  assert.equal(f.events.filter(args => args.includes('--build-bottle')).length, 0);
+  assert.equal(f.events.filter(args => args[0] === 'install' && args.includes('--build-bottle')).length, 0);
 });
 
 test('corrupt cached bottles are rejected before installation', async t => {
@@ -581,7 +618,7 @@ test('a failed bottle installation stops without attempting a source rebuild', a
     return run(program, args, options);
   };
   await assert.rejects(install(f.args), /pour failed/);
-  assert.equal(f.events.filter(args => args.includes('--build-bottle')).length, 0);
+  assert.equal(f.events.filter(args => args[0] === 'install' && args.includes('--build-bottle')).length, 0);
 });
 
 test('existing dependencies and upstream bottles do not get rebuilt', async t => {
@@ -610,7 +647,7 @@ test('missing upstream bottles are prefetched together and install still retries
   ];
   const run = f.args.run;
   f.args.run = (program, argv, options) => {
-    if (argv[0] === 'fetch') throw new Error('temporary download failure');
+    if (argv[0] === 'fetch' && !argv.includes('--build-bottle')) throw new Error('temporary download failure');
     return run(program, argv, options);
   };
   assert.deepEqual(await install(f.args), { built: 1, restored: 0 });
@@ -621,7 +658,7 @@ test('missing upstream bottles are prefetched together and install still retries
   f.args.run = run;
   f.freshRunner();
   assert.deepEqual(await install(f.args), { built: 0, restored: 1 });
-  assert.deepEqual(f.events[0], ['fetch', '--formula', 'aspell', 'gcc']);
+  assert.deepEqual(f.events[0], ['fetch', '--formula', '--retry', 'aspell', 'gcc']);
 });
 
 test('keys use software versions, target platforms and variants; code and toolchain changes retain hits', () => {
@@ -654,7 +691,7 @@ test('direct OpenSSL selection invalidates only its consumer and survives source
   const run = f.args.run;
   const commands = [];
   f.args.run = (program, argv, options) => {
-    if (argv.includes('--build-bottle')) commands.push(options.env.HOMEBREW_PHP_DARWIN_PKG_CONFIG_PATH);
+    if (argv[0] !== 'fetch' && argv.includes('--build-bottle')) commands.push(options.env.HOMEBREW_PHP_DARWIN_PKG_CONFIG_PATH);
     return run(program, argv, options);
   };
   for (const expected of [4, 3]) {
@@ -688,7 +725,7 @@ test('configure answers invalidate only the affected bottle and reach the source
   const run = f.args.run;
   const answers = [];
   f.args.run = (program, argv, options) => {
-    if (argv.includes('--build-bottle')) answers.push(JSON.parse(options.env.HOMEBREW_PHP_DARWIN_CONFIGURE_CACHE));
+    if (argv[0] !== 'fetch' && argv.includes('--build-bottle')) answers.push(JSON.parse(options.env.HOMEBREW_PHP_DARWIN_CONFIGURE_CACHE));
     return run(program, argv, options);
   };
   assert.deepEqual(await install(f.args), {built: 1, restored: 1});
@@ -731,7 +768,7 @@ test('extension variants bypass upstream bottles, preserve skip-link, and isolat
   f.args.skipLink = true;
   f.args.context = { build: 'debug', ts: 'zts', abstract: 'original', php: { api: '20240924' } };
   assert.deepEqual(await install(f.args), { built: 1, restored: 0 });
-  assert.deepEqual(f.events.find(args => args.includes('--build-bottle')).slice(0, 6),
+  assert.deepEqual(f.events.find(args => args[0] === 'install' && args.includes('--build-bottle')).slice(0, 6),
     ['install', '--formula', '--build-bottle', '--verbose', '--ignore-dependencies', '--skip-link']);
   assert.ok(!f.events.find(args => args.at(-1) === 'libxml2').includes('--skip-link'));
   f.freshRunner();
@@ -782,7 +819,8 @@ test('Cloudflare prefetch completes before upstream fetch and leaves normal inst
     f.events.push(['cloudflare']);
   };
   await install(f.args);
-  assert.deepEqual(f.events, [['cloudflare'], ['install', '--formula', '--force-bottle', '--verbose', '--ignore-dependencies', '--as-dependency', 'libxml2']]);
+  assert.deepEqual(f.events, [['cloudflare'], ['fetch', '--formula', '--retry', 'libxml2'],
+    ['install', '--formula', '--force-bottle', '--verbose', '--ignore-dependencies', '--as-dependency', 'libxml2']]);
 });
 
 

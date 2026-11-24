@@ -215,11 +215,13 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
   const bottled = plan.filter(item => !item.installed && item.bottled &&
     !(item === requestedTarget && forceSource) && !approvedDependencies?.has(item)).map(item => item.full_name);
   await prefetch(plan.filter(item => bottled.includes(item.full_name) && item.bottle).map(item => item.bottle), { log, warn });
-  if (bottled.length > 1) {
+  if (bottled.length) {
     const started = Date.now();
     log(`Prefetching ${bottled.length} upstream bottles`);
     try {
-      run('brew', ['fetch', '--formula', ...bottled], { inherit: true });
+      // Match test-bot: Homebrew retries downloads and clears cached files
+      // whose checksums fail, including when only one bottle is missing.
+      run('brew', ['fetch', '--formula', '--retry', ...bottled], { inherit: true });
       recordMetric({ kind: 'prefetch', formula, result: 'complete', count: bottled.length,
         elapsedMs: Date.now() - started });
     } catch (error) {
@@ -345,6 +347,9 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
       }
       fs.rmSync(directory, { recursive: true, force: true });
       fs.mkdirSync(directory, { recursive: true });
+      // Fetch sources, resources and patches with test-bot's retry policy
+      // before entering the build or temporarily moving configuration files.
+      run('brew', ['fetch', '--formula', '--retry', '--build-bottle', item.full_name], { inherit: true });
       log(`Building source bottle: ${item.full_name} ${item.version} (${missReason}; ${key})`);
       metric({ result: 'build-started', key, missReason });
       const compileStarted = Date.now();

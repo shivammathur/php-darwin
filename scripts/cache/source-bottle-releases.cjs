@@ -138,7 +138,8 @@ class ReleaseCache {
         response = await request(url, { ...options, signal: AbortSignal.timeout(timeout) });
         const limited = await rateLimitError(response);
         if (limited) {
-          if (limited.primary && !retryAfter(response)) {
+          if (limited.primary && !(response.headers.get('x-ratelimit-remaining') === '0' &&
+              /^\d+$/.test(response.headers.get('x-ratelimit-reset') || ''))) {
             // uploads.github.com can omit reset headers; this read is exempt
             // from the primary quota and gives the actual reset for our token.
             let quota;
@@ -147,7 +148,7 @@ class ReleaseCache {
                 headers: {Authorization: `Bearer ${this.token}`, Accept: 'application/vnd.github+json'},
                 signal: AbortSignal.timeout(30000),
               });
-              if (quota.ok) limited.retryAfterMs = quotaDelay(await quota.json());
+              if (quota.ok) limited.retryAfterMs = Math.max(limited.retryAfterMs, quotaDelay(await quota.json()));
             } catch { /* Retain the bounded secondary-limit backoff. */ }
             finally { if (quota?.body && !quota.bodyUsed) await quota.body.cancel().catch(() => {}); }
           }

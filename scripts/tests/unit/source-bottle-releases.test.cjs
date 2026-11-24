@@ -506,7 +506,7 @@ test('release requests retry failed responses and respect rate-limit backoff', a
     new Response('rate limited', { status: 429, headers: { 'retry-after': '7' } })];
   f.state.intercept = () => responses.shift();
   assert.equal(await f.cache.release(), null);
-  assert.deepEqual(f.state.delays, [1000, 7000]);
+  assert.deepEqual(f.state.delays, [1000, 60000]);
 });
 
 test('quota resets longer than a minute and headerless upload throttles are honored', async t => {
@@ -545,6 +545,26 @@ test('headerless primary upload limits consult the quota without replaying an up
   assert.equal(quotas, 1);
   assert.equal(uploads, 2);
   assert.ok(waits[0] >= 599000 && waits[0] <= 601000);
+});
+
+test('a primary limit with incomplete quota headers also consults the quota', async t => {
+  for (const headers of [{'retry-after': '7'},
+    {'retry-after': '7', 'x-ratelimit-reset': String(Math.floor(Date.now() / 1000) + 600)}]) {
+    const f = fixture(t), original = f.cache.request;
+    let requests = 0, quotas = 0;
+    f.cache.request = async (url, options) => {
+      if (url === 'https://api.github.com/rate_limit') {
+        quotas++;
+        return Response.json({resources: {core: {remaining: 0, reset: Math.floor(Date.now() / 1000) + 600}}});
+      }
+      if (requests++ === 0) return Response.json({message: 'API rate limit exceeded for user'},
+        {status: 403, headers});
+      return original(url, options);
+    };
+    assert.equal(await f.cache.release(), null);
+    assert.equal(quotas, 1);
+    assert.ok(f.state.delays[0] >= 599000 && f.state.delays[0] <= 601000);
+  }
 });
 
 test('separate pack processes revalidate persisted metadata and never reuse a stale claim', async t => {
