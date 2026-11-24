@@ -164,6 +164,8 @@ clean_homebrew() {
   # Keep current upstream bottles on persistent runners. Pruning the entire
   # download cache made each build fetch large dependencies again.
   brew cleanup || php_darwin_die 'Homebrew cleanup failed'
+  # Removed formulae can include Bash and other commands already used above.
+  hash -r
 
   brew list --formula --versions > "$preinstalled_formulae" || \
     php_darwin_die 'could not record the cleaned Homebrew formula baseline'
