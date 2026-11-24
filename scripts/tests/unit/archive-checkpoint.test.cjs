@@ -173,17 +173,28 @@ test('checkpoint cleanup waits for upload and preserves other variants and archi
     { id: 3, name: identity({ ...f.inputs, arch: 'x86_64' }).name },
   ];
   const deleted = [];
-  const cache = { api: async (endpoint, options = {}) => {
+  const delays = [];
+  const cache = { wait: async ms => delays.push(ms), api: async (endpoint, options = {}) => {
     if (options.method === 'DELETE') deleted.push(endpoint);
     else {
       assert.equal(endpoint, 'actions/runs/10/artifacts?per_page=100&page=1');
       return { artifacts };
     }
   } };
-  await assert.rejects(pruneCheckpoints(cache, f.item, '10'), /not uploaded/);
+  await assert.rejects(pruneCheckpoints(cache, f.item, '10'), /not visible after upload/);
   assert.deepEqual(deleted, []);
-  artifacts.push({ id: 4, name: f.item.name });
+  assert.ok(delays.length > 0);
+  // An expired entry with the same name must not authorize deletion. The
+  // second listing reveals the live replacement after the upload finishes.
+  artifacts.push({ id: 4, name: f.item.name, expired: true });
+  let waits = 0;
+  cache.wait = async () => {
+    assert.deepEqual(deleted, []);
+    waits++;
+    artifacts.push({ id: 5, name: f.item.name, expired: false });
+  };
   await pruneCheckpoints(cache, f.item, '10');
+  assert.equal(waits, 1);
   assert.deepEqual(deleted, ['actions/artifacts/1']);
 });
 

@@ -146,17 +146,21 @@ function earlyCompatible(inputs, expected) {
     JSON.stringify(canonical(inputs.platform)) === JSON.stringify(canonical(expected.platform));
 }
 
+async function runArtifacts(cache, runId) {
+  const artifacts = [];
+  for (let page = 1; ; page++) {
+    const result = await cache.api(`actions/runs/${runId}/artifacts?per_page=100&page=${page}`);
+    artifacts.push(...result.artifacts);
+    if (result.artifacts.length < 100) return artifacts;
+  }
+}
+
 async function restoreEarly(cache, expected, builds, { runId = process.env.GITHUB_RUN_ID,
   temporary = process.env.RUNNER_TEMP, reuse = process.env.REUSE_ARCHIVES !== 'false' } = {}) {
   if (!reuse || !/^[1-9][0-9]*$/.test(runId || '')) return {hit: false};
   const item = identity(expected);
   try {
-    const artifacts = [];
-    for (let page = 1; ; page++) {
-      const response = await cache.api(`actions/runs/${runId}/artifacts?per_page=100&page=${page}`);
-      artifacts.push(...response.artifacts);
-      if (response.artifacts.length < 100) break;
-    }
+    const artifacts = await runArtifacts(cache, runId);
     for (const artifact of artifacts.filter(a => !a.expired && a.name.startsWith(item.prefix)).slice(0, 3)) {
       const directory = fs.mkdtempSync(path.join(temporary, 'php-darwin-early-'));
       try {
@@ -219,14 +223,17 @@ function stageCheckpoint(inputs, builds, directory) {
 }
 
 async function pruneCheckpoints(cache, state, runId) {
-  const artifacts = [];
-  for (let page = 1; ; page++) {
-    const result = await cache.api(`actions/runs/${runId}/artifacts?per_page=100&page=${page}`);
-    artifacts.push(...result.artifacts);
-    if (result.artifacts.length < 100) break;
+  // A finalized upload can take time to appear in the run's artifact listing.
+  // Only delete older checkpoints from a listing that includes the current one.
+  const isCurrent = artifact => artifact.name === state.name && !artifact.expired;
+  let artifacts = await runArtifacts(cache, runId);
+  for (const delay of [1000, 2000, 4000, 8000, 16000]) {
+    if (artifacts.some(isCurrent)) break;
+    await cache.wait(delay);
+    artifacts = await runArtifacts(cache, runId);
   }
-  if (!artifacts.some(artifact => artifact.name === state.name && !artifact.expired)) {
-    throw new Error('Current verified checkpoint was not uploaded');
+  if (!artifacts.some(isCurrent)) {
+    throw new Error('Current verified checkpoint is not visible after upload. Previous checkpoints retained.');
   }
   for (const artifact of artifacts) {
     if (artifact.name.startsWith(state.prefix) && artifact.name !== state.name) {
