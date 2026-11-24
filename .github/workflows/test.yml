@@ -41,6 +41,19 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Read dependency approval from the archive producer
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN: ${{ inputs.run-id }}
+        run: |
+          [[ "$SOURCE_RUN" =~ ^[0-9]+$ ]]
+          revision=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN" --jq .head_sha)
+          [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
+          git fetch --no-tags --depth=1 origin "$revision"
+          if git cat-file -e "$revision:conf/dependencies.json"; then
+            git show "$revision:conf/dependencies.json" > conf/dependencies.json
+          fi
+
       - name: Validate packaged PHP archives
         uses: ./.github/actions/test-cache
         with:

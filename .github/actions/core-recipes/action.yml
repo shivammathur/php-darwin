@@ -1,5 +1,9 @@
 name: Prepare pinned core recipes
 description: Preserve the original core tap and attach the approved shallow snapshot without compiling.
+inputs:
+  update-homebrew:
+    description: Update Homebrew before attaching recipes
+    default: 'true'
 runs:
   using: composite
   steps:
@@ -7,6 +11,7 @@ runs:
       shell: bash
       run: bash scripts/tests/helpers/core-tap-layout.sh prepare
     - name: Update Homebrew with API resolution and no core checkout
+      if: inputs.update-homebrew == 'true'
       shell: bash
       run: |
         env -u HOMEBREW_NO_INSTALL_FROM_API bash scripts/build/update-homebrew.sh

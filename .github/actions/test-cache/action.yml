@@ -87,11 +87,22 @@ runs:
     - name: Check the cleaned Homebrew environment
       shell: bash
       run: bash scripts/build/check-homebrew.sh
-    - name: Hide core for release installation validation
+    - name: Select the Homebrew core layout for archive validation
       id: core-layout
-      if: inputs.without-core == 'true'
       shell: bash
-      run: bash scripts/tests/helpers/core-tap-layout.sh prepare
+      env:
+        WITHOUT_CORE: ${{ inputs.without-core }}
+      run: |
+        if [[ "$WITHOUT_CORE" == true ]]; then
+          bash scripts/tests/helpers/core-tap-layout.sh prepare
+        elif [[ -d "$(brew --repository)/Library/Taps/homebrew/homebrew-core" ]]; then
+          echo 'use-pinned-core=true' >> "$GITHUB_OUTPUT"
+        fi
+    - name: Use the approved recipes for Homebrew linkage checks
+      if: steps.core-layout.outputs.use-pinned-core == 'true'
+      uses: ./.github/actions/core-recipes
+      with:
+        update-homebrew: 'false'
     - name: Download only the variants selected for installation
       if: inputs.release-receipt == ''
       uses: ./.github/actions/download-artifacts
@@ -275,7 +286,7 @@ runs:
       shell: bash
       run: bash scripts/tests/native/install.test.sh reset
 
-    - name: Verify core stayed absent and restore the original layout
+    - name: Verify and restore the original core layout
       if: ${{ always() && steps.core-layout.outcome != 'skipped' && steps.core-layout.outcome != '' }}
       shell: bash
       run: bash scripts/tests/helpers/core-tap-layout.sh restore
