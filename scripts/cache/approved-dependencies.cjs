@@ -154,7 +154,7 @@ class ApprovedDependencies {
         if (bottle && JSON.parse(fs.readFileSync(path.join(directory, 'metadata.json'))).sha256 !== sha256) bottle = undefined;
       } catch { bottle = undefined; }
       if (!bottle) {
-        const restored = await cache.restoreCache([directory], key, [], inputs);
+        const restored = await cache.restoreCache([directory], key, [], inputs, sha256);
         if (restored !== key) throw new Error(`Approved dependency bottle is unavailable: ${item.full_name}; dependency compilation is restricted to update-dependencies.yml`);
         bottle = readBottle(directory, key);
       }

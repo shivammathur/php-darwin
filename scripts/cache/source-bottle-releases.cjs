@@ -7,7 +7,7 @@ const { curlRequest, errorDetails } = require('../lib/release-http.cjs');
 const { pipeline, finished } = require('node:stream/promises');
 const { spawnSync } = require('node:child_process');
 const { setTimeout: pause } = require('node:timers/promises');
-const { command, brewSource, readBottle, keyFor, validKey } = require('./source-bottle-cache.cjs');
+const { command, brewSource, readBottle, keyFor, legacyKeyFor, validKey } = require('./source-bottle-cache.cjs');
 const mirror = require('./source-bottle-mirror.cjs');
 const { retryPolicy } = require('../release/extension-transfers.cjs');
 const { releaseForFormula } = require('./source-cache-layout.cjs');
@@ -299,10 +299,18 @@ class ReleaseCache {
     } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
   }
 
-  async restoreCache([directory], key, _restoreKeys = [], inputs) {
-    if (this.partition && (!inputs || !validKey(inputs, key))) throw new Error('Source cache lookup requires matching build inputs');
-    const tags = this.partition ? [...new Set([this.bottleTag(inputs), this.tag,
-      `cache-source-${family(inputs).slice(0, 2)}`])] : [this.tag];
+  async restoreCache([directory], key, _restoreKeys = [], inputs, approvedDigest) {
+    if ((this.partition || approvedDigest) && (!inputs || !validKey(inputs, key))) {
+      throw new Error('Source cache lookup requires matching build inputs');
+    }
+    // The lock approves production dependency bottles even when PHP and its
+    // extensions use an isolated release. Only digest-pinned reads cross it.
+    const tags = new Set([this.bottleTag(inputs), this.tag]);
+    if (approvedDigest) {
+      tags.add(releaseForFormula(inputs.formula));
+      tags.add('cache');
+    }
+    if (this.partition || approvedDigest) tags.add(`cache-source-${family(inputs).slice(0, 2)}`);
     const lookup = { key, assets: [] };
     this.lastLookup = lookup;
     for (const tag of tags) {
@@ -311,33 +319,41 @@ class ReleaseCache {
       const assets = await this.assets(release);
       lookup.assets.push(...assets);
       const asset = assets.find(asset => asset.state !== 'starter' && assetIdentity(asset)?.key === key);
-      if (asset) {
+      if (asset && !approvedDigest) {
         await this.download(asset, directory, key, { tag });
         return key;
       }
-      if (!inputs || keyFor(inputs) !== key) continue;
-      // Older caches hashed recipe bytes and compiler details. Reuse only a
-      // checksum-verified bottle with the same software versions and target.
+      const compatible = inputs && keyFor(inputs) === key;
+      const group = compatible && family(inputs);
       const candidates = assets.filter(item => {
         const identity = assetIdentity(item);
-        return item.state !== 'starter' && identity?.group === family(inputs) && identity.version === inputs.version;
-      }).sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)).slice(0, 3);
+        return compatible && item !== asset && item.state !== 'starter' && identity?.group === group && identity.version === inputs.version;
+      }).sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+      if (approvedDigest) {
+        // Older keys include recipe and compiler details. Prefer the exact
+        // provenance in the lock before trying equivalent builds of this version.
+        const originalKey = legacyKeyFor(inputs);
+        candidates.sort((a, b) => Number(assetIdentity(b).key === originalKey) - Number(assetIdentity(a).key === originalKey));
+      } else candidates.splice(3);
+      if (asset) candidates.unshift(asset);
       for (const candidate of candidates) {
         const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'source-bottle-legacy-'));
         try {
           const oldKey = assetIdentity(candidate).key;
           await this.download(candidate, temporary, oldKey, {tag});
           const metadata = JSON.parse(fs.readFileSync(path.join(temporary, 'metadata.json')));
-          if (!metadata.inputs || !validKey(metadata.inputs, oldKey)) continue;
-          const previous = {...metadata.inputs};
-          // Legacy nightly PHP keys recorded the complete source recipe hash.
+          if (approvedDigest && metadata.sha256 !== approvedDigest) continue;
+          const provenance = metadata.inputs ?? (oldKey === key && approvedDigest ? inputs : undefined);
+          if (!provenance || !validKey(provenance, oldKey)) continue;
+          const previous = {...provenance};
+          // Legacy PHP keys recorded the complete source recipe hash.
           // An identical recipe proves the source commit when it was not yet
-          // recorded separately; never equate two nightlies by semver alone.
+          // recorded separately for a nightly or a stable backport.
           if (!previous.source_commit && inputs.source_commit && /^[a-f0-9]{64}$/.test(inputs.recipe || '') &&
               previous.recipe === inputs.recipe) {
             previous.source_commit = inputs.source_commit;
           }
-          if (keyFor(previous) !== key) continue;
+          if (oldKey !== key && keyFor(previous) !== key) continue;
           fs.mkdirSync(directory, {recursive: true});
           fs.copyFileSync(path.join(temporary, metadata.file), path.join(directory, metadata.file));
           // This is a local alias only: leave the original release and mirror intact.

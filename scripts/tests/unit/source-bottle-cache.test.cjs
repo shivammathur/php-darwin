@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { install, keyFor, readBottle, extensionInputs } = require('../../cache/source-bottle-cache.cjs');
+const { install, keyFor, readBottle, extensionInputs, pinnedPhpCommit } = require('../../cache/source-bottle-cache.cjs');
 const { configurationFiles, withFreshConfiguration } = require('../../cache/source-bottle-config.cjs');
 const { ApprovedDependencies } = require('../../cache/approved-dependencies.cjs');
 
@@ -784,11 +784,34 @@ test('extension variants bypass upstream bottles, preserve skip-link, and isolat
   }
 });
 
+test('backported and upstream PHP pins invalidate source bottles at the same version', t => {
+  const f = fixture(t);
+  const recipe = path.join(f.cacheRoot, 'php.rb');
+  fs.mkdirSync(f.cacheRoot);
+  const inputs = {formula: 'shivammathur/php/php@5.6', version: '5.6.40'};
+  const keys = [];
+  for (const [repo, sha, query] of [['shivammathur/php-src-backports', 'a', ''],
+    ['shivammathur/php-src-backports', 'b', ''], ['php/php-src', 'c', '?commit=' + 'c'.repeat(40)]]) {
+    fs.writeFileSync(recipe, `  url "https://github.com/${repo}/archive/${sha.repeat(40)}.tar.gz${query}"\n`);
+    assert.equal(pinnedPhpCommit(recipe), sha.repeat(40));
+    keys.push(keyFor({...inputs, source_commit: pinnedPhpCommit(recipe)}));
+  }
+  fs.writeFileSync(recipe, '  url "https://www.php.net/distributions/php-8.5.13.tar.xz"\n');
+  assert.equal(pinnedPhpCommit(recipe), undefined);
+  assert.equal(new Set([...keys, keyFor(inputs)]).size, 4);
+});
+
 test('extension keys retain hits after patching build code and use php-config for ABI identity', t => {
   const f = fixture(t);
   const abstract = path.join(f.cacheRoot, 'abstract.rb');
   fs.mkdirSync(f.cacheRoot);
   fs.writeFileSync(abstract, 'original recipe');
+  const keg = path.join(f.cacheRoot, 'Cellar/php@5.6/5.6.40');
+  const phpPrefix = path.join(f.cacheRoot, 'php-alias');
+  const recipe = path.join(keg, '.brew/php@5.6.rb');
+  fs.mkdirSync(path.dirname(recipe), {recursive: true});
+  fs.symlinkSync(keg, phpPrefix);
+  fs.writeFileSync(recipe, `  url "https://github.com/shivammathur/php-src-backports/archive/${'a'.repeat(40)}.tar.gz"\n`);
   for (const [file, name] of [['main/php.h', 'PHP_API_VERSION'],
     ['Zend/zend_modules.h', 'ZEND_MODULE_API_NO'], ['Zend/zend_extensions.h', 'ZEND_EXTENSION_API_NO']]) {
     fs.mkdirSync(path.dirname(path.join(f.cacheRoot, file)), { recursive: true });
@@ -796,15 +819,16 @@ test('extension keys retain hits after patching build code and use php-config fo
   }
   const calls = [];
   const run = (program, args) => { calls.push([program, args]); return args[0] === '--include-dir' ? f.cacheRoot : args.join(' '); };
-  const first = extensionInputs(abstract, '/opt/php', 'release', 'nts', run);
+  const first = extensionInputs(abstract, phpPrefix, 'release', 'nts', run);
   assert.equal(calls.length, 4);
-  assert.ok(calls.every(([program]) => program === '/opt/php/bin/php-config'));
+  assert.ok(calls.every(([program]) => program === path.join(phpPrefix, 'bin/php-config')));
   assert.ok(calls.some(([, args]) => args[0] === '--version'));
+  assert.equal(first.php.source_commit, 'a'.repeat(40));
   assert.equal(first.php.api.ZEND_MODULE_API_NO, '20240924');
   fs.writeFileSync(abstract, 'patched recipe');
-  assert.deepEqual(first.php, extensionInputs(abstract, '/opt/php', 'release', 'nts', run).php);
+  assert.deepEqual(first.php, extensionInputs(abstract, phpPrefix, 'release', 'nts', run).php);
   const inputs = {formula: 'extension', version: '1', context: first};
-  assert.equal(keyFor(inputs), keyFor({...inputs, context: extensionInputs(abstract, '/opt/php', 'release', 'nts', run)}));
+  assert.equal(keyFor(inputs), keyFor({...inputs, context: extensionInputs(abstract, phpPrefix, 'release', 'nts', run)}));
 });
 
 test('Cloudflare prefetch completes before upstream fetch and leaves normal installation intact', async t => {

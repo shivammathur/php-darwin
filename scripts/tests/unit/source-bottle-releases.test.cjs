@@ -127,6 +127,32 @@ test('preparing newer dependencies preserves the source bottle still approved fo
   assert.equal(await f.cache.restoreCache([path.join(f.root, 'approved')], old.key), old.key);
 });
 
+test('isolated PHP caches restore only checksum-approved dependencies from production', async t => {
+  const f = fixture(t);
+  const old = f.bottle('1', {recipe: 'approved recipe'});
+  const metaFile = path.join(old.directory, 'metadata.json');
+  const approved = JSON.parse(fs.readFileSync(metaFile));
+  approved.key = legacyKeyFor(approved.inputs);
+  fs.writeFileSync(metaFile, JSON.stringify(approved));
+  await f.cache.saveCache([old.directory], approved.key);
+
+  // A later build of the same software has the normalized key but different bytes.
+  const other = f.bottle('1', {recipe: 'new recipe'});
+  const newer = JSON.parse(fs.readFileSync(metaFile));
+  fs.writeFileSync(path.join(other.directory, newer.file), 'another build');
+  newer.sha256 = digest('another build');
+  fs.writeFileSync(metaFile, JSON.stringify(newer));
+  await f.cache.saveCache([other.directory], other.key);
+  f.cache.tag = 'source-bottles-test-empty';
+  const dest = path.join(f.root, 'restored');
+  assert.equal(await f.cache.restoreCache([dest], old.key, [], old.inputs), undefined);
+  assert.equal(await f.cache.restoreCache([dest], old.key, [], old.inputs, approved.sha256), old.key);
+  assert.equal(digest(fs.readFileSync(readBottle(dest, old.key))), approved.sha256);
+  const missing = path.join(f.root, 'missing');
+  assert.equal(await f.cache.restoreCache([missing], old.key, [], old.inputs, 'f'.repeat(64)), undefined);
+  assert.ok(!fs.existsSync(missing));
+});
+
 test('normalized approvals protect legacy source bottles until dependency promotion', async t => {
   const f = fixture(t, 'cache', true);
   const old = f.bottle('1', {recipe: 'original recipe'});

@@ -109,10 +109,10 @@ async function prepare() {
     }
     const matching = cached.filter(record => record.inputs.formula === item.full_name && record.inputs.version === item.version);
     if (matching.length !== 1) throw new Error(`Expected one prepared source bottle for ${item.full_name}; found ${matching.length}`);
-    const { key, inputs } = matching[0];
+    const { key, inputs, sha256 } = matching[0];
     const directory = path.join(cacheRoot, 'verified', key);
     fs.mkdirSync(directory, { recursive: true });
-    if (await cache.restoreCache([directory], key, [], inputs) !== key) {
+    if (await cache.restoreCache([directory], key, [], inputs, sha256) !== key) {
       throw new Error(`Dependency was not saved for future cache jobs: ${item.full_name}`);
     }
     readBottle(directory, key);

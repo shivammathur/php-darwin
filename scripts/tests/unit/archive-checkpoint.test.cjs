@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { command } = require('../../cache/source-bottle-cache.cjs');
-const { checkpointKey, identity, kegDigest, verifyCheckpoint, restoreCheckpoint, stageCheckpoint, pruneCheckpoints, restoreEarly } = require('../../cache/archive-checkpoint.cjs');
+const { verifyPhpSource, checkpointKey, identity, kegDigest, verifyCheckpoint, restoreCheckpoint, stageCheckpoint, pruneCheckpoints, restoreEarly } = require('../../cache/archive-checkpoint.cjs');
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'checkpoint-test-'));
@@ -37,6 +37,20 @@ function fixture(t) {
   } };
   return { root, inputs, item, builds, staged, zip, artifact, warnings, cache };
 }
+
+test('checkpoint creation rejects a stale backports keg even when the tap is pinned', t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'checkpoint-php-source-'));
+  t.after(() => fs.rmSync(root, {recursive: true, force: true}));
+  const formula = 'shivammathur/php/php@5.6';
+  const tap = path.join(root, 'tap.rb'), keg = path.join(root, 'installed.rb');
+  const recipe = commit => `  url "https://github.com/shivammathur/php-src-backports/archive/${commit}.tar.gz"\n`;
+  const record = {full_name: formula, recipe: tap, packages: [{name: formula, recipe: keg}]};
+  fs.writeFileSync(tap, recipe('a'.repeat(40)));
+  fs.writeFileSync(keg, recipe('b'.repeat(40)));
+  assert.throws(() => verifyPhpSource(record), /keg differs from the pinned PHP source/);
+  fs.copyFileSync(tap, keg);
+  verifyPhpSource(record);
+});
 
 test('early reuse restores only this run with identical pinned sources and toolchain', async t => {
   const f = fixture(t), original = f.cache.api;

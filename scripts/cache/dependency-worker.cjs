@@ -41,7 +41,7 @@ async function prepare(formula) {
     if (metadata.inputs.formula !== formula) continue;
     const directory = path.join(cacheRoot, 'remote-verification', metadata.key);
     fs.mkdirSync(directory, {recursive: true});
-    if (await cache.restoreCache([directory], metadata.key, [], metadata.inputs) !== metadata.key) {
+    if (await cache.restoreCache([directory], metadata.key, [], metadata.inputs, metadata.sha256) !== metadata.key) {
       throw new Error(`Published worker bottle is unavailable: ${formula}`);
     }
     readBottle(directory, metadata.key);

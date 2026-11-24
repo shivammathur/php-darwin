@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { Readable } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
-const { command, brewSource, environment, recipeHash } = require('./source-bottle-cache.cjs');
+const { command, brewSource, environment, recipeHash, pinnedPhpCommit } = require('./source-bottle-cache.cjs');
 const { ReleaseCache } = require('./source-bottle-releases.cjs');
 const { recordMetric } = require('../lib/build-metrics.cjs');
 
@@ -44,6 +44,15 @@ function kegDigest(root) {
   return hash.digest('hex');
 }
 
+function verifyPhpSource(record) {
+  const expected = pinnedPhpCommit(record.recipe);
+  if (!expected) return;
+  const phpKeg = record.packages.find(item => item.name === record.full_name);
+  if (!phpKeg || pinnedPhpCommit(phpKeg.recipe) !== expected) {
+    throw new Error(`Installed ${record.full_name} keg differs from the pinned PHP source ${expected}`);
+  }
+}
+
 function fingerprint() {
   const { PHP_VERSION: php, ARCH: arch, BUILD: build, TS: ts, GITHUB_SHA: revision,
     HOMEBREW_PHP_COMMIT: phpCommit, HOMEBREW_EXTENSIONS_COMMIT: extensionsCommit } = process.env;
@@ -56,6 +65,7 @@ function fingerprint() {
     '. scripts/lib/lib.sh; tap=$(php_darwin_package_config tap) && formula=$(php_darwin_requested_formula "$PHP_VERSION" "$BUILD" "$TS") && printf "%s/%s" "$tap" "$formula"'
   ]).trim();
   const [record] = JSON.parse(brewSource('info', ['archive', JSON.stringify([formula]), 'false']));
+  verifyPhpSource(record);
   const platform = environment();
   const extensions = fs.readFileSync(path.join(process.env.RUNNER_TEMP, 'php-darwin-build/cached-extension-paths.txt'), 'utf8')
     .trim().split('\n').filter(Boolean).map(line => {
@@ -260,4 +270,4 @@ async function main(stage) {
 }
 
 if (require.main === module) main(process.argv[2]).catch(error => { console.error(error); process.exitCode = 1; });
-module.exports = { checkpointKey, identity, kegDigest, verifyCheckpoint, downloadCheckpoint, restoreCheckpoint, stageCheckpoint, pruneCheckpoints, earlyCompatible, restoreEarly };
+module.exports = { verifyPhpSource, checkpointKey, identity, kegDigest, verifyCheckpoint, downloadCheckpoint, restoreCheckpoint, stageCheckpoint, pruneCheckpoints, earlyCompatible, restoreEarly };

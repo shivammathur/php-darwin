@@ -70,9 +70,14 @@ function configureCache(info) {
   return Object.keys(values).length ? values : undefined;
 }
 
+function pinnedPhpCommit(recipe) {
+  const url = fs.readFileSync(recipe, 'utf8').match(/^  url "([^"]+)"/m)?.[1];
+  return url?.match(/^https:\/\/github\.com\/(?:php\/php-src|shivammathur\/php-src-backports)\/archive\/([a-f0-9]{40})\.tar\.gz(?:\?commit=\1)?$/)?.[1];
+}
+
 function buildInputs(formula, environment) {
   const [info] = inspect('inputs', [formula.full_name]);
-  const sourceCommit = fs.readFileSync(info.recipe, 'utf8').match(/^\s*url "https:\/\/github\.com\/php\/php-src\/archive\/([a-f0-9]{40})\.tar\.gz/m)?.[1];
+  const sourceCommit = pinnedPhpCommit(info.recipe);
   return {
     ...(sourceCommit ? {source_commit: sourceCommit} : {}),
     environment, formula: info.full_name, version: info.version, recipe: recipeHash(info.recipe),
@@ -419,9 +424,12 @@ function extensionInputs(abstract, phpPrefix, build, ts, run = command) {
     if (!match) throw new Error(`Missing ${name} in installed PHP headers`);
     api[name] = match[1];
   }
+  const keg = fs.realpathSync(phpPrefix);
+  const sourceCommit = pinnedPhpCommit(path.join(keg, '.brew', path.basename(path.dirname(keg)) + '.rb'));
   return {
     build, ts, abstract: digest(fs.readFileSync(abstract)),
     php: {
+      ...(sourceCommit ? {source_commit: sourceCommit} : {}),
       version: run(path.join(phpPrefix, 'bin/php-config'), ['--version']).trim(),
       api,
       configure: run(path.join(phpPrefix, 'bin/php-config'), ['--configure-options']).trim(),
@@ -430,4 +438,4 @@ function extensionInputs(abstract, phpPrefix, build, ts, run = command) {
   };
 }
 
-module.exports = { configureCache, command, brewSource, keyFor, legacyKeyFor, validKey, softwareInputs, readBottle, install, extensionInputs, environment, recipeHash };
+module.exports = { pinnedPhpCommit, configureCache, command, brewSource, keyFor, legacyKeyFor, validKey, softwareInputs, readBottle, install, extensionInputs, environment, recipeHash };
