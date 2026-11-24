@@ -29,7 +29,9 @@ permissions:
 # must not run in another publication while these immutable uploads are pending.
 env:
   PHP_DARWIN_FAST_REFRESH: ${{ inputs.fast }}
-  GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+  # Repository-local publication must not exhaust the user token used to
+  # dispatch builds across the PHP repositories.
+  GH_TOKEN: ${{ github.token }}
   CF_R2_AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_AWS_ACCESS_KEY_ID }}
   CF_R2_AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_AWS_SECRET_ACCESS_KEY }}
   CF_R2_AWS_S3_ENDPOINT: ${{ secrets.CF_R2_AWS_S3_ENDPOINT }}
@@ -38,7 +40,8 @@ jobs:
   prepare:
     name: Prepare extension publication
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Allow one hourly GitHub quota reset without discarding verified archives.
+    timeout-minutes: 90
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       count: ${{ steps.plan.outputs.count }}
@@ -81,7 +84,7 @@ jobs:
     if: needs.prepare.outputs.count != '0'
     name: Upload extensions for ${{ matrix.id }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       max-parallel: 8
@@ -100,7 +103,7 @@ jobs:
         with:
           artifact-ids: ${{ matrix.artifact_ids }}
           run-id: ${{ needs.prepare.outputs.source-run }}
-          github-token: ${{ secrets.TOKEN || github.token }}
+          github-token: ${{ github.token }}
           path: builds/extensions
       - name: Upload and verify this variant's immutable archives
         env:
@@ -134,7 +137,7 @@ jobs:
       (needs.upload.result == 'success' || needs.upload.result == 'skipped')
     name: Commit extension manifests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 90
     env:
       PUBLICATION_PLAN_ID: ${{ needs.prepare.outputs.plan-id }}
     steps:

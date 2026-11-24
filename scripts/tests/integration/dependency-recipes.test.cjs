@@ -62,3 +62,29 @@ test('selective updates retain the approved base and unrelated build tools on ev
   assert.throws(() => updatePlan({core_commit: base}, latest, 'cmake', {cmake: base}), /Bottle-only/);
   assert.throws(() => updatePlan({core_commit: base}, latest, '', {cmake: base}), /Bottle-only/);
 });
+
+test('interrupted recipe fetches retry without applying partial or unpinned recipes', () => {
+  const core = 'a'.repeat(40), selected = 'b'.repeat(40);
+  for (const recover of [false, true]) {
+    let attempts = 0;
+    const waits = [];
+    const run = (_program, args) => {
+      const command = args.slice(2);
+      if (command[0] === 'rev-parse') return command[1] === 'HEAD' ? core : 'true';
+      if (command[0] === 'cat-file') throw new Error('not fetched');
+      if (command.includes('fetch')) {
+        attempts++;
+        assert.ok(command.includes('--depth=1'));
+        assert.equal(command.at(-1), selected);
+        if (!recover || attempts < 3) throw new Error('fatal: early EOF');
+        return '';
+      }
+      assert.equal(command[0], 'ls-tree');
+      throw new Error('reached recipe validation');
+    };
+    assert.throws(() => apply('/unused', core, {curl: selected}, {run, wait: ms => waits.push(ms)}),
+      recover ? /reached recipe validation/ : /early EOF/);
+    assert.equal(attempts, 3);
+    assert.deepEqual(waits, [10000, 20000]);
+  }
+});

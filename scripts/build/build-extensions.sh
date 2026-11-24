@@ -3,6 +3,8 @@
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=scripts/lib/lib.sh
 . "$script_dir/../lib/lib.sh"
+# shellcheck source=scripts/lib/retry.sh
+. "$script_dir/../lib/retry.sh"
 [ -n "${PHP_DARWIN_SOURCE_CACHE_NODE:-}" ] && [ -n "${PHP_DARWIN_SOURCE_CACHE_ACTION:-}" ] || \
   php_darwin_die 'Use the source-cache action to restore approved dependencies and cache missing extension bottles'
 php_darwin_configure_homebrew_environment
@@ -113,14 +115,14 @@ while IFS=$'\t' read -r extension extension_type extension_formula; do
 done <<< "$configured_extensions"
 [ "${#extension_formulae[@]}" -gt 0 ] || php_darwin_die "no cached extensions are configured for PHP $version"
 
-brew tap "$extension_tap" || php_darwin_die "could not tap $extension_tap"
+php_darwin_retry brew tap "$extension_tap" || php_darwin_die "could not tap $extension_tap"
 brew trust "$extension_tap" || php_darwin_die "could not trust $extension_tap"
 extension_tap_path=$(brew --repository "$extension_tap") || \
   php_darwin_die "could not resolve the $extension_tap repository"
 [ "$(git -C "$extension_tap_path" remote get-url origin)" = "$extension_repository" ] || \
   php_darwin_die 'homebrew-extensions has an unexpected origin'
 if ! git -C "$extension_tap_path" cat-file -e "$source_commit^{commit}" 2>/dev/null; then
-  git -C "$extension_tap_path" fetch --depth=1 origin "$source_commit" || \
+  php_darwin_retry git -C "$extension_tap_path" fetch --depth=1 origin "$source_commit" || \
     php_darwin_die "could not fetch homebrew-extensions commit $source_commit"
 fi
 git -C "$extension_tap_path" checkout --detach "$source_commit" || \

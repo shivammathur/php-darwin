@@ -3,6 +3,8 @@
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=scripts/lib/lib.sh
 . "$script_dir/../lib/lib.sh"
+# shellcheck source=scripts/lib/retry.sh
+. "$script_dir/../lib/retry.sh"
 
 [ "${GITHUB_ACTIONS:-}" = true ] || [ "${PHP_DARWIN_ALLOW_LOCAL_BUILD:-}" = true ] || \
   php_darwin_die 'build.sh may only clean Homebrew on an Actions runner (set PHP_DARWIN_ALLOW_LOCAL_BUILD=true to override)'
@@ -65,11 +67,11 @@ prepare_homebrew() {
   local formula_file
   local tap_path
 
-  brew tap "$tap" || php_darwin_die "could not tap $tap"
+  php_darwin_retry brew tap "$tap" || php_darwin_die "could not tap $tap"
   brew trust "$tap" || php_darwin_die "could not trust $tap"
   tap_path=$(brew --repository "$tap") || php_darwin_die "could not resolve the $tap repository"
   if ! git -C "$tap_path" cat-file -e "$source_commit^{commit}" 2>/dev/null; then
-    git -C "$tap_path" fetch --depth=1 origin "$source_commit" || \
+    php_darwin_retry git -C "$tap_path" fetch --depth=1 origin "$source_commit" || \
       php_darwin_die "could not fetch homebrew-php commit $source_commit"
   fi
   git -C "$tap_path" checkout --detach "$source_commit" || \

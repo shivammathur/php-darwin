@@ -509,6 +509,66 @@ test('release requests retry failed responses and respect rate-limit backoff', a
   assert.deepEqual(f.state.delays, [1000, 7000]);
 });
 
+test('quota resets longer than a minute and headerless upload throttles are honored', async t => {
+  const f = fixture(t);
+  const reset = Math.floor(Date.now() / 1000) + 900;
+  let calls = 0;
+  f.state.intercept = () => calls++ === 0 ? new Response('rate limited', {
+    status: 403, headers: {'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(reset)},
+  }) : undefined;
+  assert.equal(await f.cache.release(), null);
+  assert.ok(f.state.delays[0] >= 899000 && f.state.delays[0] <= 901000);
+  f.state.delays.length = 0;
+  calls = 0;
+  f.state.intercept = () => calls++ === 0 ? Response.json({message: 'You have exceeded a secondary rate limit.'}, {status: 403}) : undefined;
+  assert.equal(await f.cache.release(), null);
+  assert.deepEqual(f.state.delays, [60000]);
+});
+
+test('headerless primary upload limits consult the quota without replaying an upload early', async t => {
+  const f = fixture(t), waits = [];
+  const original = f.cache.request;
+  let uploads = 0, quotas = 0;
+  f.cache.request = async (url, options) => {
+    if (url === 'https://api.github.com/rate_limit') {
+      quotas++;
+      return Response.json({resources: {core: {remaining: 0, reset: Math.floor(Date.now() / 1000) + 600}}});
+    }
+    if (options.method === 'POST' && url.startsWith('https://uploads.github.com/') && uploads++ === 0) {
+      return Response.json({message: 'API rate limit exceeded for user'}, {status: 403});
+    }
+    return original(url, options);
+  };
+  f.cache.wait = async delay => waits.push(delay);
+  const bottle = f.bottle('1');
+  await f.cache.saveCache([bottle.directory], bottle.key);
+  assert.equal(quotas, 1);
+  assert.equal(uploads, 2);
+  assert.ok(waits[0] >= 599000 && waits[0] <= 601000);
+});
+
+test('separate pack processes revalidate persisted metadata and never reuse a stale claim', async t => {
+  const f = fixture(t), responseCache = path.join(f.root, 'responses');
+  let calls = 0;
+  const request = async (_url, options) => {
+    calls++;
+    const etag = options.headers['If-None-Match'];
+    if (calls === 1) { assert.equal(etag, undefined); return Response.json({status: 'in_progress'}, {headers: {etag: 'one'}}); }
+    if (calls === 2) { assert.equal(etag, 'one'); return new Response(null, {status: 304}); }
+    if (calls === 3) { assert.equal(etag, 'one'); return Response.json({status: 'completed'}, {headers: {etag: 'two'}}); }
+    if (calls === 4) { assert.equal(etag, 'two'); return new Response(null, {status: 404}); }
+    assert.equal(etag, undefined);
+    return Response.json({status: 'completed'});
+  };
+  const cache = token => new ReleaseCache({repository: 'shivammathur/php-darwin', token: token || 'fixture', request, responseCache});
+  assert.equal((await cache().api('actions/jobs/1')).status, 'in_progress');
+  assert.equal((await cache().api('actions/jobs/1')).status, 'in_progress');
+  assert.equal((await cache().api('actions/jobs/1')).status, 'completed');
+  assert.equal(await cache().api('actions/jobs/1', {allow: [404]}), null);
+  await cache().api('actions/jobs/1');
+  await cache('different-token').api('actions/jobs/1');
+});
+
 test('release requests stop after three attempts including permission failures', async t => {
   const f = fixture(t);
   let attempts = 0;

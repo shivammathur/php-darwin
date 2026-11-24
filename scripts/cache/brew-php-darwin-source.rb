@@ -8,6 +8,14 @@ when "prune"
   require_relative "source-bottle-prune"
 when "install"
   require_relative "source-bottle-install"
+when "bottle"
+  require "dev-cmd/bottle"
+  require "utils/gzip"
+  require_relative "source-bottle-gzip"
+  Utils::Gzip.singleton_class.prepend(PhpDarwinBottleGzip)
+  bottling = Homebrew::DevCmd::Bottle.new(ARGV)
+  Context.current = bottling.args.context
+  bottling.run
 when "select"
   require "formulary"
   require "keg"

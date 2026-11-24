@@ -31,17 +31,30 @@ function updatePlan(lock, commit, formulae, bottleRecipes = {}) {
     updates: [...new Set(names)], bottle_updates: Object.keys(bottleRecipes)};
 }
 
-function apply(repository, core, recipes) {
+function apply(repository, core, recipes, {run = execFileSync,
+  wait = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)} = {}) {
   recipes = validate(recipes);
-  const git = args => execFileSync('git', ['-C', repository, ...args],
-    {encoding: 'utf8', env: {...process.env, ...(args[0] === 'cat-file' ? {GIT_NO_LAZY_FETCH: '1'} : {})}}).trimEnd();
+  const git = args => run('git', ['-C', repository, ...args],
+    {encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+      ...(args.includes('fetch') ? {timeout: 180000} : {}),
+      env: {...process.env, ...(args[0] === 'cat-file' ? {GIT_NO_LAZY_FETCH: '1'} : {})}}).trimEnd();
   if (git(['rev-parse', 'HEAD']) !== core) throw new Error('Dependency recipe base differs from the checkout');
   const files = [];
   for (const commit of new Set(Object.values(recipes))) {
     try { git(['cat-file', '-e', `${commit}^{commit}`]); }
     catch {
       const shallow = git(['rev-parse', '--is-shallow-repository']) === 'true';
-      git(['fetch', '--no-tags', ...(shallow ? ['--depth=1'] : []), 'origin', commit]);
+      for (let attempt = 1; ; attempt++) {
+        try {
+          git(['-c', 'http.lowSpeedLimit=1024', '-c', 'http.lowSpeedTime=60',
+            'fetch', '--no-tags', ...(shallow ? ['--depth=1'] : []), 'origin', commit]);
+          break;
+        } catch (error) {
+          if (attempt === 3) throw error;
+          console.warn(`Fetching approved recipe ${commit} failed; retry ${attempt + 1}/3`);
+          wait(attempt * 10000);
+        }
+      }
     }
     const paths = git(['ls-tree', '-r', '--name-only', commit, 'Formula']).split('\n');
     for (const [name, selected] of Object.entries(recipes)) {

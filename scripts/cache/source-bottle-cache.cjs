@@ -258,7 +258,9 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
     // Preserve dependency semantics so legacy Autoconf cannot claim the global
     // commands before an extension installs modern Autoconf.
     const flags = ['--verbose', '--ignore-dependencies', ...(!target ? ['--as-dependency'] : []),
-      ...(target && skipLink ? ['--skip-link'] : [])];
+      // Framework Python owns pip3/idle3 on some Intel runners. Build tools
+      // resolve Python through its opt keg; do not replace those global links.
+      ...((target && skipLink) || (!target && /^python(?:@|$)/.test(item.full_name)) ? ['--skip-link'] : [])];
     if (item.installed) {
       // A restored PHP cache can select an older keg while the current version
       // remains installed. Point opt at the planned keg without deleting either.
@@ -360,8 +362,8 @@ async function install({ formula, cache, cacheRoot = '.source-bottle-cache',
         bottleStarted = Date.now();
         // Match test-bot's normalized GNU tar path. Homebrew moves the receipt
         // into the companion JSON, which must travel with our cached bottle.
-        run('brew', ['bottle', '--json', '--only-json-tab', '--no-rebuild', item.full_name], {
-          inherit: true, cwd: path.resolve(directory),
+        brewSource('bottle', ['--json', '--only-json-tab', '--no-rebuild', item.full_name], {
+          run, inherit: true, cwd: path.resolve(directory),
         });
       });
       const files = fs.readdirSync(directory).filter(file => file.endsWith('.tar.gz'));

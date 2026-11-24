@@ -11,6 +11,7 @@ const { command, brewSource, readBottle, keyFor, validKey } = require('./source-
 const mirror = require('./source-bottle-mirror.cjs');
 const { retryPolicy } = require('../release/extension-transfers.cjs');
 const { releaseForFormula } = require('./source-cache-layout.cjs');
+const { retryAfter, rateLimitError, quotaDelay } = require('../lib/github-rate-limit.cjs');
 
 const sha256 = value => crypto.createHash('sha256').update(value).digest('hex');
 
@@ -71,11 +72,13 @@ function unpack(archive, directory, key) {
 
 class ReleaseCache {
   constructor({ repository = process.env.GITHUB_REPOSITORY, token = process.env.GH_TOKEN,
-    tag = 'cache', partition = tag === 'cache', request = fetch, fallbackRequest = request === fetch ? curlRequest : undefined,
-    mirrorDownload = request === fetch ? mirror.transfer : undefined,
+    tag = 'cache', partition = tag === 'cache', request = curlRequest, fallbackRequest = request === fetch ? curlRequest : undefined,
+    mirrorDownload = [fetch, curlRequest].includes(request) ? mirror.transfer : undefined,
     mirrorMissFile = process.env.PHP_DARWIN_SOURCE_BOTTLE_MISSES,
     dependencyLockFile, readOnly = process.env.PHP_DARWIN_SOURCE_CACHE_READ_ONLY === 'true',
-    versionsToPrune = olderVersions, wait = pause, warn = console.warn } = {}) {
+    versionsToPrune = olderVersions, wait = pause, warn = console.warn,
+    responseCache = [fetch, curlRequest].includes(request) && process.env.GITHUB_ACTIONS === 'true' && process.env.RUNNER_TEMP ?
+      path.join(process.env.RUNNER_TEMP, 'php-darwin-release-responses') : undefined } = {}) {
     if (!/^shivammathur\/[A-Za-z0-9_.-]+$/.test(repository || '') || !token) {
       throw new Error('Release source cache requires a shivammathur repository and GH_TOKEN');
     }
@@ -94,6 +97,35 @@ class ReleaseCache {
     this.mirrorRetry = retryPolicy({ wait });
     this.warn = warn;
     this.responses = new Map();
+    // Each pack starts a fresh Node process. Revalidate cached JSON with GitHub
+    // across those processes too; never use stale ownership or asset state.
+    this.responseCache = responseCache;
+    this.responseScope = sha256(`${repository}:${token}`);
+  }
+
+  responseFile(endpoint) {
+    return this.responseCache && path.join(this.responseCache, sha256(`${this.responseScope}:${endpoint}`) + '.json');
+  }
+
+  cachedResponse(endpoint) {
+    if (this.responses.has(endpoint)) return this.responses.get(endpoint);
+    const file = this.responseFile(endpoint);
+    if (file) try {
+      const value = JSON.parse(fs.readFileSync(file, 'utf8'));
+      if (typeof value.etag === 'string' && Object.hasOwn(value, 'value')) return value;
+    } catch { /* Missing/interrupted local metadata requires a fresh response. */ }
+  }
+
+  storeResponse(endpoint, value) {
+    const file = this.responseFile(endpoint);
+    if (value) this.responses.set(endpoint, value);
+    else this.responses.delete(endpoint);
+    if (!file) return;
+    if (!value) { fs.rmSync(file, {force: true}); return; }
+    fs.mkdirSync(this.responseCache, {recursive: true, mode: 0o700});
+    const temporary = `${file}.${process.pid}.${crypto.randomUUID()}`;
+    fs.writeFileSync(temporary, JSON.stringify(value), {mode: 0o600});
+    fs.renameSync(temporary, file);
   }
 
   async transfer(url, optionsForAttempt, consume, timeout = 30000) {
@@ -104,6 +136,23 @@ class ReleaseCache {
       try {
         const request = this.useFallback ? this.fallbackRequest : this.request;
         response = await request(url, { ...options, signal: AbortSignal.timeout(timeout) });
+        const limited = await rateLimitError(response);
+        if (limited) {
+          if (limited.primary && !retryAfter(response)) {
+            // uploads.github.com can omit reset headers; this read is exempt
+            // from the primary quota and gives the actual reset for our token.
+            let quota;
+            try {
+              quota = await request('https://api.github.com/rate_limit', {
+                headers: {Authorization: `Bearer ${this.token}`, Accept: 'application/vnd.github+json'},
+                signal: AbortSignal.timeout(30000),
+              });
+              if (quota.ok) limited.retryAfterMs = quotaDelay(await quota.json());
+            } catch { /* Retain the bounded secondary-limit backoff. */ }
+            finally { if (quota?.body && !quota.bodyUsed) await quota.body.cancel().catch(() => {}); }
+          }
+          throw limited;
+        }
         if ([408, 429, 500, 502, 503, 504].includes(response.status) ||
           (response.status === 403 && (response.headers.has('retry-after') ||
             response.headers.get('x-ratelimit-remaining') === '0'))) {
@@ -127,11 +176,10 @@ class ReleaseCache {
           this.useFallback = true;
           this.warn(`Switching release requests to curl after Node HTTP failed: ${errorDetails(error)}`);
         }
-        const retryAfter = response?.headers.get('retry-after');
-        const reset = response?.headers.get('x-ratelimit-reset');
-        const serverDelay = retryAfter ? (Number.isFinite(Number(retryAfter)) ? Number(retryAfter) * 1000 : Date.parse(retryAfter) - Date.now()) :
-          (response?.headers.get('x-ratelimit-remaining') === '0' && reset ? Number(reset) * 1000 - Date.now() : 0);
-        delay = Math.min(60000, Math.max(1000 * 2 ** (attempt - 1), serverDelay || 0));
+        // A one-minute cap exhausted all attempts before the hourly quota
+        // reset. Honor that reset, while keeping unknown failures bounded.
+        const serverDelay = error.retryAfterMs || (response && retryAfter(response)) || 0;
+        delay = Math.min(3600000, Math.max(1000 * 2 ** (attempt - 1), serverDelay));
         this.warn(`Retrying release cache request (${attempt + 1}/3) in ${delay / 1000}s: ${errorDetails(error)}`);
       } finally {
         // Recreate upload streams on retry and release unused error bodies.
@@ -146,7 +194,7 @@ class ReleaseCache {
   }
 
   async api(endpoint, { method = 'GET', body, binary = false, accept, allow = [], consume } = {}) {
-    const cached = method === 'GET' && !binary ? this.responses.get(endpoint) : undefined;
+    const cached = method === 'GET' && !binary ? this.cachedResponse(endpoint) : undefined;
     return this.transfer(`https://api.github.com/repos/${this.repository}/${endpoint}`, () => ({
       method, headers: { Authorization: `Bearer ${this.token}`,
         Accept: accept || (binary ? 'application/octet-stream' : 'application/vnd.github+json'),
@@ -158,15 +206,15 @@ class ReleaseCache {
       // quota. Ownership polling must never substitute a time-based local cache.
       if (response.status === 304 && cached) return cached.value;
       if (allow.includes(response.status)) {
-        this.responses.delete(endpoint);
+        this.storeResponse(endpoint, undefined);
         return null;
       }
       if (!response.ok) throw new Error(`Release cache ${method} ${endpoint}: HTTP ${response.status}`);
       if (binary) return consume(response);
       const value = response.status === 204 ? null : await response.json();
       if (method === 'GET' && response.headers.has('etag')) {
-        this.responses.set(endpoint, { etag: response.headers.get('etag'), value });
-      } else if (method === 'GET') this.responses.delete(endpoint);
+        this.storeResponse(endpoint, { etag: response.headers.get('etag'), value });
+      } else if (method === 'GET') this.storeResponse(endpoint, undefined);
       return value;
     }, binary ? 300000 : 30000);
   }

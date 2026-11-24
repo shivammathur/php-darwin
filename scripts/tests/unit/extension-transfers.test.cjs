@@ -282,3 +282,30 @@ test('diagnostics use only the final HTTP response and reject untrusted header c
   assert.deepEqual(readDiagnostic('200', headers, path.join(directory, 'missing')),
     { http_status: 200, saved_bytes: 0, headers: { 'content-length': '7' } });
 });
+
+test('GitHub quota recovery waits for the reset while retaining the operation budget', async () => {
+  const waits = [], retry = retryPolicy({wait: async ms => waits.push(ms)});
+  let calls = 0;
+  await retry('GitHub upload', async () => {
+    if (++calls < 3) throw Object.assign(new Error('API rate limit exceeded'), {rateLimited: true, retryAfterMs: 900000});
+  });
+  assert.equal(calls, 3);
+  assert.deepEqual(waits, [900000, 900000]);
+});
+
+test('GitHub CLI upload errors recover the reset from the quota endpoint', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'github-quota-'));
+  t.after(() => fs.rmSync(directory, {recursive: true, force: true}));
+  fs.writeFileSync(path.join(directory, 'gh'), `#!${process.execPath}
+    if (process.argv.includes('rate_limit')) {
+      console.log(JSON.stringify({resources: {core: {remaining: 0, reset: Math.floor(Date.now() / 1000) + 600}}}));
+    } else {
+      console.error('HTTP 403: API rate limit exceeded for user'); process.exitCode = 1;
+    }
+  `, {mode: 0o755});
+  await assert.rejects(command('gh', ['release', 'upload', 'fixture'], {env: {...process.env, PATH: `${directory}${path.delimiter}${process.env.PATH}`}}), error => {
+    assert.equal(error.rateLimited, true);
+    assert.ok(error.retryAfterMs >= 599000 && error.retryAfterMs <= 601000);
+    return true;
+  });
+});

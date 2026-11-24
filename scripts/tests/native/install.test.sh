@@ -158,7 +158,10 @@ validate_runtime() {
     php_darwin_die 'the shared Homebrew PECL directory is missing'
   [ -L "$brew_prefix/opt/$formula/pecl" ] && [ -d "$brew_prefix/opt/$formula/pecl" ] || \
     php_darwin_die 'the cached PHP PECL link has no directory target'
-  pear_dir=$("$brew_prefix/opt/$formula/bin/pear" config-get php_dir) || \
+  # Preserved user INI files may warn about optional extensions. Keep those
+  # warnings visible on stderr instead of comparing them to PEAR's data.
+  pear_dir=$(PHP_PEAR_PHP_BIN="$php_bin -d display_errors=stderr" \
+    "$brew_prefix/opt/$formula/bin/pear" config-get php_dir) || \
     php_darwin_die 'PEAR could not read its Homebrew configuration'
   expected_pear_dir="$brew_prefix/$(php_darwin_pear_path "$version" "$formula")"
   [ "$pear_dir" = "$expected_pear_dir" ] && [ -d "$pear_dir" ] || \

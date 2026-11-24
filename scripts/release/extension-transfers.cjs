@@ -3,6 +3,7 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { digest, origins } = require('../installer/install-extensions.cjs');
 const { r2 } = require('../lib/r2.cjs');
+const { quotaDelay } = require('../lib/github-rate-limit.cjs');
 
 // Release and recovery only: no added work in the installation fast path.
 function command(program, args, options = {}) {
@@ -12,9 +13,17 @@ function command(program, args, options = {}) {
     child.stdout.on('data', chunk => { output += chunk; });
     child.stderr.on('data', chunk => { diagnostic = (diagnostic + chunk).slice(-8192); });
     child.on('error', reject);
-    child.on('close', code => {
+    child.on('close', async code => {
       if (code === 0) return resolve(output.trim());
       const error = new Error(`${program} exited ${code}: ${diagnostic.trim()}`);
+      if (program === 'gh' && /(?:API|secondary) rate limit|abuse detection/i.test(diagnostic)) {
+        error.rateLimited = true;
+        error.retryAfterMs = 60000;
+        if (!args.includes('rate_limit') && /API rate limit exceeded/i.test(diagnostic)) {
+          try { error.retryAfterMs = quotaDelay(JSON.parse(await command('gh', ['api', 'rate_limit'], options))); }
+          catch { /* An unavailable quota endpoint must not hide the failure. */ }
+        }
+      }
       // Curl still writes transfer metrics when it times out. Keep stdout
       // available to the reader without exposing arbitrary command output in logs.
       Object.defineProperty(error, 'output', { value: output.trim() });
@@ -31,7 +40,8 @@ function retryPolicy({ wait = ms => new Promise(resolve => setTimeout(resolve, m
         // Bound both an individual operation and all recovery work in the job.
         // Every error gets the same bounded recovery; validation still runs on each attempt.
         if (attempt >= attempts || budget-- <= 0) throw error;
-        const pause = Math.min(Math.max(delay * 2 ** (attempt - 1), error.retryAfterMs || 0), 30000);
+        const pause = Math.min(Math.max(delay * 2 ** (attempt - 1), error.retryAfterMs || 0),
+          error.rateLimited ? 3600000 : 30000);
         console.warn(`${label}: transfer failed; recovery attempt ${attempt + 1}/${attempts} in ${pause / 1000} seconds (${budget} remain for this job)`);
         await wait(pause);
       }

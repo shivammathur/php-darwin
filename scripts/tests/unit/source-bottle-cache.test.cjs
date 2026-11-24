@@ -209,7 +209,7 @@ function fixture(t) {
     log: () => {}, warn: message => warnings.push(message),
     run: (program, argv, options = {}) => {
       assert.equal(program, 'brew');
-      if (argv.includes('--build-bottle')) {
+      if (argv.includes('--build-bottle') || argv[1] === 'bottle') {
         assert.equal(argv[0], 'php-darwin-source', 'Source builds must preserve the compiler dependency environment');
         assert.ok(options.env.PATH.startsWith(path.resolve(__dirname, '../../cache') + path.delimiter));
         argv = argv.slice(1);
@@ -503,6 +503,23 @@ test('dependencies stay dependency installs for source builds and restored bottl
     assert.ok(!installs[1].includes('--as-dependency'));
     f.freshRunner();
   }
+});
+
+test('Python dependencies preserve framework-owned global commands while other tools link normally', async () => {
+  const commands = [];
+  await install({formula: 'example', cache: {}, cacheOnly: true,
+    query: () => [
+      {full_name: 'python@3.14', version: '3.14.8', bottled: true},
+      {full_name: 'pkgconf', version: '3.0.11', bottled: true},
+      {full_name: 'example', version: '1', installed: true},
+    ],
+    buildEnvironment: () => ({arch: 'x86_64'}), log: () => {},
+    run: (_program, args) => {commands.push(args); return '';},
+    prefetch: async () => {},
+  });
+  const installs = commands.filter(args => args[0] === 'install');
+  assert.ok(installs.find(args => args.at(-1) === 'python@3.14').includes('--skip-link'));
+  assert.ok(!installs.find(args => args.at(-1) === 'pkgconf').includes('--skip-link'));
 });
 
 test('exhausted cache reads fail before compilation in consumers and producers, including after ownership', async t => {
