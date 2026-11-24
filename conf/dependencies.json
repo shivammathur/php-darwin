@@ -7582,7 +7582,7 @@
   },
   "tap_inputs": {
     "schema": 1,
-    "sha256": "bfbd88b886620756a34610fa48ec83095d52b37823e6f74c470b18737f75c924",
+    "sha256": "abe7fe6c7adf8e7dc203cc2bfe667b6c2e71d8d45968d0bfef13fcd06adde5ba",
     "records": {
       "homebrew-php/Formula/autoconf@2.69.rb": "fd33eadb8f275a2d089c7d112bfb39d680cc838b3af2f61ab4fb35f09dbeff7d",
       "homebrew-php/Formula/bison@2.7.rb": "54902fa819dd1736bcca826196ee75b2608337b4b83e484829446961fd4e2669",
@@ -13044,7 +13044,7 @@
       "homebrew-php/Formula/php@8.0.rb": "95f2697681ed6aeafe590916c0af8750c789c6fdfa1230ae996dcc9baccf8f5d",
       "homebrew-php/Formula/php@8.1-debug-zts.rb": "787823c03ebbea3453436cc1b23797f6fba1988b5c128683de69d9491d54bf28",
       "homebrew-php/Formula/php@8.1-debug.rb": "1c6632d9f909d7ed49cc07dacbda5c2ba74c602bf127366d99289f617794d256",
-      "homebrew-php/Formula/php@8.1-zts.rb": "ec69823a0dc561636e2776ea473597beb2bbfad5e7fb42ac2361d9ccf1a167e5",
+      "homebrew-php/Formula/php@8.1-zts.rb": "2dc5859003adeae700932b073c516a5f46d5cb5b4370a861a154ddd99f5a0664",
       "homebrew-php/Formula/php@8.1.rb": "3eb411c07888afa33b1180c5cf14296ebdf2ea1600e8315db7df02b2cce3e3fb",
       "homebrew-php/Formula/php@8.2-debug-zts.rb": "31b07537e2cdf3a033bd5858da13f0a0d479379f63e7ca26dee8b1b7f5150b9b",
       "homebrew-php/Formula/php@8.2-debug.rb": "a4e3f31c197a125b71034a4c8c986d59a0cf8dbb9ec1e20071b81c2c712eb1eb",
