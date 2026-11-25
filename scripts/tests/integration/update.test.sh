@@ -68,7 +68,8 @@ EOF
 cat > "$fake_bin/gh" <<'EOF'
 #!/usr/bin/env bash
 if [ "$1" = api ]; then
-  printf '%s\n' "${PHP_DARWIN_TEST_ACTIVE_RUNS:-}"
+  printf 'HTTP/2.0 200 OK\nContent-Type: application/json\r\n\r\n'
+  jq -cn --arg runs "${PHP_DARWIN_TEST_ACTIVE_RUNS:-}" '{workflow_runs: ($runs | split("\n") | map(select(length > 0) | split("\t") | {status:.[0],display_title:.[1]}))}'
   exit 0
 fi
 printf '%s\n' "$*" >> "${PHP_DARWIN_TEST_GH_LOG:?}"

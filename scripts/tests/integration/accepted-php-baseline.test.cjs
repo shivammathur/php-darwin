@@ -17,7 +17,7 @@ test('stable publications retain caches across dependency refreshes until PHP re
   const php = path.join(root, 'php'), extensions = path.join(root, 'extensions'), core = path.join(root, 'core');
   const bin = path.join(root, 'bin'), manifestFile = path.join(root, 'manifest.json'), log = path.join(root, 'dispatch.log');
   for (const directory of [path.join(php, 'Formula'), path.join(extensions, 'Formula'), path.join(extensions, 'Abstract'), path.join(core, 'Formula/d'), bin]) fs.mkdirSync(directory, {recursive: true});
-  fs.writeFileSync(path.join(bin, 'gh'), '#!/usr/bin/env bash\n[ "$1" != api ] || exit 0\nprintf "%s\\n" "$*" >> "$DISPATCH_LOG"\n', {mode: 0o755});
+  fs.writeFileSync(path.join(bin, 'gh'), '#!/usr/bin/env bash\nif [ "$1" = api ]; then printf \'HTTP/2.0 200 OK\\nContent-Type: application/json\\r\\n\\r\\n{"workflow_runs":[]}\'; exit 0; fi\nprintf "%s\\n" "$*" >> "$DISPATCH_LOG"\n', {mode: 0o755});
   fs.writeFileSync(path.join(bin, 'curl'), '#!/usr/bin/env bash\nwhile [ "$#" -gt 0 ]; do if [ "$1" = -o ]; then destination=$2; shift 2; else shift; fi; done\ncp "$PHP_DARWIN_MANIFEST_PATH" "$destination"\nprintf 200\n', {mode: 0o755});
   fs.writeFileSync(path.join(extensions, 'Abstract/abstract-php-extension.rb'), 'shared source\n');
   const dependency = path.join(core, 'Formula/d/dependency.rb');

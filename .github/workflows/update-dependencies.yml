@@ -46,7 +46,7 @@ permissions:
 jobs:
   plan:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 90
     permissions:
       contents: read
       actions: write
@@ -65,7 +65,7 @@ jobs:
       - name: Refresh stale queued automatic runs before planning
         id: current
         env:
-          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+          GH_TOKEN: ${{ github.token }}
           AUTOMATIC: ${{ github.event_name != 'workflow_dispatch' || inputs.automatic }}
         run: node scripts/cache/dependency-gate.cjs refresh
       - name: Pin PHP formula roots
@@ -245,7 +245,7 @@ jobs:
       - name: Start independent runtime and build-tool workers in parallel
         if: ${{ !inputs.cache-only }}
         env:
-          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: node scripts/cache/dependency-workers.cjs run plans
       - uses: ./.github/actions/upload-artifacts
         if: always()
@@ -399,7 +399,7 @@ jobs:
       - name: Wake consumer freshness checks only after publication
         if: github.ref_name == 'main' && (github.event_name != 'workflow_dispatch' || inputs.publish)
         env:
-          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           for workflow in update.yml update-nightly.yml update-extensions.yml; do
             gh workflow run "$workflow" --repo shivammathur/php-darwin --ref main

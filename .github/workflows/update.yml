@@ -28,7 +28,7 @@ jobs:
       actions: write
       contents: read
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -66,13 +66,13 @@ jobs:
       - name: Prepare changed dependencies before PHP
         id: dependencies
         env:
-          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: node scripts/cache/dependency-gate.cjs dispatch
 
       - name: Compare formula sources with published release manifests
         if: steps.dependencies.outputs.ready == 'true'
         env:
-          GH_TOKEN: ${{ secrets.TOKEN || github.token }}
+          GH_TOKEN: ${{ github.token }}
           HOMEBREW_EXTENSIONS_PATH: ${{ github.workspace }}/homebrew-extensions
           HOMEBREW_CORE_PATH: ${{ github.workspace }}/homebrew-core
           HOMEBREW_PHP_PATH: ${{ github.workspace }}/homebrew-php

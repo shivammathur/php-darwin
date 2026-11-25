@@ -3,18 +3,24 @@ const os = require('node:os');
 const path = require('node:path');
 const {execFileSync} = require('node:child_process');
 const {activeRuns} = require('../cache/dependency-gate.cjs');
+const {githubRead} = require('../lib/github-read.cjs');
 function pendingVersions(runs) {
   return new Set(runs.filter(run => run.status !== 'completed').flatMap(run => {
     const match = run.display_title?.match(/^Cache (?:stable|nightly) PHP (\d+\.\d+)$/);
     return match ? [match[1]] : [];
   }));
 }
-function recentRuns() {
-  return ['cache-stable.yml', 'cache-nightly.yml'].flatMap(file => JSON.parse(execFileSync('gh',
-    ['api', `repos/shivammathur/php-darwin/actions/workflows/${file}/runs?branch=main&per_page=100`], {encoding: 'utf8', maxBuffer: 32 * 1024 * 1024})).workflow_runs);
+async function currentChecker({read = githubRead, ...options} = {}) {
+  const runs = [];
+  for (const file of ['cache-stable.yml', 'cache-nightly.yml']) {
+    runs.push(...await activeRuns(file, read));
+    const recent = JSON.parse(await read(['api', `repos/shivammathur/php-darwin/actions/workflows/${file}/runs?branch=main&per_page=100`]));
+    runs.push(...recent.workflow_runs);
+  }
+  return checker({...options, runs});
 }
-function checker({runs = [...activeRuns('cache-stable.yml'), ...activeRuns('cache-nightly.yml'), ...recentRuns()],
-  run = (args, env) => execFileSync('bash', args, {env: {...process.env, ...env}, stdio: 'inherit'})} = {}) {
+function checker({runs,
+  run = (args, env) => execFileSync('bash', args, {env: {...process.env, ...env}, stdio: 'inherit'})}) {
   const pending = pendingVersions(runs);
   return (version, manifest) => {
     if (pending.has(version)) return false;
@@ -42,4 +48,4 @@ function checker({runs = [...activeRuns('cache-stable.yml'), ...activeRuns('cach
     } finally { fs.rmSync(temporary, {recursive: true, force: true}); }
   };
 }
-module.exports = {checker, pendingVersions};
+module.exports = {checker, currentChecker, pendingVersions};

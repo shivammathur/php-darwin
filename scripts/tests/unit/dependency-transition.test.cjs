@@ -147,10 +147,10 @@ test('worker rejects the wrong workflow class, source revision or unsatisfied pr
   assert.throws(() => validateWorker(plan, {...context, kind: 'tool'}), /assigned/);
   assert.throws(() => validateWorker(plan, {...context, revision: latest}), /Untrusted/);
 });
-test('dependency gate does not duplicate queued runs and unchanged declarations do not query Actions', () => {
+test('dependency gate does not duplicate queued runs and unchanged declarations do not query Actions', async () => {
   const inputs = {records: {a: {sha256: 'x', formulae: []}}}, calls = [];
-  assert.equal(gate({lock: {tap_inputs: inputs}, inputs, dispatch: true, run: () => assert.fail('No query required')}), true);
-  assert.equal(gate({lock: {}, inputs, dispatch: true, run: args => { calls.push(args); return JSON.stringify([{workflow_runs: [{status: 'queued'}]}]); }}), false);
+  assert.equal(await gate({lock: {tap_inputs: inputs}, inputs, dispatch: true, run: () => assert.fail('No query required')}), true);
+  assert.equal(await gate({lock: {}, inputs, dispatch: true, run: args => { calls.push(args); return JSON.stringify([{workflow_runs: [{status: 'queued'}]}]); }}), false);
   assert.ok(calls.every(args => args[0] === 'api'));
 });
 test('optional extensions defer for queued PHP jobs, failed validation and stale published inputs', () => {
@@ -202,4 +202,16 @@ test('a Python patch update retains the approved compiler recipe and compatible 
   assert.deepEqual(resolvePlan([compiler], {llvm: source}).updates, []);
   compiler.runtime_dependencies[0].name = 'python@3.15';
   assert.deepEqual(resolvePlan([compiler], {llvm: source}).updates, ['llvm']);
+});
+test('current PHP readiness awaits active and recent workflow inventories', async () => {
+  const calls = [];
+  const check = await require('../../release/php-ready.cjs').currentChecker({read: async args => {
+    const route = args.at(-1); calls.push(route);
+    const page = {workflow_runs: route.includes('cache-nightly.yml') ? [
+      {id: 1, display_title: 'Cache nightly PHP 8.7', status: 'queued', conclusion: null},
+    ] : []};
+    return JSON.stringify(args.includes('--slurp') ? [page] : page);
+  }, run: () => assert.fail('queued PHP must not be probed')});
+  assert.equal(check('8.7', {}), false);
+  assert.equal(calls.length, 12);
 });

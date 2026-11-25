@@ -12,11 +12,12 @@ work_dir=$(mktemp -d "${RUNNER_TEMP:-/tmp}/php-darwin-update.XXXXXX") || \
   php_darwin_die 'could not create the release update directory'
 trap 'rm -rf "$work_dir"' EXIT
 
-active_runs=$(gh api --method GET \
-  "repos/$workflow_repository/actions/workflows/cache-stable.yml/runs" \
-  -f branch="$workflow_ref" -F per_page=100 \
-  --jq '.workflow_runs[] | [.status,.display_title] | @tsv') || \
+encoded_ref=$(jq -rn --arg ref "$workflow_ref" '$ref | @uri') || exit 1
+pages=$(node "$script_dir/../lib/github-read.cjs" \
+  "repos/$workflow_repository/actions/workflows/cache-stable.yml/runs?branch=$encoded_ref&per_page=100") || \
   php_darwin_die 'could not inspect active stable cache workflows'
+active_runs=$(jq -r '.[] | .workflow_runs[] | [.status,.display_title] | @tsv' <<< "$pages") || \
+  php_darwin_die 'could not parse active stable cache workflows'
 
 if [ -n "$only_version" ]; then
   php_darwin_validate_channel "$only_version" stable

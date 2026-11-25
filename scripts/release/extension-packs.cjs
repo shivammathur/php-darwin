@@ -1,4 +1,5 @@
 const fs = require('node:fs');
+const {githubRead} = require('../lib/github-read.cjs');
 const path = require('node:path');
 const { command, digest, key, validateEntry, origins, standaloneSource, supportsPack, phpReleaseMatches } = require('../installer/install-extensions.cjs');
 const configuration = require('../../conf/extension-packs.json');
@@ -18,7 +19,7 @@ function versionBatches(value = configuration.versions.join(' ')) {
 async function dispatch({ versions = process.env.PHP_VERSIONS || undefined, afterRun = process.env.AFTER_RUN,
   fast = process.env.PHP_DARWIN_FAST_REFRESH === 'true',
   repository = process.env.GITHUB_REPOSITORY || 'shivammathur/php-darwin', ref = process.env.GITHUB_REF_NAME || 'main',
-  run = command, select = selectEntries, listRuns = () => require('../cache/dependency-gate.cjs').activeRuns('cache-extensions.yml'), wait = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now } = {}) {
+  run = (_program, args) => githubRead(args), select = selectEntries, listRuns = () => require('../cache/dependency-gate.cjs').activeRuns('cache-extensions.yml'), wait = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now } = {}) {
   if (repository !== 'shivammathur/php-darwin') throw new Error('Unexpected extension cache repository');
   const batches = versionBatches(versions);
   if (afterRun) {
@@ -26,7 +27,7 @@ async function dispatch({ versions = process.env.PHP_VERSIONS || undefined, afte
     const started = now();
     console.log(`Waiting for successful workflow run ${afterRun}`);
     while (true) {
-      const result = JSON.parse(run('gh', ['api', `repos/${repository}/actions/runs/${afterRun}`]));
+      const result = JSON.parse(await run('gh', ['api', `repos/${repository}/actions/runs/${afterRun}`]));
       if (result.status === 'completed') {
         if (result.conclusion !== 'success') throw new Error(`Prerequisite run ${afterRun} concluded ${result.conclusion}`);
         break;
@@ -39,7 +40,7 @@ async function dispatch({ versions = process.env.PHP_VERSIONS || undefined, afte
   // child workflow must receive only versions which actually need archives.
   const { selected } = await select({ versions: batches.flat(), builds: ['debug', 'release'], modes: ['nts', 'zts'],
     selectedPacks: Object.keys(configuration.packs), force: fast, resumeRuns: [] });
-  const active = listRuns();
+  const active = await listRuns();
   const changed = new Set(selected.map(entry => entry.php_version));
   if (!changed.size) { console.log('No optional extension packs are ready for rebuilding'); return; }
   for (const requested of batches) {
@@ -48,7 +49,7 @@ async function dispatch({ versions = process.env.PHP_VERSIONS || undefined, afte
     if (active.some(item => item.status !== 'completed' && item.display_title === `Cache optional PHP extensions ${batch.join(' ')}`)) {
       console.log(`PHP ${batch.join(' ')} extensions already have an active run`); continue;
     }
-    run('gh', ['workflow', 'run', 'cache-extensions.yml', '--repo', repository, '--ref', ref,
+    await run('gh', ['workflow', 'run', 'cache-extensions.yml', '--repo', repository, '--ref', ref,
       '-f', `php-versions=${batch.join(' ')}`, '-f', 'builds=debug release', '-f', 'ts=nts zts', '-f', 'publish=true',
       ...(fast ? ['-f', 'fast=true'] : [])], { inherit: true });
     console.log(`Dispatched optional extension caches for PHP ${batch.join(', ')}`);
@@ -137,7 +138,7 @@ async function selectEntries({
   const include = [], reused = [], selected = [];
   const retry = retryPolicy();
   const recovery = new Map();
-  const phpReady = process.env.PHP_DARWIN_REQUIRE_CURRENT_PHP === 'true' ? require('./php-ready.cjs').checker() : () => true;
+  const phpReady = process.env.PHP_DARWIN_REQUIRE_CURRENT_PHP === 'true' ? await require('./php-ready.cjs').currentChecker() : () => true;
   // Explicit recovery keeps completed artifacts even if orchestration changed.
   // Sources are ordered oldest to newest; the latest successful pack wins.
   for (const id of resumeRuns) {

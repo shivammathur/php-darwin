@@ -11,7 +11,8 @@ mkdir -p "$work_dir/bin" "$work_dir/conf" || exit 1
 cat > "$work_dir/bin/gh" <<'EOF'
 #!/usr/bin/env bash
 if [ "$1" = api ]; then
-  [ -z "${PHP_DARWIN_TEST_ACTIVE:-}" ] || printf '%s\n' "$PHP_DARWIN_TEST_ACTIVE"
+  printf 'HTTP/2.0 200 OK\nContent-Type: application/json\r\n\r\n'
+  jq -cn --arg title "${PHP_DARWIN_TEST_ACTIVE:-}" '{workflow_runs: (if $title == "" then [] else [{display_title:$title,status:"queued"}] end)}'
   exit "${PHP_DARWIN_TEST_GH_STATUS:-0}"
 fi
 printf '%s\n' "$*" >> "${PHP_DARWIN_TEST_GH_LOG:?}"

@@ -4,6 +4,7 @@ const { spawn } = require('node:child_process');
 const { digest, origins } = require('../installer/install-extensions.cjs');
 const { r2 } = require('../lib/r2.cjs');
 const { quotaDelay } = require('../lib/github-rate-limit.cjs');
+const { githubRead } = require('../lib/github-read.cjs');
 
 // Release and recovery only: no added work in the installation fast path.
 function command(program, args, options = {}) {
@@ -69,6 +70,7 @@ function readDiagnostic(output, headerFile, downloaded) {
   return { ...result, headers };
 }
 async function githubJSON(route, { run = command, retry = retryPolicy(), paginate = false } = {}) {
+  if (run === command) return JSON.parse(await githubRead(['api', ...(paginate ? ['--paginate', '--slurp'] : []), route]));
   return retry(`Read ${route}`, async () => JSON.parse(await run('gh',
     ['api', ...(paginate ? ['--paginate', '--slurp'] : []), route])));
 }
