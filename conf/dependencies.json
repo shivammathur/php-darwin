@@ -7719,7 +7719,7 @@
   },
   "tap_inputs": {
     "schema": 1,
-    "sha256": "36abb1634854d942d4394d58fbdf1f4ef90ba18fe8460c50bc545cc2dcecbede",
+    "sha256": "9f68e10ece322430af74a36bb96f897c717707033eccb6c9c1da6b3626bb5061",
     "records": {
       "homebrew-php/Formula/autoconf@2.69.rb": "fd33eadb8f275a2d089c7d112bfb39d680cc838b3af2f61ab4fb35f09dbeff7d",
       "homebrew-php/Formula/bison@2.7.rb": "54902fa819dd1736bcca826196ee75b2608337b4b83e484829446961fd4e2669",
@@ -13549,7 +13549,7 @@
       "homebrew-extensions/Formula/memcached@8.5.rb": "806082e45082de720aedd92a83e2e6549396dbc78923d16054c181e1f9d9693c",
       "homebrew-extensions/Formula/memcached@8.6.rb": "674c3b6ade3dbf586e2cae2451d27b2311341b04e178ffd195610472c3816a5f",
       "homebrew-extensions/Formula/memcached@8.7.rb": "84a68e3564627c24be1b371cdbc23a31643241233a897624705ab2b89246c470",
-      "homebrew-extensions/Formula/mongodb1@8.1.rb": "d1dd81f02db71897c5e9034610cb0ae26150fa652ec8635f6ab98a139e649424",
+      "homebrew-extensions/Formula/mongodb1@8.1.rb": "b8374e7c280d68f5ef8a063baf32c03e44f042ae0c07872f1e2c2a1ba8978bf9",
       "homebrew-extensions/Formula/mongodb1@8.2.rb": "6382b37e03f56ee5fd13d7c2033761a2dd4ca5c3a2bdd789fbf235dc9f87faf4",
       "homebrew-extensions/Formula/mongodb1@8.3.rb": "663a579fa4bf5ae15749a7f462c5c3832e495ac907c2ce569e376495ea8f7a66",
       "homebrew-extensions/Formula/mongodb1@8.4.rb": "51c2b988cea60f5851e2572cbd01fa686c9e9732b724680d35e433f6457eb486",
