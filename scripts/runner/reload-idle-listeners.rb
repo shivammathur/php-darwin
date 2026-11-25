@@ -3,7 +3,7 @@ require_relative "homebrew-job-lock"
 # Reload only listeners that were running when this maintenance began. Workers,
 # offline runners and VM/autoscaler state are never changed by this script.
 controller = "/Library/Scripts/ci-autoscaler/ci-runner-terminals"
-abort "Runner launcher is unavailable" unless File.executable?(controller)
+apps = { "php-darwin" => "RunPhpDarwin", "homebrew-php" => "RunHomebrewPhp", "homebrew-extensions" => "RunHomebrewExtensions" }
 listeners = HomebrewJobLock.processes.select do |row|
   File.basename(row["executable"]) == "Runner.Listener" &&
     File.dirname(File.dirname(row["executable"])).start_with?("#{Dir.home}/")
@@ -19,6 +19,13 @@ until listeners.empty?
     next false if rows.any? { |row| row["executable"] == worker_path }
 
     repository = File.basename(File.dirname(File.dirname(listener["executable"])))
+    app = "/Applications/#{apps[repository]}.app" if apps[repository]
+    launcher = if File.executable?(controller)
+      [controller, "open", repository]
+    elsif app && File.directory?(app)
+      ["/usr/bin/open", "-g", app]
+    end
+    abort "Runner launcher is unavailable for #{repository}" unless launcher
     puts "Reloading idle #{repository} listener."
     $stdout.flush
     Process.kill("INT", listener["pid"])
@@ -29,7 +36,12 @@ until listeners.empty?
     abort "Listener did not exit: #{repository}" if HomebrewJobLock.processes.any? { |row| row["pid"] == listener["pid"] }
     # Let the service release the launcher's own lock before reopening it.
     sleep 1
-    abort "Could not reopen #{repository}" unless system(controller, "open", repository)
+    abort "Could not reopen #{repository}" unless system(*launcher)
+    60.times do
+      break if HomebrewJobLock.processes.any? { |row| row["executable"] == listener["executable"] }
+      sleep 1
+    end
+    abort "Listener did not restart: #{repository}" unless HomebrewJobLock.processes.any? { |row| row["executable"] == listener["executable"] }
     true
   end
   sleep 5 unless listeners.empty?

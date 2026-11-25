@@ -6,6 +6,10 @@ on:
         description: Unique label of the self-hosted Mac to configure
         type: string
         required: true
+      reload:
+        description: Reload idle listeners after installation (disable to verify an active hook)
+        type: boolean
+        default: true
 permissions:
   contents: read
 jobs:
@@ -19,6 +23,7 @@ jobs:
       - name: Install the shared pre-job hook
         run: bash scripts/runner/install-homebrew-job-lock.sh
       - name: Reload listeners as their current jobs finish
+        if: inputs.reload
         run: |
           stage=$(mktemp -d /tmp/php-darwin-listener-reload.XXXXXX)
           cp scripts/runner/homebrew-job-lock.rb scripts/runner/reload-idle-listeners.rb "$stage/"
