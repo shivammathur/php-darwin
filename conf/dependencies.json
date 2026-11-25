@@ -297,13 +297,13 @@
           }
         },
         "zstd": {
-          "version": "1.5.7_1",
+          "version": "1.6.0",
           "bottle": {
             "formula": "zstd",
-            "version": "1.5.7_1",
-            "tag": "arm64_sonoma",
-            "sha256": "35b5150b27512a94ebaee7b4399aaa8adf42d247e6968319e4aeac3c05365281",
-            "url": "https://ghcr.io/v2/homebrew/core/zstd/blobs/sha256:35b5150b27512a94ebaee7b4399aaa8adf42d247e6968319e4aeac3c05365281"
+            "version": "1.6.0",
+            "tag": "arm64_sequoia",
+            "sha256": "7c49194de54641895c5c965446472552d4619e30170eb8fd9d10eef223919730",
+            "url": "https://ghcr.io/v2/homebrew/core/zstd/blobs/sha256:7c49194de54641895c5c965446472552d4619e30170eb8fd9d10eef223919730"
           }
         },
         "curl": {
@@ -2687,13 +2687,62 @@
           }
         },
         "zstd": {
-          "version": "1.5.7_1",
-          "bottle": {
-            "formula": "zstd",
-            "version": "1.5.7_1",
-            "tag": "sequoia",
-            "sha256": "8b2443dfa62b9d28cf0321e0e670bb096b2680fe72739999228291f36018311f",
-            "url": "https://ghcr.io/v2/homebrew/core/zstd/blobs/sha256:8b2443dfa62b9d28cf0321e0e670bb096b2680fe72739999228291f36018311f"
+          "version": "1.6.0",
+          "source": {
+            "key": "php-darwin-source-v1-0b16c310ee458a86cdaab8000ebb6b175819cb45e0b48f3220a9dd0458b5abb8",
+            "inputs": {
+              "environment": {
+                "arch": "x86_64",
+                "macos": "15",
+                "prefix": "/usr/local",
+                "homebrew": "Homebrew 7",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
+                "buildEnv": {
+                  "CC": "",
+                  "CXX": "",
+                  "CFLAGS": "",
+                  "CXXFLAGS": "",
+                  "CPPFLAGS": "",
+                  "LDFLAGS": "",
+                  "MACOSX_DEPLOYMENT_TARGET": "",
+                  "SDKROOT": "",
+                  "HOMEBREW_CC": "",
+                  "HOMEBREW_CXX": "",
+                  "HOMEBREW_ARCH": ""
+                }
+              },
+              "formula": "zstd",
+              "version": "1.6.0",
+              "recipe": "428ad5db144f1ab51b39eca7e2d79180957644af5ddbfd8f882b2b8e47367c60",
+              "dependencies": [
+                {
+                  "name": "cmake",
+                  "version": "4.4.3",
+                  "recipe": "c368595b6f40e7a258276b7a719ec68cfa078a1dc13bd8ff2bee43455936f5f8",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": []
+                },
+                {
+                  "name": "lz4",
+                  "version": "1.11.1",
+                  "recipe": "7f2c22723df560284fc7e643892b61fc4e8f15859fada61c4e20ca4aac9f0ef4",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": []
+                },
+                {
+                  "name": "xz",
+                  "version": "5.8.4",
+                  "recipe": "0a0ec0394575eadc853cdb509c8ababc01c8926b973bd76841a1f6f254e1ebdf",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": []
+                }
+              ]
+            },
+            "sha256": "d9ce9d9a65bc3549b458356aa8def4ae311c916011c2e6a93f1564ef02a0cacc"
           }
         },
         "curl": {
@@ -7670,7 +7719,7 @@
   },
   "tap_inputs": {
     "schema": 1,
-    "sha256": "32b72a8a10a2699a3c56241924530e71209cc7b22323de2331084e6da14ee75a",
+    "sha256": "36abb1634854d942d4394d58fbdf1f4ef90ba18fe8460c50bc545cc2dcecbede",
     "records": {
       "homebrew-php/Formula/autoconf@2.69.rb": "fd33eadb8f275a2d089c7d112bfb39d680cc838b3af2f61ab4fb35f09dbeff7d",
       "homebrew-php/Formula/bison@2.7.rb": "54902fa819dd1736bcca826196ee75b2608337b4b83e484829446961fd4e2669",
@@ -13805,10 +13854,10 @@
       "homebrew-extensions/Formula/swoole@7.4.rb": "efbeba1aeef9ad26f85d58e6abd1baa09eda37c737934123393addef4d13a352",
       "homebrew-extensions/Formula/swoole@8.0.rb": "da7ab2acf0f72fb7dd4507fa66a6cb2edf3368c117e80c2a84f3825014b818aa",
       "homebrew-extensions/Formula/swoole@8.1.rb": "e86e491341a4096bc72946b42909a8f78aa470ed208bd7deb62709c6a8986626",
-      "homebrew-extensions/Formula/swoole@8.2.rb": "55dd027aae1cc2a1be52ab231d1ee4e85c21656c5c0cb6889559436aac04582e",
-      "homebrew-extensions/Formula/swoole@8.3.rb": "f7f036ed0cc7dd776030d76eff5af9ea0b35a7e862ece88261d76e04dba81abf",
-      "homebrew-extensions/Formula/swoole@8.4.rb": "a0d86b68a51ed9143156de49e4c62aa6292c0dc3cf829732b3644208ae803204",
-      "homebrew-extensions/Formula/swoole@8.5.rb": "c2beb72d7d24f616d68a787c59ed62dd6a7f7420c58ee72c1dfd092aacbb34c0",
+      "homebrew-extensions/Formula/swoole@8.2.rb": "356025a6caf61f9443a29a92d626b3ea6abc668ccac0a08ea15c5b1cd7f5cb9c",
+      "homebrew-extensions/Formula/swoole@8.3.rb": "30301ef2834f800d2de0483a6dbd4c75daa1c130c8788af2dc4fb5c785f38392",
+      "homebrew-extensions/Formula/swoole@8.4.rb": "6025dc142cc33cf44b25d420e1c683b2e4ff42fb2366654fe70096abae6712e8",
+      "homebrew-extensions/Formula/swoole@8.5.rb": "975346286028873ad39e005e7f85f3936f9a5becea23aef3b9595ec3ae0f3bd4",
       "homebrew-extensions/Formula/swow@8.0.rb": "d1557cfd4d163903482b3e0fb80425d7d91e63988d6a3bceca007a0a4220cb49",
       "homebrew-extensions/Formula/swow@8.1.rb": "406557b2162865d04973d24f80cf3df59adecb29a49a34737aebd01e68163c2f",
       "homebrew-extensions/Formula/swow@8.2.rb": "1ff7daea3c5082d61be9fb356494c38e4f0ea8955befe51570a56689ae5c4988",
@@ -14030,6 +14079,7 @@
     "rabbitmq-c": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "sqlite": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "xorgproto": "3967e17e863691884f182ccd356d55da9eb1acc6",
-    "zlib": "3967e17e863691884f182ccd356d55da9eb1acc6"
+    "zlib": "3967e17e863691884f182ccd356d55da9eb1acc6",
+    "zstd": "7071086722e3f1158c7b34c1b11dc3a5bdba790c"
   }
 }
