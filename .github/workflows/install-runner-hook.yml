@@ -1,0 +1,27 @@
+name: Install shared Homebrew runner lock
+on:
+  workflow_dispatch:
+    inputs:
+      runner-label:
+        description: Unique label of the self-hosted Mac to configure
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  install:
+    runs-on: [self-hosted, '${{ inputs.runner-label }}']
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the shared pre-job hook
+        run: bash scripts/runner/install-homebrew-job-lock.sh
+      - name: Reload listeners as their current jobs finish
+        run: |
+          stage=$(mktemp -d /tmp/php-darwin-listener-reload.XXXXXX)
+          cp scripts/runner/homebrew-job-lock.rb scripts/runner/reload-idle-listeners.rb "$stage/"
+          # The helper must outlive this worker to reload its listener safely.
+          env -u RUNNER_TRACKING_ID nohup /usr/bin/ruby "$stage/reload-idle-listeners.rb" \
+            > "$RUNNER_TEMP/homebrew-listener-reload.log" 2>&1 < /dev/null &
