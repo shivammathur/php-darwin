@@ -1904,13 +1904,13 @@
           }
         },
         "libyaml": {
-          "version": "0.2.5",
+          "version": "0.2.7",
           "bottle": {
             "formula": "libyaml",
-            "version": "0.2.5",
+            "version": "0.2.7",
             "tag": "arm64_sequoia",
-            "sha256": "0ec9bf8082245c008803b42dcae3e6a0c8cd7a67aed589d9b6482b115c0a543b",
-            "url": "https://ghcr.io/v2/homebrew/core/libyaml/blobs/sha256:0ec9bf8082245c008803b42dcae3e6a0c8cd7a67aed589d9b6482b115c0a543b"
+            "sha256": "a31294e0c9b02c3388c5b1b75c81074a1babb3a5c8663e350572012866e7ac54",
+            "url": "https://ghcr.io/v2/homebrew/core/libyaml/blobs/sha256:a31294e0c9b02c3388c5b1b75c81074a1babb3a5c8663e350572012866e7ac54"
           }
         }
       }
@@ -7568,13 +7568,101 @@
           }
         },
         "libyaml": {
-          "version": "0.2.5",
-          "bottle": {
-            "formula": "libyaml",
-            "version": "0.2.5",
-            "tag": "sonoma",
-            "sha256": "4d6e02ce3a82b60033bc7e55bef841dcfef0c05c051176d96accb50744136c6d",
-            "url": "https://ghcr.io/v2/homebrew/core/libyaml/blobs/sha256:4d6e02ce3a82b60033bc7e55bef841dcfef0c05c051176d96accb50744136c6d"
+          "version": "0.2.7",
+          "source": {
+            "key": "php-darwin-source-v1-0ab81d06f25b75d0d255428ca777f80f32530f4e26fdb7ace83adb119a72eff9",
+            "inputs": {
+              "environment": {
+                "arch": "x86_64",
+                "macos": "15",
+                "prefix": "/usr/local",
+                "homebrew": "Homebrew 7",
+                "compiler": "Apple clang version 17.0.0 (clang-1700.0.13.5)\nTarget: x86_64-apple-darwin24.6.0\nThread model: posix\nInstalledDir: /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+                "sdk": "15.5",
+                "buildEnv": {
+                  "CC": "",
+                  "CXX": "",
+                  "CFLAGS": "",
+                  "CXXFLAGS": "",
+                  "CPPFLAGS": "",
+                  "LDFLAGS": "",
+                  "MACOSX_DEPLOYMENT_TARGET": "",
+                  "SDKROOT": "",
+                  "HOMEBREW_CC": "",
+                  "HOMEBREW_CXX": "",
+                  "HOMEBREW_ARCH": ""
+                }
+              },
+              "formula": "libyaml",
+              "version": "0.2.7",
+              "recipe": "0e6e343f6b705b39e000924796c535b055ad67334a10b7bf76b43d6bc2bbfaef",
+              "dependencies": [
+                {
+                  "name": "autoconf",
+                  "version": "2.73",
+                  "recipe": "50edcb1e0751e079a2c2a89ee1954ed1c73b8d03c4fa469b57f0a1c1928f6dc5",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": [
+                    {
+                      "full_name": "m4",
+                      "version": "1.4.21",
+                      "revision": 0,
+                      "bottle_rebuild": 0,
+                      "pkg_version": "1.4.21",
+                      "declared_directly": true,
+                      "compatibility_version": 1
+                    }
+                  ]
+                },
+                {
+                  "name": "automake",
+                  "version": "1.18.1_1",
+                  "recipe": "7f9cd43cefe6c89ff5db6775b39a0858e94ae4158d50dc9399b8b5dda95a9162",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": [
+                    {
+                      "full_name": "m4",
+                      "version": "1.4.21",
+                      "revision": 0,
+                      "bottle_rebuild": 0,
+                      "pkg_version": "1.4.21",
+                      "declared_directly": false,
+                      "compatibility_version": 1
+                    },
+                    {
+                      "full_name": "autoconf",
+                      "version": "2.73",
+                      "revision": 0,
+                      "bottle_rebuild": 0,
+                      "pkg_version": "2.73",
+                      "declared_directly": true,
+                      "compatibility_version": 1
+                    }
+                  ]
+                },
+                {
+                  "name": "libtool",
+                  "version": "2.6.2",
+                  "recipe": "725532b53263fa67aa5e9a660bcd498b312c13da54d34d42788e073ced587031",
+                  "options": [],
+                  "compiler": "clang",
+                  "runtime_dependencies": [
+                    {
+                      "full_name": "m4",
+                      "version": "1.4.21",
+                      "revision": 0,
+                      "bottle_rebuild": 0,
+                      "pkg_version": "1.4.21",
+                      "declared_directly": true,
+                      "compatibility_version": 1
+                    }
+                  ]
+                }
+              ]
+            },
+            "sha256": "e081d4703af09bb9120b42ec06bc7c2880cd624bedc7eceef321702720424ecf"
           }
         }
       }
@@ -7582,7 +7670,7 @@
   },
   "tap_inputs": {
     "schema": 1,
-    "sha256": "0fba8a3fb8b042dd4b0a598d27a165177233051bb2a701089c4b93ce6d269857",
+    "sha256": "3924c155d91ac19e21031aba7e864f3cc6b6546b1431307fd3d540eabeaed4e2",
     "records": {
       "homebrew-php/Formula/autoconf@2.69.rb": "fd33eadb8f275a2d089c7d112bfb39d680cc838b3af2f61ab4fb35f09dbeff7d",
       "homebrew-php/Formula/bison@2.7.rb": "54902fa819dd1736bcca826196ee75b2608337b4b83e484829446961fd4e2669",
@@ -13079,7 +13167,7 @@
       "homebrew-extensions/Formula/amqp@8.4.rb": "190ebcdf97b4182e527248af3e6d23b333b134aaaef4ac75837367d4ac3c467b",
       "homebrew-extensions/Formula/amqp@8.5.rb": "36cac1982f06a3d2e466d4bbdadd65d077c2dd50711d764addf2467f174351dc",
       "homebrew-extensions/Formula/amqp@8.6.rb": "21b82fddc0361b2882fdc601e344acb2af815684fb2107ae3ca9b316d2335514",
-      "homebrew-extensions/Formula/amqp@8.7.rb": "12d634c74f7ed8cac5dcc3769f722d4e9ce11a303f4a45c2ecbec36eceb50bde",
+      "homebrew-extensions/Formula/amqp@8.7.rb": "e8962086988c77d624e144a04d6be453ec935e5c5ca6816c275ed5af3b6ed9fb",
       "homebrew-extensions/Formula/apcu@5.6.rb": "236ace99905a12b454cbf789b3290c91ed524551ef0ecc9fe271c1f0dc1ab48c",
       "homebrew-extensions/Formula/apcu@7.0.rb": "401311253b4474a78b0c9eab4fa335d546206ba3059acc9380b22130b12d9806",
       "homebrew-extensions/Formula/apcu@7.1.rb": "76b114e42b8165a564dbf149d13ace8fc4798312af68f0db7d15a950d9b93acd",
@@ -13863,7 +13951,7 @@
       "homebrew-extensions/Formula/yaml@8.4.rb": "b8408904461ee44463eaf627aa6b1c5c55c143fb2b5db7f2b164a0e77c71bcc4",
       "homebrew-extensions/Formula/yaml@8.5.rb": "212700ce8be10e0f6ec017a1d9b6f2d1bf46702d6f9f482659af795fa19c170a",
       "homebrew-extensions/Formula/yaml@8.6.rb": "1c9fa0d5a535b6decfa0b3d8891f85391d50a22b5a7b51538f1cff71ffb4307a",
-      "homebrew-extensions/Formula/yaml@8.7.rb": "25ba23a633988b135abf478c7d90ea5472f6dcd8439fec96e0773b1793adc7bf",
+      "homebrew-extensions/Formula/yaml@8.7.rb": "c99bec39d5fdf326b955fd91008001d39ef0a4e3392895ec49ede00f48cc2560",
       "homebrew-extensions/Formula/zmq@5.6.rb": "75e94d17d39263486c42b432cca30c8b800ed609393729a83e7c5d9367115b7a",
       "homebrew-extensions/Formula/zmq@7.0.rb": "1059c99f14c3d629b8ada077b1ca692b2b645fb35abca6198b0e01361ab0804a",
       "homebrew-extensions/Formula/zmq@7.1.rb": "e14ab0437d8304e400759b404359e88ec93b4e1113e246a9f0f8b38a3c6a961c",
@@ -13929,7 +14017,7 @@
     "libvmaf": "0ccdcb95308638e5d97507d9d9a40b5fada62dd8",
     "libx11": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "libxpm": "3967e17e863691884f182ccd356d55da9eb1acc6",
-    "libyaml": "3967e17e863691884f182ccd356d55da9eb1acc6",
+    "libyaml": "81d5c3b048e123387ab75f17a1f7a98277662b05",
     "libzip": "3967e17e863691884f182ccd356d55da9eb1acc6",
     "little-cms2": "93a821cfb9eb6a66ce39d4d55c91a0a189e7bf04",
     "lz4": "dd6e54abecf3241795c49082ca071e041e9dbf47",
