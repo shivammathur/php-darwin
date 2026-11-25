@@ -20,10 +20,19 @@ until listeners.empty?
 
     repository = File.basename(File.dirname(File.dirname(listener["executable"])))
     app = "/Applications/#{apps[repository]}.app" if apps[repository]
+    service = File.join(File.dirname(File.dirname(listener["executable"])), ".service")
+    plist = File.read(service).strip if File.file?(service)
+    label = nil
+    if plist && plist.start_with?("#{Dir.home}/Library/LaunchAgents/") && File.file?(plist)
+      value, status = Open3.capture2("/usr/bin/plutil", "-extract", "Label", "raw", "-o", "-", plist)
+      label = value.strip if status.success? && value.strip.start_with?("actions.runner.")
+    end
     launcher = if File.executable?(controller)
       [controller, "open", repository]
     elsif app && File.directory?(app)
       ["/usr/bin/open", "-g", app]
+    elsif label
+      ["/bin/launchctl", "kickstart", "gui/#{Process.uid}/#{label}"]
     end
     abort "Runner launcher is unavailable for #{repository}" unless launcher
     puts "Reloading idle #{repository} listener."
