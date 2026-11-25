@@ -73,6 +73,21 @@ test('requires one identifiable active worker, an installer command, and a held 
   }
 });
 
+test('only the lease owner can recover orphans while other workers wait in their hooks', async () => {
+  const entry = row => ({pid: row.pid, started: new Date(row.started).toUTCString().replace(/ GMT$/, ''), executable: row.executable});
+  for (const scenario of ['owner', 'waiter', 'unregistered-worker', 'reused-pid']) {
+    const f = fixture(), other = {...worker, pid: 110};
+    f.rows.push(other);
+    const lease = {owner: entry(worker), waiting: [entry(worker), entry(other)]};
+    if (scenario === 'waiter') lease.owner = entry(other);
+    if (scenario === 'unregistered-worker') lease.waiting.pop();
+    if (scenario === 'reused-pid') lease.waiting[1].started = new Date(4000).toUTCString().replace(/ GMT$/, '');
+    f.options.lease = () => lease;
+    assert.equal(await recover(f.options), scenario === 'owner' ? 1 : 0, scenario);
+    assert.equal(f.signals.length, scenario === 'owner' ? 1 : 0, scenario);
+  }
+});
+
 test('never inspects or kills outside self-hosted macOS Actions jobs', async () => {
   for (const change of [{ platform: 'linux' }, { env: {} },
     { env: { GITHUB_ACTIONS: 'true', RUNNER_ENVIRONMENT: 'github-hosted' } }]) {

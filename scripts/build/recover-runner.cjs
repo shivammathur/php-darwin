@@ -1,5 +1,6 @@
 const { execFileSync } = require('node:child_process');
 const path = require('node:path');
+const fs = require('node:fs');
 const { setTimeout: delay } = require('node:timers/promises');
 
 function command(program, args) {
@@ -21,13 +22,26 @@ function sameProcess(a, b) {
     a.executable === b.executable && !b.state.startsWith('Z');
 }
 
-function currentWorker(rows, pid) {
+function jobLease() {
+  try { return JSON.parse(fs.readFileSync('/Users/Shared/homebrew-ci-job-lock/state.json', 'utf8')); }
+  catch { return undefined; }
+}
+
+function currentWorker(rows, pid, lease) {
   const workers = rows.filter(row => path.basename(row.executable) === 'Runner.Worker' && !row.state.startsWith('Z'));
-  // A prefix shared by concurrent jobs is not safe to repair automatically.
-  if (workers.length !== 1) return undefined;
   const seen = new Set();
   while (pid > 1 && !seen.has(pid)) {
-    if (pid === workers[0].pid) return workers[0];
+    const worker = workers.find(row => row.pid === pid);
+    if (worker) {
+      if (workers.length === 1) return worker;
+      const matches = (row, entry) => entry && row.pid === entry.pid && row.executable === entry.executable &&
+        row.started === Date.parse(`${entry.started} UTC`);
+      // Other workers may be waiting in the pre-job hook. Only the verified
+      // lease owner can recover orphans, and every other worker must be gated.
+      if (matches(worker, lease?.owner) && Array.isArray(lease.waiting) &&
+          workers.every(row => row.uid === worker.uid && lease.waiting.some(entry => matches(row, entry)))) return worker;
+      return undefined;
+    }
     seen.add(pid);
     pid = rows.find(row => row.pid === pid)?.ppid;
   }
@@ -83,12 +97,12 @@ function descendants(root, rows) {
 async function recover({ env = process.env, platform = process.platform, pid = process.pid, uid = process.getuid?.(),
   prefix = process.arch === 'arm64' ? '/opt/homebrew' : '/usr/local',
   repository = prefix === '/usr/local' ? '/usr/local/Homebrew' : prefix,
-  snapshot = processes, isInstaller = installer, locked = holdsLocks, signal = process.kill,
+  snapshot = processes, lease = jobLease, isInstaller = installer, locked = holdsLocks, signal = process.kill,
   wait = delay, log = console.log, warn = console.warn } = {}) {
   if (platform !== 'darwin' || env.GITHUB_ACTIONS !== 'true' || env.RUNNER_ENVIRONMENT !== 'self-hosted') return 0;
   let recovered = 0;
   try {
-    const initial = snapshot(), worker = currentWorker(initial, pid);
+    const initial = snapshot(), worker = currentWorker(initial, pid, lease());
     if (!worker || worker.uid !== uid) {
       log('Runner preflight: skipping recovery because an exclusive current job cannot be identified.');
       return 0;
@@ -97,14 +111,14 @@ async function recover({ env = process.env, platform = process.platform, pid = p
       try {
         if (!isInstaller(candidate.pid, repository) || !locked(candidate.pid, prefix)) continue;
         const rows = snapshot(), owner = rows.find(row => row.pid === candidate.pid);
-        if (!sameProcess(worker, currentWorker(rows, pid)) || !sameProcess(candidate, owner) ||
+        if (!sameProcess(worker, currentWorker(rows, pid, lease())) || !sameProcess(candidate, owner) ||
             !orphan(owner, worker, uid, repository)) continue;
         const tree = descendants(owner, rows);
         if (tree.some(member => member.pid === worker.pid || member.pid === pid)) continue;
         const stop = sig => {
           for (const member of tree) {
             const fresh = snapshot();
-            if (!sameProcess(worker, currentWorker(fresh, pid))) return;
+            if (!sameProcess(worker, currentWorker(fresh, pid, lease()))) return;
             if (!sameProcess(member, fresh.find(row => row.pid === member.pid))) continue;
             try { signal(member.pid, sig); } catch (error) { if (error.code !== 'ESRCH') throw error; }
           }
