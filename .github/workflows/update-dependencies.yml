@@ -370,7 +370,7 @@ jobs:
     needs: [plan, prepare, mirror]
     if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.mirror.result == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 90
     permissions:
       contents: write
       actions: write
