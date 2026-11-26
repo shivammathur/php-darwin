@@ -7719,7 +7719,7 @@
   },
   "tap_inputs": {
     "schema": 1,
-    "sha256": "b647b93f5ea3b603175c3c28c25f99f1af986252f9ecb6cb160c257c7c950fdd",
+    "sha256": "4f2c7ba903f4f9a0a9654a108fbe7343563990296badc600bc7b78ef9596187a",
     "records": {
       "homebrew-php/Formula/autoconf@2.69.rb": "fd33eadb8f275a2d089c7d112bfb39d680cc838b3af2f61ab4fb35f09dbeff7d",
       "homebrew-php/Formula/bison@2.7.rb": "54902fa819dd1736bcca826196ee75b2608337b4b83e484829446961fd4e2669",
@@ -14015,19 +14015,19 @@
       "homebrew-extensions/Formula/zmq@8.5.rb": "9cca2a95478570ea78baf4a92aa03170389814941b2314c0aa2c5b83636c6274",
       "homebrew-extensions/Formula/zmq@8.6.rb": "8ec5d7c6616c70c4f915a555b3021b9e7d9181b68b944a38ad5aa60931863a00",
       "homebrew-extensions/Formula/zmq@8.7.rb": "a2a01582ce47df69bbc55b1fa60a93725fbd21e41aaa35134bdd55ffb05f8d9e",
-      "homebrew-extensions/Formula/zstd@7.0.rb": "887f92d1f502c0bf00512664c0a564f646a165f93499dd8b859ba5611ec59739",
-      "homebrew-extensions/Formula/zstd@7.1.rb": "aa8babef414859136cbcf5efdfcb95f1ca8bfeb4b50118f8ef3ff894a989840a",
-      "homebrew-extensions/Formula/zstd@7.2.rb": "53a4d6d925a35e8623e9c50c5251f5b4049d072739146ce7e5bcbd4857097523",
-      "homebrew-extensions/Formula/zstd@7.3.rb": "d2150cdc4138f428fcd99b9ed14312aa0539601d2e04959a5fc2d13e27d0ea7f",
-      "homebrew-extensions/Formula/zstd@7.4.rb": "6ff5d8f7d917abe02af00c12fa497652dae4aa48673a3aa4274f7263efbb55b1",
-      "homebrew-extensions/Formula/zstd@8.0.rb": "964575b2cd0748df1baca968efa15f3ed95100f6dd1756dcefc5fef47360bb0a",
-      "homebrew-extensions/Formula/zstd@8.1.rb": "50c1c12e3560e47180a6fc0b8e0c225f62c2d357d60f2bc435bc5b23a00dc9cb",
-      "homebrew-extensions/Formula/zstd@8.2.rb": "dbdc29cf46954599990225fb7d2cbe4cdf32e3cb705512af7a9ff59b9ca7796c",
-      "homebrew-extensions/Formula/zstd@8.3.rb": "c0c86acbc185044683725d0712c512314ad8f34e653141697d048bdeaa30d133",
-      "homebrew-extensions/Formula/zstd@8.4.rb": "05e1bbe1088d56f67731ac58e959e01ed56bf0963e47ceb074d5633e00a66e6d",
-      "homebrew-extensions/Formula/zstd@8.5.rb": "bb56db432cca745061de55e1b9c14864d51687132476e963c9ab4b886e7efe70",
-      "homebrew-extensions/Formula/zstd@8.6.rb": "7fe19b64bb69b4b2a26e8ebc88b22ca89fb9d8847142e47e86b0a11167b92f13",
-      "homebrew-extensions/Formula/zstd@8.7.rb": "fcc45cfa480d36629e02843c116018c8debca54e835753ee00e9694c5c00f957"
+      "homebrew-extensions/Formula/zstd@7.0.rb": "e64d5529b564294cb5a34cf4826f9674337656fa1d8c3ae1e94f3e96080f3989",
+      "homebrew-extensions/Formula/zstd@7.1.rb": "bbc2fa292f485a0601abf293cd5c7775b69250c0dbb6c80694d102a1aa5feb27",
+      "homebrew-extensions/Formula/zstd@7.2.rb": "466542b45a5fed5d88db65c2a4de348322708fb7c39f959c9424e547d79ca43b",
+      "homebrew-extensions/Formula/zstd@7.3.rb": "78482aa24655dbe1f768ffad8cb6eadd2a4d29d26e2206d7a051460fed38a111",
+      "homebrew-extensions/Formula/zstd@7.4.rb": "05c0732011c21d66bf8efbb6b0131c96cfd3c6a4a407fb14c56afecdf97f2dd9",
+      "homebrew-extensions/Formula/zstd@8.0.rb": "bf88aa44f93b199e5c03ee6192a18c12186c405eef07599f4051a207f6fbf549",
+      "homebrew-extensions/Formula/zstd@8.1.rb": "0ef56f3107f5de20e2aba746cd9fccc091da0280d9dd92bc729e934d219a0d1a",
+      "homebrew-extensions/Formula/zstd@8.2.rb": "1201a266faf74f347818ab0b740d85e30a21dc33235a488d1b3f9b7ea5aaa521",
+      "homebrew-extensions/Formula/zstd@8.3.rb": "97c1e3532ed1e58ae600e72335f309c32ff5d9f288f15b462e291d3a4206d4d1",
+      "homebrew-extensions/Formula/zstd@8.4.rb": "e93ed59ae446eb209384ecad7f63dfb9e396d6a6569ff02d1fba77f410db06d3",
+      "homebrew-extensions/Formula/zstd@8.5.rb": "d0c7f3ba751b1a760a44d923c8b90a5cf22da575c82728bb76289c553de4754e",
+      "homebrew-extensions/Formula/zstd@8.6.rb": "fa5dff0ac4e008d501a143f88212b6bf64effe6c6bde29b54a9131022fcafd94",
+      "homebrew-extensions/Formula/zstd@8.7.rb": "7f80e1e8f587589dee2da7437a411831c6bb2f849870b9bec8177a5013428469"
     }
   },
   "recipe_commits": {
