@@ -7719,7 +7719,7 @@
   },
   "tap_inputs": {
     "schema": 1,
-    "sha256": "4103259003f62c96f9abc7179d4c9f9990dfc06415606c17641ed0dfc031bf65",
+    "sha256": "f190e46e608ceb3a1728509bdd916358f472e4c8b3eb89cc145be8890edaa3a4",
     "records": {
       "homebrew-php/Formula/autoconf@2.69.rb": "fd33eadb8f275a2d089c7d112bfb39d680cc838b3af2f61ab4fb35f09dbeff7d",
       "homebrew-php/Formula/bison@2.7.rb": "54902fa819dd1736bcca826196ee75b2608337b4b83e484829446961fd4e2669",
@@ -13486,8 +13486,8 @@
       "homebrew-extensions/Formula/mailparse@7.0.rb": "a7b801acbe12550565ad837ea191d6d4e7e00d3642b4a8e6040042f9aaaed30e",
       "homebrew-extensions/Formula/mailparse@7.1.rb": "3145220f702b3f69f19a62dccd47afaf67e0d50580fd0b359ae9709f779eb7b3",
       "homebrew-extensions/Formula/mailparse@7.2.rb": "f85d9ce454cb8c9b7a5e74998118c4cbe2acd5c4d28f9968b4ae67202328324c",
-      "homebrew-extensions/Formula/mailparse@7.3.rb": "cdcfedae04d868bb7d532d528979de3e3a2bdf418f290e922b0fb624b1d8b45c",
-      "homebrew-extensions/Formula/mailparse@7.4.rb": "b56f18d48699330aece2aa6d289141c28d7089b20b4f465f39d6309aa31a29b9",
+      "homebrew-extensions/Formula/mailparse@7.3.rb": "acfadc850bcf14e2cbef92801c1585e06690b6691937ac3873f47b7af8300d2f",
+      "homebrew-extensions/Formula/mailparse@7.4.rb": "cd6280753162d6e34c03a9ed4f3bd0944106bb1e8cd43cf066b4a4e0be394f3d",
       "homebrew-extensions/Formula/mailparse@8.0.rb": "e529196a75699c4aa94c5d3be0c6cdb2efe52736037fbc07e5b707dbcde8d961",
       "homebrew-extensions/Formula/mailparse@8.1.rb": "57d0391bbe4df2ac677adef03f135493f64205b2e0481005e2ad0cb0d0f85c46",
       "homebrew-extensions/Formula/mailparse@8.2.rb": "a001f342a38249c6d5865b9b87f6cca880ccb1f4930801bdc734751e412c659a",
