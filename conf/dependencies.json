@@ -7719,7 +7719,7 @@
   },
   "tap_inputs": {
     "schema": 1,
-    "sha256": "df7df843ec48bf334937689419e59bb29a285fbdd9670ad146eba1936595b5a6",
+    "sha256": "dba24138857a8bab1d9334bddb10a70470e358270901698ca37fdd0eb34cfd0b",
     "records": {
       "homebrew-php/Formula/autoconf@2.69.rb": "fd33eadb8f275a2d089c7d112bfb39d680cc838b3af2f61ab4fb35f09dbeff7d",
       "homebrew-php/Formula/bison@2.7.rb": "54902fa819dd1736bcca826196ee75b2608337b4b83e484829446961fd4e2669",
@@ -13199,10 +13199,10 @@
       "homebrew-php/Formula/php@8.5-debug.rb": "17225e75d182db52b9c58ce4d7935913e4404a92171c2385e7dffc44270d3132",
       "homebrew-php/Formula/php@8.5-zts.rb": "7b88825c71e86021bdbd2b64f3a9f6d6be374d12e5740f60a741a190f4fd758e",
       "homebrew-php/Formula/php@8.5.rb": "50cd23bc01b6dd5b1a58d35fcb684054dcc1be9a29426aed7684516d1210a299",
-      "homebrew-php/Formula/php@8.7-debug-zts.rb": "b594b59ea6014ed2304fb6a260adb1c7cd04dbbd73dfebc2e1de63ff9f1520d2",
-      "homebrew-php/Formula/php@8.7-debug.rb": "92a0011b23ff9995b8f329c4cc961202c322d0350890554e75d4d3507ea79df6",
-      "homebrew-php/Formula/php@8.7-zts.rb": "80a177bd487fff420af65436aac755f4ec4fa77d8d293245c4241f2fc15f8e42",
-      "homebrew-php/Formula/php@8.7.rb": "b8250ae18160a7224c6aca6a2af3486c17345f4027f7d09001021a7c1680c82c",
+      "homebrew-php/Formula/php@8.7-debug-zts.rb": "41e7799ff26759dfc61f7bc467ed3f1ff2a1691befa0acc33e33976cc74ea694",
+      "homebrew-php/Formula/php@8.7-debug.rb": "0bdbcfdc46c6b44107dcafc945446066c9e24ab8698c0f3af715696ab254c8d1",
+      "homebrew-php/Formula/php@8.7-zts.rb": "7aece411b78eaeece9347027190517551237daf3074564f66457cfdfa2cf4e37",
+      "homebrew-php/Formula/php@8.7.rb": "44497ae21a9ea481bbb7bbd06d9ee7f10aa507bc0cb6b67b48cb76d04f924ed8",
       "homebrew-extensions/Formula/amqp@5.6.rb": "4bbfc54cb9797357863a7e78e30d13d90da4b07e9e1d8428433dc920c5c94b29",
       "homebrew-extensions/Formula/amqp@7.0.rb": "8577b42a3f0d4c0295d510b14542a44108971a9dbf8b47900a86c8091fbfb28d",
       "homebrew-extensions/Formula/amqp@7.1.rb": "99f9190e4269b0ac8620fc4a813cf785548da6f86e587727234c21b4857be5f1",
