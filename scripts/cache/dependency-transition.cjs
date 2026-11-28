@@ -58,7 +58,7 @@ function selectRecipes(lock, discoveries, change, upstream) {
   return {...recipes.updatePlan(lock,upstream,updates.join(' ')), updates};
 }
 
-function resolvePlan(graph, previous, explicit=[]) {
+function resolvePlan(graph, previous, explicit=[], {freshCore = false} = {}) {
   const excluded=new Set(graph.filter(item=>item.requested&&item.full_name.includes('/')).map(item=>item.full_name));
   const packages=graph.filter(item=>!excluded.has(item.full_name));
   const byName=new Map(packages.map(item=>[item.full_name,item]));
@@ -66,7 +66,9 @@ function resolvePlan(graph, previous, explicit=[]) {
   const runtime = new Set(graph.filter(item => excluded.has(item.full_name)).flatMap(item => item.runtime_formulae || []));
   for(const item of packages) {
     const entry=previous[item.full_name];
-    if(!entry || entry.version!==item.version ||
+    // On a new base the final install fetches native upstream bottles directly.
+    // Every source-only formula needs an exact prepared cache, even at the old version.
+    if(!entry || entry.version!==item.version || (freshCore && !item.bottled) ||
       (entry.source && item.runtime_dependencies.some(dep=>!entry.source.inputs.dependencies.some(old=>old.name===dep.name)))) updates.add(item.full_name);
   }
   const workers=packages.filter(item=>updates.has(item.full_name)).map(item=>({
@@ -92,17 +94,18 @@ function graph(requested, approved={}, bottleBaseline) {
     });
 }
 function planWorkers(lock, core, arch, requested, explicit, bottleOnly, query = graph) {
-  const previous = matchingSnapshot(lock, core)?.platforms[arch].packages;
+  const previous = lock.platforms[arch].packages;
+  const freshCore = !matchingSnapshot(lock, core);
   let updates = explicit;
   // Invalidating a source bottle can expose more build tools. Each pass removes
   // approvals until the graph is stable. A fresh core has none to remove.
   for (;;) {
-    const retained = Object.fromEntries(Object.entries(previous || {}).filter(([name]) => !updates.includes(name)));
+    const retained = freshCore ? {} : Object.fromEntries(Object.entries(previous).filter(([name]) => !updates.includes(name)));
     const resolved = query(requested, bottleVersions(retained, true));
     for (const name of bottleOnly) {
       if (!resolved.find(item => item.full_name === name)?.bottled) throw new Error(`No compatible upstream bottle for ${name}`);
     }
-    const next = resolvePlan(resolved, previous || {}, updates);
+    const next = resolvePlan(resolved, previous, updates, {freshCore});
     if (!next.updates.some(name => Object.hasOwn(retained, name))) return {...next, requested};
     updates = [...new Set([...updates, ...next.updates])];
   }

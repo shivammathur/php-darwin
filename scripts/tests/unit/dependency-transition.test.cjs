@@ -113,12 +113,14 @@ test('full core transitions schedule tools hidden by the old approvals and prese
   const root = 'shivammathur/php/php';
   const lock = {core_commit: hash, platforms: {x86_64: {packages: {
     library: {version: '1.0'}, cmake: {version: '4.4.3'}, libffi: {version: '3.8.1'},
+    jq: {version: '1.0'},
   }}}};
   const query = (requested, approved) => {
     assert.deepEqual(requested, [root]);
     const tools = approved.library ? [] : ['cmake'];
     return [...tools.map(name => graph(name, [], {version: '4.5.1'})),
-      graph('library', [], {required_formulae: tools}), graph('libffi', [], {version: '3.8.2'}),
+      graph('jq', [], {bottled: true}), graph('library', [], {required_formulae: tools}),
+      graph('libffi', [], {version: '3.8.2', bottled: true}),
       graph(root, ['library', 'libffi'], {requested: true})];
   };
   const full = planWorkers(lock, latest, 'x86_64', [root], [], [], query);
