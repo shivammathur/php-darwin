@@ -160,7 +160,7 @@ async function verify() {
   let defaults;
   try { defaults = require('../build/openssl-defaults.cjs').stage(platform.prefix, configurationPackages, defaultsDirectory); }
   finally { fs.rmSync(defaultsDirectory, {recursive: true, force: true}); }
-  command('brew', ['linkage', '--test', ...names], { inherit: true });
+  brewSource('linkage', ['--test', ...names], { inherit: true });
   const openssl = names.filter(name => /^openssl@\d+$/.test(name));
   let opensslLinks = 0;
   if (openssl.length === 1) {
