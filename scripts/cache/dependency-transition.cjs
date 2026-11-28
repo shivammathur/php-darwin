@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const {readLock,bottleVersions} = require('./approved-dependencies.cjs');
+const {readLock,bottleVersions,matchingSnapshot} = require('./approved-dependencies.cjs');
 const {changed} = require('./dependency-inputs.cjs');
 const recipes = require('./dependency-recipes.cjs');
 const {roots} = require('./update-dependencies.cjs');
@@ -91,13 +91,29 @@ function graph(requested, approved={}, bottleBaseline) {
       return {...item, recipe_sha256: recipeHashes.get(item.recipe).hash};
     });
 }
+function planWorkers(lock, core, arch, requested, explicit, bottleOnly, query = graph) {
+  const previous = matchingSnapshot(lock, core)?.platforms[arch].packages;
+  let updates = explicit;
+  // Invalidating a source bottle can expose more build tools. Each pass removes
+  // approvals until the graph is stable. A fresh core has none to remove.
+  for (;;) {
+    const retained = Object.fromEntries(Object.entries(previous || {}).filter(([name]) => !updates.includes(name)));
+    const resolved = query(requested, bottleVersions(retained, true));
+    for (const name of bottleOnly) {
+      if (!resolved.find(item => item.full_name === name)?.bottled) throw new Error(`No compatible upstream bottle for ${name}`);
+    }
+    const next = resolvePlan(resolved, previous || {}, updates);
+    if (!next.updates.some(name => Object.hasOwn(retained, name))) return {...next, requested};
+    updates = [...new Set([...updates, ...next.updates])];
+  }
+}
 function native() {
   if(process.platform!=='darwin'||process.env.GITHUB_ACTIONS!=='true')throw new Error('Native dependency resolution requires a macOS CI runner');
 }
 function output(values) {
   if(process.env.GITHUB_OUTPUT)fs.appendFileSync(process.env.GITHUB_OUTPUT,Object.entries(values).map(([k,v])=>`${k}=${typeof v==='string'?v:JSON.stringify(v)}\n`).join(''));
 }
-module.exports={selectRecipes,resolvePlan,graph};
+module.exports={selectRecipes,resolvePlan,planWorkers,graph};
 if(require.main===module) {
   try {
     const [mode,directory]=process.argv.slice(2),lock=readLock();
@@ -129,21 +145,11 @@ if(require.main===module) {
       native();const platform=environment();
       const bottleOnly=JSON.parse(process.env.PHP_DARWIN_BOTTLE_UPDATES||'[]');
       const explicit=[...new Set([...JSON.parse(process.env.PHP_DARWIN_DEPENDENCY_UPDATES||'[]'), ...bottleOnly])];
-      const previous=lock.platforms[platform.arch].packages;
-      let plan={updates:explicit}; let resolved;
-      // Invalidating a source bottle exposes its build dependencies. Resolve to
-      // a fixed point before scheduling, rather than discovering new work on a runner.
-      for(let i=0;i<=Object.keys(previous).length+100;i++) {
-        const approved=bottleVersions(Object.fromEntries(Object.entries(previous).filter(([name])=>!plan.updates.includes(name))),true);
-        resolved=graph([...new Set([...roots(), ...explicit])],approved);
-        for (const name of bottleOnly) if (!resolved.find(item => item.full_name === name)?.bottled) throw new Error(`No compatible upstream bottle for ${name}`);
-        const next=resolvePlan(resolved,previous,plan.updates);
-        if(JSON.stringify(next.updates)===JSON.stringify([...plan.updates].sort())){plan=next;break;}
-        plan=next;
-        if(i===Object.keys(previous).length+100)throw new Error('Dependency plan did not converge');
-      }
-      const result={...plan,arch:platform.arch,core:process.env.HOMEBREW_CORE_COMMIT,
-        recipes:recipes.configured(process.env.HOMEBREW_CORE_COMMIT),php:process.env.HOMEBREW_PHP_COMMIT,
+      const core = process.env.HOMEBREW_CORE_COMMIT;
+      const requested = [...new Set([...roots(), ...explicit])];
+      const plan = planWorkers(lock, core, platform.arch, requested, explicit, bottleOnly);
+      const result={...plan,arch:platform.arch,core,
+        recipes:recipes.configured(core),php:process.env.HOMEBREW_PHP_COMMIT,
         extensions:process.env.HOMEBREW_EXTENSIONS_COMMIT,revision:process.env.GITHUB_SHA};
       if(result.workers.some(item=>!formulaPattern.test(item.formula)))throw new Error('Invalid dependency worker formula');
       fs.writeFileSync(`dependency-plan-${platform.arch}.json`,JSON.stringify(result,null,2)+'\n');

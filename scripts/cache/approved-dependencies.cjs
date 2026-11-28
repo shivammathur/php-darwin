@@ -19,6 +19,12 @@ function readLock(file = defaultFile) {
   return lock;
 }
 
+// A full core transition prepares a fresh snapshot. Only a selective update
+// on the approved base can prune build tools using existing approvals.
+function matchingSnapshot(lock, core) {
+  return lock.core_commit === core ? lock : undefined;
+}
+
 function validatePlatform(platform, arch) {
   if (!Object.hasOwn(platforms, arch) || !platform ||
       platform.prefix !== platforms[arch].brew_prefix ||
@@ -206,7 +212,7 @@ class ApprovedDependencies {
   }
 }
 
-module.exports = { bottleVersions, readLock, validatePlatform, protectedSourceKeys, ApprovedDependencies, defaultFile };
+module.exports = { bottleVersions, readLock, matchingSnapshot, validatePlatform, protectedSourceKeys, ApprovedDependencies, defaultFile };
 if (require.main === module) {
   try {
     const lock = readLock(process.argv[3]);

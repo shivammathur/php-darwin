@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const {install, environment, brewSource, command, readBottle} = require('./source-bottle-cache.cjs');
-const {readLock, ApprovedDependencies} = require('./approved-dependencies.cjs');
+const {readLock, matchingSnapshot, ApprovedDependencies} = require('./approved-dependencies.cjs');
 const {ReleaseCache} = require('./source-bottle-releases.cjs');
 const {verifyRuntimeLinkage, verifyOpenSslLinkage} = require('./openssl-linkage.cjs');
 const {buildGuard} = require('./dependency-build-guard.cjs');
@@ -15,7 +15,8 @@ async function prepare(formula) {
   if (!expected || platform.prefix !== expected.brew_prefix || Number(platform.macos) !== expected.minimum_macos) {
     throw new Error('Build the dependency on its configured baseline runner');
   }
-  const approved = new ApprovedDependencies(readLock(), {updates, allowNewBottles: true});
+  const previous = matchingSnapshot(readLock(), process.env.HOMEBREW_CORE_COMMIT);
+  const approved = previous && new ApprovedDependencies(previous, {updates, allowNewBottles: true});
   const cache = new ReleaseCache(), cacheRoot = '.source-bottle-cache';
   const result = await install({formula, cache, cacheRoot,
     approvedDependencies: approved, run: buildGuard(formula)});

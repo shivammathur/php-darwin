@@ -3,7 +3,7 @@ const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { install, environment, brewSource, command, readBottle } = require('./source-bottle-cache.cjs');
 const { ReleaseCache } = require('./source-bottle-releases.cjs');
-const { readLock, validatePlatform, ApprovedDependencies } = require('./approved-dependencies.cjs');
+const { readLock, matchingSnapshot, validatePlatform, ApprovedDependencies } = require('./approved-dependencies.cjs');
 const { portable } = require('./upstream-bottle-cache.cjs');
 const { supportsPack, extensionFormula } = require('../installer/install-extensions.cjs');
 const recipes = require('./dependency-recipes.cjs');
@@ -62,7 +62,7 @@ function clean() {
   removeFrameworkPythonLinks(command('brew', ['--prefix']).trim());
 }
 
-async function prepare() {
+async function prepare(planFile) {
   requireRunner();
   const core = process.env.HOMEBREW_CORE_COMMIT;
   if (!/^[a-f0-9]{40}$/.test(core || '')) throw new Error('Missing dependency snapshot commit');
@@ -72,16 +72,19 @@ async function prepare() {
     throw new Error('Prepare dependencies on their configured baseline macOS runner');
   }
   const recipeCommits = recipes.configured(core);
-  const updates = JSON.parse(process.env.PHP_DARWIN_DEPENDENCY_UPDATES || '[]');
+  const workerPlan = planFile && JSON.parse(fs.readFileSync(planFile, 'utf8'));
+  if (workerPlan && (workerPlan.arch !== platform.arch || workerPlan.core !== core ||
+      workerPlan.revision !== process.env.GITHUB_SHA || !Array.isArray(workerPlan.requested))) {
+    throw new Error('Dependency worker plan differs from the preparation job');
+  }
+  const updates = workerPlan ? workerPlan.updates : JSON.parse(process.env.PHP_DARWIN_DEPENDENCY_UPDATES || '[]');
   const bottleUpdates = JSON.parse(process.env.PHP_DARWIN_BOTTLE_UPDATES || '[]');
   if (![updates, bottleUpdates].every(items => Array.isArray(items) && items.every(name => /^(?:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/)?[A-Za-z0-9@+_.-]+$/.test(name))) ||
       updates.some(name => bottleUpdates.includes(name))) {
     throw new Error('Invalid selective dependency update');
   }
-  const baseline = readLock();
-  const previous = baseline.core_commit === core ? baseline : undefined;
-  if (previous && previous.core_commit !== core) throw new Error('Selective update must preserve the approved base');
-  const requested = [...new Set([...roots(), ...updates.filter(name => !name.includes('/')), ...bottleUpdates.filter(name => previous?.platforms[platform.arch].packages[name])])];
+  const previous = matchingSnapshot(readLock(), core);
+  const requested = workerPlan ? workerPlan.requested : [...new Set([...roots(), ...updates.filter(name => !name.includes('/')), ...bottleUpdates.filter(name => previous?.platforms[platform.arch].packages[name])])];
   const approved = previous && new ApprovedDependencies(previous, {updates, bottleUpdates, allowNewBottles: true});
   const cache = new ReleaseCache();
   const cacheRoot = '.source-bottle-cache';
@@ -266,7 +269,7 @@ if (require.main === module) {
   (async () => {
     const [mode, directory, output] = process.argv.slice(2);
     if (mode === 'clean') clean();
-    else if (mode === 'prepare') await prepare();
+    else if (mode === 'prepare') await prepare(directory);
     else if (mode === 'verify') await verify();
     else if (mode === 'merge') merge(directory, output);
     else if (mode === 'promote') await promote(directory);

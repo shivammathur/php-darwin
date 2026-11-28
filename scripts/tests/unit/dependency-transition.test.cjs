@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const {execFileSync} = require('node:child_process');
 const {capture, changed} = require('../../cache/dependency-inputs.cjs');
-const {selectRecipes, resolvePlan} = require('../../cache/dependency-transition.cjs');
+const {selectRecipes, resolvePlan, planWorkers} = require('../../cache/dependency-transition.cjs');
 const {ready, fingerprint, title, workflow, orchestrate, validateWorker} = require('../../cache/dependency-workers.cjs');
 const {gate} = require('../../cache/dependency-gate.cjs');
 const {checker} = require('../../release/php-ready.cjs');
@@ -108,6 +108,25 @@ test('native plan separates required tools from linked libraries and schedules o
   state['python@3.14'] = {conclusion: 'failure'};
   assert.equal(ready(result.workers, state).some(node => node.formula === 'libvmaf'), false);
   assert.throws(() => resolvePlan([graph('a', ['b']), graph('b', ['a'])], {}), /cycle/);
+});
+test('full core transitions schedule tools hidden by the old approvals and preserve the original roots', () => {
+  const root = 'shivammathur/php/php';
+  const lock = {core_commit: hash, platforms: {x86_64: {packages: {
+    library: {version: '1.0'}, cmake: {version: '4.4.3'}, libffi: {version: '3.8.1'},
+  }}}};
+  const query = (requested, approved) => {
+    assert.deepEqual(requested, [root]);
+    const tools = approved.library ? [] : ['cmake'];
+    return [...tools.map(name => graph(name, [], {version: '4.5.1'})),
+      graph('library', [], {required_formulae: tools}), graph('libffi', [], {version: '3.8.2'}),
+      graph(root, ['library', 'libffi'], {requested: true})];
+  };
+  const full = planWorkers(lock, latest, 'x86_64', [root], [], [], query);
+  assert.deepEqual(full.requested, [root]);
+  assert.deepEqual(full.updates, ['cmake', 'libffi', 'library']);
+  assert.deepEqual(full.workers.find(worker => worker.formula === 'library').needs, ['cmake']);
+  assert.equal(full.workers.find(worker => worker.formula === 'cmake').kind, 'tool');
+  assert.deepEqual(planWorkers(lock, hash, 'x86_64', [root], [], [], query).updates, ['libffi']);
 });
 test('orchestrator dispatches independent formulae and architectures before polling; resumes exact existing runs', async () => {
   const plans = ['arm64', 'x86_64'].map(arch => ({arch, revision: hash, workers: [

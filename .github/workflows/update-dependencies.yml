@@ -271,8 +271,6 @@ jobs:
       GH_TOKEN: ${{ secrets.TOKEN || github.token }}
       HOMEBREW_CORE_COMMIT: ${{ needs.recipes.outputs.core }}
       PHP_DARWIN_RECIPE_COMMITS: ${{ needs.recipes.outputs.recipe-commits }}
-      PHP_DARWIN_DEPENDENCY_UPDATES: '[]'
-      PHP_DARWIN_BOTTLE_UPDATES: '[]'
       PHP_DARWIN_RETIRE_DEPENDENCIES: ${{ inputs.retire-formulae }}
       PHP_DARWIN_CACHE_ONLY: 'true'
       PHP_DARWIN_AUTOMATIC: ${{ needs.plan.outputs.automatic }}
@@ -296,13 +294,6 @@ jobs:
         with:
           name: dependency-inputs
           path: .
-      - name: Use this architecture's verified worker selection
-        run: |
-          "$PHP_DARWIN_NODE" - <<'JS'
-          const fs = require('node:fs');
-          const plan = JSON.parse(fs.readFileSync(`dependency-plan-${process.env.ARCH}.json`));
-          fs.appendFileSync(process.env.GITHUB_ENV, `PHP_DARWIN_DEPENDENCY_UPDATES=${JSON.stringify(plan.updates)}\n`);
-          JS
       - name: Remove installed formulae before dependency preparation
         run: '"$PHP_DARWIN_NODE" scripts/cache/update-dependencies.cjs clean'
       - name: Check the cleaned Homebrew environment
@@ -310,7 +301,7 @@ jobs:
       - name: Restore archive tools from approved bottles
         run: bash scripts/build/archive-tools.sh
       - name: Restore verified dependencies without source compilation
-        run: '"$PHP_DARWIN_NODE" scripts/cache/update-dependencies.cjs prepare'
+        run: '"$PHP_DARWIN_NODE" scripts/cache/update-dependencies.cjs prepare "dependency-plan-$ARCH.json"'
       - name: Prove cold and warm installs require no dependency compilation
         run: '"$PHP_DARWIN_NODE" scripts/cache/update-dependencies.cjs verify'
       - name: Save the verified dependency snapshot

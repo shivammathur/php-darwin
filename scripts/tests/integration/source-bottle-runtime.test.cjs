@@ -80,14 +80,59 @@ end
     fs.mkdirSync(path.join(root, name, '.brew'), {recursive: true});
     fs.writeFileSync(path.join(root, name, '.brew', `${name}.rb`), '');
   }
-  return (mode, approved = {}, env = {}) => {
+  return (mode, approved = {}, env = {}, {preload, baseline} = {}) => {
     const result = spawnSync(process.env.PHP_DARWIN_RUBY || 'ruby', ['-I', root,
-      path.resolve('scripts/cache/source-bottle-info.rb'), mode, '["consumer"]', 'false', JSON.stringify(approved)],
+      ...(preload ? ['-r', preload] : []), path.resolve('scripts/cache/source-bottle-info.rb'),
+      mode, '["consumer"]', 'false', JSON.stringify(approved), ...(baseline ? [JSON.stringify(baseline)] : [])],
     {encoding: 'utf8', env: {...process.env, FIXTURE_ROOT: root, ...env}});
     assert.equal(result.status, 0, result.stderr);
     return JSON.parse(result.stdout);
   };
 }
+
+test('discovery retries manifest transfers and propagates exhausted downloads and invalid receipts', t => {
+  const run = fixture(t);
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bottle-manifest-'));
+  t.after(() => fs.rmSync(root, {recursive: true, force: true}));
+  const preload = path.join(root, 'bottle.rb');
+  const attempts = path.join(root, 'attempts');
+  fs.writeFileSync(preload, `require "formulary"
+class DownloadError < RuntimeError; end
+class FormulaInstaller
+  def initialize(formula); @formula = formula; end
+  def pour_bottle?; @formula.name == "consumer"; end
+  def selected_bottle; self; end
+  def tag; "sequoia"; end
+  def resource; self; end
+  def checksum; self; end
+  def hexdigest; "a" * 64; end
+  def url; "https://example.invalid/bottle"; end
+  def cached_download; "/tmp/bottle"; end
+  def fetch_tab(quiet:)
+    raise "expected quiet transfer" unless quiet
+    File.open(ENV.fetch("ATTEMPTS"), "a") { |file| file.puts("fetch") }
+    @calls = (@calls || 0) + 1
+    raise DownloadError, "curl: (35) timed out" if @calls <= Integer(ENV.fetch("FAILURES"))
+  end
+  def tab_attributes
+    {"runtime_dependencies" => ENV["INVALID"] == "true" ? nil : []}
+  end
+end
+def sleep(_seconds); end
+`);
+  function discover(failures, invalid = false) {
+    fs.writeFileSync(attempts, '');
+    return run('graph', {}, {ATTEMPTS: attempts, FAILURES: String(failures), INVALID: String(invalid)},
+      {preload, baseline: {}});
+  }
+  const count = () => fs.readFileSync(attempts, 'utf8').trim().split('\n').length;
+  assert.deepEqual(discover(2).at(-1).bottle_requirement_updates, []);
+  assert.equal(count(), 3);
+  assert.throws(() => discover(3), /curl: \(35\) timed out/);
+  assert.equal(count(), 3);
+  assert.throws(() => discover(0, true), /Invalid bottle dependency metadata/);
+  assert.equal(count(), 1);
+});
 
 test('cold graphs and preparation retain declared system-library dependencies from the approved build platform', t => {
   const run = fixture(t);

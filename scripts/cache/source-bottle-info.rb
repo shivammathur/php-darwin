@@ -152,7 +152,17 @@ records = resolved.map do |formula|
       # Read the selected bottle's receipt through Homebrew, including its
       # rebuild/platform identity. An older transitive dependency can disappear
       # when a compatible approved library replaces the one used to bottle it.
-      bottle.fetch_tab(quiet: true)
+      attempt = 0
+      begin
+        attempt += 1
+        bottle.fetch_tab(quiet: true)
+      rescue DownloadError => e
+        raise if attempt >= 3
+
+        warn "Retrying #{formula.full_name} bottle manifest (#{attempt + 1}/3): #{e.message}"
+        sleep(attempt)
+        retry
+      end
       requirements = bottle.tab_attributes.fetch("runtime_dependencies")
       raise "Invalid bottle dependency metadata for #{formula.full_name}" unless requirements.is_a?(Array)
 
